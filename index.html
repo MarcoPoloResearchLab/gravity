@@ -134,6 +134,83 @@
     let isPerformingMerge = false; // Flag for merge operations
 
     const blockContainer = document.getElementById("block-container");
+    const localStorageKey = 'gravityNotesData'; // Key for localStorage
+
+    // --- START: localStorage Functions ---
+
+    /**
+     * Saves the current notes' content and order to localStorage.
+     */
+    function saveNotesToLocalStorage() {
+        try {
+            const noteElements = blockContainer.querySelectorAll('.markdown-block');
+            const notesData = Array.from(noteElements).map(noteEl => {
+                const editor = noteEl.querySelector('.markdown-editor');
+                return editor ? editor.value : ''; // Get text from editor
+            });
+            localStorage.setItem(localStorageKey, JSON.stringify(notesData));
+        } catch (error) {
+            console.error("Error saving notes to localStorage:", error);
+            // Optionally inform the user, e.g., if storage is full
+        }
+    }
+
+    /**
+     * Loads notes from localStorage and populates the container.
+     */
+    function loadNotesFromLocalStorage() {
+        let notesData = [];
+        try {
+            const storedData = localStorage.getItem(localStorageKey);
+            if (storedData) {
+                const parsedData = JSON.parse(storedData);
+                // Basic validation: ensure it's an array
+                if (Array.isArray(parsedData)) {
+                    notesData = parsedData;
+                } else {
+                    console.warn("Invalid data found in localStorage, starting fresh.");
+                }
+            }
+        } catch (error) {
+            console.error("Error loading notes from localStorage:", error);
+            // Continue with empty notesData if loading fails
+        }
+
+        // Clear any existing notes (shouldn't be any on initial load, but safe)
+        blockContainer.innerHTML = '';
+
+        if (notesData.length > 0) {
+            // Create notes from saved data
+            notesData.forEach(noteText => {
+                const noteElement = createNote(noteText || ''); // Handle potential null/undefined
+                blockContainer.appendChild(noteElement); // Append in order
+            });
+            // Activate the first note (which is the top one now)
+            const firstNote = blockContainer.firstElementChild;
+            if (firstNote) {
+                setActiveTopNote(firstNote);
+            } else {
+                // Should not happen if notesData had items, but as fallback:
+                initializeEmptyEditor();
+            }
+        } else {
+            // No saved data or empty array, initialize with one empty editor
+            initializeEmptyEditor();
+        }
+        updateActionButtons(); // Ensure buttons are correct after load
+    }
+
+    /**
+     * Helper to create the initial empty note state.
+     */
+    function initializeEmptyEditor() {
+        const initialNoteElement = createNote("");
+        blockContainer.prepend(initialNoteElement);
+        setActiveTopNote(initialNoteElement);
+    }
+
+    // --- END: localStorage Functions ---
+
 
     /**
      * Ensures the top note is the active editor.
@@ -158,6 +235,7 @@
         autoResize(noteEditorElement);
         setTimeout(() => noteEditorElement?.focus(), 0);
         updateActionButtons();
+        // Note: saveNotesToLocalStorage() is called by finalizeNoteEditing which often precedes this
     }
 
     /**
@@ -188,13 +266,14 @@
         autoResize(noteEditorElement);
         setTimeout(() => noteEditorElement?.focus(), 0);
         updateActionButtons();
+        // Note: saveNotesToLocalStorage() is called by finalizeNoteEditing which precedes this
     }
 
 
     /**
-     * Finalizes editing on a note. Removed unused blurEvent parameter.
+     * Finalizes editing on a note.
      */
-    function finalizeNoteEditing(noteElement) { // Removed blurEvent parameter
+    function finalizeNoteEditing(noteElement) { // Removed unused blurEvent parameter
         if (!noteElement || noteElement !== currentlyEditingNoteElement || isPerformingMerge) {
             return;
         }
@@ -228,17 +307,31 @@
         noteElement.classList.remove('editing-in-place');
         currentlyEditingNoteElement = null;
 
+        let stateChanged = true; // Assume state changed for saving purposes
+
         if (wasTopNote) {
             const isNoteNonEmpty = noteTextContent.trim() !== "";
             if (isNoteNonEmpty) {
                 const newActiveNoteElement = createNote("");
                 blockContainer.prepend(newActiveNoteElement);
                 setActiveTopNote(newActiveNoteElement);
+                // setActiveTopNote calls updateButtons, no need to call save here directly
+                stateChanged = true; // Explicitly true, though default
             } else {
                 setActiveTopNote(noteElement);
+                // Re-activating same note, state didn't fundamentally change structure
+                stateChanged = false; // Or maybe true if content was cleared? Let's save anyway.
+                stateChanged = true;
             }
         } else {
+            // Finalized in-place edit, content might have changed
             updateActionButtons();
+            stateChanged = true;
+        }
+
+        // Save state if it potentially changed
+        if (stateChanged) {
+            saveNotesToLocalStorage();
         }
     }
 
@@ -268,15 +361,17 @@
                 mouseDownEvent.preventDefault();
                 isPerformingMerge = true;
                 try {
-                    clickHandlerFunction();
+                    clickHandlerFunction(); // This function should call saveNotes... at the end
                 } finally {
-                    setTimeout(() => { isPerformingMerge = false; }, 50);
+                    setTimeout(() => {
+                        isPerformingMerge = false;
+                    }, 50);
                 }
             });
         } else { // Arrow buttons
             buttonElement.addEventListener("click", function (clickEvent) {
                 clickEvent.stopPropagation();
-                clickHandlerFunction();
+                clickHandlerFunction(); // This function should call saveNotes... at the end
             });
         }
         return buttonElement;
@@ -285,6 +380,8 @@
 
     /**
      * Creates and returns a new note element.
+     * NOTE: This function itself does NOT save to localStorage,
+     * as it's called during loading and finalization which handle saving.
      */
     function createNote(initialNoteText) {
         const noteElement = document.createElement("div");
@@ -300,21 +397,23 @@
         noteEditorElement.addEventListener("input", function () {
             autoResize(noteEditorElement);
             notePreviewElement.innerHTML = marked.parse(noteEditorElement.value);
+            // Debounce saving on input? For simplicity, we rely on save on finalize/blur/action.
+            // If frequent saves are needed: implement debouncing for saveNotesToLocalStorage() here.
         });
         noteEditorElement.addEventListener("keydown", function (keyEvent) {
             if (keyEvent.key === "Enter" && !keyEvent.shiftKey) {
                 keyEvent.preventDefault();
                 isPerformingMerge = false;
-                finalizeNoteEditing(noteElement);
+                finalizeNoteEditing(noteElement); // finalizeNoteEditing handles saving
             }
         });
-        noteEditorElement.addEventListener("blur", function () { // Removed unused blurEvent parameter
+        noteEditorElement.addEventListener("blur", function () {
             if (!isPerformingMerge) {
-                finalizeNoteEditing(noteElement); // Call without event object
+                finalizeNoteEditing(noteElement); // finalizeNoteEditing handles saving
             }
         });
 
-        notePreviewElement.addEventListener("mousedown", function () { // Removed unused mouseDownEvent parameter
+        notePreviewElement.addEventListener("mousedown", function () {
             if (noteElement === blockContainer.firstElementChild) {
                 setActiveTopNote(noteElement);
             } else {
@@ -324,13 +423,23 @@
 
         noteEditorElement.addEventListener("paste", function (pasteEvent) {
             handleImagePaste(pasteEvent, noteEditorElement, notePreviewElement);
+            // Consider saving after paste? Finalize/blur will catch it eventually.
+            // saveNotesToLocalStorage(); // Optional: Save immediately after paste
         });
 
         // Create buttons
-        const upArrowButton = createIconButton("▲", "arrow-btn arrow-up", function () { moveNote(noteElement, -1); });
-        const downArrowButton = createIconButton("▼", "arrow-btn arrow-down", function () { moveNote(noteElement, 1); });
-        const mergeUpButton = createIconButton("Merge ↑", "merge-btn-up", function () { mergeNoteUp(noteElement); });
-        const mergeDownButton = createIconButton("Merge ↓", "merge-btn-down", function () { mergeNoteDown(noteElement); });
+        const upArrowButton = createIconButton("▲", "arrow-btn arrow-up", function () {
+            moveNote(noteElement, -1);
+        });
+        const downArrowButton = createIconButton("▼", "arrow-btn arrow-down", function () {
+            moveNote(noteElement, 1);
+        });
+        const mergeUpButton = createIconButton("Merge ↑", "merge-btn-up", function () {
+            mergeNoteUp(noteElement);
+        });
+        const mergeDownButton = createIconButton("Merge ↓", "merge-btn-down", function () {
+            mergeNoteDown(noteElement);
+        });
 
         // Append elements
         noteElement.appendChild(mergeUpButton);
@@ -409,6 +518,7 @@
             blockContainer.insertBefore(noteElement, referenceNoteElement.nextSibling);
         }
         updateActionButtons();
+        saveNotesToLocalStorage(); // Save after move
     }
 
 
@@ -450,6 +560,7 @@
 
         noteElementToMerge.remove();
         updateActionButtons();
+        saveNotesToLocalStorage(); // Save after merge
     }
 
     /**
@@ -490,6 +601,7 @@
 
         bottomNoteElement.remove();
         updateActionButtons();
+        saveNotesToLocalStorage(); // Save after merge
     }
 
 
@@ -520,8 +632,9 @@
                     noteEditorElement.setSelectionRange(updatedCursorPosition, updatedCursorPosition);
                     autoResize(noteEditorElement);
                     setTimeout(() => noteEditorElement?.focus(), 0);
+                    // saveNotesToLocalStorage(); // Optional: Save immediately after paste? Better on finalize.
                 };
-                fileReaderObject.onerror = function() {
+                fileReaderObject.onerror = function () {
                     console.error("FileReader error reading pasted image.");
                 }
                 fileReaderObject.readAsDataURL(pastedFile);
@@ -529,10 +642,10 @@
         }
     }
 
-    // Initialize first note
-    const initialNoteElement = createNote("");
-    blockContainer.prepend(initialNoteElement);
-    setActiveTopNote(initialNoteElement);
+    // --- Initialization ---
+    // Load existing notes from storage, or initialize a new empty one if none exist
+    loadNotesFromLocalStorage();
+
 
 </script>
 </body>
