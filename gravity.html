@@ -1,256 +1,597 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Gravity Notes</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <style>
-    html, body {
-      margin: 0;
-      height: 100%;
-      font-family: sans-serif;
-    }
+    <meta charset="UTF-8"/>
+    <title>Gravity Notes</title>
+    <meta content="width=device-width, initial-scale=1" name="viewport"/>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        html, body {
+            margin: 0;
+            height: 100%;
+            font-family: sans-serif;
+        }
 
-    #block-container {
-      height: 100vh;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-    }
+        #block-container {
+            height: 100vh;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
 
-    .markdown-block {
-      border-bottom: 1px solid #ccc;
-      padding: 0.5rem;
-      position: relative;
-    }
+        .markdown-block {
+            border-bottom: 1px solid #ccc;
+            padding: 0.5rem;
+            position: relative; /* Needed for absolute positioning of buttons */
+            min-height: 3rem;
+            box-sizing: border-box; /* Include padding in height calculation */
+        }
 
-    .markdown-content {
-      cursor: pointer;
-      white-space: pre-wrap;
-      word-break: break-word;
-      margin: 0;
-    }
+        .markdown-content {
+            cursor: pointer;
+            white-space: pre-wrap;
+            word-break: break-word;
+            margin: 0;
+            padding-right: 6rem; /* Add padding to avoid text overlapping buttons */
+            min-height: 1.5rem; /* Ensure content takes up space for clicking */
+        }
 
-    .markdown-editor {
-      display: none;
-      width: 100%;
-      border: none;
-      outline: none;
-      padding: 0;
-      font-family: inherit;
-      font-size: 1rem;
-      background: transparent;
-      resize: none;
-      white-space: pre-wrap;
-      word-break: break-word;
-      overflow: hidden;
-    }
+        /* Style for the note currently being edited */
+        .editing-in-place .markdown-content {
+            display: none;
+        }
 
-    .edit-mode .markdown-content {
-      display: none;
-    }
-    .edit-mode .markdown-editor {
-      display: block;
-    }
+        .editing-in-place .markdown-editor {
+            display: block;
+        }
 
-    .arrow-btn, .merge-btn {
-      position: absolute;
-      background: transparent;
-      border: none;
-      cursor: pointer;
-      user-select: none;
-      font-size: 0.9rem;
-      color: #007bff;
-    }
-    .arrow-btn:hover, .merge-btn:hover {
-      color: #0056b3;
-    }
-    .arrow-up {
-      top: 0.5rem;
-      right: 2rem;
-    }
-    .arrow-down {
-      top: 0.5rem;
-      right: 1rem;
-    }
-    .merge-btn {
-      top: 0.5rem;
-      right: 4rem;
-      color: #28a745;
-    }
-    .merge-btn:hover {
-      color: #1e7e34;
-    }
-  </style>
+        /* Style specifically for the TOP/ACTIVE note's editor */
+        .edit-mode .markdown-content {
+            display: none;
+        }
+
+        .edit-mode .markdown-editor {
+            display: block;
+        }
+
+
+        .markdown-editor {
+            display: none; /* Hide editors by default */
+            width: 100%;
+            border: none;
+            outline: none;
+            padding: 0;
+            font-family: inherit;
+            font-size: 1rem;
+            background: transparent;
+            resize: none;
+            white-space: pre-wrap;
+            word-break: break-word;
+            overflow: hidden;
+            padding-right: 6rem; /* Add padding to avoid text overlapping buttons */
+            box-sizing: border-box; /* Ensure padding is included in width */
+        }
+
+
+        .arrow-btn,
+        .merge-btn-up,
+        .merge-btn-down {
+            position: absolute;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            user-select: none;
+            font-size: 0.9rem;
+            color: #007bff;
+            padding: 0.2rem 0.3rem; /* Make buttons slightly larger */
+            line-height: 1; /* Ensure consistent vertical alignment */
+        }
+
+        .arrow-btn:hover,
+        .merge-btn-up:hover,
+        .merge-btn-down:hover {
+            color: #0056b3;
+        }
+
+        .arrow-up {
+            top: 0.5rem;
+            right: 1rem; /* Align vertically with down arrow */
+        }
+
+        .arrow-down {
+            bottom: 0.5rem;
+            right: 1rem;
+        }
+
+        .merge-btn-up {
+            top: 0.5rem;
+            right: 4rem; /* Keep merge buttons separate */
+            color: #28a745;
+        }
+
+        .merge-btn-up:hover {
+            color: #1e7e34;
+        }
+
+        .merge-btn-down {
+            top: 0.5rem;
+            right: 4rem; /* Align with merge up button */
+            color: #28a745;
+        }
+
+        .merge-btn-down:hover {
+            color: #1e7e34;
+        }
+    </style>
 </head>
 <body>
-  <div id="block-container"></div>
+<div id="block-container"></div>
+<script>
+    marked.setOptions({gfm: true, breaks: true});
 
-  <script>
-    // 1) Marked config: treat single newlines as <br>
-    marked.setOptions({
-      gfm: true,
-      breaks: true
-    });
+    let currentlyEditingNoteElement = null; // Track which note is being edited in place
+    let isPerformingMerge = false; // Flag for merge operations to prevent side effects
 
-    const blockContainer = document.getElementById('block-container');
 
-    // Create always-empty top block in edit mode
-    const topBlock = createBlock('');
-    blockContainer.appendChild(topBlock);
-    topBlock.classList.add('edit-mode');
-    const topEditor = topBlock.querySelector('.markdown-editor');
-    autoResize(topEditor);
-    topEditor.focus();
+    // Initialization
+    const blockContainer = document.getElementById("block-container");
 
-    function createBlock(initialText) {
-      const block = document.createElement('div');
-      block.className = 'markdown-block';
-
-      const previewElement = document.createElement('p');
-      previewElement.className = 'markdown-content';
-      previewElement.innerHTML = marked.parse(initialText);
-
-      const editorElement = document.createElement('textarea');
-      editorElement.className = 'markdown-editor';
-      editorElement.value = initialText;
-      editorElement.addEventListener('input', () => autoResize(editorElement));
-
-      // Finalize on Enter or blur
-      editorElement.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' && !event.shiftKey) {
-          event.preventDefault();
-          finalizeEdit(block);
+    /**
+     * Ensures the top note is the active editor.
+     * Finalizes any other note being edited first.
+     */
+    function setActiveTopNote(noteElement) {
+        if (currentlyEditingNoteElement && currentlyEditingNoteElement !== noteElement) {
+            finalizeNoteEditing(currentlyEditingNoteElement); // Finalize previous in-place edit
         }
-      });
-      editorElement.addEventListener('blur', () => {
-        finalizeEdit(block);
-      });
+        currentlyEditingNoteElement = noteElement; // The top note is now the one being edited
 
-      // Click preview => edit mode
-      previewElement.addEventListener('click', () => {
-        block.classList.add('edit-mode');
-        autoResize(editorElement);
-        editorElement.focus();
-      });
+        Array.from(blockContainer.children).forEach(eachNote => {
+            eachNote.classList.remove('editing-in-place'); // Remove in-place style
+            if (eachNote !== noteElement) {
+                eachNote.classList.remove('edit-mode'); // Ensure others aren't marked as top active
+            }
+        });
 
-      // Paste images => embed
-      editorElement.addEventListener('paste', (event) =>
-        handlePasteImage(event, editorElement, previewElement)
-      );
-
-      // Move / Merge buttons
-      const mergeButton = createIconButton('Merge ↓', 'merge-btn', () => mergeWithNextBlock(block));
-      const upButton = createIconButton('▲', 'arrow-btn arrow-up', () => moveBlock(block, -1));
-      const downButton = createIconButton('▼', 'arrow-btn arrow-down', () => moveBlock(block, 1));
-
-      block.append(mergeButton, upButton, downButton, previewElement, editorElement);
-      return block;
+        noteElement.classList.add('edit-mode'); // Use 'edit-mode' specifically for the top active editor
+        const noteEditorElement = noteElement.querySelector(".markdown-editor");
+        autoResize(noteEditorElement);
+        setTimeout(() => noteEditorElement.focus(), 0);
+        updateActionButtons(); // Use a renamed function for clarity
     }
 
-    // 2) Finalize edit
-    // Remove all .trim() or trailing-newline stripping so we keep every newline
-    function finalizeEdit(block) {
-      const editor = block.querySelector('.markdown-editor');
-      const preview = block.querySelector('.markdown-content');
-      const text = editor.value; // Keep all carriage returns
-
-      if (block === blockContainer.firstElementChild) {
-        // The "top block"
-        // Check if there's any non-whitespace => create new block
-        const isNonEmpty = text.replace(/\s/g, '') !== '';
-        if (isNonEmpty) {
-          const newBlock = createBlock(text);
-          newBlock.querySelector('.markdown-editor').value = text;
-          newBlock.querySelector('.markdown-content').innerHTML = marked.parse(text);
-          blockContainer.insertBefore(newBlock, block.nextSibling);
+    /**
+     * Enables editing for a given note element IN PLACE.
+     * Finalizes any other note being edited first.
+     */
+    function enableNoteEditing(noteElement) {
+        // If clicking the note that's already being edited, do nothing extra
+        if (noteElement === currentlyEditingNoteElement) {
+            // Ensure focus if somehow lost
+            setTimeout(() => noteElement.querySelector(".markdown-editor")?.focus(), 0);
+            return;
         }
-        // Reset top block to empty, remain in edit mode
-        editor.value = '';
-        preview.innerHTML = '';
-        autoResize(editor);
-        block.classList.add('edit-mode');
-        editor.focus();
-      } else {
-        // Normal block => exit edit mode
-        preview.innerHTML = marked.parse(text);
-        block.classList.remove('edit-mode');
-      }
-    }
 
-    // 3) Auto-resize
-    function autoResize(textarea) {
-      textarea.style.height = 'auto';
-      textarea.style.height = textarea.scrollHeight + 'px';
-    }
-
-    // 4) Create icon button
-    function createIconButton(label, className, onClick) {
-      const btn = document.createElement('button');
-      btn.className = className;
-      btn.textContent = label;
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        onClick();
-      });
-      return btn;
-    }
-
-    // 5) Move block
-    function moveBlock(block, direction) {
-      const sibling = (direction === -1)
-        ? block.previousElementSibling
-        : block.nextElementSibling;
-      if (!sibling) return;
-      blockContainer.insertBefore(
-        block,
-        direction === -1 ? sibling : sibling.nextSibling
-      );
-    }
-
-    // 6) Merge with next
-    function mergeWithNextBlock(currentBlock) {
-      const nextBlock = currentBlock.nextElementSibling;
-      if (!nextBlock) return;
-
-      const currentEditor = currentBlock.querySelector('.markdown-editor');
-      const nextEditor = nextBlock.querySelector('.markdown-editor');
-
-      const mergedText = `${currentEditor.value}\n\n${nextEditor.value}`;
-      currentEditor.value = mergedText;
-
-      const preview = currentBlock.querySelector('.markdown-content');
-      preview.innerHTML = marked.parse(mergedText);
-
-      nextBlock.remove();
-    }
-
-    // 7) Paste images => base64
-    function handlePasteImage(event, editor, preview) {
-      const items = event.clipboardData?.items || [];
-      for (const item of items) {
-        if (item.type.startsWith('image/')) {
-          const file = item.getAsFile();
-          const reader = new FileReader();
-          const cursorPosition = editor.selectionStart;
-
-          reader.onload = (e) => {
-            const markdownImage = `\n\n![pasted image](${e.target.result})\n\n`;
-            editor.setRangeText(markdownImage, cursorPosition, cursorPosition, 'end');
-
-            const newCursor = cursorPosition + markdownImage.length;
-            editor.setSelectionRange(newCursor, newCursor);
-
-            preview.innerHTML = marked.parse(editor.value);
-          };
-
-          reader.readAsDataURL(file);
-          event.preventDefault();
-          break;
+        // Finalize any previously editing note before switching
+        if (currentlyEditingNoteElement) {
+            finalizeNoteEditing(currentlyEditingNoteElement);
         }
-      }
+
+        // Remove 'edit-mode' from top note if it exists and isn't the target
+        const topNote = blockContainer.firstElementChild;
+        if (topNote && topNote !== noteElement) {
+            topNote.classList.remove('edit-mode');
+        }
+        // Remove 'editing-in-place' from all others
+        Array.from(blockContainer.children).forEach(eachNote => {
+            if (eachNote !== noteElement) {
+                eachNote.classList.remove('editing-in-place');
+            }
+        });
+
+
+        currentlyEditingNoteElement = noteElement; // Track the new element
+        noteElement.classList.add('editing-in-place'); // Apply in-place editing style
+
+        const noteEditorElement = noteElement.querySelector(".markdown-editor");
+        autoResize(noteEditorElement);
+        setTimeout(() => noteEditorElement.focus(), 0); // Focus the editor
+        updateActionButtons(); // Update button visibility
     }
-  </script>
+
+
+    /**
+     * Finalizes editing on a note.
+     * @param {HTMLElement} noteElement - The note element being finalized.
+     * @param {FocusEvent} [blurEvent] - The blur event, if finalize is called due to blur.
+     */
+    function finalizeNoteEditing(noteElement, blurEvent) {
+        if (!noteElement) return; // Safety check
+
+        // Check if the note is actually in an editing state
+        const isTopActiveEditing = noteElement.classList.contains('edit-mode');
+        const isInPlaceEditing = noteElement.classList.contains('editing-in-place');
+        if (!isTopActiveEditing && !isInPlaceEditing) {
+            // Not currently editing this note, nothing to finalize.
+            // We might need to reset currentlyEditingNoteElement if it points here though.
+            if (currentlyEditingNoteElement === noteElement) {
+                currentlyEditingNoteElement = null;
+            }
+            return;
+        }
+
+        const noteEditorElement = noteElement.querySelector(".markdown-editor");
+        const notePreviewElement = noteElement.querySelector(".markdown-content");
+        const noteTextContent = noteEditorElement.value;
+
+        notePreviewElement.innerHTML = marked.parse(noteTextContent);
+
+        // Determine if finalization should be blocked (e.g., by merge click)
+        let blockFinalizeAction = isPerformingMerge;
+        if (blurEvent) {
+            // Allow finalization if focus moves outside the container entirely or to body
+            const relatedTarget = blurEvent.relatedTarget;
+            if (relatedTarget && blockContainer.contains(relatedTarget)) {
+                // If focus moves to another interactive element within a note block
+                // (like preview or a button), block premature finalization.
+                // Merge buttons set the flag, preview click handles its own logic.
+                // Arrow buttons don't cause blur issues.
+                if (relatedTarget.closest('.markdown-block')) {
+                    // Check specifically if it's NOT a merge button causing the focus shift
+                    if (!relatedTarget.classList.contains('merge-btn-up') && !relatedTarget.classList.contains('merge-btn-down')) {
+                        // Potentially clicking preview of another note, let that handler manage it.
+                        // Or clicking an arrow button which is fine.
+                        // Avoid finalization for now.
+                    }
+                    // If it IS a merge button, isPerformingMerge flag handles it.
+                }
+            }
+        }
+
+
+        if (blockFinalizeAction) {
+            // If blocked (e.g., merging), just ensure focus remains or is handled by merge action
+            if (isTopActiveEditing || isInPlaceEditing) {
+                // Keep editing state for now, merge/activation logic will adjust if needed
+            }
+        } else {
+            // --- Proceed with Finalization ---
+            noteElement.classList.remove('edit-mode');
+            noteElement.classList.remove('editing-in-place');
+            currentlyEditingNoteElement = null; // No longer editing this specific note
+
+            // Special handling ONLY for the TOP note
+            if (noteElement === blockContainer.firstElementChild && isTopActiveEditing) {
+                const isNoteNonEmpty = noteTextContent.trim() !== "";
+                if (isNoteNonEmpty) {
+                    // Finalized non-empty TOP note: Create a new empty one above it
+                    const newActiveNoteElement = createNote("");
+                    blockContainer.prepend(newActiveNoteElement);
+                    setActiveTopNote(newActiveNoteElement); // Activate the NEW top note
+                } else {
+                    // Finalized empty TOP note: Re-activate it
+                    setActiveTopNote(noteElement);
+                }
+            }
+            // NO special action (like moving) for non-top notes upon finalization.
+        }
+
+        // Update buttons after any potential state change
+        updateActionButtons();
+    }
+
+
+    /**
+     * Automatically resizes a textarea to its content height.
+     */
+    function autoResize(textareaElement) {
+        if (!textareaElement) return;
+        textareaElement.style.height = "auto";
+        const bufferHeight = 5;
+        textareaElement.style.height = (textareaElement.scrollHeight + bufferHeight) + "px";
+    }
+
+
+    /**
+     * Creates a button element.
+     */
+    function createIconButton(iconLabelText, cssClassForButton, clickHandlerFunction) {
+        const buttonElement = document.createElement("button");
+        buttonElement.className = cssClassForButton;
+        buttonElement.textContent = iconLabelText;
+        buttonElement.setAttribute("aria-label", iconLabelText.replace("↑", "up").replace("↓", "down"));
+
+        if (cssClassForButton.includes("merge-btn")) {
+            buttonElement.addEventListener("mousedown", function (mouseDownEvent) {
+                mouseDownEvent.preventDefault(); // Prevent blur on editor
+                isPerformingMerge = true;
+                try {
+                    clickHandlerFunction(); // Execute merge
+                } finally {
+                    setTimeout(() => {
+                        isPerformingMerge = false;
+                    }, 0); // Reset flag after
+                }
+            });
+        } else { // Assumes arrow buttons
+            buttonElement.addEventListener("click", function (clickEvent) {
+                clickEvent.stopPropagation(); // Prevent potential bubbling
+                // Finalize any edit before moving
+                if (currentlyEditingNoteElement) {
+                    finalizeNoteEditing(currentlyEditingNoteElement);
+                }
+                clickHandlerFunction(); // Execute move
+            });
+        }
+        return buttonElement;
+    }
+
+
+    /**
+     * Creates and returns a new note element.
+     */
+    function createNote(initialNoteText) {
+        const noteElement = document.createElement("div");
+        noteElement.className = "markdown-block";
+        const notePreviewElement = document.createElement("p");
+        notePreviewElement.className = "markdown-content";
+        notePreviewElement.innerHTML = marked.parse(initialNoteText);
+        const noteEditorElement = document.createElement("textarea");
+        noteEditorElement.className = "markdown-editor";
+        noteEditorElement.value = initialNoteText;
+        noteEditorElement.setAttribute("rows", "1");
+
+        noteEditorElement.addEventListener("input", function () {
+            autoResize(noteEditorElement);
+            notePreviewElement.innerHTML = marked.parse(noteEditorElement.value);
+        });
+        noteEditorElement.addEventListener("keydown", function (keyEvent) {
+            if (keyEvent.key === "Enter" && !keyEvent.shiftKey) {
+                keyEvent.preventDefault();
+                isPerformingMerge = false; // Enter isn't merge
+                finalizeNoteEditing(noteElement);
+            }
+            // Allow Shift+Enter for newlines (default textarea behavior)
+        });
+        noteEditorElement.addEventListener("blur", function (blurEvent) {
+            // Pass event to finalize to check relatedTarget
+            finalizeNoteEditing(noteElement, blurEvent);
+        });
+
+        // Use mousedown on preview to switch to edit mode
+        notePreviewElement.addEventListener("mousedown", function (mouseDownEvent) {
+            // Don't prevent default, allow potential focus shift to trigger blur on old editor
+            // mouseDownEvent.preventDefault();
+
+            // If clicking the top note's preview, use setActiveTopNote
+            if (noteElement === blockContainer.firstElementChild) {
+                setActiveTopNote(noteElement);
+            } else {
+                // Otherwise, enable editing in place for this passive note
+                enableNoteEditing(noteElement);
+            }
+        });
+
+
+        noteEditorElement.addEventListener("paste", function (pasteEvent) {
+            handleImagePaste(pasteEvent, noteEditorElement, notePreviewElement);
+        });
+
+        // Create buttons (they will be shown/hidden by updateActionButtons)
+        const upArrowButton = createIconButton("▲", "arrow-btn arrow-up", function () {
+            moveNote(noteElement, -1);
+        });
+        const downArrowButton = createIconButton("▼", "arrow-btn arrow-down", function () {
+            moveNote(noteElement, 1);
+        });
+        const mergeUpButton = createIconButton("Merge ↑", "merge-btn-up", function () {
+            mergeNoteUp(noteElement);
+        });
+        const mergeDownButton = createIconButton("Merge ↓", "merge-btn-down", function () {
+            mergeNoteDown(noteElement);
+        });
+
+        // Append elements
+        noteElement.appendChild(mergeUpButton);
+        noteElement.appendChild(mergeDownButton);
+        noteElement.appendChild(upArrowButton);
+        noteElement.appendChild(downArrowButton);
+        noteElement.appendChild(notePreviewElement);
+        noteElement.appendChild(noteEditorElement);
+        autoResize(noteEditorElement);
+        return noteElement;
+    }
+
+    /**
+     * Updates visibility of action buttons (Move, Merge) based on note position.
+     * Top note never shows buttons.
+     */
+    function updateActionButtons() {
+        const noteElementsArray = Array.from(blockContainer.children);
+        const totalNotesCount = noteElementsArray.length;
+
+        noteElementsArray.forEach(function (currentNoteElement, noteIndex) {
+            const mergeUpButtonElement = currentNoteElement.querySelector(".merge-btn-up");
+            const mergeDownButtonElement = currentNoteElement.querySelector(".merge-btn-down");
+            const upArrowButtonElement = currentNoteElement.querySelector(".arrow-up");
+            const downArrowButtonElement = currentNoteElement.querySelector(".arrow-down");
+
+            const setDisplay = (element, displayValue) => {
+                if (element) element.style.display = displayValue;
+            };
+
+            if (noteIndex === 0) { // Top note always hides buttons
+                setDisplay(mergeUpButtonElement, "none");
+                setDisplay(mergeDownButtonElement, "none");
+                setDisplay(upArrowButtonElement, "none");
+                setDisplay(downArrowButtonElement, "none");
+            } else { // Non-top notes
+                // Arrow buttons depend on position relative to *other non-top notes*
+                const isSecondNote = (noteIndex === 1);
+                const isLastNote = (noteIndex === totalNotesCount - 1);
+
+                setDisplay(upArrowButtonElement, !isSecondNote ? "block" : "none"); // Hide up arrow on the second note
+                setDisplay(downArrowButtonElement, !isLastNote ? "block" : "none"); // Hide down arrow on the last note
+
+                // Merge buttons depend on position
+                if (totalNotesCount > 1) { // Need at least 2 notes total for merges to be relevant
+                    if (isLastNote) { // Bottom-most passive note
+                        setDisplay(mergeUpButtonElement, "block");
+                        setDisplay(mergeDownButtonElement, "none");
+                    } else { // Middle passive notes (not top, not bottom)
+                        setDisplay(mergeUpButtonElement, "none");
+                        setDisplay(mergeDownButtonElement, "block");
+                    }
+                } else { // Only the top note exists
+                    setDisplay(mergeUpButtonElement, "none");
+                    setDisplay(mergeDownButtonElement, "none");
+                }
+            }
+        });
+    }
+
+
+    /**
+     * Moves a non-top note up or down relative to other non-top notes.
+     */
+    function moveNote(noteElement, movementDirection) {
+        if (noteElement === blockContainer.firstElementChild) return; // Cannot move top note
+
+        const noteElementsArray = Array.from(blockContainer.children);
+        const currentNoteIndex = noteElementsArray.indexOf(noteElement);
+
+        // Target index relative to all notes
+        const targetIndex = currentNoteIndex + movementDirection;
+
+        // Prevent moving outside bounds OR into the top note's position (index 0)
+        if (targetIndex <= 0 || targetIndex >= noteElementsArray.length) {
+            return;
+        }
+
+        const referenceNoteElement = noteElementsArray[targetIndex];
+
+        if (movementDirection === -1) { // Moving up
+            blockContainer.insertBefore(noteElement, referenceNoteElement);
+        } else { // Moving down
+            blockContainer.insertBefore(noteElement, referenceNoteElement.nextSibling);
+        }
+        updateActionButtons();
+    }
+
+
+    /**
+     * Merges a non-top note into the note immediately below it (which also cannot be the top note).
+     */
+    function mergeNoteDown(noteElementToMerge) {
+        if (noteElementToMerge === blockContainer.firstElementChild) return; // Cannot merge top note down
+
+        const noteBelowElement = noteElementToMerge.nextElementSibling;
+        // Cannot merge into nothing, or into the top note from above (shouldn't happen with button logic)
+        if (!noteBelowElement) return;
+
+        // Finalize edits before merging content
+        if (currentlyEditingNoteElement) {
+            finalizeNoteEditing(currentlyEditingNoteElement);
+        }
+
+
+        const currentNoteEditorElement = noteElementToMerge.querySelector(".markdown-editor");
+        const belowNoteEditorElement = noteBelowElement.querySelector(".markdown-editor");
+
+        const currentNoteText = currentNoteEditorElement.value.trim();
+        const belowNoteText = belowNoteEditorElement.value.trim();
+        const separator = (currentNoteText && belowNoteText) ? "\n\n" : "";
+        const mergedNoteText = currentNoteText + separator + belowNoteText;
+
+        // Update the note below
+        belowNoteEditorElement.value = mergedNoteText;
+        belowNoteElement.querySelector(".markdown-content").innerHTML = marked.parse(mergedNoteText);
+        autoResize(belowNoteEditorElement);
+
+        // If the target note (below) happens to be the one currently being edited in place, keep it that way.
+        if (noteBelowElement === currentlyEditingNoteElement) {
+            enableNoteEditing(noteBelowElement); // Re-enable to ensure focus etc.
+        }
+
+        noteElementToMerge.remove();
+        updateActionButtons();
+    }
+
+    /**
+     * Merges the bottom-most non-top note into the note immediately PRECEDING it.
+     */
+    function mergeNoteUp(bottomNoteElement) {
+        // Can only merge up if it's the last element AND there's more than one element total
+        if (bottomNoteElement !== blockContainer.lastElementChild || blockContainer.children.length < 2) return;
+
+        const precedingNoteElement = bottomNoteElement.previousElementSibling;
+        // Cannot merge into the top note this way
+        if (!precedingNoteElement || precedingNoteElement === blockContainer.firstElementChild) {
+            console.warn("Merge Up target is invalid (top note or null).");
+            return;
+        }
+
+        // Finalize edits before merging content
+        if (currentlyEditingNoteElement) {
+            finalizeNoteEditing(currentlyEditingNoteElement);
+        }
+
+        const precedingNoteEditorElement = precedingNoteElement.querySelector(".markdown-editor");
+        const bottomNoteEditorElement = bottomNoteElement.querySelector(".markdown-editor");
+
+        const precedingNoteText = precedingNoteEditorElement.value.trim();
+        const bottomNoteText = bottomNoteEditorElement.value.trim();
+        const separator = (precedingNoteText && bottomNoteText) ? "\n\n" : "";
+        const mergedNoteText = precedingNoteText + separator + bottomNoteText;
+
+        // Update the preceding note
+        precedingNoteEditorElement.value = mergedNoteText;
+        precedingNoteElement.querySelector(".markdown-content").innerHTML = marked.parse(mergedNoteText);
+        autoResize(precedingNoteEditorElement);
+
+        // If the target note (preceding) happens to be the one currently being edited in place, keep it that way.
+        if (precedingNoteElement === currentlyEditingNoteElement) {
+            enableNoteEditing(precedingNoteElement); // Re-enable to ensure focus etc.
+        }
+
+        bottomNoteElement.remove();
+        updateActionButtons();
+    }
+
+
+    /**
+     * Converts a pasted image to a base64 URL and inserts it as Markdown.
+     */
+    function handleImagePaste(pasteEvent, noteEditorElement, notePreviewElement) {
+        if (pasteEvent.clipboardData && pasteEvent.clipboardData.files && pasteEvent.clipboardData.files.length > 0) {
+            const pastedFile = pasteEvent.clipboardData.files[0];
+            if (pastedFile.type.startsWith("image/")) {
+                pasteEvent.preventDefault();
+                const fileReaderObject = new FileReader();
+                const insertionCursorPosition = noteEditorElement.selectionStart;
+
+                fileReaderObject.onload = function (loadEventObject) {
+                    const imageMarkdownText = "\n\n![pasted image](" + loadEventObject.target.result + ")\n\n";
+                    const currentText = noteEditorElement.value;
+                    const textBeforeCursor = currentText.substring(0, insertionCursorPosition);
+                    const textAfterCursor = currentText.substring(insertionCursorPosition);
+                    noteEditorElement.value = textBeforeCursor + imageMarkdownText + textAfterCursor;
+
+                    notePreviewElement.innerHTML = marked.parse(noteEditorElement.value);
+                    const updatedCursorPosition = insertionCursorPosition + imageMarkdownText.length;
+                    noteEditorElement.setSelectionRange(updatedCursorPosition, updatedCursorPosition);
+                    autoResize(noteEditorElement);
+                    setTimeout(() => noteEditorElement.focus(), 0); // Refocus after async
+                };
+                fileReaderObject.readAsDataURL(pastedFile);
+            }
+        }
+    }
+
+    const initialNoteElement = createNote("");
+    blockContainer.prepend(initialNoteElement);
+    setActiveTopNote(initialNoteElement); // Start with the top note active
+
+</script>
 </body>
 </html>
