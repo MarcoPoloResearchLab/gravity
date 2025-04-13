@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Gravity Notes</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      font-family: sans-serif;
+    }
+
+    #block-container {
+      height: 100vh;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .markdown-block {
+      border-bottom: 1px solid #ccc;
+      padding: 0.5rem;
+      position: relative;
+    }
+
+    .markdown-content {
+      cursor: pointer;
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin: 0;
+    }
+
+    .markdown-editor {
+      display: none;
+      width: 100%;
+      border: none;
+      outline: none;
+      padding: 0;
+      font-family: inherit;
+      font-size: 1rem;
+      background: transparent;
+      resize: none;
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow: hidden;
+    }
+
+    .edit-mode .markdown-content {
+      display: none;
+    }
+    .edit-mode .markdown-editor {
+      display: block;
+    }
+
+    .arrow-btn, .merge-btn {
+      position: absolute;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      user-select: none;
+      font-size: 0.9rem;
+      color: #007bff;
+    }
+    .arrow-btn:hover, .merge-btn:hover {
+      color: #0056b3;
+    }
+    .arrow-up {
+      top: 0.5rem;
+      right: 2rem;
+    }
+    .arrow-down {
+      top: 0.5rem;
+      right: 1rem;
+    }
+    .merge-btn {
+      top: 0.5rem;
+      right: 4rem;
+      color: #28a745;
+    }
+    .merge-btn:hover {
+      color: #1e7e34;
+    }
+  </style>
+</head>
+<body>
+  <div id="block-container"></div>
+
+  <script>
+    // 1) Marked config: treat single newlines as <br>
+    marked.setOptions({
+      gfm: true,
+      breaks: true
+    });
+
+    const blockContainer = document.getElementById('block-container');
+
+    // Create always-empty top block in edit mode
+    const topBlock = createBlock('');
+    blockContainer.appendChild(topBlock);
+    topBlock.classList.add('edit-mode');
+    const topEditor = topBlock.querySelector('.markdown-editor');
+    autoResize(topEditor);
+    topEditor.focus();
+
+    function createBlock(initialText) {
+      const block = document.createElement('div');
+      block.className = 'markdown-block';
+
+      const previewElement = document.createElement('p');
+      previewElement.className = 'markdown-content';
+      previewElement.innerHTML = marked.parse(initialText);
+
+      const editorElement = document.createElement('textarea');
+      editorElement.className = 'markdown-editor';
+      editorElement.value = initialText;
+      editorElement.addEventListener('input', () => autoResize(editorElement));
+
+      // Finalize on Enter or blur
+      editorElement.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && !event.shiftKey) {
+          event.preventDefault();
+          finalizeEdit(block);
+        }
+      });
+      editorElement.addEventListener('blur', () => {
+        finalizeEdit(block);
+      });
+
+      // Click preview => edit mode
+      previewElement.addEventListener('click', () => {
+        block.classList.add('edit-mode');
+        autoResize(editorElement);
+        editorElement.focus();
+      });
+
+      // Paste images => embed
+      editorElement.addEventListener('paste', (event) =>
+        handlePasteImage(event, editorElement, previewElement)
+      );
+
+      // Move / Merge buttons
+      const mergeButton = createIconButton('Merge ↓', 'merge-btn', () => mergeWithNextBlock(block));
+      const upButton = createIconButton('▲', 'arrow-btn arrow-up', () => moveBlock(block, -1));
+      const downButton = createIconButton('▼', 'arrow-btn arrow-down', () => moveBlock(block, 1));
+
+      block.append(mergeButton, upButton, downButton, previewElement, editorElement);
+      return block;
+    }
+
+    // 2) Finalize edit
+    // Remove all .trim() or trailing-newline stripping so we keep every newline
+    function finalizeEdit(block) {
+      const editor = block.querySelector('.markdown-editor');
+      const preview = block.querySelector('.markdown-content');
+      const text = editor.value; // Keep all carriage returns
+
+      if (block === blockContainer.firstElementChild) {
+        // The "top block"
+        // Check if there's any non-whitespace => create new block
+        const isNonEmpty = text.replace(/\s/g, '') !== '';
+        if (isNonEmpty) {
+          const newBlock = createBlock(text);
+          newBlock.querySelector('.markdown-editor').value = text;
+          newBlock.querySelector('.markdown-content').innerHTML = marked.parse(text);
+          blockContainer.insertBefore(newBlock, block.nextSibling);
+        }
+        // Reset top block to empty, remain in edit mode
+        editor.value = '';
+        preview.innerHTML = '';
+        autoResize(editor);
+        block.classList.add('edit-mode');
+        editor.focus();
+      } else {
+        // Normal block => exit edit mode
+        preview.innerHTML = marked.parse(text);
+        block.classList.remove('edit-mode');
+      }
+    }
+
+    // 3) Auto-resize
+    function autoResize(textarea) {
+      textarea.style.height = 'auto';
+      textarea.style.height = textarea.scrollHeight + 'px';
+    }
+
+    // 4) Create icon button
+    function createIconButton(label, className, onClick) {
+      const btn = document.createElement('button');
+      btn.className = className;
+      btn.textContent = label;
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        onClick();
+      });
+      return btn;
+    }
+
+    // 5) Move block
+    function moveBlock(block, direction) {
+      const sibling = (direction === -1)
+        ? block.previousElementSibling
+        : block.nextElementSibling;
+      if (!sibling) return;
+      blockContainer.insertBefore(
+        block,
+        direction === -1 ? sibling : sibling.nextSibling
+      );
+    }
+
+    // 6) Merge with next
+    function mergeWithNextBlock(currentBlock) {
+      const nextBlock = currentBlock.nextElementSibling;
+      if (!nextBlock) return;
+
+      const currentEditor = currentBlock.querySelector('.markdown-editor');
+      const nextEditor = nextBlock.querySelector('.markdown-editor');
+
+      const mergedText = `${currentEditor.value}\n\n${nextEditor.value}`;
+      currentEditor.value = mergedText;
+
+      const preview = currentBlock.querySelector('.markdown-content');
+      preview.innerHTML = marked.parse(mergedText);
+
+      nextBlock.remove();
+    }
+
+    // 7) Paste images => base64
+    function handlePasteImage(event, editor, preview) {
+      const items = event.clipboardData?.items || [];
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          const reader = new FileReader();
+          const cursorPosition = editor.selectionStart;
+
+          reader.onload = (e) => {
+            const markdownImage = `\n\n![pasted image](${e.target.result})\n\n`;
+            editor.setRangeText(markdownImage, cursorPosition, cursorPosition, 'end');
+
+            const newCursor = cursorPosition + markdownImage.length;
+            editor.setSelectionRange(newCursor, newCursor);
+
+            preview.innerHTML = marked.parse(editor.value);
+          };
+
+          reader.readAsDataURL(file);
+          event.preventDefault();
+          break;
+        }
+      }
+    }
+  </script>
+</body>
+</html>
