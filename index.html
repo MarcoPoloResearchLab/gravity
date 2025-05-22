@@ -1,389 +1,426 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8"/>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="data:image/png;base64,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"
+    />
+    <link
+      rel="shortcut icon"
+      type="image/png"
+      sizes="32x32"
+      href="data:image/png;base64,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"
+    />
     <title>Gravity Notes</title>
-    <meta content="width=device-width, initial-scale=1" name="viewport"/>
+    <meta content="width=device-width, initial-scale=1" name="viewport" />
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
-        html, body {
-            margin: 0;
-            height: 100%;
-            font-family: sans-serif;
-        }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        font-family: sans-serif;
+      }
 
-        #block-container {
-            height: 100vh;
-            overflow-y: auto;
-            display: flex;
-            flex-direction: column;
-        }
+      #block-container {
+        height: 100vh;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+      }
 
-        .markdown-block {
-            border-bottom: 1px solid #ccc;
-            padding: 0.5rem;
-            position: relative; /* Needed for absolute positioning of buttons */
-            min-height: 3rem;
-            box-sizing: border-box; /* Include padding in height calculation */
-        }
+      .markdown-block {
+        border-bottom: 1px solid #ccc;
+        padding: 0.5rem;
+        position: relative; /* Needed for absolute positioning of buttons */
+        min-height: 3rem;
+        box-sizing: border-box; /* Include padding in height calculation */
+      }
 
-        .markdown-content {
-            cursor: pointer;
-            white-space: pre-wrap;
-            word-break: break-word;
-            margin: 0;
-            /* Use padding shorthand (top, right, bottom, left) */
-            padding: 0 6rem 0 0;
-            min-height: 1.5rem; /* Ensure content takes up space for clicking */
-        }
+      .markdown-content {
+        cursor: pointer;
+        white-space: pre-wrap;
+        word-break: break-word;
+        margin: 0;
+        /* Use padding shorthand (top, right, bottom, left) */
+        padding: 0 6rem 0 0;
+        min-height: 1.5rem; /* Ensure content takes up space for clicking */
+      }
 
-        /* Style for the note currently being edited */
-        .editing-in-place .markdown-content {
-            display: none;
-        }
+      /* Style for the note currently being edited */
+      .editing-in-place .markdown-content {
+        display: none;
+      }
 
-        .editing-in-place .markdown-editor {
-            display: block;
-        }
+      .editing-in-place .markdown-editor {
+        display: block;
+      }
 
-        /* Style specifically for the TOP/ACTIVE note's editor */
-        .edit-mode .markdown-content {
-            display: none;
-        }
+      /* Style specifically for the TOP/ACTIVE note's editor */
+      .edit-mode .markdown-content {
+        display: none;
+      }
 
-        .edit-mode .markdown-editor {
-            display: block;
-        }
+      .edit-mode .markdown-editor {
+        display: block;
+      }
 
+      .markdown-editor {
+        display: none; /* Hide editors by default */
+        width: 100%;
+        border: none;
+        outline: none;
+        font-family: inherit;
+        font-size: 1rem;
+        background: transparent;
+        resize: none;
+        white-space: pre-wrap;
+        word-break: break-word;
+        overflow: hidden;
+        /* Use padding shorthand (top, right, bottom, left) */
+        padding: 0 6rem 0 0;
+        box-sizing: border-box; /* Ensure padding is included in width */
+      }
 
-        .markdown-editor {
-            display: none; /* Hide editors by default */
-            width: 100%;
-            border: none;
-            outline: none;
-            font-family: inherit;
-            font-size: 1rem;
-            background: transparent;
-            resize: none;
-            white-space: pre-wrap;
-            word-break: break-word;
-            overflow: hidden;
-            /* Use padding shorthand (top, right, bottom, left) */
-            padding: 0 6rem 0 0;
-            box-sizing: border-box; /* Ensure padding is included in width */
-        }
+      .arrow-btn,
+      .merge-btn-up,
+      .merge-btn-down {
+        position: absolute;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        user-select: none;
+        font-size: 0.9rem;
+        color: #007bff;
+        padding: 0.2rem 0.3rem; /* Make buttons slightly larger */
+        line-height: 1; /* Ensure consistent vertical alignment */
+      }
 
+      .arrow-btn:hover,
+      .merge-btn-up:hover,
+      .merge-btn-down:hover {
+        color: #0056b3;
+      }
 
-        .arrow-btn,
-        .merge-btn-up,
-        .merge-btn-down {
-            position: absolute;
-            background: transparent;
-            border: none;
-            cursor: pointer;
-            user-select: none;
-            font-size: 0.9rem;
-            color: #007bff;
-            padding: 0.2rem 0.3rem; /* Make buttons slightly larger */
-            line-height: 1; /* Ensure consistent vertical alignment */
-        }
+      .arrow-up {
+        top: 0.5rem;
+        right: 1rem; /* Align vertically with down arrow */
+      }
 
-        .arrow-btn:hover,
-        .merge-btn-up:hover,
-        .merge-btn-down:hover {
-            color: #0056b3;
-        }
+      .arrow-down {
+        bottom: 0.5rem;
+        right: 1rem;
+      }
 
-        .arrow-up {
-            top: 0.5rem;
-            right: 1rem; /* Align vertically with down arrow */
-        }
+      .merge-btn-up {
+        top: 0.5rem;
+        right: 4rem; /* Keep merge buttons separate */
+        color: #28a745;
+      }
 
-        .arrow-down {
-            bottom: 0.5rem;
-            right: 1rem;
-        }
+      .merge-btn-up:hover {
+        color: #1e7e34;
+      }
 
-        .merge-btn-up {
-            top: 0.5rem;
-            right: 4rem; /* Keep merge buttons separate */
-            color: #28a745;
-        }
+      .merge-btn-down {
+        top: 0.5rem;
+        right: 4rem; /* Align with merge up button */
+        color: #28a745;
+      }
 
-        .merge-btn-up:hover {
-            color: #1e7e34;
-        }
-
-        .merge-btn-down {
-            top: 0.5rem;
-            right: 4rem; /* Align with merge up button */
-            color: #28a745;
-        }
-
-        .merge-btn-down:hover {
-            color: #1e7e34;
-        }
+      .merge-btn-down:hover {
+        color: #1e7e34;
+      }
     </style>
-</head>
-<body>
-<div id="block-container"></div>
-<script>
-    marked.setOptions({gfm: true, breaks: true});
+  </head>
+  <body>
+    <div id="block-container"></div>
+    <script>
+      marked.setOptions({ gfm: true, breaks: true });
 
-    let currentlyEditingNoteElement = null; // Track which note is being edited
-    let isPerformingMerge = false; // Flag for merge operations
+      let currentlyEditingNoteElement = null; // Track which note is being edited
+      let isPerformingMerge = false; // Flag for merge operations
 
-    const blockContainer = document.getElementById("block-container");
-    const localStorageKey = 'gravityNotesData'; // Key for localStorage
+      const blockContainer = document.getElementById("block-container");
+      const localStorageKey = "gravityNotesData"; // Key for localStorage
 
-    // --- START: localStorage Functions ---
+      // --- START: localStorage Functions ---
 
-    /**
-     * Saves the current notes' content and order to localStorage.
-     */
-    function saveNotesToLocalStorage() {
+      /**
+       * Saves the current notes' content and order to localStorage.
+       */
+      function saveNotesToLocalStorage() {
         try {
-            const noteElements = blockContainer.querySelectorAll('.markdown-block');
-            const notesData = Array.from(noteElements).map(noteEl => {
-                const editor = noteEl.querySelector('.markdown-editor');
-                return editor ? editor.value : ''; // Get text from editor
-            });
-            localStorage.setItem(localStorageKey, JSON.stringify(notesData));
+          const noteElements =
+            blockContainer.querySelectorAll(".markdown-block");
+          const notesData = Array.from(noteElements).map((noteEl) => {
+            const editor = noteEl.querySelector(".markdown-editor");
+            return editor ? editor.value : ""; // Get text from editor
+          });
+          localStorage.setItem(localStorageKey, JSON.stringify(notesData));
         } catch (error) {
-            console.error("Error saving notes to localStorage:", error);
-            // Optionally inform the user, e.g., if storage is full
+          console.error("Error saving notes to localStorage:", error);
+          // Optionally inform the user, e.g., if storage is full
         }
-    }
+      }
 
-    /**
-     * Loads notes from localStorage and populates the container.
-     */
-    function loadNotesFromLocalStorage() {
+      /**
+       * Loads notes from localStorage and populates the container.
+       */
+      function loadNotesFromLocalStorage() {
         let notesData = [];
         try {
-            const storedData = localStorage.getItem(localStorageKey);
-            if (storedData) {
-                const parsedData = JSON.parse(storedData);
-                // Basic validation: ensure it's an array
-                if (Array.isArray(parsedData)) {
-                    notesData = parsedData;
-                } else {
-                    console.warn("Invalid data found in localStorage, starting fresh.");
-                }
+          const storedData = localStorage.getItem(localStorageKey);
+          if (storedData) {
+            const parsedData = JSON.parse(storedData);
+            // Basic validation: ensure it's an array
+            if (Array.isArray(parsedData)) {
+              notesData = parsedData;
+            } else {
+              console.warn(
+                "Invalid data found in localStorage, starting fresh."
+              );
             }
+          }
         } catch (error) {
-            console.error("Error loading notes from localStorage:", error);
-            // Continue with empty notesData if loading fails
+          console.error("Error loading notes from localStorage:", error);
+          // Continue with empty notesData if loading fails
         }
 
         // Clear any existing notes (shouldn't be any on initial load, but safe)
-        blockContainer.innerHTML = '';
+        blockContainer.innerHTML = "";
 
         if (notesData.length > 0) {
-            // Create notes from saved data
-            notesData.forEach(noteText => {
-                const noteElement = createNote(noteText || ''); // Handle potential null/undefined
-                blockContainer.appendChild(noteElement); // Append in order
-            });
-            // Activate the first note (which is the top one now)
-            const firstNote = blockContainer.firstElementChild;
-            if (firstNote) {
-                setActiveTopNote(firstNote);
-            } else {
-                // Should not happen if notesData had items, but as fallback:
-                initializeEmptyEditor();
-            }
-        } else {
-            // No saved data or empty array, initialize with one empty editor
+          // Create notes from saved data
+          notesData.forEach((noteText) => {
+            const noteElement = createNote(noteText || ""); // Handle potential null/undefined
+            blockContainer.appendChild(noteElement); // Append in order
+          });
+          // Activate the first note (which is the top one now)
+          const firstNote = blockContainer.firstElementChild;
+          if (firstNote) {
+            setActiveTopNote(firstNote);
+          } else {
+            // Should not happen if notesData had items, but as fallback:
             initializeEmptyEditor();
+          }
+        } else {
+          // No saved data or empty array, initialize with one empty editor
+          initializeEmptyEditor();
         }
         updateActionButtons(); // Ensure buttons are correct after load
-    }
+      }
 
-    /**
-     * Helper to create the initial empty note state.
-     */
-    function initializeEmptyEditor() {
+      /**
+       * Helper to create the initial empty note state.
+       */
+      function initializeEmptyEditor() {
         const initialNoteElement = createNote("");
         blockContainer.prepend(initialNoteElement);
         setActiveTopNote(initialNoteElement);
-    }
+      }
 
-    // --- END: localStorage Functions ---
+      // --- END: localStorage Functions ---
 
-
-    /**
-     * Ensures the top note is the active editor.
-     */
-    function setActiveTopNote(noteElement) {
-        if (currentlyEditingNoteElement && currentlyEditingNoteElement !== noteElement) {
-            if (!isPerformingMerge) {
-                finalizeNoteEditing(currentlyEditingNoteElement);
-            }
+      /**
+       * Ensures the top note is the active editor.
+       */
+      function setActiveTopNote(noteElement) {
+        if (
+          currentlyEditingNoteElement &&
+          currentlyEditingNoteElement !== noteElement
+        ) {
+          if (!isPerformingMerge) {
+            finalizeNoteEditing(currentlyEditingNoteElement);
+          }
         }
         currentlyEditingNoteElement = noteElement;
 
-        Array.from(blockContainer.children).forEach(eachNote => {
-            eachNote.classList.remove('editing-in-place');
-            if (eachNote !== noteElement) {
-                eachNote.classList.remove('edit-mode');
-            }
+        Array.from(blockContainer.children).forEach((eachNote) => {
+          eachNote.classList.remove("editing-in-place");
+          if (eachNote !== noteElement) {
+            eachNote.classList.remove("edit-mode");
+          }
         });
 
-        noteElement.classList.add('edit-mode');
+        noteElement.classList.add("edit-mode");
         const noteEditorElement = noteElement.querySelector(".markdown-editor");
         autoResize(noteEditorElement);
         setTimeout(() => noteEditorElement?.focus(), 0);
         updateActionButtons();
         // Note: saveNotesToLocalStorage() is called by finalizeNoteEditing which often precedes this
-    }
+      }
 
-    /**
-     * Enables editing for a non-top note IN PLACE.
-     */
-    function enableNoteEditing(noteElement) {
+      /**
+       * Enables editing for a non-top note IN PLACE.
+       */
+      function enableNoteEditing(noteElement) {
         if (noteElement === currentlyEditingNoteElement) return;
 
         if (currentlyEditingNoteElement) {
-            if (!isPerformingMerge) {
-                finalizeNoteEditing(currentlyEditingNoteElement);
-            }
+          if (!isPerformingMerge) {
+            finalizeNoteEditing(currentlyEditingNoteElement);
+          }
         }
 
         const topNote = blockContainer.firstElementChild;
-        if (topNote) topNote.classList.remove('edit-mode');
+        if (topNote) topNote.classList.remove("edit-mode");
 
-        Array.from(blockContainer.children).forEach(eachNote => {
-            if (eachNote !== noteElement) {
-                eachNote.classList.remove('editing-in-place');
-            }
+        Array.from(blockContainer.children).forEach((eachNote) => {
+          if (eachNote !== noteElement) {
+            eachNote.classList.remove("editing-in-place");
+          }
         });
 
         currentlyEditingNoteElement = noteElement;
-        noteElement.classList.add('editing-in-place');
+        noteElement.classList.add("editing-in-place");
 
         const noteEditorElement = noteElement.querySelector(".markdown-editor");
         autoResize(noteEditorElement);
         setTimeout(() => noteEditorElement?.focus(), 0);
         updateActionButtons();
         // Note: saveNotesToLocalStorage() is called by finalizeNoteEditing which precedes this
-    }
+      }
 
-
-    /**
-     * Finalizes editing on a note.
-     */
-    function finalizeNoteEditing(noteElement) { // Removed unused blurEvent parameter
-        if (!noteElement || noteElement !== currentlyEditingNoteElement || isPerformingMerge) {
-            return;
+      /**
+       * Finalizes editing on a note.
+       */
+      function finalizeNoteEditing(noteElement) {
+        // Removed unused blurEvent parameter
+        if (
+          !noteElement ||
+          noteElement !== currentlyEditingNoteElement ||
+          isPerformingMerge
+        ) {
+          return;
         }
 
-        const isTopActiveEditing = noteElement.classList.contains('edit-mode');
-        const isInPlaceEditing = noteElement.classList.contains('editing-in-place');
+        const isTopActiveEditing = noteElement.classList.contains("edit-mode");
+        const isInPlaceEditing =
+          noteElement.classList.contains("editing-in-place");
         if (!isTopActiveEditing && !isInPlaceEditing) {
-            return;
+          return;
         }
 
         const noteEditorElement = noteElement.querySelector(".markdown-editor");
-        const notePreviewElement = noteElement.querySelector(".markdown-content");
+        const notePreviewElement =
+          noteElement.querySelector(".markdown-content");
 
         if (!noteEditorElement || !notePreviewElement) {
-            console.error("Finalize: Missing editor or preview element for note.", noteElement);
-            noteElement.classList.remove('edit-mode');
-            noteElement.classList.remove('editing-in-place');
-            if (currentlyEditingNoteElement === noteElement) {
-                currentlyEditingNoteElement = null;
-            }
-            updateActionButtons();
-            return;
+          console.error(
+            "Finalize: Missing editor or preview element for note.",
+            noteElement
+          );
+          noteElement.classList.remove("edit-mode");
+          noteElement.classList.remove("editing-in-place");
+          if (currentlyEditingNoteElement === noteElement) {
+            currentlyEditingNoteElement = null;
+          }
+          updateActionButtons();
+          return;
         }
 
         const noteTextContent = noteEditorElement.value;
         notePreviewElement.innerHTML = marked.parse(noteTextContent);
 
-        const wasTopNote = (noteElement === blockContainer.firstElementChild && isTopActiveEditing);
+        const wasTopNote =
+          noteElement === blockContainer.firstElementChild &&
+          isTopActiveEditing;
 
-        noteElement.classList.remove('edit-mode');
-        noteElement.classList.remove('editing-in-place');
+        noteElement.classList.remove("edit-mode");
+        noteElement.classList.remove("editing-in-place");
         currentlyEditingNoteElement = null;
 
         let stateChanged = true; // Assume state changed for saving purposes
 
         if (wasTopNote) {
-            const isNoteNonEmpty = noteTextContent.trim() !== "";
-            if (isNoteNonEmpty) {
-                const newActiveNoteElement = createNote("");
-                blockContainer.prepend(newActiveNoteElement);
-                setActiveTopNote(newActiveNoteElement);
-                // setActiveTopNote calls updateButtons, no need to call save here directly
-                stateChanged = true; // Explicitly true, though default
-            } else {
-                setActiveTopNote(noteElement);
-                // Re-activating same note, state didn't fundamentally change structure
-                stateChanged = false; // Or maybe true if content was cleared? Let's save anyway.
-                stateChanged = true;
-            }
-        } else {
-            // Finalized in-place edit, content might have changed
-            updateActionButtons();
+          const isNoteNonEmpty = noteTextContent.trim() !== "";
+          if (isNoteNonEmpty) {
+            const newActiveNoteElement = createNote("");
+            blockContainer.prepend(newActiveNoteElement);
+            setActiveTopNote(newActiveNoteElement);
+            // setActiveTopNote calls updateButtons, no need to call save here directly
+            stateChanged = true; // Explicitly true, though default
+          } else {
+            setActiveTopNote(noteElement);
+            // Re-activating same note, state didn't fundamentally change structure
+            stateChanged = false; // Or maybe true if content was cleared? Let's save anyway.
             stateChanged = true;
+          }
+        } else {
+          // Finalized in-place edit, content might have changed
+          updateActionButtons();
+          stateChanged = true;
         }
 
         // Save state if it potentially changed
         if (stateChanged) {
-            saveNotesToLocalStorage();
+          saveNotesToLocalStorage();
         }
-    }
+      }
 
-
-    /**
-     * Automatically resizes a textarea to its content height.
-     */
-    function autoResize(textareaElement) {
+      /**
+       * Automatically resizes a textarea to its content height.
+       */
+      function autoResize(textareaElement) {
         if (!textareaElement) return;
         textareaElement.style.height = "auto";
         const bufferHeight = 5;
-        textareaElement.style.height = (textareaElement.scrollHeight + bufferHeight) + "px";
-    }
+        textareaElement.style.height =
+          textareaElement.scrollHeight + bufferHeight + "px";
+      }
 
-
-    /**
-     * Creates a button element.
-     */
-    function createIconButton(iconLabelText, cssClassForButton, clickHandlerFunction) {
+      /**
+       * Creates a button element.
+       */
+      function createIconButton(
+        iconLabelText,
+        cssClassForButton,
+        clickHandlerFunction
+      ) {
         const buttonElement = document.createElement("button");
         buttonElement.className = cssClassForButton;
         buttonElement.textContent = iconLabelText;
-        buttonElement.setAttribute("aria-label", iconLabelText.replace("↑", "up").replace("↓", "down"));
+        buttonElement.setAttribute(
+          "aria-label",
+          iconLabelText.replace("↑", "up").replace("↓", "down")
+        );
 
         if (cssClassForButton.includes("merge-btn")) {
-            buttonElement.addEventListener("mousedown", function (mouseDownEvent) {
-                mouseDownEvent.preventDefault();
-                isPerformingMerge = true;
-                try {
-                    clickHandlerFunction(); // This function should call saveNotes... at the end
-                } finally {
-                    setTimeout(() => {
-                        isPerformingMerge = false;
-                    }, 50);
-                }
-            });
-        } else { // Arrow buttons
-            buttonElement.addEventListener("click", function (clickEvent) {
-                clickEvent.stopPropagation();
+          buttonElement.addEventListener(
+            "mousedown",
+            function (mouseDownEvent) {
+              mouseDownEvent.preventDefault();
+              isPerformingMerge = true;
+              try {
                 clickHandlerFunction(); // This function should call saveNotes... at the end
-            });
+              } finally {
+                setTimeout(() => {
+                  isPerformingMerge = false;
+                }, 50);
+              }
+            }
+          );
+        } else {
+          // Arrow buttons
+          buttonElement.addEventListener("click", function (clickEvent) {
+            clickEvent.stopPropagation();
+            clickHandlerFunction(); // This function should call saveNotes... at the end
+          });
         }
         return buttonElement;
-    }
+      }
 
-
-    /**
-     * Creates and returns a new note element.
-     * NOTE: This function itself does NOT save to localStorage,
-     * as it's called during loading and finalization which handle saving.
-     */
-    function createNote(initialNoteText) {
+      /**
+       * Creates and returns a new note element.
+       * NOTE: This function itself does NOT save to localStorage,
+       * as it's called during loading and finalization which handle saving.
+       */
+      function createNote(initialNoteText) {
         const noteElement = document.createElement("div");
         noteElement.className = "markdown-block";
         const notePreviewElement = document.createElement("p");
@@ -395,51 +432,67 @@
         noteEditorElement.setAttribute("rows", "1");
 
         noteEditorElement.addEventListener("input", function () {
-            autoResize(noteEditorElement);
-            notePreviewElement.innerHTML = marked.parse(noteEditorElement.value);
-            // Debounce saving on input? For simplicity, we rely on save on finalize/blur/action.
-            // If frequent saves are needed: implement debouncing for saveNotesToLocalStorage() here.
+          autoResize(noteEditorElement);
+          notePreviewElement.innerHTML = marked.parse(noteEditorElement.value);
+          // Debounce saving on input? For simplicity, we rely on save on finalize/blur/action.
+          // If frequent saves are needed: implement debouncing for saveNotesToLocalStorage() here.
         });
         noteEditorElement.addEventListener("keydown", function (keyEvent) {
-            if (keyEvent.key === "Enter" && !keyEvent.shiftKey) {
-                keyEvent.preventDefault();
-                isPerformingMerge = false;
-                finalizeNoteEditing(noteElement); // finalizeNoteEditing handles saving
-            }
+          if (keyEvent.key === "Enter" && !keyEvent.shiftKey) {
+            keyEvent.preventDefault();
+            isPerformingMerge = false;
+            finalizeNoteEditing(noteElement); // finalizeNoteEditing handles saving
+          }
         });
         noteEditorElement.addEventListener("blur", function () {
-            if (!isPerformingMerge) {
-                finalizeNoteEditing(noteElement); // finalizeNoteEditing handles saving
-            }
+          if (!isPerformingMerge) {
+            finalizeNoteEditing(noteElement); // finalizeNoteEditing handles saving
+          }
         });
 
         notePreviewElement.addEventListener("mousedown", function () {
-            if (noteElement === blockContainer.firstElementChild) {
-                setActiveTopNote(noteElement);
-            } else {
-                enableNoteEditing(noteElement);
-            }
+          if (noteElement === blockContainer.firstElementChild) {
+            setActiveTopNote(noteElement);
+          } else {
+            enableNoteEditing(noteElement);
+          }
         });
 
         noteEditorElement.addEventListener("paste", function (pasteEvent) {
-            handleImagePaste(pasteEvent, noteEditorElement, notePreviewElement);
-            // Consider saving after paste? Finalize/blur will catch it eventually.
-            // saveNotesToLocalStorage(); // Optional: Save immediately after paste
+          handleImagePaste(pasteEvent, noteEditorElement, notePreviewElement);
+          // Consider saving after paste? Finalize/blur will catch it eventually.
+          // saveNotesToLocalStorage(); // Optional: Save immediately after paste
         });
 
         // Create buttons
-        const upArrowButton = createIconButton("▲", "arrow-btn arrow-up", function () {
+        const upArrowButton = createIconButton(
+          "▲",
+          "arrow-btn arrow-up",
+          function () {
             moveNote(noteElement, -1);
-        });
-        const downArrowButton = createIconButton("▼", "arrow-btn arrow-down", function () {
+          }
+        );
+        const downArrowButton = createIconButton(
+          "▼",
+          "arrow-btn arrow-down",
+          function () {
             moveNote(noteElement, 1);
-        });
-        const mergeUpButton = createIconButton("Merge ↑", "merge-btn-up", function () {
+          }
+        );
+        const mergeUpButton = createIconButton(
+          "Merge ↑",
+          "merge-btn-up",
+          function () {
             mergeNoteUp(noteElement);
-        });
-        const mergeDownButton = createIconButton("Merge ↓", "merge-btn-down", function () {
+          }
+        );
+        const mergeDownButton = createIconButton(
+          "Merge ↓",
+          "merge-btn-down",
+          function () {
             mergeNoteDown(noteElement);
-        });
+          }
+        );
 
         // Append elements
         noteElement.appendChild(mergeUpButton);
@@ -450,58 +503,63 @@
         noteElement.appendChild(noteEditorElement);
         autoResize(noteEditorElement);
         return noteElement;
-    }
+      }
 
-    /**
-     * Updates visibility of action buttons.
-     */
-    function updateActionButtons() {
+      /**
+       * Updates visibility of action buttons.
+       */
+      function updateActionButtons() {
         const noteElementsArray = Array.from(blockContainer.children);
         const totalNotesCount = noteElementsArray.length;
 
         noteElementsArray.forEach(function (currentNoteElement, noteIndex) {
-            const mergeUpButtonElement = currentNoteElement.querySelector(".merge-btn-up");
-            const mergeDownButtonElement = currentNoteElement.querySelector(".merge-btn-down");
-            const upArrowButtonElement = currentNoteElement.querySelector(".arrow-up");
-            const downArrowButtonElement = currentNoteElement.querySelector(".arrow-down");
+          const mergeUpButtonElement =
+            currentNoteElement.querySelector(".merge-btn-up");
+          const mergeDownButtonElement =
+            currentNoteElement.querySelector(".merge-btn-down");
+          const upArrowButtonElement =
+            currentNoteElement.querySelector(".arrow-up");
+          const downArrowButtonElement =
+            currentNoteElement.querySelector(".arrow-down");
 
-            const setDisplay = (element, displayValue) => {
-                if (element) element.style.display = displayValue;
-            };
+          const setDisplay = (element, displayValue) => {
+            if (element) element.style.display = displayValue;
+          };
 
-            if (noteIndex === 0) { // Top note
-                setDisplay(mergeUpButtonElement, "none");
+          if (noteIndex === 0) {
+            // Top note
+            setDisplay(mergeUpButtonElement, "none");
+            setDisplay(mergeDownButtonElement, "none");
+            setDisplay(upArrowButtonElement, "none");
+            setDisplay(downArrowButtonElement, "none");
+          } else {
+            // Non-top notes
+            const isSecondNote = noteIndex === 1;
+            const isLastNote = noteIndex === totalNotesCount - 1;
+
+            setDisplay(upArrowButtonElement, !isSecondNote ? "block" : "none");
+            setDisplay(downArrowButtonElement, !isLastNote ? "block" : "none");
+
+            if (totalNotesCount > 1) {
+              if (isLastNote) {
+                setDisplay(mergeUpButtonElement, "block");
                 setDisplay(mergeDownButtonElement, "none");
-                setDisplay(upArrowButtonElement, "none");
-                setDisplay(downArrowButtonElement, "none");
-            } else { // Non-top notes
-                const isSecondNote = (noteIndex === 1);
-                const isLastNote = (noteIndex === totalNotesCount - 1);
-
-                setDisplay(upArrowButtonElement, !isSecondNote ? "block" : "none");
-                setDisplay(downArrowButtonElement, !isLastNote ? "block" : "none");
-
-                if (totalNotesCount > 1) {
-                    if (isLastNote) {
-                        setDisplay(mergeUpButtonElement, "block");
-                        setDisplay(mergeDownButtonElement, "none");
-                    } else {
-                        setDisplay(mergeUpButtonElement, "none");
-                        setDisplay(mergeDownButtonElement, "block");
-                    }
-                } else {
-                    setDisplay(mergeUpButtonElement, "none");
-                    setDisplay(mergeDownButtonElement, "none");
-                }
+              } else {
+                setDisplay(mergeUpButtonElement, "none");
+                setDisplay(mergeDownButtonElement, "block");
+              }
+            } else {
+              setDisplay(mergeUpButtonElement, "none");
+              setDisplay(mergeDownButtonElement, "none");
             }
+          }
         });
-    }
+      }
 
-
-    /**
-     * Moves a non-top note up or down.
-     */
-    function moveNote(noteElement, movementDirection) {
+      /**
+       * Moves a non-top note up or down.
+       */
+      function moveNote(noteElement, movementDirection) {
         if (noteElement === blockContainer.firstElementChild) return;
 
         const noteElementsArray = Array.from(blockContainer.children);
@@ -513,140 +571,181 @@
         const referenceNoteElement = noteElementsArray[targetIndex];
 
         if (movementDirection === -1) {
-            blockContainer.insertBefore(noteElement, referenceNoteElement);
+          blockContainer.insertBefore(noteElement, referenceNoteElement);
         } else {
-            blockContainer.insertBefore(noteElement, referenceNoteElement.nextSibling);
+          blockContainer.insertBefore(
+            noteElement,
+            referenceNoteElement.nextSibling
+          );
         }
         updateActionButtons();
         saveNotesToLocalStorage(); // Save after move
-    }
+      }
 
-
-    /**
-     * Merges a non-top note into the note immediately below it.
-     */
-    function mergeNoteDown(noteElementToMerge) {
+      /**
+       * Merges a non-top note into the note immediately below it.
+       */
+      function mergeNoteDown(noteElementToMerge) {
         if (noteElementToMerge === blockContainer.firstElementChild) return;
         const noteBelowElement = noteElementToMerge.nextElementSibling;
         if (!noteBelowElement) return;
 
-        const currentNoteEditorElement = noteElementToMerge.querySelector(".markdown-editor");
-        const belowNoteEditorElement = noteBelowElement.querySelector(".markdown-editor");
+        const currentNoteEditorElement =
+          noteElementToMerge.querySelector(".markdown-editor");
+        const belowNoteEditorElement =
+          noteBelowElement.querySelector(".markdown-editor");
 
         if (!currentNoteEditorElement || !belowNoteEditorElement) {
-            console.error("Merge Down Error: Could not find editor elements.");
-            return;
+          console.error("Merge Down Error: Could not find editor elements.");
+          return;
         }
 
         const currentNoteText = currentNoteEditorElement.value.trim();
         const belowNoteText = belowNoteEditorElement.value.trim();
-        const separator = (currentNoteText && belowNoteText) ? "\n\n" : "";
+        const separator = currentNoteText && belowNoteText ? "\n\n" : "";
         const mergedNoteText = currentNoteText + separator + belowNoteText;
 
         belowNoteEditorElement.value = mergedNoteText;
 
-        const belowNoteContentElement = noteBelowElement.querySelector(".markdown-content");
+        const belowNoteContentElement =
+          noteBelowElement.querySelector(".markdown-content");
         if (belowNoteContentElement) {
-            belowNoteContentElement.innerHTML = marked.parse(mergedNoteText);
+          belowNoteContentElement.innerHTML = marked.parse(mergedNoteText);
         } else {
-            console.error("Merge Down Error: Could not find content element in target note.");
+          console.error(
+            "Merge Down Error: Could not find content element in target note."
+          );
         }
 
         autoResize(belowNoteEditorElement);
 
         if (noteElementToMerge === currentlyEditingNoteElement) {
-            currentlyEditingNoteElement = null;
+          currentlyEditingNoteElement = null;
         }
 
         noteElementToMerge.remove();
         updateActionButtons();
         saveNotesToLocalStorage(); // Save after merge
-    }
+      }
 
-    /**
-     * Merges the bottom-most non-top note into the note immediately PRECEDING it.
-     */
-    function mergeNoteUp(bottomNoteElement) {
-        if (bottomNoteElement !== blockContainer.lastElementChild || blockContainer.children.length < 2) return;
+      /**
+       * Merges the bottom-most non-top note into the note immediately PRECEDING it.
+       */
+      function mergeNoteUp(bottomNoteElement) {
+        if (
+          bottomNoteElement !== blockContainer.lastElementChild ||
+          blockContainer.children.length < 2
+        )
+          return;
         const precedingNoteElement = bottomNoteElement.previousElementSibling;
-        if (!precedingNoteElement || precedingNoteElement === blockContainer.firstElementChild) return;
+        if (
+          !precedingNoteElement ||
+          precedingNoteElement === blockContainer.firstElementChild
+        )
+          return;
 
-        const precedingNoteEditorElement = precedingNoteElement.querySelector(".markdown-editor");
-        const bottomNoteEditorElement = bottomNoteElement.querySelector(".markdown-editor");
+        const precedingNoteEditorElement =
+          precedingNoteElement.querySelector(".markdown-editor");
+        const bottomNoteEditorElement =
+          bottomNoteElement.querySelector(".markdown-editor");
 
         if (!precedingNoteEditorElement || !bottomNoteEditorElement) {
-            console.error("Merge Up Error: Could not find editor elements.");
-            return;
+          console.error("Merge Up Error: Could not find editor elements.");
+          return;
         }
 
         const precedingNoteText = precedingNoteEditorElement.value.trim();
         const bottomNoteText = bottomNoteEditorElement.value.trim();
-        const separator = (precedingNoteText && bottomNoteText) ? "\n\n" : "";
+        const separator = precedingNoteText && bottomNoteText ? "\n\n" : "";
         const mergedNoteText = precedingNoteText + separator + bottomNoteText;
 
         precedingNoteEditorElement.value = mergedNoteText;
 
-        const precedingNoteContentElement = precedingNoteElement.querySelector(".markdown-content");
+        const precedingNoteContentElement =
+          precedingNoteElement.querySelector(".markdown-content");
         if (precedingNoteContentElement) {
-            precedingNoteContentElement.innerHTML = marked.parse(mergedNoteText);
+          precedingNoteContentElement.innerHTML = marked.parse(mergedNoteText);
         } else {
-            console.error("Merge Up Error: Could not find content element in target note.");
+          console.error(
+            "Merge Up Error: Could not find content element in target note."
+          );
         }
 
         autoResize(precedingNoteEditorElement);
 
         if (bottomNoteElement === currentlyEditingNoteElement) {
-            currentlyEditingNoteElement = null;
+          currentlyEditingNoteElement = null;
         }
 
         bottomNoteElement.remove();
         updateActionButtons();
         saveNotesToLocalStorage(); // Save after merge
-    }
+      }
 
-
-    /**
-     * Converts a pasted image to a base64 URL and inserts it as Markdown.
-     */
-    function handleImagePaste(pasteEvent, noteEditorElement, notePreviewElement) {
+      /**
+       * Converts a pasted image to a base64 URL and inserts it as Markdown.
+       */
+      function handleImagePaste(
+        pasteEvent,
+        noteEditorElement,
+        notePreviewElement
+      ) {
         if (!noteEditorElement || !notePreviewElement) return;
 
-        if (pasteEvent.clipboardData && pasteEvent.clipboardData.files && pasteEvent.clipboardData.files.length > 0) {
-            const pastedFile = pasteEvent.clipboardData.files[0];
-            if (pastedFile.type.startsWith("image/")) {
-                pasteEvent.preventDefault();
-                const fileReaderObject = new FileReader();
-                const insertionCursorPosition = noteEditorElement.selectionStart;
+        if (
+          pasteEvent.clipboardData &&
+          pasteEvent.clipboardData.files &&
+          pasteEvent.clipboardData.files.length > 0
+        ) {
+          const pastedFile = pasteEvent.clipboardData.files[0];
+          if (pastedFile.type.startsWith("image/")) {
+            pasteEvent.preventDefault();
+            const fileReaderObject = new FileReader();
+            const insertionCursorPosition = noteEditorElement.selectionStart;
 
-                fileReaderObject.onload = function (loadEventObject) {
-                    if (!loadEventObject.target || !loadEventObject.target.result) return;
+            fileReaderObject.onload = function (loadEventObject) {
+              if (!loadEventObject.target || !loadEventObject.target.result)
+                return;
 
-                    const imageMarkdownText = "\n\n![pasted image](" + loadEventObject.target.result + ")\n\n";
-                    const currentText = noteEditorElement.value;
-                    const textBeforeCursor = currentText.substring(0, insertionCursorPosition);
-                    const textAfterCursor = currentText.substring(insertionCursorPosition);
-                    noteEditorElement.value = textBeforeCursor + imageMarkdownText + textAfterCursor;
+              const imageMarkdownText =
+                "\n\n![pasted image](" +
+                loadEventObject.target.result +
+                ")\n\n";
+              const currentText = noteEditorElement.value;
+              const textBeforeCursor = currentText.substring(
+                0,
+                insertionCursorPosition
+              );
+              const textAfterCursor = currentText.substring(
+                insertionCursorPosition
+              );
+              noteEditorElement.value =
+                textBeforeCursor + imageMarkdownText + textAfterCursor;
 
-                    notePreviewElement.innerHTML = marked.parse(noteEditorElement.value);
-                    const updatedCursorPosition = insertionCursorPosition + imageMarkdownText.length;
-                    noteEditorElement.setSelectionRange(updatedCursorPosition, updatedCursorPosition);
-                    autoResize(noteEditorElement);
-                    setTimeout(() => noteEditorElement?.focus(), 0);
-                    // saveNotesToLocalStorage(); // Optional: Save immediately after paste? Better on finalize.
-                };
-                fileReaderObject.onerror = function () {
-                    console.error("FileReader error reading pasted image.");
-                }
-                fileReaderObject.readAsDataURL(pastedFile);
-            }
+              notePreviewElement.innerHTML = marked.parse(
+                noteEditorElement.value
+              );
+              const updatedCursorPosition =
+                insertionCursorPosition + imageMarkdownText.length;
+              noteEditorElement.setSelectionRange(
+                updatedCursorPosition,
+                updatedCursorPosition
+              );
+              autoResize(noteEditorElement);
+              setTimeout(() => noteEditorElement?.focus(), 0);
+              // saveNotesToLocalStorage(); // Optional: Save immediately after paste? Better on finalize.
+            };
+            fileReaderObject.onerror = function () {
+              console.error("FileReader error reading pasted image.");
+            };
+            fileReaderObject.readAsDataURL(pastedFile);
+          }
         }
-    }
+      }
 
-    // --- Initialization ---
-    // Load existing notes from storage, or initialize a new empty one if none exist
-    loadNotesFromLocalStorage();
-
-
-</script>
-</body>
+      // --- Initialization ---
+      // Load existing notes from storage, or initialize a new empty one if none exist
+      loadNotesFromLocalStorage();
+    </script>
+  </body>
 </html>
