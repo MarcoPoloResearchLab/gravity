@@ -53,6 +53,16 @@ ones.
 No installation is required. Simply open the HTML file in a modern web browser that supports the necessary JavaScript
 features.
 
+### Local Enviornment
+
+```shell
+python3 -m http.server 8000
+```
+
 ## Dependencies
 
-* **marked.js:** Used for rendering Markdown to HTML. Included via CDN.
+* **[marked.js](https://marked.js.org/):** Used for rendering Markdown to HTML. Included via CDN.
+
+## License
+
+Gravity Notes is released under the [MIT License](LICENSE).
