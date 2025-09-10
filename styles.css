@@ -1,0 +1,119 @@
+html, body {
+    margin: 0;
+    height: 100%;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    background: #0b0c0f;
+    color: #e7e9ee;
+}
+
+/* Header */
+.app-header {
+    position: sticky; top: 0; z-index: 10;
+    background: #0b0c0f; border-bottom: 1px solid #20232b;
+    padding: 0.75rem 1rem;
+}
+.app-title { margin: 0; font-size: 1.05rem; font-weight: 600; }
+.app-subtitle { margin-top: 0.15rem; font-size: 0.85rem; opacity: 0.7; }
+
+/* Containers */
+.block-container { display: flex; flex-direction: column; }
+
+/* Both top editor and note cards use the same grid skeleton */
+.markdown-block {
+    display: grid;
+    grid-template-columns: 1fr 6.25rem; /* content | actions */
+    align-items: start;
+    column-gap: 0.75rem;
+    row-gap: 0.35rem;
+    border-bottom: 1px solid #20232b;
+    padding: 0.6rem 1rem 0.9rem 1rem;
+    box-sizing: border-box;
+}
+
+/* Top editor: 1 column grid */
+.markdown-block.top-editor {
+    grid-template-columns: 1fr;
+    border-bottom: 1px solid #20232b;
+    position: sticky; top: 64px; background: #0b0c0f; z-index: 5;
+}
+
+/* Content column */
+.meta-chips, .markdown-content, .markdown-editor { grid-column: 1; }
+.meta-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0 0 0.35rem 0; }
+.meta-chip {
+    font-size: 0.72rem; padding: 0.18rem 0.4rem; border-radius: 0.35rem;
+    background: #121420; border: 1px solid #1f2333; color: #cfd7ff;
+}
+.meta-chip--privacy { border-color: #3a2d3f; color: #f2c8ff; }
+.meta-chip--status  { border-color: #234630; color: #c7ffd9; }
+.meta-chip--cat     { border-color: #293a63; color: #c9dbff; }
+
+/* PREVIEW (rendered markdown) */
+.markdown-content {
+    white-space: normal;                /* let HTML decide layout */
+    line-height: 1.35;
+    font-size: 1rem;
+    padding: 0.25rem 0;
+    margin: 0;
+    min-height: 2.2rem;                 /* matches editor baseline so no jump */
+}
+.markdown-content p { margin: 0; }    /* kill default p margins to stabilize height */
+.markdown-content ul,
+.markdown-content ol { margin: 0.25rem 0 0.25rem 1.2rem; }
+
+/* Tables */
+.markdown-content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.25rem 0;
+}
+.markdown-content th, .markdown-content td {
+    border: 1px solid #2a2f3a;
+    padding: 0.4rem 0.6rem;
+}
+.markdown-content th {
+    background: #141820;
+    font-weight: 600;
+}
+
+/* EDITOR */
+.markdown-editor {
+    display: none;
+    width: 100%;
+    border: none;
+    outline: none;
+    font: inherit;
+    background: transparent;
+    color: #e7e9ee;
+    caret-color: #e7e9ee;
+    resize: none;
+    overflow: hidden;
+    white-space: pre-wrap;
+
+    /* baseline so the caret shows up before first input */
+    min-height: 2.2rem;
+    line-height: 1.35;
+    padding: 0.25rem 0; /* match preview padding */
+}
+
+/* Mode toggles */
+.edit-mode .markdown-content, .editing-in-place .markdown-content { display: none; }
+.edit-mode .markdown-editor,  .editing-in-place .markdown-editor  { display: block; }
+
+/* Actions column (cards only) */
+.actions { grid-column: 2; display: flex; flex-direction: column; gap: 0.35rem; }
+.action-button {
+    background: transparent; border: 1px solid #28314a; border-radius: 6px;
+    cursor: pointer; user-select: none; font-size: 0.9rem; color: #7aa2ff;
+    padding: 0.24rem 0.35rem; line-height: 1.05; text-align: center; box-sizing: border-box;
+    opacity: .5; transition: border-color .12s ease, color .12s ease, opacity .12s ease;
+}
+.markdown-block:hover .action-button,
+.markdown-block.edit-mode .action-button,
+.markdown-block.editing-in-place .action-button { opacity: 1; }
+.action-button:hover { color: #b4c8ff; border-color: #3a4b71; }
+
+@media (max-width: 480px) {
+    .markdown-block { grid-template-columns: 1fr 5.25rem; }
+    .action-button { font-size: 0.85rem; padding: 0.2rem 0.3rem; }
+}
