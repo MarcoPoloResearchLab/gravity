@@ -74,6 +74,21 @@ async function handleClipboardImages(textarea, files) {
     textarea.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+const pendingInsertions = new WeakMap();
+
+export async function waitForPendingImagePastes(textarea) {
+    if (!textarea) return;
+    const pending = pendingInsertions.get(textarea);
+    if (!pending) return;
+    try {
+        await pending;
+    } finally {
+        if (pendingInsertions.get(textarea) === pending) {
+            pendingInsertions.delete(textarea);
+        }
+    }
+}
+
 /**
  * Attach clipboard listeners so that pasted images become Markdown image links.
  * @param {HTMLTextAreaElement} textarea
@@ -96,6 +111,13 @@ export function enableClipboardImagePaste(textarea) {
         if (imageFiles.length === 0) return;
 
         event.preventDefault();
-        handleClipboardImages(textarea, imageFiles);
+        const run = handleClipboardImages(textarea, imageFiles);
+        const pending = pendingInsertions.get(textarea) ?? Promise.resolve();
+        const next = pending.then(() => run);
+        pendingInsertions.set(textarea, next.finally(() => {
+            if (pendingInsertions.get(textarea) === next) {
+                pendingInsertions.delete(textarea);
+            }
+        }));
     });
 }
