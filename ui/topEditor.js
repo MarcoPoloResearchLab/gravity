@@ -1,6 +1,7 @@
 import { nowIso, generateNoteId, createElement, autoResize } from "../utils.js";
 import { GravityStore } from "../store.js";
 import { triggerClassificationForCard } from "./card.js";
+import { enableClipboardImagePaste, waitForPendingImagePastes } from "./imagePaste.js";
 
 /**
  * Mount the always-empty top editor. It never persists empties; on finalize
@@ -37,6 +38,8 @@ export function mountTopEditor({ notesContainer, onCreateRecord }) {
     // Finalize on blur
     editor.addEventListener("blur", finalizeTopEditor);
 
+    enableClipboardImagePaste(editor);
+
     wrapper.append(preview, editor);
     host.appendChild(wrapper);
 
@@ -71,7 +74,8 @@ export function mountTopEditor({ notesContainer, onCreateRecord }) {
 
     keepFocus(editor);
 
-    function finalizeTopEditor() {
+    async function finalizeTopEditor() {
+        await waitForPendingImagePastes(editor);
         const text = editor.value;
         const trimmed = text.trim();
 

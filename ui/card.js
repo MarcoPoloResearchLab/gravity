@@ -1,6 +1,7 @@
 import { nowIso, createElement, autoResize } from "../utils.js";
 import { GravityStore } from "../store.js";
 import { ClassifierClient } from "../classifier.js";
+import { enableClipboardImagePaste, waitForPendingImagePastes } from "./imagePaste.js";
 
 let currentEditingCard = null;
 let mergeInProgress = false;
@@ -30,6 +31,8 @@ export function renderCard(record, { notesContainer }) {
     editor.value  = record.markdownText;
     editor.setAttribute("rows", "1");
     autoResize(editor);
+
+    enableClipboardImagePaste(editor);
 
     // Live preview
     editor.addEventListener("input", () => {
@@ -119,12 +122,13 @@ function enableInPlaceEditing(card, notesContainer) {
     updateActionButtons(notesContainer);
 }
 
-function finalizeCard(card, notesContainer) {
+async function finalizeCard(card, notesContainer) {
     if (!card || (currentEditingCard && currentEditingCard !== card) || mergeInProgress) return;
     if (!card.classList.contains("editing-in-place")) return;
 
     const editor  = card.querySelector(".markdown-editor");
     const preview = card.querySelector(".markdown-content");
+    await waitForPendingImagePastes(editor);
     const text    = editor.value;
     const trimmed = text.trim();
     const was     = card.dataset.initialValue ?? text;
