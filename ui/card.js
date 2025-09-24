@@ -1,6 +1,7 @@
 import { nowIso, createElement, autoResize } from "../utils.js";
 import { GravityStore } from "../store.js";
 import { ClassifierClient } from "../classifier.js";
+import { enableClipboardImagePaste } from "./imagePaste.js";
 
 let currentEditingCard = null;
 let mergeInProgress = false;
@@ -30,6 +31,8 @@ export function renderCard(record, { notesContainer }) {
     editor.value  = record.markdownText;
     editor.setAttribute("rows", "1");
     autoResize(editor);
+
+    enableClipboardImagePaste(editor);
 
     // Live preview
     editor.addEventListener("input", () => {

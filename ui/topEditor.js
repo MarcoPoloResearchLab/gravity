@@ -1,6 +1,7 @@
 import { nowIso, generateNoteId, createElement, autoResize } from "../utils.js";
 import { GravityStore } from "../store.js";
 import { triggerClassificationForCard } from "./card.js";
+import { enableClipboardImagePaste } from "./imagePaste.js";
 
 /**
  * Mount the always-empty top editor. It never persists empties; on finalize
@@ -36,6 +37,8 @@ export function mountTopEditor({ notesContainer, onCreateRecord }) {
 
     // Finalize on blur
     editor.addEventListener("blur", finalizeTopEditor);
+
+    enableClipboardImagePaste(editor);
 
     wrapper.append(preview, editor);
     host.appendChild(wrapper);
