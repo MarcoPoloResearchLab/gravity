@@ -309,6 +309,11 @@ function mergeDown(card, notesContainer) {
 
     const idHere = card.getAttribute("data-note-id");
     GravityStore.removeById(idHere);
+    if (card === currentEditingCard) {
+        card.classList.remove("editing-in-place");
+        delete card.dataset.initialValue;
+        currentEditingCard = null;
+    }
     card.remove();
 
     const idBelow = below.getAttribute("data-note-id");
@@ -353,6 +358,11 @@ function mergeUp(card, notesContainer) {
 
     const idHere = card.getAttribute("data-note-id");
     GravityStore.removeById(idHere);
+    if (card === currentEditingCard) {
+        card.classList.remove("editing-in-place");
+        delete card.dataset.initialValue;
+        currentEditingCard = null;
+    }
     card.remove();
 
     const idAbove = above.getAttribute("data-note-id");
