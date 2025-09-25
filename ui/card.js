@@ -160,9 +160,10 @@ function button(label, handler, options = {}) {
 
 function show(el, yes) { if (el) el.style.display = yes ? "block" : "none"; }
 
-function enableInPlaceEditing(card, notesContainer) {
+function enableInPlaceEditing(card, notesContainer, options = {}) {
+    const { bubblePreviousCardToTop = true } = options;
     if (currentEditingCard && currentEditingCard !== card && !mergeInProgress) {
-        finalizeCard(currentEditingCard, notesContainer);
+        finalizeCard(currentEditingCard, notesContainer, { bubbleToTop: bubblePreviousCardToTop });
     }
     currentEditingCard = card;
 
@@ -192,7 +193,8 @@ function enableInPlaceEditing(card, notesContainer) {
     updateActionButtons(notesContainer);
 }
 
-async function finalizeCard(card, notesContainer) {
+async function finalizeCard(card, notesContainer, options = {}) {
+    const { bubbleToTop = true } = options;
     if (!card || (currentEditingCard && currentEditingCard !== card) || mergeInProgress) return;
     if (!card.classList.contains("editing-in-place")) return;
 
@@ -242,8 +244,10 @@ async function finalizeCard(card, notesContainer) {
         attachments
     });
 
-    const first = notesContainer.firstElementChild;
-    if (first) notesContainer.insertBefore(card, first);
+    if (bubbleToTop) {
+        const first = notesContainer.firstElementChild;
+        if (first) notesContainer.insertBefore(card, first);
+    }
 
     GravityStore.syncFromDom(notesContainer);
     updateActionButtons(notesContainer);
@@ -403,7 +407,7 @@ function navigateToAdjacentCard(card, direction, notesContainer) {
     const targetCard = direction === DIRECTION_PREVIOUS ? card.previousElementSibling : card.nextElementSibling;
     if (!targetCard) return false;
 
-    enableInPlaceEditing(targetCard, notesContainer);
+    enableInPlaceEditing(targetCard, notesContainer, { bubblePreviousCardToTop: false });
 
     requestAnimationFrame(() => {
         const targetEditor = targetCard.querySelector(".markdown-editor");
