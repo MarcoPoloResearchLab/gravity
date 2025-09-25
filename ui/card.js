@@ -15,6 +15,7 @@ const KEY_ARROW_DOWN = "ArrowDown";
 const DIRECTION_PREVIOUS = -1;
 const DIRECTION_NEXT = 1;
 const LINE_BREAK = "\n";
+const ACTION_LABEL_DELETE = "♻";
 
 let currentEditingCard = null;
 let mergeInProgress = false;
@@ -26,11 +27,26 @@ export function renderCard(record, { notesContainer }) {
 
     // Actions column
     const actions = createElement("div", "actions");
-    const btnMergeDown = button("Merge ↓", () => mergeDown(card, notesContainer));
-    const btnMergeUp   = button("Merge ↑", () => mergeUp(card, notesContainer));
-    const btnUp        = button("▲",       () => move(card, -1, notesContainer));
-    const btnDown      = button("▼",       () => move(card,  1, notesContainer));
-    actions.append(btnMergeDown, btnMergeUp, btnUp, btnDown);
+    const btnMergeDown = button("Merge ↓", () => mergeDown(card, notesContainer), { variant: "merge" });
+    btnMergeDown.dataset.action = "merge-down";
+
+    const btnMergeUp   = button("Merge ↑", () => mergeUp(card, notesContainer), { variant: "merge" });
+    btnMergeUp.dataset.action = "merge-up";
+
+    const arrowRow = createElement("div", "action-group action-group--row");
+
+    const btnUp        = button("▲", () => move(card, -1, notesContainer), { extraClass: "action-button--compact" });
+    btnUp.dataset.action = "move-up";
+
+    const btnDown      = button("▼", () => move(card,  1, notesContainer), { extraClass: "action-button--compact" });
+    btnDown.dataset.action = "move-down";
+
+    arrowRow.append(btnUp, btnDown);
+
+    const btnDelete = button(ACTION_LABEL_DELETE, () => deleteCard(card, notesContainer), { extraClass: "action-button--icon" });
+    btnDelete.dataset.action = "delete";
+
+    actions.append(btnMergeDown, btnMergeUp, arrowRow, btnDelete);
 
     // Chips + content
     const chips   = createElement("div", "meta-chips");
@@ -97,7 +113,10 @@ export function updateActionButtons(notesContainer) {
     const cards = Array.from(notesContainer.children);
     const total = cards.length;
     cards.forEach((card, index) => {
-        const [mergeDown, mergeUp, up, down] = card.querySelectorAll(".action-button");
+        const mergeDown = card.querySelector('[data-action="merge-down"]');
+        const mergeUp = card.querySelector('[data-action="merge-up"]');
+        const up = card.querySelector('[data-action="move-up"]');
+        const down = card.querySelector('[data-action="move-down"]');
         const isFirst = index === 0;
         const isLast  = index === total - 1;
 
@@ -110,16 +129,33 @@ export function updateActionButtons(notesContainer) {
 
 /* ----------------- Internals ----------------- */
 
-function button(label, handler) {
-    const b = createElement("button", "action-button", label);
-    // Prevent “blur finalize” mid-merge for merge buttons
-    b.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        mergeInProgress = true;
-        try { handler(); } finally { setTimeout(() => (mergeInProgress = false), 50); }
+function button(label, handler, options = {}) {
+    const { extraClass = "", variant = "default" } = options;
+    const classNames = ["action-button"];
+    if (extraClass) classNames.push(extraClass);
+    const element = createElement("button", classNames.join(" "), label);
+
+    if (variant === "merge") {
+        element.addEventListener("mousedown", (event) => {
+            event.preventDefault();
+            mergeInProgress = true;
+            try {
+                handler();
+            } finally {
+                setTimeout(() => (mergeInProgress = false), 50);
+            }
+        });
+        return element;
+    }
+
+    element.addEventListener("mousedown", (event) => event.preventDefault());
+    element.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        handler();
     });
-    if (!/Merge/.test(label)) b.addEventListener("click", (e) => { e.stopPropagation(); handler(); });
-    return b;
+
+    return element;
 }
 
 function show(el, yes) { if (el) el.style.display = yes ? "block" : "none"; }
@@ -214,6 +250,19 @@ async function finalizeCard(card, notesContainer) {
 
     // Re-classify edited content
     triggerClassificationForCard(id, text, notesContainer);
+}
+
+function deleteCard(card, notesContainer) {
+    if (!card) return;
+    if (currentEditingCard === card) {
+        currentEditingCard = null;
+    }
+    card.classList.remove("editing-in-place");
+    const noteId = card.getAttribute("data-note-id");
+    GravityStore.removeById(noteId);
+    card.remove();
+    GravityStore.syncFromDom(notesContainer);
+    updateActionButtons(notesContainer);
 }
 
 function move(card, direction, notesContainer) {

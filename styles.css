@@ -102,11 +102,22 @@ html, body {
 
 /* Actions column (cards only) */
 .actions { grid-column: 2; display: flex; flex-direction: column; gap: 0.35rem; }
+.action-group { display: flex; flex-direction: column; gap: 0.35rem; }
+.action-group--row { flex-direction: row; gap: 0.25rem; }
 .action-button {
     background: transparent; border: 1px solid #28314a; border-radius: 6px;
     cursor: pointer; user-select: none; font-size: 0.9rem; color: #7aa2ff;
     padding: 0.24rem 0.35rem; line-height: 1.05; text-align: center; box-sizing: border-box;
     opacity: .5; transition: border-color .12s ease, color .12s ease, opacity .12s ease;
+}
+.action-group--row .action-button { flex: 1; }
+.action-button--compact { font-size: 0.72rem; padding: 0.16rem 0.3rem; }
+.action-button--icon {
+    font-size: 0.7rem;
+    padding: 0.16rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 .markdown-block:hover .action-button,
 .markdown-block.edit-mode .action-button,
