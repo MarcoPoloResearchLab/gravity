@@ -27,9 +27,7 @@ ones.
 
 ## How to Use
 
-1. **Open:** Download the `[your_file_name].html` file (replace `[your_file_name]` with the actual file name) and open
-   it in your web browser.
-2. **Start Typing:** You begin with a single, empty note at the top in edit mode. Start typing your notes using Markdown
+1. **Start Typing:** You begin with a single, empty note at the top in edit mode. Start typing your notes using Markdown
    syntax.
 3. **Create New Note:** When you're done with the current note:
     * Press `Enter` (without holding `Shift`).
