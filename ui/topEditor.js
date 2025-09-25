@@ -68,14 +68,34 @@ export function mountTopEditor({ notesContainer, onCreateRecord }) {
     function keepFocus(el) {
         let tries = 0;
         const maxTries = 20; // ~1s total
+
+        const shouldDeferFocus = () => {
+            const activeElement = document.activeElement;
+            const isDifferentMarkdownEditor =
+                activeElement instanceof HTMLTextAreaElement &&
+                activeElement !== el &&
+                activeElement.classList.contains("markdown-editor");
+            const cardEditing = notesContainer?.querySelector(".markdown-block.editing-in-place");
+            return Boolean(isDifferentMarkdownEditor || cardEditing);
+        };
+
         const kick = () => {
+            if (shouldDeferFocus()) {
+                tries = 0;
+                setTimeout(kick, 120);
+                return;
+            }
+
             tries++;
             autoResize(el);
-            el.focus({ preventScroll: true });
-            ensureCaretVisible(el);
-            try { el.setSelectionRange(el.value.length, el.value.length); } catch {}
+            if (document.activeElement !== el) {
+                el.focus({ preventScroll: true });
+                ensureCaretVisible(el);
+                try { el.setSelectionRange(el.value.length, el.value.length); } catch {}
+            }
             if (document.activeElement !== el && tries < maxTries) setTimeout(kick, 50);
         };
+
         requestAnimationFrame(kick);
         window.addEventListener("load", () => setTimeout(kick, 0), { once: true });
         document.addEventListener("visibilitychange", () => {
