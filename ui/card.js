@@ -16,7 +16,7 @@ import {
 
 const DIRECTION_PREVIOUS = -1;
 const DIRECTION_NEXT = 1;
-const ACTION_LABEL_DELETE = "♻";
+const ACTION_LABEL_DELETE = "🗑️";
 
 const CARET_PLACEMENT_START = "start";
 const CARET_PLACEMENT_END = "end";
