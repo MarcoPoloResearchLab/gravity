@@ -20,8 +20,8 @@ ones.
       passive notes except the bottom one).
     * Merge the *bottom-most* note *up* into the active (top) note using the `Merge ↑` button (only available on the
       bottom note when there are at least two notes).
-* **Image Pasting:** Paste images directly from your clipboard into the editor. They are converted to base64 data URLs
-  and embedded in the Markdown.
+* **Image Pasting:** Paste images directly from your clipboard into the editor. Notes keep readable placeholders such as
+  `![[pasted-image-*.png]]` while the rendered preview displays the actual image data.
 * **Auto-Resizing Editor:** The text area automatically adjusts its height to fit the content as you type.
 * **Session-Based:** Notes exist only within the current browser session. Reloading the page will clear all notes.
 

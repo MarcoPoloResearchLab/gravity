@@ -1,7 +1,14 @@
 import { nowIso, createElement, autoResize } from "../utils.js";
 import { GravityStore } from "../store.js";
 import { ClassifierClient } from "../classifier.js";
-import { enableClipboardImagePaste, waitForPendingImagePastes } from "./imagePaste.js";
+import {
+    enableClipboardImagePaste,
+    waitForPendingImagePastes,
+    registerInitialAttachments,
+    getAllAttachments,
+    collectReferencedAttachments,
+    transformMarkdownWithAttachments
+} from "./imagePaste.js";
 
 let currentEditingCard = null;
 let mergeInProgress = false;
@@ -25,19 +32,24 @@ export function renderCard(record, { notesContainer }) {
 
     // IMPORTANT: div (not <p>) so tables/lists/headings render correctly
     const preview = createElement("div", "markdown-content");
-    preview.innerHTML = marked.parse(record.markdownText);
+    const initialAttachments = record.attachments || {};
+    const initialPreviewMarkdown = transformMarkdownWithAttachments(record.markdownText, initialAttachments);
+    preview.innerHTML = marked.parse(initialPreviewMarkdown);
 
     const editor  = createElement("textarea", "markdown-editor");
     editor.value  = record.markdownText;
     editor.setAttribute("rows", "1");
     autoResize(editor);
 
+    registerInitialAttachments(editor, initialAttachments);
     enableClipboardImagePaste(editor);
 
     // Live preview
     editor.addEventListener("input", () => {
         autoResize(editor);
-        preview.innerHTML = marked.parse(editor.value);
+        const attachments = getAllAttachments(editor);
+        const markdownWithAttachments = transformMarkdownWithAttachments(editor.value, attachments);
+        preview.innerHTML = marked.parse(markdownWithAttachments);
     });
 
     // Finalize on Enter (no Shift)
@@ -133,6 +145,7 @@ async function finalizeCard(card, notesContainer) {
     const trimmed = text.trim();
     const was     = card.dataset.initialValue ?? text;
     const changed = text !== was; // only reorder/persist if user actually changed something
+    const attachments = collectReferencedAttachments(editor);
 
     card.classList.remove("editing-in-place");
     currentEditingCard = null;
@@ -148,7 +161,8 @@ async function finalizeCard(card, notesContainer) {
     }
 
     // Update preview (safe either way)
-    preview.innerHTML = marked.parse(text);
+    const markdownWithAttachments = transformMarkdownWithAttachments(text, attachments);
+    preview.innerHTML = marked.parse(markdownWithAttachments);
 
     if (!changed) {
         // Keep position; nothing else to do
@@ -166,7 +180,8 @@ async function finalizeCard(card, notesContainer) {
         markdownText: text,
         createdAtIso: existing?.createdAtIso ?? ts, // preserve creation time
         updatedAtIso: ts,
-        lastActivityIso: ts
+        lastActivityIso: ts,
+        attachments
     });
 
     const first = notesContainer.firstElementChild;
@@ -203,8 +218,14 @@ function mergeDown(card, notesContainer) {
     const b = editorBelow.value.trim();
     const merged = a && b ? `${a}\n\n${b}` : (a || b);
 
+    const attachmentsHere = getAllAttachments(editorHere);
+    const attachmentsBelow = getAllAttachments(editorBelow);
+    const mergedAttachments = { ...attachmentsBelow, ...attachmentsHere };
+
     editorBelow.value = merged;
-    previewBelow.innerHTML = marked.parse(merged);
+    registerInitialAttachments(editorBelow, mergedAttachments);
+    const mergedMarkdown = transformMarkdownWithAttachments(merged, mergedAttachments);
+    previewBelow.innerHTML = marked.parse(mergedMarkdown);
     autoResize(editorBelow);
 
     const idHere = card.getAttribute("data-note-id");
@@ -221,7 +242,8 @@ function mergeDown(card, notesContainer) {
         markdownText: merged,
         createdAtIso: existing?.createdAtIso ?? ts,
         updatedAtIso: ts,
-        lastActivityIso: ts
+        lastActivityIso: ts,
+        attachments: collectReferencedAttachments(editorBelow)
     });
 
     GravityStore.syncFromDom(notesContainer);
@@ -240,8 +262,14 @@ function mergeUp(card, notesContainer) {
     const b = editorHere.value.trim();
     const merged = a && b ? `${a}\n\n${b}` : (a || b);
 
+    const attachmentsAbove = getAllAttachments(editorAbove);
+    const attachmentsHere = getAllAttachments(editorHere);
+    const mergedAttachments = { ...attachmentsAbove, ...attachmentsHere };
+
     editorAbove.value = merged;
-    previewAbove.innerHTML = marked.parse(merged);
+    registerInitialAttachments(editorAbove, mergedAttachments);
+    const mergedMarkdown = transformMarkdownWithAttachments(merged, mergedAttachments);
+    previewAbove.innerHTML = marked.parse(mergedMarkdown);
     autoResize(editorAbove);
 
     const idHere = card.getAttribute("data-note-id");
@@ -258,7 +286,8 @@ function mergeUp(card, notesContainer) {
         markdownText: merged,
         createdAtIso: existing?.createdAtIso ?? ts,
         updatedAtIso: ts,
-        lastActivityIso: ts
+        lastActivityIso: ts,
+        attachments: collectReferencedAttachments(editorAbove)
     });
 
     GravityStore.syncFromDom(notesContainer);
