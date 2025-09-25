@@ -1,6 +1,7 @@
 import { nowIso, generateNoteId, createElement, autoResize } from "../utils.js";
 import { GravityStore } from "../store.js";
-import { triggerClassificationForCard } from "./card.js";
+import { triggerClassificationForCard, focusCardEditor } from "./card.js";
+import { shouldNavigateToNextEditor } from "./navigation.js";
 import {
     enableClipboardImagePaste,
     waitForPendingImagePastes,
@@ -43,6 +44,13 @@ export function mountTopEditor({ notesContainer, onCreateRecord }) {
         if (ev.key === "Enter" && !ev.shiftKey) {
             ev.preventDefault();
             finalizeTopEditor();
+        }
+
+        if (shouldNavigateToNextEditor(ev, editor)) {
+            const navigated = focusFirstPersistedCard(notesContainer);
+            if (navigated) {
+                ev.preventDefault();
+            }
         }
     });
 
@@ -140,5 +148,11 @@ export function mountTopEditor({ notesContainer, onCreateRecord }) {
 
         // Classify in background and update the new card’s chips
         triggerClassificationForCard(record.noteId, text, notesContainer);
+    }
+
+    function focusFirstPersistedCard(container) {
+        const firstCard = container?.querySelector(".markdown-block:not(.top-editor)");
+        if (!firstCard) return false;
+        return focusCardEditor(firstCard, container, { bubblePreviousCardToTop: false });
     }
 }

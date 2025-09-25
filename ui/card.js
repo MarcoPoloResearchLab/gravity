@@ -9,13 +9,17 @@ import {
     collectReferencedAttachments,
     transformMarkdownWithAttachments
 } from "./imagePaste.js";
+import {
+    shouldNavigateToPreviousEditor,
+    shouldNavigateToNextEditor
+} from "./navigation.js";
 
-const KEY_ARROW_UP = "ArrowUp";
-const KEY_ARROW_DOWN = "ArrowDown";
 const DIRECTION_PREVIOUS = -1;
 const DIRECTION_NEXT = 1;
-const LINE_BREAK = "\n";
 const ACTION_LABEL_DELETE = "♻";
+
+const CARET_PLACEMENT_START = "start";
+const CARET_PLACEMENT_END = "end";
 
 let currentEditingCard = null;
 let mergeInProgress = false;
@@ -81,7 +85,7 @@ export function renderCard(record, { notesContainer }) {
             finalizeCard(card, notesContainer);
         }
 
-        if (shouldNavigateToPreviousCard(ev, editor)) {
+        if (shouldNavigateToPreviousEditor(ev, editor)) {
             const navigated = navigateToAdjacentCard(card, DIRECTION_PREVIOUS, notesContainer);
             if (navigated) {
                 ev.preventDefault();
@@ -89,7 +93,7 @@ export function renderCard(record, { notesContainer }) {
             }
         }
 
-        if (shouldNavigateToNextCard(ev, editor)) {
+        if (shouldNavigateToNextEditor(ev, editor)) {
             const navigated = navigateToAdjacentCard(card, DIRECTION_NEXT, notesContainer);
             if (navigated) {
                 ev.preventDefault();
@@ -369,52 +373,58 @@ function mergeUp(card, notesContainer) {
     updateActionButtons(notesContainer);
 }
 
-function shouldNavigateToPreviousCard(event, editor) {
-    if (event.key !== KEY_ARROW_UP) return false;
-    if (hasModifierKey(event)) return false;
-    if (!isSelectionCollapsed(editor)) return false;
-    return isCaretOnFirstLine(editor);
-}
-
-function shouldNavigateToNextCard(event, editor) {
-    if (event.key !== KEY_ARROW_DOWN) return false;
-    if (hasModifierKey(event)) return false;
-    if (!isSelectionCollapsed(editor)) return false;
-    return isCaretOnLastLine(editor);
-}
-
-function hasModifierKey(event) {
-    return event.shiftKey || event.altKey || event.ctrlKey || event.metaKey;
-}
-
-function isSelectionCollapsed(editor) {
-    return editor.selectionStart === editor.selectionEnd;
-}
-
-function isCaretOnFirstLine(editor) {
-    const caretPosition = editor.selectionStart ?? 0;
-    const textBeforeCaret = editor.value.slice(0, caretPosition);
-    return !textBeforeCaret.includes(LINE_BREAK);
-}
-
-function isCaretOnLastLine(editor) {
-    const caretPosition = editor.selectionEnd ?? editor.value.length;
-    const textAfterCaret = editor.value.slice(caretPosition);
-    return !textAfterCaret.includes(LINE_BREAK);
-}
-
 function navigateToAdjacentCard(card, direction, notesContainer) {
     const targetCard = direction === DIRECTION_PREVIOUS ? card.previousElementSibling : card.nextElementSibling;
-    if (!targetCard) return false;
+    if (targetCard instanceof HTMLElement && targetCard.classList.contains("markdown-block")) {
+        const caretPlacement = direction === DIRECTION_PREVIOUS ? CARET_PLACEMENT_END : CARET_PLACEMENT_START;
+        return focusCardEditor(targetCard, notesContainer, {
+            caretPlacement,
+            bubblePreviousCardToTop: false
+        });
+    }
 
-    enableInPlaceEditing(targetCard, notesContainer, { bubblePreviousCardToTop: false });
+    if (direction === DIRECTION_PREVIOUS) {
+        return focusTopEditorFromCard(card, notesContainer);
+    }
+
+    return false;
+}
+
+export function focusCardEditor(card, notesContainer, options = {}) {
+    if (!(card instanceof HTMLElement)) return false;
+
+    const {
+        caretPlacement = CARET_PLACEMENT_START,
+        bubblePreviousCardToTop = false
+    } = options;
+
+    enableInPlaceEditing(card, notesContainer, { bubblePreviousCardToTop });
 
     requestAnimationFrame(() => {
-        const targetEditor = targetCard.querySelector(".markdown-editor");
+        const targetEditor = card.querySelector(".markdown-editor");
         if (!targetEditor) return;
-        const nextPosition = direction === DIRECTION_PREVIOUS ? targetEditor.value.length : 0;
+        const caretIndex = caretPlacement === CARET_PLACEMENT_END
+            ? targetEditor.value.length
+            : 0;
         try {
-            targetEditor.setSelectionRange(nextPosition, nextPosition);
+            targetEditor.setSelectionRange(caretIndex, caretIndex);
+        } catch {}
+    });
+
+    return true;
+}
+
+function focusTopEditorFromCard(card, notesContainer) {
+    const topEditor = document.querySelector("#top-editor .markdown-editor");
+    if (!(topEditor instanceof HTMLTextAreaElement)) return false;
+
+    finalizeCard(card, notesContainer, { bubbleToTop: false });
+
+    requestAnimationFrame(() => {
+        topEditor.focus({ preventScroll: true });
+        try {
+            const caretIndex = topEditor.value.length;
+            topEditor.setSelectionRange(caretIndex, caretIndex);
         } catch {}
     });
 
