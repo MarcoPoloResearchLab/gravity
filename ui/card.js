@@ -10,6 +10,12 @@ import {
     transformMarkdownWithAttachments
 } from "./imagePaste.js";
 
+const KEY_ARROW_UP = "ArrowUp";
+const KEY_ARROW_DOWN = "ArrowDown";
+const DIRECTION_PREVIOUS = -1;
+const DIRECTION_NEXT = 1;
+const LINE_BREAK = "\n";
+
 let currentEditingCard = null;
 let mergeInProgress = false;
 
@@ -57,6 +63,22 @@ export function renderCard(record, { notesContainer }) {
         if (ev.key === "Enter" && !ev.shiftKey) {
             ev.preventDefault();
             finalizeCard(card, notesContainer);
+        }
+
+        if (shouldNavigateToPreviousCard(ev, editor)) {
+            const navigated = navigateToAdjacentCard(card, DIRECTION_PREVIOUS, notesContainer);
+            if (navigated) {
+                ev.preventDefault();
+                return;
+            }
+        }
+
+        if (shouldNavigateToNextCard(ev, editor)) {
+            const navigated = navigateToAdjacentCard(card, DIRECTION_NEXT, notesContainer);
+            if (navigated) {
+                ev.preventDefault();
+                return;
+            }
         }
     });
 
@@ -292,6 +314,58 @@ function mergeUp(card, notesContainer) {
 
     GravityStore.syncFromDom(notesContainer);
     updateActionButtons(notesContainer);
+}
+
+function shouldNavigateToPreviousCard(event, editor) {
+    if (event.key !== KEY_ARROW_UP) return false;
+    if (hasModifierKey(event)) return false;
+    if (!isSelectionCollapsed(editor)) return false;
+    return isCaretOnFirstLine(editor);
+}
+
+function shouldNavigateToNextCard(event, editor) {
+    if (event.key !== KEY_ARROW_DOWN) return false;
+    if (hasModifierKey(event)) return false;
+    if (!isSelectionCollapsed(editor)) return false;
+    return isCaretOnLastLine(editor);
+}
+
+function hasModifierKey(event) {
+    return event.shiftKey || event.altKey || event.ctrlKey || event.metaKey;
+}
+
+function isSelectionCollapsed(editor) {
+    return editor.selectionStart === editor.selectionEnd;
+}
+
+function isCaretOnFirstLine(editor) {
+    const caretPosition = editor.selectionStart ?? 0;
+    const textBeforeCaret = editor.value.slice(0, caretPosition);
+    return !textBeforeCaret.includes(LINE_BREAK);
+}
+
+function isCaretOnLastLine(editor) {
+    const caretPosition = editor.selectionEnd ?? editor.value.length;
+    const textAfterCaret = editor.value.slice(caretPosition);
+    return !textAfterCaret.includes(LINE_BREAK);
+}
+
+function navigateToAdjacentCard(card, direction, notesContainer) {
+    const targetCard = direction === DIRECTION_PREVIOUS ? card.previousElementSibling : card.nextElementSibling;
+    if (!targetCard) return false;
+
+    enableInPlaceEditing(targetCard, notesContainer);
+
+    requestAnimationFrame(() => {
+        const targetEditor = targetCard.querySelector(".markdown-editor");
+        if (!targetEditor) return;
+        const nextPosition = direction === DIRECTION_PREVIOUS ? targetEditor.value.length : 0;
+        try {
+            targetEditor.setSelectionRange(nextPosition, nextPosition);
+        } catch {}
+    });
+
+    return true;
 }
 
 /* ---------- Chips & classification ---------- */
