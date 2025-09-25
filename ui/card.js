@@ -10,6 +10,11 @@ import {
     transformMarkdownWithAttachments
 } from "./imagePaste.js";
 
+const KEY_ARROW_UP = "ArrowUp";
+const KEY_ARROW_DOWN = "ArrowDown";
+const DIRECTION_PREVIOUS = -1;
+const DIRECTION_NEXT = 1;
+
 let currentEditingCard = null;
 let mergeInProgress = false;
 
@@ -57,6 +62,22 @@ export function renderCard(record, { notesContainer }) {
         if (ev.key === "Enter" && !ev.shiftKey) {
             ev.preventDefault();
             finalizeCard(card, notesContainer);
+        }
+
+        if (shouldNavigateToPreviousCard(ev, editor)) {
+            const navigated = navigateToAdjacentCard(card, DIRECTION_PREVIOUS, notesContainer);
+            if (navigated) {
+                ev.preventDefault();
+                return;
+            }
+        }
+
+        if (shouldNavigateToNextCard(ev, editor)) {
+            const navigated = navigateToAdjacentCard(card, DIRECTION_NEXT, notesContainer);
+            if (navigated) {
+                ev.preventDefault();
+                return;
+            }
         }
     });
 
@@ -292,6 +313,49 @@ function mergeUp(card, notesContainer) {
 
     GravityStore.syncFromDom(notesContainer);
     updateActionButtons(notesContainer);
+}
+
+function shouldNavigateToPreviousCard(event, editor) {
+    if (event.key !== KEY_ARROW_UP) return false;
+    if (hasModifierKey(event)) return false;
+    return isCaretAtStart(editor);
+}
+
+function shouldNavigateToNextCard(event, editor) {
+    if (event.key !== KEY_ARROW_DOWN) return false;
+    if (hasModifierKey(event)) return false;
+    return isCaretAtEnd(editor);
+}
+
+function hasModifierKey(event) {
+    return event.shiftKey || event.altKey || event.ctrlKey || event.metaKey;
+}
+
+function isCaretAtStart(editor) {
+    return editor.selectionStart === 0 && editor.selectionEnd === 0;
+}
+
+function isCaretAtEnd(editor) {
+    const length = editor.value.length;
+    return editor.selectionStart === length && editor.selectionEnd === length;
+}
+
+function navigateToAdjacentCard(card, direction, notesContainer) {
+    const targetCard = direction === DIRECTION_PREVIOUS ? card.previousElementSibling : card.nextElementSibling;
+    if (!targetCard) return false;
+
+    enableInPlaceEditing(targetCard, notesContainer);
+
+    requestAnimationFrame(() => {
+        const targetEditor = targetCard.querySelector(".markdown-editor");
+        if (!targetEditor) return;
+        const nextPosition = direction === DIRECTION_PREVIOUS ? targetEditor.value.length : 0;
+        try {
+            targetEditor.setSelectionRange(nextPosition, nextPosition);
+        } catch {}
+    });
+
+    return true;
 }
 
 /* ---------- Chips & classification ---------- */
