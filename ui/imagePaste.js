@@ -1,6 +1,20 @@
 const PASTED_IMAGE_ALT_TEXT_PREFIX = "Pasted image";
 const DOUBLE_LINE_BREAK = "\n\n";
 const IMAGE_READ_ERROR_MESSAGE = "Failed to read pasted image";
+const PLACEHOLDER_PREFIX = "pasted-image";
+const PLACEHOLDER_OPEN = "![[";
+const PLACEHOLDER_CLOSE = "]]";
+const PLACEHOLDER_REGEX = /!\[\[([^\[\]]+)\]\]/g;
+export const DATA_URL_PREFIX = "data:";
+
+/**
+ * @typedef {Object} AttachmentRecord
+ * @property {string} dataUrl
+ * @property {string} altText
+ */
+
+const attachmentsByTextarea = new WeakMap();
+let placeholderSequence = 0;
 
 /**
  * Convert a File into a data URL so it can be embedded in Markdown.
@@ -17,14 +31,12 @@ function readFileAsDataUrl(file) {
 }
 
 /**
- * Build a Markdown image snippet that references the provided data URL.
- * @param {string} dataUrl
+ * Build a Markdown image placeholder that will be resolved against stored attachments.
+ * @param {string} filename
  * @returns {string}
  */
-function buildMarkdownForImage(dataUrl) {
-    const timestamp = new Date().toISOString();
-    const safeAltText = `${PASTED_IMAGE_ALT_TEXT_PREFIX} ${timestamp}`.replace(/[\[\]]/g, "");
-    return `![${safeAltText}](${dataUrl})`;
+function buildMarkdownPlaceholder(filename) {
+    return `${PLACEHOLDER_OPEN}${filename}${PLACEHOLDER_CLOSE}`;
 }
 
 /**
@@ -61,11 +73,14 @@ function insertMarkdownAtCaret(textarea, insertionText) {
  * @param {File[]} files
  */
 async function handleClipboardImages(textarea, files) {
+    const attachmentMap = getOrCreateAttachmentMap(textarea);
     for (const file of files) {
         try {
             const dataUrl = await readFileAsDataUrl(file);
-            if (!dataUrl) continue;
-            const markdown = buildMarkdownForImage(dataUrl);
+            if (!dataUrl || !dataUrl.startsWith(DATA_URL_PREFIX)) continue;
+            const attachment = createAttachmentRecord(file, dataUrl);
+            attachmentMap.set(attachment.filename, { dataUrl: attachment.dataUrl, altText: attachment.altText });
+            const markdown = buildMarkdownPlaceholder(attachment.filename);
             insertMarkdownAtCaret(textarea, markdown);
         } catch (error) {
             console.error(error);
@@ -120,4 +135,100 @@ export function enableClipboardImagePaste(textarea) {
             }
         }));
     });
+}
+
+function getOrCreateAttachmentMap(textarea) {
+    if (!textarea) return new Map();
+    let map = attachmentsByTextarea.get(textarea);
+    if (!map) {
+        map = new Map();
+        attachmentsByTextarea.set(textarea, map);
+    }
+    return map;
+}
+
+function sanitizeFilenameComponent(component) {
+    return component.replace(/[^a-z0-9\-_.]/gi, "-");
+}
+
+function createAttachmentRecord(file, dataUrl) {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const extension = determineExtension(file?.type) || "png";
+    placeholderSequence += 1;
+    const filename = `${PLACEHOLDER_PREFIX}-${timestamp}-${placeholderSequence}.${extension}`;
+    const safeFilename = sanitizeFilenameComponent(filename);
+    const altText = `${PASTED_IMAGE_ALT_TEXT_PREFIX} ${timestamp}`.replace(/[\[\]]/g, "");
+    return { filename: safeFilename, dataUrl, altText };
+}
+
+function determineExtension(mimeType) {
+    if (typeof mimeType !== "string") return "";
+    const match = mimeType.match(/image\/([a-z0-9.+-]+)/i);
+    return match ? match[1].toLowerCase() : "";
+}
+
+function isAttachmentRecord(value) {
+    return value && typeof value.dataUrl === "string" && value.dataUrl.startsWith(DATA_URL_PREFIX);
+}
+
+export function registerInitialAttachments(textarea, attachments) {
+    const map = getOrCreateAttachmentMap(textarea);
+    map.clear();
+    const sanitized = sanitizeAttachmentDictionary(attachments);
+    for (const [key, value] of Object.entries(sanitized)) {
+        map.set(key, value);
+    }
+}
+
+export function resetAttachments(textarea) {
+    const map = getOrCreateAttachmentMap(textarea);
+    map.clear();
+}
+
+export function getAllAttachments(textarea) {
+    const map = getOrCreateAttachmentMap(textarea);
+    return sanitizeAttachmentDictionary(Object.fromEntries(map.entries()));
+}
+
+export function collectReferencedAttachments(textarea) {
+    if (!textarea) return {};
+    const text = textarea.value || "";
+    const map = getOrCreateAttachmentMap(textarea);
+    const result = {};
+    for (const match of text.matchAll(PLACEHOLDER_REGEX)) {
+        const name = match[1];
+        if (!name || result[name]) continue;
+        const record = map.get(name);
+        if (isAttachmentRecord(record)) {
+            result[name] = { ...record };
+        }
+    }
+    return sanitizeAttachmentDictionary(result);
+}
+
+export function transformMarkdownWithAttachments(markdown, attachments) {
+    if (typeof markdown !== "string" || markdown.length === 0) return markdown;
+    if (!attachments || typeof attachments !== "object") return markdown;
+    return markdown.replace(PLACEHOLDER_REGEX, (match, filename) => {
+        const record = attachments[filename];
+        if (!isAttachmentRecord(record)) return match;
+        const altText = (record.altText || `${PASTED_IMAGE_ALT_TEXT_PREFIX} ${filename}`).replace(/[\[\]]/g, "");
+        return `![${altText}](${record.dataUrl})`;
+    });
+}
+
+export function sanitizeAttachmentDictionary(attachments) {
+    if (!attachments || typeof attachments !== "object") return {};
+    const result = {};
+    for (const [key, value] of Object.entries(attachments)) {
+        if (typeof key !== "string") continue;
+        if (!isAttachmentRecord(value)) continue;
+        const fallbackAlt = `${PASTED_IMAGE_ALT_TEXT_PREFIX} ${key}`;
+        const altTextSource = typeof value.altText === "string" && value.altText.trim().length > 0
+            ? value.altText
+            : fallbackAlt;
+        const altText = altTextSource.replace(/[\[\]]/g, "");
+        result[key] = { dataUrl: value.dataUrl, altText };
+    }
+    return result;
 }

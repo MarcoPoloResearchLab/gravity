@@ -1,7 +1,15 @@
 import { nowIso, generateNoteId, createElement, autoResize } from "../utils.js";
 import { GravityStore } from "../store.js";
 import { triggerClassificationForCard } from "./card.js";
-import { enableClipboardImagePaste, waitForPendingImagePastes } from "./imagePaste.js";
+import {
+    enableClipboardImagePaste,
+    waitForPendingImagePastes,
+    registerInitialAttachments,
+    getAllAttachments,
+    collectReferencedAttachments,
+    resetAttachments,
+    transformMarkdownWithAttachments
+} from "./imagePaste.js";
 
 /**
  * Mount the always-empty top editor. It never persists empties; on finalize
@@ -21,10 +29,13 @@ export function mountTopEditor({ notesContainer, onCreateRecord }) {
     editor.setAttribute("aria-label", "New note");
     editor.setAttribute("autofocus", "autofocus");
 
+    registerInitialAttachments(editor, {});
     // Live preview + autoresize
     editor.addEventListener("input", () => {
         autoResize(editor);
-        preview.innerHTML = marked.parse(editor.value);
+        const attachments = getAllAttachments(editor);
+        const markdownWithAttachments = transformMarkdownWithAttachments(editor.value, attachments);
+        preview.innerHTML = marked.parse(markdownWithAttachments);
     });
 
     // Finalize on Enter (no Shift)
@@ -78,10 +89,12 @@ export function mountTopEditor({ notesContainer, onCreateRecord }) {
         await waitForPendingImagePastes(editor);
         const text = editor.value;
         const trimmed = text.trim();
+        const attachments = collectReferencedAttachments(editor);
 
         // Never persist empties; keep editor active
         if (trimmed.length === 0) {
             preview.innerHTML = "";
+            resetAttachments(editor);
             keepFocus(editor);
             return;
         }
@@ -92,7 +105,8 @@ export function mountTopEditor({ notesContainer, onCreateRecord }) {
             markdownText: text,
             createdAtIso: ts,
             updatedAtIso: ts,
-            lastActivityIso: ts
+            lastActivityIso: ts,
+            attachments
         };
 
         GravityStore.upsertNonEmpty(record);
@@ -101,6 +115,7 @@ export function mountTopEditor({ notesContainer, onCreateRecord }) {
         // Reset and immediately refocus (with visible caret)
         editor.value = "";
         preview.innerHTML = "";
+        resetAttachments(editor);
         keepFocus(editor);
 
         // Classify in background and update the new card’s chips
