@@ -14,6 +14,7 @@ const KEY_ARROW_UP = "ArrowUp";
 const KEY_ARROW_DOWN = "ArrowDown";
 const DIRECTION_PREVIOUS = -1;
 const DIRECTION_NEXT = 1;
+const LINE_BREAK = "\n";
 
 let currentEditingCard = null;
 let mergeInProgress = false;
@@ -318,26 +319,35 @@ function mergeUp(card, notesContainer) {
 function shouldNavigateToPreviousCard(event, editor) {
     if (event.key !== KEY_ARROW_UP) return false;
     if (hasModifierKey(event)) return false;
-    return isCaretAtStart(editor);
+    if (!isSelectionCollapsed(editor)) return false;
+    return isCaretOnFirstLine(editor);
 }
 
 function shouldNavigateToNextCard(event, editor) {
     if (event.key !== KEY_ARROW_DOWN) return false;
     if (hasModifierKey(event)) return false;
-    return isCaretAtEnd(editor);
+    if (!isSelectionCollapsed(editor)) return false;
+    return isCaretOnLastLine(editor);
 }
 
 function hasModifierKey(event) {
     return event.shiftKey || event.altKey || event.ctrlKey || event.metaKey;
 }
 
-function isCaretAtStart(editor) {
-    return editor.selectionStart === 0 && editor.selectionEnd === 0;
+function isSelectionCollapsed(editor) {
+    return editor.selectionStart === editor.selectionEnd;
 }
 
-function isCaretAtEnd(editor) {
-    const length = editor.value.length;
-    return editor.selectionStart === length && editor.selectionEnd === length;
+function isCaretOnFirstLine(editor) {
+    const caretPosition = editor.selectionStart ?? 0;
+    const textBeforeCaret = editor.value.slice(0, caretPosition);
+    return !textBeforeCaret.includes(LINE_BREAK);
+}
+
+function isCaretOnLastLine(editor) {
+    const caretPosition = editor.selectionEnd ?? editor.value.length;
+    const textAfterCaret = editor.value.slice(caretPosition);
+    return !textAfterCaret.includes(LINE_BREAK);
 }
 
 function navigateToAdjacentCard(card, direction, notesContainer) {
