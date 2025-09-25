@@ -12,7 +12,7 @@ const EMPTY_STRING = "";
  * @property {string} updatedAtIso
  * @property {string} lastActivityIso
  * @property {object=} classification
- * @property {Record<string, { dataUrl: string, altText: string }>=} attachments
+ * @property {Record<string, { dataUrl: string, altText: string }>=} [attachments]
  */
 
 export const GravityStore = (() => {
