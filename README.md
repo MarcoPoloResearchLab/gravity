@@ -24,26 +24,30 @@ ones.
   `![[pasted-image-*.png]]` while the rendered preview displays the actual image data.
 * **Auto-Resizing Editor:** The text area automatically adjusts its height to fit the content as you type.
 * **Session-Based:** Notes exist only within the current browser session. Reloading the page will clear all notes.
+* **Import & Export:** Download all saved notes as JSON and import them in another browser without creating duplicates.
 
 ## How to Use
 
 1. **Start Typing:** You begin with a single, empty note at the top in edit mode. Start typing your notes using Markdown
    syntax.
-3. **Create New Note:** When you're done with the current note:
+2. **Create New Note:** When you're done with the current note:
     * Press `Enter` (without holding `Shift`).
     * Or, click outside the editing area (blur the textarea).
     * If the note wasn't empty, it will be finalized (displaying the rendered Markdown), and a new empty note will
       appear above it, ready for editing. If the note was empty, it remains the active note.
-4. **Edit Existing Notes:** Click on the content area of any note below the top one. It will instantly move to the top
+3. **Edit Existing Notes:** Click on the content area of any note below the top one. It will instantly move to the top
    and become the active note in edit mode.
-5. **Move Notes:** Use the `▲` and `▼` buttons on passive notes to change their order relative to other passive notes.
-6. **Merge Notes:**
+4. **Export Notes:** Click **Export** in the header to download a `gravity-notes.json` file containing every saved note.
+5. **Import Notes:** Click **Import** and choose a Gravity Notes JSON export to append non-duplicate notes from another browser.
+   The import ignores records whose `noteId`, Markdown content, attachments, and classification all match an existing note.
+6. **Move Notes:** Use the `▲` and `▼` buttons on passive notes to change their order relative to other passive notes.
+7. **Merge Notes:**
     * To combine a note with the one below it, click the `Merge ↓` button on that note. Its content will be appended to
       the note below it, separated by newlines.
     * To combine the very last note with the currently active (top) note, click the `Merge ↑` button on the last note.
       Its content will be appended to the active note's content, separated by newlines, and the active note will remain
       focused.
-7. **Paste Images:** Copy an image to your clipboard and paste (`Ctrl+V` or `Cmd+V`) directly into the editor textarea.
+8. **Paste Images:** Copy an image to your clipboard and paste (`Ctrl+V` or `Cmd+V`) directly into the editor textarea.
    The image will be inserted as Markdown `![pasted image](data:...)`.
 
 ## Setup
