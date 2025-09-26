@@ -1,4 +1,5 @@
 import { appConfig } from "./config.js";
+import { ERROR_IMPORT_INVALID_PAYLOAD } from "./constants.js";
 import { nowIso } from "./utils.js";
 import { collectReferencedAttachments, sanitizeAttachmentDictionary } from "./ui/imagePaste.js";
 
@@ -37,6 +38,66 @@ export const GravityStore = (() => {
                 .filter(isValidNoteRecord)
             : [];
         localStorage.setItem(appConfig.storageKey, JSON.stringify(normalized));
+    }
+
+    /**
+     * Serialize all persisted notes into a JSON string.
+     * @returns {string}
+     */
+    function exportNotes() {
+        const records = loadAllNotes();
+        return JSON.stringify(records);
+    }
+
+    /**
+     * Import notes from a JSON string, appending only unique records.
+     * @param {string} serializedPayload
+     * @returns {NoteRecord[]}
+     */
+    function importNotes(serializedPayload) {
+        if (typeof serializedPayload !== "string" || serializedPayload.trim().length === 0) {
+            throw new Error(ERROR_IMPORT_INVALID_PAYLOAD);
+        }
+
+        let parsed;
+        try {
+            parsed = JSON.parse(serializedPayload);
+        } catch {
+            throw new Error(ERROR_IMPORT_INVALID_PAYLOAD);
+        }
+
+        if (!Array.isArray(parsed)) {
+            throw new Error(ERROR_IMPORT_INVALID_PAYLOAD);
+        }
+
+        const incomingRecords = parsed
+            .map(normalizeRecord)
+            .filter(isValidNoteRecord);
+
+        if (incomingRecords.length === 0) {
+            return [];
+        }
+
+        const existingRecords = loadAllNotes();
+        const existingById = new Map(existingRecords.map(record => [record.noteId, record]));
+        const existingFingerprints = new Set(existingRecords.map(createContentFingerprint));
+
+        const appendedRecords = [];
+        for (const incomingRecord of incomingRecords) {
+            if (existingById.has(incomingRecord.noteId)) continue;
+            const fingerprint = createContentFingerprint(incomingRecord);
+            if (existingFingerprints.has(fingerprint)) continue;
+            existingRecords.push(incomingRecord);
+            existingById.set(incomingRecord.noteId, incomingRecord);
+            existingFingerprints.add(fingerprint);
+            appendedRecords.push(incomingRecord);
+        }
+
+        if (appendedRecords.length > 0) {
+            saveAllNotes(existingRecords);
+        }
+
+        return appendedRecords;
     }
 
     // Invariant: never persist empty notes
@@ -80,7 +141,7 @@ export const GravityStore = (() => {
         saveAllNotes(nextRecords);
     }
 
-    return { loadAllNotes, saveAllNotes, upsertNonEmpty, removeById, syncFromDom };
+    return { loadAllNotes, saveAllNotes, exportNotes, importNotes, upsertNonEmpty, removeById, syncFromDom };
 })();
 
 function normalizeRecord(record) {
@@ -98,4 +159,29 @@ function isValidNoteRecord(record) {
     if (!isNonBlankString(record.noteId)) return false;
     if (!isNonBlankString(record.markdownText)) return false;
     return true;
+}
+
+function createContentFingerprint(record) {
+    const attachmentsFingerprint = canonicalizeForFingerprint(record.attachments || {});
+    const classificationFingerprint = canonicalizeForFingerprint(record.classification ?? null);
+    return JSON.stringify({
+        markdownText: record.markdownText,
+        attachments: attachmentsFingerprint,
+        classification: classificationFingerprint
+    });
+}
+
+function canonicalizeForFingerprint(value) {
+    if (Array.isArray(value)) {
+        return value.map(canonicalizeForFingerprint);
+    }
+    if (value && typeof value === "object") {
+        const sortedKeys = Object.keys(value).sort();
+        const result = {};
+        for (const key of sortedKeys) {
+            result[key] = canonicalizeForFingerprint(value[key]);
+        }
+        return result;
+    }
+    return value ?? null;
 }

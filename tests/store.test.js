@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { appConfig } from "../config.js";
 import { GravityStore } from "../store.js";
+import { ERROR_IMPORT_INVALID_PAYLOAD } from "../constants.js";
 
 const SAMPLE_TIMESTAMP = "2024-01-01T00:00:00.000Z";
 
@@ -99,5 +100,167 @@ test.describe("GravityStore.loadAllNotes", () => {
         };
 
         assert.deepStrictEqual(parsedRecords, [expectedRecord]);
+    });
+});
+
+test.describe("GravityStore export/import", () => {
+    test.beforeEach(() => {
+        global.localStorage = new LocalStorageStub();
+    });
+
+    test.afterEach(() => {
+        delete global.localStorage;
+    });
+
+    test("exportNotes serializes sanitized records", () => {
+        const storedRecords = [
+            {
+                noteId: "note-one",
+                markdownText: "Hello world",
+                attachments: { first: { dataUrl: "data:image/png;base64,aaa", altText: "First" } },
+                classification: { category: "Journal", tags: ["daily"] }
+            }
+        ];
+
+        GravityStore.saveAllNotes(storedRecords);
+
+        const exportedJson = GravityStore.exportNotes();
+        const parsed = JSON.parse(exportedJson);
+
+        assert.deepStrictEqual(parsed, GravityStore.loadAllNotes());
+    });
+
+    test("importNotes appends only unique records", async (t) => {
+        const scenarios = [
+            {
+                name: "imports new record with sanitized attachments",
+                existing: [],
+                incoming: [
+                    {
+                        noteId: "import-one",
+                        markdownText: "Imported note",
+                        attachments: {
+                            "image-a.png": { dataUrl: "data:image/png;base64,abc", altText: "[Alt]" }
+                        },
+                        classification: { category: "Journal", tags: ["log"] }
+                    }
+                ],
+                expectedAppended: ["import-one"],
+                expectedPersistedCount: 1,
+                expectedAttachments: {
+                    "image-a.png": { dataUrl: "data:image/png;base64,abc", altText: "Alt" }
+                }
+            },
+            {
+                name: "skips records with duplicate identifiers",
+                existing: [
+                    { noteId: "existing-note", markdownText: "Keep me" }
+                ],
+                incoming: [
+                    { noteId: "existing-note", markdownText: "Different content" }
+                ],
+                expectedAppended: [],
+                expectedPersistedCount: 1
+            },
+            {
+                name: "skips records with identical content attachments and classification",
+                existing: [
+                    {
+                        noteId: "existing-duplicate",
+                        markdownText: "Shared body",
+                        attachments: {
+                            "image-one.png": { dataUrl: "data:image/png;base64,xyz", altText: "One" },
+                            "image-two.png": { dataUrl: "data:image/png;base64,uvw", altText: "Two" }
+                        },
+                        classification: { category: "Projects", tags: ["gravity", "sync"] }
+                    }
+                ],
+                incoming: [
+                    {
+                        noteId: "different-id",
+                        markdownText: "Shared body",
+                        attachments: {
+                            "image-two.png": { dataUrl: "data:image/png;base64,uvw", altText: "Two" },
+                            "image-one.png": { dataUrl: "data:image/png;base64,xyz", altText: "One" }
+                        },
+                        classification: { tags: ["gravity", "sync"], category: "Projects" }
+                    }
+                ],
+                expectedAppended: [],
+                expectedPersistedCount: 1
+            },
+            {
+                name: "imports only unique subset when mixed",
+                existing: [
+                    { noteId: "keep-existing", markdownText: "Existing" }
+                ],
+                incoming: [
+                    { noteId: "keep-existing", markdownText: "Duplicate id" },
+                    { noteId: "brand-new", markdownText: "Fresh content" },
+                    {
+                        noteId: "content-duplicate",
+                        markdownText: "Shared body",
+                        attachments: {
+                            only: { dataUrl: "data:image/png;base64,ppp", altText: "Only" }
+                        },
+                        classification: { category: "Journal" }
+                    }
+                ],
+                additionalExisting: [
+                    {
+                        noteId: "existing-with-same-content",
+                        markdownText: "Shared body",
+                        attachments: {
+                            only: { dataUrl: "data:image/png;base64,ppp", altText: "Only" }
+                        },
+                        classification: { category: "Journal" }
+                    }
+                ],
+                expectedAppended: ["brand-new"],
+                expectedPersistedCount: 3
+            }
+        ];
+
+        for (const scenario of scenarios) {
+            await t.test(scenario.name, () => {
+                const existingRecords = Array.isArray(scenario.existing) ? scenario.existing : [];
+                GravityStore.saveAllNotes(existingRecords);
+
+                if (Array.isArray(scenario.additionalExisting)) {
+                    const current = GravityStore.loadAllNotes();
+                    GravityStore.saveAllNotes(current.concat(scenario.additionalExisting));
+                }
+
+                const serialized = JSON.stringify(scenario.incoming);
+                const appended = GravityStore.importNotes(serialized);
+
+                const appendedIds = appended.map(record => record.noteId);
+                assert.deepStrictEqual(appendedIds, scenario.expectedAppended);
+
+                if (scenario.expectedAttachments && appended[0]) {
+                    assert.deepStrictEqual(appended[0].attachments, scenario.expectedAttachments);
+                }
+
+                const persisted = GravityStore.loadAllNotes();
+                assert.strictEqual(persisted.length, scenario.expectedPersistedCount);
+            });
+        }
+    });
+
+    test("importNotes rejects invalid payloads", () => {
+        GravityStore.saveAllNotes([]);
+
+        const invalidCases = [
+            "",
+            "{}",
+            "not-json"
+        ];
+
+        for (const invalid of invalidCases) {
+            assert.throws(() => GravityStore.importNotes(invalid), {
+                name: "Error",
+                message: ERROR_IMPORT_INVALID_PAYLOAD
+            });
+        }
     });
 });
