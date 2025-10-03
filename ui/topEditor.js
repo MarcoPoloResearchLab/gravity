@@ -2,6 +2,7 @@ import { nowIso, generateNoteId, createElement, autoResize } from "../utils.js";
 import { GravityStore } from "../store.js";
 import { triggerClassificationForCard, focusCardEditor } from "./card.js";
 import { shouldNavigateToNextEditor } from "./navigation.js";
+import { renderSanitizedMarkdown } from "./markdownPreview.js";
 import {
     enableClipboardImagePaste,
     waitForPendingImagePastes,
@@ -36,7 +37,7 @@ export function mountTopEditor({ notesContainer, onCreateRecord }) {
         autoResize(editor);
         const attachments = getAllAttachments(editor);
         const markdownWithAttachments = transformMarkdownWithAttachments(editor.value, attachments);
-        preview.innerHTML = marked.parse(markdownWithAttachments);
+        renderSanitizedMarkdown(preview, markdownWithAttachments);
     });
 
     // Finalize on Enter (no Shift)
@@ -121,7 +122,7 @@ export function mountTopEditor({ notesContainer, onCreateRecord }) {
 
         // Never persist empties; keep editor active
         if (trimmed.length === 0) {
-            preview.innerHTML = "";
+            renderSanitizedMarkdown(preview, "");
             resetAttachments(editor);
             keepFocus(editor);
             return;
@@ -142,7 +143,7 @@ export function mountTopEditor({ notesContainer, onCreateRecord }) {
 
         // Reset and immediately refocus (with visible caret)
         editor.value = "";
-        preview.innerHTML = "";
+        renderSanitizedMarkdown(preview, "");
         resetAttachments(editor);
         keepFocus(editor);
 
