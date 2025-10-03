@@ -1,6 +1,7 @@
 import { nowIso, createElement, autoResize } from "../utils.js";
 import { GravityStore } from "../store.js";
 import { ClassifierClient } from "../classifier.js";
+import { renderSanitizedMarkdown } from "./markdownPreview.js";
 import {
     enableClipboardImagePaste,
     waitForPendingImagePastes,
@@ -60,7 +61,7 @@ export function renderCard(record, { notesContainer }) {
     const preview = createElement("div", "markdown-content");
     const initialAttachments = record.attachments || {};
     const initialPreviewMarkdown = transformMarkdownWithAttachments(record.markdownText, initialAttachments);
-    preview.innerHTML = marked.parse(initialPreviewMarkdown);
+    renderSanitizedMarkdown(preview, initialPreviewMarkdown);
 
     const editor  = createElement("textarea", "markdown-editor");
     editor.value  = record.markdownText;
@@ -75,7 +76,7 @@ export function renderCard(record, { notesContainer }) {
         autoResize(editor);
         const attachments = getAllAttachments(editor);
         const markdownWithAttachments = transformMarkdownWithAttachments(editor.value, attachments);
-        preview.innerHTML = marked.parse(markdownWithAttachments);
+        renderSanitizedMarkdown(preview, markdownWithAttachments);
     });
 
     // Finalize on Enter (no Shift)
@@ -226,7 +227,7 @@ async function finalizeCard(card, notesContainer, options = {}) {
 
     // Update preview (safe either way)
     const markdownWithAttachments = transformMarkdownWithAttachments(text, attachments);
-    preview.innerHTML = marked.parse(markdownWithAttachments);
+    renderSanitizedMarkdown(preview, markdownWithAttachments);
 
     if (!changed) {
         // Keep position; nothing else to do
@@ -304,7 +305,7 @@ function mergeDown(card, notesContainer) {
     editorBelow.value = merged;
     registerInitialAttachments(editorBelow, mergedAttachments);
     const mergedMarkdown = transformMarkdownWithAttachments(merged, mergedAttachments);
-    previewBelow.innerHTML = marked.parse(mergedMarkdown);
+    renderSanitizedMarkdown(previewBelow, mergedMarkdown);
     autoResize(editorBelow);
 
     const idHere = card.getAttribute("data-note-id");
@@ -353,7 +354,7 @@ function mergeUp(card, notesContainer) {
     editorAbove.value = merged;
     registerInitialAttachments(editorAbove, mergedAttachments);
     const mergedMarkdown = transformMarkdownWithAttachments(merged, mergedAttachments);
-    previewAbove.innerHTML = marked.parse(mergedMarkdown);
+    renderSanitizedMarkdown(previewAbove, mergedMarkdown);
     autoResize(editorAbove);
 
     const idHere = card.getAttribute("data-note-id");
