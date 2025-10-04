@@ -9,7 +9,7 @@ try {
     puppeteerModule = null;
 }
 
-import { CLIPBOARD_MIME_NOTE, CLIPBOARD_METADATA_VERSION } from "../constants.js";
+import { CLIPBOARD_MIME_NOTE, CLIPBOARD_METADATA_VERSION, MESSAGE_NOTE_COPIED } from "../constants.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
@@ -37,34 +37,83 @@ test.describe("Clipboard integration", () => {
         if (browser) await browser.close();
     });
 
-    test("copy preserves editor modes for all cards", async () => {
+    test("click enters edit mode without reordering", async () => {
         const page = await preparePage(browser);
         try {
-            const markdown = "# First note\n\nContent";
-            const otherMarkdown = "# Second note\n\nDifferent";
+            await createCard(page, {
+                noteId: "bubble-alpha",
+                markdownText: "Alpha note",
+                attachments: {},
+                mode: "view"
+            });
 
             await createCard(page, {
-                noteId: "note-copy-mode-a",
+                noteId: "bubble-bravo",
+                markdownText: "Bravo note",
+                attachments: {},
+                mode: "view"
+            });
+
+            let states = await getCardStates(page);
+            assert.deepStrictEqual(states.map((state) => state.noteId), ["bubble-alpha", "bubble-bravo"]);
+            assert.equal(states[0].mode, "view");
+            assert.equal(states[1].mode, "view");
+
+            await page.click('[data-note-id="bubble-bravo"] .markdown-content');
+            await waitForCardMode(page, "bubble-bravo", "edit");
+
+            states = await getCardStates(page);
+            assert.deepStrictEqual(states.map((state) => state.noteId), ["bubble-alpha", "bubble-bravo"]);
+            assert.equal(states[0].mode, "view");
+            assert.equal(states[1].mode, "edit");
+        } finally {
+            await page.close();
+        }
+    });
+
+    test("blur restores rendered view without reordering", async () => {
+        const page = await preparePage(browser);
+        try {
+            await createCard(page, {
+                noteId: "blur-alpha",
+                markdownText: "Alpha note",
+                attachments: {},
+                mode: "view"
+            });
+
+            await page.click('[data-note-id="blur-alpha"] .markdown-content');
+            await waitForCardMode(page, "blur-alpha", "edit");
+
+            await page.click('#top-editor .markdown-editor');
+            await waitForCardMode(page, "blur-alpha", "view");
+
+            const states = await getCardStates(page);
+            assert.deepStrictEqual(states.map((state) => state.noteId), ["blur-alpha"]);
+            assert.equal(states[0].mode, "view");
+        } finally {
+            await page.close();
+        }
+    });
+
+    test("edit-mode copy returns raw markdown", async () => {
+        const page = await preparePage(browser);
+        try {
+            const markdown = "# Sample Heading\n\nParagraph with *emphasis*.";
+
+            await createCard(page, {
+                noteId: "note-copy-markdown-plain",
                 markdownText: markdown,
                 attachments: {},
                 mode: "edit"
             });
 
-            await createCard(page, {
-                noteId: "note-copy-mode-b",
-                markdownText: otherMarkdown,
-                attachments: {},
-                mode: "edit"
-            });
-
-            const before = await getCardStates(page);
-
-            await page.click('[data-note-id="note-copy-mode-a"] [data-action="copy-note"]');
+            await page.click('[data-note-id="note-copy-markdown-plain"] [data-action="copy-note"]');
             await waitForClipboardWrite(page);
+            await waitForCopyFeedback(page, "note-copy-markdown-plain");
 
-            const after = await getCardStates(page);
-
-            assert.deepStrictEqual(after, before);
+            const clipboardPayload = await page.evaluate(() => window.__clipboardWrites.at(-1));
+            const [item] = clipboardPayload;
+            assert.equal(item["text/plain"], markdown);
         } finally {
             await page.close();
         }
@@ -87,6 +136,7 @@ test.describe("Clipboard integration", () => {
 
             await page.click('[data-note-id="note-copy-metadata"] [data-action="copy-note"]');
             await waitForClipboardWrite(page);
+            await waitForCopyFeedback(page, "note-copy-metadata");
 
             const clipboardPayload = await page.evaluate(() => window.__clipboardWrites.at(-1));
             assert.ok(Array.isArray(clipboardPayload) && clipboardPayload.length === 1, "expected single clipboard item");
@@ -104,25 +154,149 @@ test.describe("Clipboard integration", () => {
         }
     });
 
-    test("rendered-mode copy produces plain text without HTML tags", async () => {
+    test("rendered-mode copy returns sanitized HTML", async () => {
         const page = await preparePage(browser);
         try {
-            const markdown = "![Alt text](data:image/png;base64,AAAA)\n\nParagraph";
+            const markdown = "This is **bold** and _italic_.";
 
             await createCard(page, {
-                noteId: "note-copy-rendered",
+                noteId: "note-copy-rendered-html",
                 markdownText: markdown,
                 attachments: {},
                 mode: "view"
             });
 
-            await page.click('[data-note-id="note-copy-rendered"] [data-action="copy-note"]');
+            await page.click('[data-note-id="note-copy-rendered-html"] [data-action="copy-note"]');
             await waitForClipboardWrite(page);
+            await waitForCopyFeedback(page, "note-copy-rendered-html");
 
             const clipboardPayload = await page.evaluate(() => window.__clipboardWrites.at(-1));
             const [item] = clipboardPayload;
             assert.ok(typeof item["text/plain"] === "string");
             assert.ok(!item["text/plain"].includes("<"));
+            assert.ok(item["text/html"].includes("<strong>"));
+        } finally {
+            await page.close();
+        }
+    });
+
+    test("rendered-mode copy returns HTML with image", async () => {
+        const page = await preparePage(browser);
+        try {
+            const markdown = `Paragraph before image.\n\n![Alt text](${SAMPLE_IMAGE_DATA_URL})`;
+
+            await createCard(page, {
+                noteId: "note-copy-rendered-image",
+                markdownText: markdown,
+                attachments: {},
+                mode: "view"
+            });
+
+            await page.click('[data-note-id="note-copy-rendered-image"] [data-action="copy-note"]');
+            await waitForClipboardWrite(page);
+            await waitForCopyFeedback(page, "note-copy-rendered-image");
+
+            const clipboardPayload = await page.evaluate(() => window.__clipboardWrites.at(-1));
+            const [item] = clipboardPayload;
+            assert.ok(item["text/html"].includes("<img"));
+            assert.ok(item["text/html"].includes(SAMPLE_IMAGE_DATA_URL));
+        } finally {
+            await page.close();
+        }
+    });
+
+    test("initial view renders attachments", async () => {
+        const page = await preparePage(browser);
+        try {
+            await createCard(page, {
+                noteId: "initial-attachment",
+                markdownText: "Here is an image placeholder![[sample-image.png]]",
+                attachments: {
+                    "sample-image.png": { dataUrl: SAMPLE_IMAGE_DATA_URL, altText: "Sample attachment" }
+                },
+                mode: "view"
+            });
+
+            const hasImg = await page.evaluate(() => {
+                const card = document.querySelector('[data-note-id="initial-attachment"]');
+                const preview = card?.querySelector('.markdown-content');
+                return preview?.innerHTML.includes('<img') && preview?.innerHTML.includes('data:image');
+            });
+            assert.equal(hasImg, true);
+        } finally {
+            await page.close();
+        }
+    });
+
+    test("clicking a note enters edit mode without reordering", async () => {
+        const page = await preparePage(browser);
+        try {
+            await createCard(page, {
+                noteId: "bubble-alpha",
+                markdownText: "Alpha note",
+                attachments: {},
+                mode: "view"
+            });
+
+            await createCard(page, {
+                noteId: "bubble-bravo",
+                markdownText: "Bravo note",
+                attachments: {},
+                mode: "view"
+            });
+
+            let states = await getCardStates(page);
+            assert.deepStrictEqual(states.map((state) => state.noteId), ["bubble-alpha", "bubble-bravo"]);
+
+            await page.click('[data-note-id="bubble-bravo"] .markdown-content');
+            await waitForCardMode(page, "bubble-bravo", "edit");
+
+            states = await getCardStates(page);
+            assert.deepStrictEqual(states.map((state) => state.noteId), ["bubble-alpha", "bubble-bravo"]);
+            assert.equal(states[1].mode, "edit");
+        } finally {
+            await page.close();
+        }
+    });
+
+    test("finalizing edits bubbles note to top", async () => {
+        const page = await preparePage(browser);
+        try {
+            await createCard(page, {
+                noteId: "bubble-edit-alpha",
+                markdownText: "Alpha note",
+                attachments: {},
+                mode: "view"
+            });
+
+            await createCard(page, {
+                noteId: "bubble-edit-bravo",
+                markdownText: "Bravo note",
+                attachments: {},
+                mode: "view"
+            });
+
+            await page.click('[data-note-id="bubble-edit-bravo"] .markdown-content');
+            await waitForCardMode(page, "bubble-edit-bravo", "edit");
+
+            await page.evaluate((id) => {
+                const card = document.querySelector(`[data-note-id="${id}"]`);
+                const host = card?.__markdownHost;
+                if (!host) return;
+                const current = host.getValue();
+                host.setValue(`${current}\nEdited at ${Date.now()}`);
+            }, "bubble-edit-bravo");
+
+            await page.click('#top-editor .markdown-editor');
+
+            await page.waitForFunction(() => {
+                const first = document.querySelector('#notes-container .markdown-block:not(.top-editor)');
+                return first?.getAttribute('data-note-id') === 'bubble-edit-bravo';
+            }, { timeout: 2000 });
+
+            const statesAfter = await getCardStates(page);
+            assert.equal(statesAfter[0].noteId, 'bubble-edit-bravo');
+            assert.equal(statesAfter[0].mode, 'view');
         } finally {
             await page.close();
         }
@@ -145,6 +319,7 @@ test.describe("Clipboard integration", () => {
 
             await page.click('[data-note-id="note-copy-paste"] [data-action="copy-note"]');
             await waitForClipboardWrite(page);
+            await waitForCopyFeedback(page, "note-copy-paste");
 
             const payload = await page.evaluate(() => window.__clipboardWrites.at(-1)[0]);
 
@@ -194,24 +369,25 @@ test.describe("Clipboard integration", () => {
                 mode: "edit"
             });
 
-            await assertCardIsEditing(page, primaryId, "initial state");
-            await assertCardIsEditing(page, secondaryId, "secondary initial state");
+            await focusCardEditorField(page, primaryId);
+            await assertCardIsEditing(page, primaryId, "primary focused state");
 
             await focusCardEditorField(page, secondaryId);
-            await assertCardIsEditing(page, primaryId, "after focusing secondary");
-            await assertCardIsEditing(page, secondaryId, "after focusing secondary");
+            await assertCardIsView(page, primaryId, "primary after secondary focus");
+            await assertCardIsEditing(page, secondaryId, "secondary focused state");
 
             await focusCardEditorField(page, primaryId);
-            await assertCardIsEditing(page, primaryId, "after focusing primary");
-            await assertCardIsEditing(page, secondaryId, "after focusing primary");
+            await assertCardIsEditing(page, primaryId, "primary refocused");
+            await assertCardIsView(page, secondaryId, "secondary after primary refocus");
 
             await focusCardEditorField(page, secondaryId);
             let clipboardCount = await getClipboardWriteCount(page);
             await page.click(`[data-note-id="${secondaryId}"] [data-action="copy-note"]`);
             await waitForClipboardWrite(page, clipboardCount);
             clipboardCount = await getClipboardWriteCount(page);
-            await assertCardIsEditing(page, primaryId, "after copying secondary");
+            await assertCardIsView(page, primaryId, "after copying secondary");
             await assertCardIsEditing(page, secondaryId, "after copying secondary");
+            await waitForCopyFeedback(page, secondaryId);
 
             await focusCardEditorField(page, secondaryId);
             await page.evaluate(async ({ noteId, dataUrl }) => {
@@ -225,15 +401,16 @@ test.describe("Clipboard integration", () => {
                 await insertAttachmentPlaceholders(textarea, [file]);
                 textarea.dispatchEvent(new Event('input', { bubbles: true }));
             }, { noteId: secondaryId, dataUrl: SAMPLE_IMAGE_DATA_URL });
-            await assertCardIsEditing(page, primaryId, "after secondary receives pasted image");
+            await assertCardIsView(page, primaryId, "after secondary receives pasted image");
             await assertCardIsEditing(page, secondaryId, "after secondary receives pasted image");
 
             await focusCardEditorField(page, secondaryId);
             clipboardCount = await getClipboardWriteCount(page);
             await page.click(`[data-note-id="${secondaryId}"] [data-action="copy-note"]`);
             await waitForClipboardWrite(page, clipboardCount);
-            await assertCardIsEditing(page, primaryId, "after copying secondary with image");
+            await assertCardIsView(page, primaryId, "after copying secondary with image");
             await assertCardIsEditing(page, secondaryId, "after copying secondary with image");
+            await waitForCopyFeedback(page, secondaryId);
         } finally {
             await page.close();
         }
@@ -357,7 +534,41 @@ async function assertCardIsEditing(page, noteId, context) {
 }
 
 async function focusCardEditorField(page, noteId) {
+    await page.waitForSelector(`[data-note-id="${noteId}"] .markdown-content`);
+    const currentMode = await page.evaluate((id) => {
+        const card = document.querySelector(`[data-note-id="${id}"]`);
+        return card?.__markdownHost?.getMode();
+    }, noteId);
+    if (currentMode !== 'edit') {
+        await page.click(`[data-note-id="${noteId}"] .markdown-content`);
+        await waitForCardMode(page, noteId, 'edit');
+    }
     await page.waitForSelector(`[data-note-id="${noteId}"] .markdown-editor`, { visible: true });
     await page.click(`[data-note-id="${noteId}"] .markdown-editor`);
     await waitForCardMode(page, noteId, 'edit');
+}
+
+async function waitForCopyFeedback(page, noteId) {
+    await page.waitForFunction(({ id, message }) => {
+        const card = document.querySelector(`[data-note-id="${id}"]`);
+        const feedback = card?.querySelector('.clipboard-feedback');
+        return Boolean(
+            feedback &&
+            feedback.classList.contains('clipboard-feedback--visible') &&
+            feedback.textContent === message
+        );
+    }, { timeout: 1000 }, { id: noteId, message: MESSAGE_NOTE_COPIED });
+
+    await page.waitForFunction(({ id }) => {
+        const card = document.querySelector(`[data-note-id="${id}"]`);
+        const feedback = card?.querySelector('.clipboard-feedback');
+        return !feedback || !feedback.classList.contains('clipboard-feedback--visible');
+    }, { timeout: 3000 }, { id: noteId });
+}
+
+async function assertCardIsView(page, noteId, context) {
+    const states = await getCardStates(page);
+    const cardState = states.find((state) => state.noteId === noteId);
+    assert.ok(cardState, `Expected card ${noteId} to exist (${context})`);
+    assert.equal(cardState.mode, 'view', `Expected ${noteId} to be in view mode (${context})`);
 }

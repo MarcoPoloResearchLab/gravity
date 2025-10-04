@@ -1,5 +1,5 @@
 import { nowIso, createElement, autoResize, copyToClipboard } from "../utils.js";
-import { CLIPBOARD_METADATA_VERSION } from "../constants.js";
+import { CLIPBOARD_METADATA_VERSION, MESSAGE_NOTE_COPIED } from "../constants.js";
 import { GravityStore } from "../store.js";
 import { ClassifierClient } from "../classifier.js";
 import {
@@ -32,6 +32,8 @@ let mergeInProgress = false;
 const editorHosts = new WeakMap();
 const finalizeSuppression = new WeakMap();
 const suppressionState = new WeakMap();
+const copyFeedbackTimers = new WeakMap();
+const COPY_FEEDBACK_DURATION_MS = 1800;
 
 /** Public: render a persisted note card */
 export function renderCard(record, { notesContainer }) {
@@ -46,10 +48,10 @@ export function renderCard(record, { notesContainer }) {
         const host = editorHostRef;
         if (!host) return;
         if (host.getMode() === MARKDOWN_MODE_EDIT) {
-            await finalizeCard(card, notesContainer);
+            await finalizeCard(card, notesContainer, { bubbleToTop: false });
             host.setMode(MARKDOWN_MODE_VIEW);
         } else {
-            enableInPlaceEditing(card, notesContainer, { bubblePreviousCardToTop: false });
+            enableInPlaceEditing(card, notesContainer, { bubblePreviousCardToTop: false, bubbleSelfToTop: false });
         }
     };
 
@@ -93,6 +95,7 @@ export function renderCard(record, { notesContainer }) {
                 copied = await copyToClipboard({ text: renderedText, html: renderedHtml, metadata });
             }
             if (!copied) throw new Error("Clipboard copy failed");
+            showClipboardFeedback(actions, MESSAGE_NOTE_COPIED);
         } catch (error) {
             console.error(error);
         } finally {
@@ -160,7 +163,7 @@ export function renderCard(record, { notesContainer }) {
         container: card,
         textarea: editor,
         previewElement: preview,
-        initialMode: MARKDOWN_MODE_EDIT,
+        initialMode: MARKDOWN_MODE_VIEW,
         showToolbar: false
     });
     editorHostRef = editorHost;
@@ -300,8 +303,39 @@ function restoreSuppressedState(card) {
     }
 }
 
+function showClipboardFeedback(container, message) {
+    if (!container || typeof message !== "string") return;
+    let feedback = container.querySelector(".clipboard-feedback");
+    if (!feedback) {
+        feedback = createElement("div", "clipboard-feedback");
+        container.appendChild(feedback);
+    }
+
+    feedback.textContent = message;
+    feedback.classList.add("clipboard-feedback--visible");
+
+    if (copyFeedbackTimers.has(feedback)) {
+        clearTimeout(copyFeedbackTimers.get(feedback));
+    }
+
+    const timer = setTimeout(() => {
+        feedback.classList.remove("clipboard-feedback--visible");
+        copyFeedbackTimers.delete(feedback);
+        setTimeout(() => {
+            if (feedback && !feedback.classList.contains("clipboard-feedback--visible")) {
+                feedback.remove();
+            }
+        }, 220);
+    }, COPY_FEEDBACK_DURATION_MS);
+
+    copyFeedbackTimers.set(feedback, timer);
+}
+
 function enableInPlaceEditing(card, notesContainer, options = {}) {
-    const { bubblePreviousCardToTop = true } = options;
+    const {
+        bubblePreviousCardToTop = true,
+        bubbleSelfToTop = false
+    } = options;
     if (currentEditingCard && currentEditingCard !== card && !mergeInProgress) {
         finalizeCard(currentEditingCard, notesContainer, { bubbleToTop: bubblePreviousCardToTop });
     }
@@ -327,6 +361,15 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
 
     card.classList.add("editing-in-place");
     editorHost?.setMode(MARKDOWN_MODE_EDIT);
+
+    if (bubbleSelfToTop) {
+        const firstCard = notesContainer.firstElementChild;
+        if (firstCard && firstCard !== card) {
+            notesContainer.insertBefore(card, firstCard);
+            GravityStore.syncFromDom(notesContainer);
+            updateActionButtons(notesContainer);
+        }
+    }
 
     // Focus after paint; then release the height lock
     requestAnimationFrame(() => {
@@ -362,6 +405,9 @@ async function finalizeCard(card, notesContainer, options = {}) {
     }
     if (currentEditingCard === card) {
         currentEditingCard = null;
+    }
+    if (editorHost) {
+        editorHost.setMode(MARKDOWN_MODE_VIEW);
     }
     // If cleared, delete the card entirely
     if (trimmed.length === 0) {
@@ -573,7 +619,7 @@ export function focusCardEditor(card, notesContainer, options = {}) {
         bubblePreviousCardToTop = false
     } = options;
 
-    enableInPlaceEditing(card, notesContainer, { bubblePreviousCardToTop });
+    enableInPlaceEditing(card, notesContainer, { bubblePreviousCardToTop, bubbleSelfToTop: false });
 
     requestAnimationFrame(() => {
         const host = editorHosts.get(card);
