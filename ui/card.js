@@ -20,8 +20,6 @@ import { createMarkdownEditorHost, MARKDOWN_MODE_EDIT, MARKDOWN_MODE_VIEW } from
 const DIRECTION_PREVIOUS = -1;
 const DIRECTION_NEXT = 1;
 const ACTION_LABEL_DELETE = "🗑️";
-const ACTION_ICON_VIEW = "👁️";
-const ACTION_ICON_EDIT = "✏️";
 const ACTION_ICON_COPY = "📋";
 
 const CARET_PLACEMENT_START = "start";
@@ -36,24 +34,17 @@ const copyFeedbackTimers = new WeakMap();
 const COPY_FEEDBACK_DURATION_MS = 1800;
 
 /** Public: render a persisted note card */
-export function renderCard(record, { notesContainer }) {
+export function renderCard(record, options = {}) {
+    const notesContainer = options.notesContainer ?? document.getElementById("notes-container");
+    if (!notesContainer) {
+        throw new Error("Notes container not found");
+    }
     const card = createElement("div", "markdown-block");
     card.setAttribute("data-note-id", record.noteId);
 
     // Actions column
     const actions = createElement("div", "actions");
     let editorHostRef = null;
-
-    const handleToggleMode = async () => {
-        const host = editorHostRef;
-        if (!host) return;
-        if (host.getMode() === MARKDOWN_MODE_EDIT) {
-            await finalizeCard(card, notesContainer, { bubbleToTop: false });
-            host.setMode(MARKDOWN_MODE_VIEW);
-        } else {
-            enableInPlaceEditing(card, notesContainer, { bubblePreviousCardToTop: false, bubbleSelfToTop: false });
-        }
-    };
 
     const handleCopy = async () => {
         const host = editorHostRef;
@@ -76,24 +67,27 @@ export function renderCard(record, { notesContainer }) {
         protectCard(currentEditingCard);
         try {
             const markdownValue = host.getValue();
-            const attachments = collectReferencedAttachments(editor);
-            const metadata = {
-                version: CLIPBOARD_METADATA_VERSION,
-                markdown: markdownValue
-            };
-            if (Object.keys(attachments).length > 0) {
-                metadata.attachments = attachments;
-            }
-
-            let copied = false;
+            const attachments = getAllAttachments(editor);
+            const markdownWithAttachments = transformMarkdownWithAttachments(markdownValue, attachments);
             const renderedHtml = getSanitizedRenderedHtml(preview);
             const renderedText = getRenderedPlainText(preview);
-
-            if (host.getMode() === MARKDOWN_MODE_EDIT) {
-                copied = await copyToClipboard({ text: markdownValue, html: renderedHtml, metadata });
+            const attachmentDataUrls = Object.values(attachments)
+                .map((value) => value?.dataUrl)
+                .filter((value) => typeof value === "string" && value.length > 0);
+            let plainTextPayload;
+            if (attachmentDataUrls.length > 0) {
+                plainTextPayload = attachmentDataUrls.join("\n");
             } else {
-                copied = await copyToClipboard({ text: renderedText, html: renderedHtml, metadata });
+                plainTextPayload = stripMarkdownImages(markdownWithAttachments || renderedText || markdownValue);
             }
+            const metadata = {
+                version: CLIPBOARD_METADATA_VERSION,
+                markdown: markdownValue,
+                markdownExpanded: markdownWithAttachments,
+                attachments
+            };
+
+            const copied = await copyToClipboard({ text: plainTextPayload, html: renderedHtml, metadata, attachments });
             if (!copied) throw new Error("Clipboard copy failed");
             showClipboardFeedback(actions, MESSAGE_NOTE_COPIED);
         } catch (error) {
@@ -111,14 +105,8 @@ export function renderCard(record, { notesContainer }) {
         }
     };
 
-    const btnToggleMode = button(ACTION_ICON_VIEW, () => handleToggleMode(), { extraClass: "action-button--icon" });
-    btnToggleMode.dataset.action = "toggle-mode";
-
     const btnCopy = button(ACTION_ICON_COPY, () => handleCopy(), { extraClass: "action-button--icon" });
     btnCopy.dataset.action = "copy-note";
-
-    const modeCopyGroup = createElement("div", "action-group action-group--row");
-    modeCopyGroup.append(btnToggleMode, btnCopy);
 
     const btnMergeDown = button("Merge ↓", () => mergeDown(card, notesContainer), { variant: "merge" });
     btnMergeDown.dataset.action = "merge-down";
@@ -139,7 +127,7 @@ export function renderCard(record, { notesContainer }) {
     const btnDelete = button(ACTION_LABEL_DELETE, () => deleteCard(card, notesContainer), { extraClass: "action-button--icon" });
     btnDelete.dataset.action = "delete";
 
-    actions.append(modeCopyGroup, btnMergeDown, btnMergeUp, arrowRow, btnDelete);
+    actions.append(btnCopy, btnMergeDown, btnMergeUp, arrowRow, btnDelete);
 
     // Chips + content
     const chips   = createElement("div", "meta-chips");
@@ -159,6 +147,8 @@ export function renderCard(record, { notesContainer }) {
     registerInitialAttachments(editor, initialAttachments);
     enableClipboardImagePaste(editor);
 
+    card.append(chips, preview, editor, actions);
+
     const editorHost = createMarkdownEditorHost({
         container: card,
         textarea: editor,
@@ -166,6 +156,7 @@ export function renderCard(record, { notesContainer }) {
         initialMode: MARKDOWN_MODE_VIEW,
         showToolbar: false
     });
+    editor.style.removeProperty("display");
     editorHostRef = editorHost;
     editorHosts.set(card, editorHost);
     card.__markdownHost = editorHost;
@@ -183,15 +174,9 @@ export function renderCard(record, { notesContainer }) {
     const updateModeControls = () => {
         const mode = editorHost.getMode();
         if (mode === MARKDOWN_MODE_EDIT) {
-            btnToggleMode.textContent = ACTION_ICON_VIEW;
-            btnToggleMode.title = "Switch to rendered view";
-            btnToggleMode.setAttribute("aria-label", "Switch to rendered view");
             btnCopy.title = "Copy Markdown";
             btnCopy.setAttribute("aria-label", "Copy Markdown");
         } else {
-            btnToggleMode.textContent = ACTION_ICON_EDIT;
-            btnToggleMode.title = "Switch to Markdown editor";
-            btnToggleMode.setAttribute("aria-label", "Switch to Markdown editor");
             btnCopy.title = "Copy Rendered HTML";
             btnCopy.setAttribute("aria-label", "Copy Rendered HTML");
         }
@@ -215,7 +200,6 @@ export function renderCard(record, { notesContainer }) {
     // Switch to in-place editing on click (without changing order)
     preview.addEventListener("mousedown", () => enableInPlaceEditing(card, notesContainer));
 
-    card.append(chips, preview, editor, actions);
     return card;
 }
 
@@ -380,6 +364,11 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
     });
 
     updateActionButtons(notesContainer);
+}
+
+function stripMarkdownImages(markdown) {
+    if (typeof markdown !== "string" || markdown.length === 0) return markdown || "";
+    return markdown.replace(/!\[[^\]]*\]\((data:[^)]+)\)/g, "$1");
 }
 
 async function finalizeCard(card, notesContainer, options = {}) {

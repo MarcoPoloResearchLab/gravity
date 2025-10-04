@@ -7,4 +7,5 @@ export const ERROR_IMPORT_READ_FAILED = "Unable to read the selected import file
 export const CLIPBOARD_MIME_NOTE = "application/x-gravity-note+json";
 export const CLIPBOARD_DATA_ATTRIBUTE = "data-gravity-note-payload";
 export const CLIPBOARD_METADATA_VERSION = 1;
+export const CLIPBOARD_METADATA_DATA_URL_PREFIX = `data:${CLIPBOARD_MIME_NOTE};base64,`;
 export const MESSAGE_NOTE_COPIED = "Copied to clipboard";

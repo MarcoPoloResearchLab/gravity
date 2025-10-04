@@ -1,4 +1,4 @@
-import { CLIPBOARD_MIME_NOTE, CLIPBOARD_DATA_ATTRIBUTE, CLIPBOARD_METADATA_VERSION } from "../constants.js";
+import { CLIPBOARD_MIME_NOTE, CLIPBOARD_DATA_ATTRIBUTE, CLIPBOARD_METADATA_VERSION, CLIPBOARD_METADATA_DATA_URL_PREFIX } from "../constants.js";
 
 const PASTED_IMAGE_ALT_TEXT_PREFIX = "Pasted image";
 const DOUBLE_LINE_BREAK = "\n\n";
@@ -221,8 +221,18 @@ function extractGravityClipboardPayload(clipboardData) {
 
     let raw = clipboardData.getData(CLIPBOARD_MIME_NOTE);
     if (typeof raw !== "string" || raw.trim().length === 0) {
+        const metadataDataUrl = clipboardData.getData("text/x-gravity-note");
+        raw = extractGravityPayloadFromDataUrl(metadataDataUrl);
+    }
+
+    if (typeof raw !== "string" || raw.trim().length === 0) {
         const html = clipboardData.getData("text/html");
         raw = extractGravityPayloadFromHtml(html);
+    }
+
+    if (typeof raw !== "string" || raw.trim().length === 0) {
+        const plain = clipboardData.getData("text/plain");
+        raw = extractGravityPayloadFromPlainText(plain);
     }
 
     if (typeof raw !== "string" || raw.trim().length === 0) {
@@ -258,12 +268,50 @@ function extractGravityPayloadFromHtml(html) {
     }
 }
 
+function extractGravityPayloadFromDataUrl(dataUrl) {
+    if (typeof dataUrl !== "string" || dataUrl.trim().length === 0) return "";
+    if (!dataUrl.startsWith(CLIPBOARD_METADATA_DATA_URL_PREFIX)) return "";
+    const encoded = dataUrl.slice(CLIPBOARD_METADATA_DATA_URL_PREFIX.length);
+    return decodeClipboardMetadata(encoded);
+}
+
+function extractGravityPayloadFromPlainText(plainText) {
+    if (typeof plainText !== "string" || plainText.trim().length === 0) return "";
+    const index = plainText.lastIndexOf(CLIPBOARD_METADATA_DATA_URL_PREFIX);
+    if (index === -1) return "";
+    const encodedSection = plainText.slice(index + CLIPBOARD_METADATA_DATA_URL_PREFIX.length);
+    const match = encodedSection.match(/^([A-Za-z0-9+/=]+)/);
+    if (!match) return "";
+    return decodeClipboardMetadata(match[1]);
+}
+
+function decodeClipboardMetadata(encoded) {
+    if (typeof encoded !== "string" || encoded.length === 0) return "";
+    try {
+        if (typeof atob === "function") {
+            return atob(encoded);
+        }
+        if (typeof Buffer !== "undefined") {
+            return Buffer.from(encoded, "base64").toString("utf8");
+        }
+        return "";
+    } catch (error) {
+        return "";
+    }
+}
+
 function applyGravityClipboardPayload(textarea, payload) {
     if (!textarea || !payload) return;
-    const markdown = typeof payload.markdown === "string" ? payload.markdown : "";
+    const sanitizedAttachments = sanitizeAttachmentDictionary(payload.attachments);
+    const hasAttachments = Object.keys(sanitizedAttachments).length > 0;
+    const placeholderMarkdown = typeof payload.markdown === "string" ? payload.markdown : "";
+    const expandedMarkdown = typeof payload.markdownExpanded === "string" ? payload.markdownExpanded : "";
+    const preferredMarkdown = hasAttachments
+        ? (placeholderMarkdown.includes("![[") ? placeholderMarkdown : expandedMarkdown)
+        : expandedMarkdown || placeholderMarkdown;
+    const markdown = preferredMarkdown || expandedMarkdown || placeholderMarkdown;
     if (!markdown) return;
 
-    const sanitizedAttachments = sanitizeAttachmentDictionary(payload.attachments);
     if (Object.keys(sanitizedAttachments).length > 0) {
         const existing = getAllAttachments(textarea);
         const merged = { ...existing, ...sanitizedAttachments };

@@ -15,9 +15,8 @@ ones.
   and entering edit mode.
 * **Note Reordering:** Move passive notes up or down relative to other passive notes using the `▲` (Up) and `▼` (Down)
   buttons. You cannot move a note above the currently active note.
-* **Markdown Toggle & Copy:** Each persisted note exposes a toggle in its action column to flip between Markdown editing
-  and rendered preview. The adjacent copy control mirrors that state—copying source when in Markdown mode and sanitized
-  HTML when in Rendered mode.
+* **Clipboard-Friendly Copy:** The copy control mirrors the current note state, returning Markdown or sanitized HTML and
+  preserving any pasted images via metadata so they can be restored on paste.
 * **Note Merging:**
     * Merge a passive note *down* into the note immediately below it using the `Merge ↓` button (available on all
       passive notes except the bottom one).

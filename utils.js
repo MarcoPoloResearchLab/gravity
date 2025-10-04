@@ -1,4 +1,6 @@
-import { CLIPBOARD_MIME_NOTE, CLIPBOARD_DATA_ATTRIBUTE } from "./constants.js";
+import { CLIPBOARD_MIME_NOTE, CLIPBOARD_DATA_ATTRIBUTE, CLIPBOARD_METADATA_DATA_URL_PREFIX } from "./constants.js";
+
+const PLACEHOLDER_PATTERN = /!\[\[([^\[\]]+)\]\]/g;
 
 export function nowIso() { return new Date().toISOString(); }
 
@@ -36,10 +38,11 @@ function appendMetadataToHtml(html, metadataJson) {
 }
 
 export async function copyToClipboard(content = {}) {
-    const { text = "", html = "", metadata = null } = content;
+    const { text = "", html = "", metadata = null, attachments = {} } = content;
     const safeText = typeof text === "string" ? text : "";
     const safeHtml = typeof html === "string" ? html : "";
     const hasHtml = safeHtml.trim().length > 0;
+    const normalizedAttachments = normalizeAttachments(attachments);
     let metadataJson = "";
 
     if (metadata && typeof metadata === "object") {
@@ -50,21 +53,28 @@ export async function copyToClipboard(content = {}) {
         }
     }
 
+    const metadataDataUrl = metadataJson ? encodeMetadataDataUrl(metadataJson) : "";
+    const textPayload = buildPlainTextPayload({ text: safeText, attachments: normalizedAttachments, metadataDataUrl });
     const htmlPayload = hasHtml ? appendMetadataToHtml(safeHtml, metadataJson) : safeHtml;
     const canUseClipboardItem = navigator?.clipboard?.write && typeof ClipboardItem !== "undefined";
+    const attachmentBlobs = createAttachmentBlobs(normalizedAttachments);
 
     if (canUseClipboardItem) {
         try {
-            const clipboardItemInput = {
-                "text/plain": new Blob([safeText], { type: "text/plain" })
+            const primaryItem = {
+                "text/plain": new Blob([textPayload], { type: "text/plain" })
             };
             if (hasHtml) {
-                clipboardItemInput["text/html"] = new Blob([htmlPayload], { type: "text/html" });
+                primaryItem["text/html"] = new Blob([htmlPayload], { type: "text/html" });
             }
             if (metadataJson) {
-                clipboardItemInput[CLIPBOARD_MIME_NOTE] = new Blob([metadataJson], { type: CLIPBOARD_MIME_NOTE });
+                primaryItem[CLIPBOARD_MIME_NOTE] = new Blob([metadataJson], { type: CLIPBOARD_MIME_NOTE });
             }
-            await navigator.clipboard.write([new ClipboardItem(clipboardItemInput)]);
+            const items = [new ClipboardItem(primaryItem)];
+            for (const attachment of attachmentBlobs) {
+                items.push(new ClipboardItem({ [attachment.type]: attachment.blob }));
+            }
+            await navigator.clipboard.write(items);
             return true;
         } catch (error) {
             // fall through to degraded options
@@ -73,7 +83,7 @@ export async function copyToClipboard(content = {}) {
 
     if (!hasHtml && navigator?.clipboard?.writeText) {
         try {
-            await navigator.clipboard.writeText(safeText);
+            await navigator.clipboard.writeText(textPayload);
             return true;
         } catch (error) {
             // fall through to execCommand fallback
@@ -95,10 +105,26 @@ export async function copyToClipboard(content = {}) {
         target.innerHTML = htmlPayload;
         target.setAttribute("contenteditable", "true");
     } else {
-        target.value = safeText;
+        target.value = textPayload;
         target.setAttribute("readonly", "true");
         target.style.fontSize = "12pt";
     }
+
+    const handleCopyEvent = (event) => {
+        if (!event?.clipboardData) return;
+        event.clipboardData.setData("text/plain", textPayload);
+        if (hasHtml) {
+            event.clipboardData.setData("text/html", htmlPayload);
+        }
+        if (metadataJson) {
+            event.clipboardData.setData(CLIPBOARD_MIME_NOTE, metadataJson);
+        }
+        if (metadataDataUrl) {
+            event.clipboardData.setData("text/x-gravity-note", metadataDataUrl);
+        }
+        event.preventDefault();
+    };
+    target.addEventListener("copy", handleCopyEvent);
 
     document.body.appendChild(target);
 
@@ -133,7 +159,116 @@ export async function copyToClipboard(content = {}) {
     }
 
     document.body.removeChild(target);
+    target.removeEventListener("copy", handleCopyEvent);
     return success;
+}
+
+function buildPlainTextPayload({ text, attachments, metadataDataUrl }) {
+    const segments = [];
+    const inline = inlineAttachmentsInText(text, attachments);
+    const inlineHasContent = inline.trim().length > 0;
+    if (inlineHasContent) {
+        segments.push(inline);
+    }
+
+    if (!inlineHasContent) {
+        const attachmentUrls = collectAttachmentDataUrls(attachments);
+        if (attachmentUrls.length > 0) {
+            segments.push(attachmentUrls.join("\n"));
+        }
+    }
+
+    if (!segments.length && typeof text === "string" && text.length > 0) {
+        segments.push(text);
+    }
+
+    if (metadataDataUrl) {
+        segments.push(metadataDataUrl);
+    }
+
+    return segments.join("\n\n");
+}
+
+function collectAttachmentDataUrls(attachments) {
+    if (!attachments || typeof attachments !== "object") return [];
+    const urls = [];
+    for (const value of Object.values(attachments)) {
+        if (!value || typeof value.dataUrl !== "string") continue;
+        urls.push(value.dataUrl);
+    }
+    return urls;
+}
+
+function normalizeAttachments(attachments) {
+    if (!attachments || typeof attachments !== "object") return {};
+    const normalized = {};
+    for (const [key, value] of Object.entries(attachments)) {
+        if (typeof key !== "string") continue;
+        if (!value || typeof value.dataUrl !== "string") continue;
+        normalized[key] = {
+            dataUrl: value.dataUrl,
+            altText: typeof value.altText === "string" ? value.altText : ""
+        };
+    }
+    return normalized;
+}
+
+function inlineAttachmentsInText(text, attachments) {
+    if (typeof text !== "string" || text.length === 0) return "";
+    if (!attachments || typeof attachments !== "object") return text;
+    return text.replace(PLACEHOLDER_PATTERN, (match, key) => {
+        const record = attachments[key];
+        if (!record || typeof record.dataUrl !== "string") return match;
+        return record.dataUrl;
+    });
+}
+
+function encodeMetadataDataUrl(metadataJson) {
+    if (typeof metadataJson !== "string" || metadataJson.length === 0) return "";
+    try {
+        const encoded = typeof btoa === "function"
+            ? btoa(metadataJson)
+            : (typeof Buffer !== "undefined" ? Buffer.from(metadataJson, "utf8").toString("base64") : "");
+        if (!encoded) return "";
+        return `${CLIPBOARD_METADATA_DATA_URL_PREFIX}${encoded}`;
+    } catch (error) {
+        return "";
+    }
+}
+
+function createAttachmentBlobs(attachments) {
+    if (!attachments || typeof attachments !== "object") return [];
+    const blobs = [];
+    for (const [key, value] of Object.entries(attachments)) {
+        if (!value || typeof value.dataUrl !== "string") continue;
+        const blob = dataUrlToBlob(value.dataUrl);
+        if (!blob) continue;
+        blobs.push({ name: key, type: blob.type || "application/octet-stream", blob });
+    }
+    return blobs;
+}
+
+function dataUrlToBlob(dataUrl) {
+    try {
+        const [header, data] = dataUrl.split(",");
+        if (!header || !data) return null;
+        const matches = header.match(/data:(.*?)(;base64)?$/);
+        const mime = matches && matches[1] ? matches[1] : "application/octet-stream";
+        const isBase64 = header.includes(";base64");
+        let byteString;
+        if (isBase64) {
+            byteString = atob(data);
+        } else {
+            byteString = decodeURIComponent(data);
+        }
+        const arrayBuffer = new Uint8Array(byteString.length);
+        for (let i = 0; i < byteString.length; i += 1) {
+            arrayBuffer[i] = byteString.charCodeAt(i);
+        }
+        return new Blob([arrayBuffer], { type: mime });
+    } catch (error) {
+        return null;
+    }
 }
 
 export function autoResize(textarea) {

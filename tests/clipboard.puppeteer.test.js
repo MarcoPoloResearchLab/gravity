@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { Buffer } from "node:buffer";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -9,7 +10,7 @@ try {
     puppeteerModule = null;
 }
 
-import { CLIPBOARD_MIME_NOTE, CLIPBOARD_METADATA_VERSION, MESSAGE_NOTE_COPIED } from "../constants.js";
+import { CLIPBOARD_MIME_NOTE, CLIPBOARD_METADATA_VERSION, CLIPBOARD_METADATA_DATA_URL_PREFIX, MESSAGE_NOTE_COPIED } from "../constants.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
@@ -113,7 +114,12 @@ test.describe("Clipboard integration", () => {
 
             const clipboardPayload = await page.evaluate(() => window.__clipboardWrites.at(-1));
             const [item] = clipboardPayload;
-            assert.equal(item["text/plain"], markdown);
+            const plain = item["text/plain"];
+            assert.ok(typeof plain === "string" && plain.includes(CLIPBOARD_METADATA_DATA_URL_PREFIX));
+            assert.equal(stripMetadataSentinel(plain), markdown);
+            const plainMetadata = readMetadataFromPlainText(plain);
+            assert.ok(plainMetadata);
+            assert.equal(plainMetadata.markdown, markdown);
         } finally {
             await page.close();
         }
@@ -139,16 +145,57 @@ test.describe("Clipboard integration", () => {
             await waitForCopyFeedback(page, "note-copy-metadata");
 
             const clipboardPayload = await page.evaluate(() => window.__clipboardWrites.at(-1));
-            assert.ok(Array.isArray(clipboardPayload) && clipboardPayload.length === 1, "expected single clipboard item");
+            const typeMap = collectClipboardTypeMap(clipboardPayload);
+            const plain = typeMap["text/plain"]?.[0] ?? "";
+            const stripped = stripMetadataSentinel(plain);
+            assert.ok(stripped.includes(SAMPLE_IMAGE_DATA_URL));
+            assert.ok(plain.includes(CLIPBOARD_METADATA_DATA_URL_PREFIX));
 
-            const [item] = clipboardPayload;
-            assert.equal(item["text/plain"], markdown);
-            assert.ok(item["text/html"].includes(SAMPLE_IMAGE_DATA_URL));
+            const imageValues = typeMap["image/png"] ?? [];
+            assert.ok(imageValues.includes(SAMPLE_IMAGE_DATA_URL));
 
-            const metadata = JSON.parse(item[CLIPBOARD_MIME_NOTE]);
+            const htmlSample = typeMap["text/html"]?.[0] ?? "";
+            assert.ok(htmlSample.includes(SAMPLE_IMAGE_DATA_URL));
+
+            const metadataRaw = typeMap[CLIPBOARD_MIME_NOTE]?.[0] ?? "";
+            const metadata = metadataRaw ? JSON.parse(metadataRaw) : null;
+            assert.ok(metadata);
             assert.equal(metadata.version, CLIPBOARD_METADATA_VERSION);
-            assert.equal(metadata.markdown, markdown);
+            assert.ok(typeof metadata.markdown === 'string');
+            assert.ok(metadata.markdown.includes('![[') || metadata.markdown.includes('data:image'));
+            assert.ok(typeof metadata.markdownExpanded === 'string');
+            assert.ok(metadata.markdownExpanded.includes('![Sample attachment]'));
             assert.deepStrictEqual(metadata.attachments, attachments);
+        } finally {
+            await page.close();
+        }
+    });
+
+    test("edit-mode copy plain text matches expanded markdown", async () => {
+        const page = await preparePage(browser);
+        try {
+            const markdown = "Header\n\n![[sample-image.png]]";
+            const attachments = {
+                "sample-image.png": { dataUrl: SAMPLE_IMAGE_DATA_URL, altText: "Sample attachment" }
+            };
+
+            await createCard(page, {
+                noteId: "note-copy-expanded-check",
+                markdownText: markdown,
+                attachments,
+                mode: "edit"
+            });
+
+            await page.click('[data-note-id="note-copy-expanded-check"] [data-action="copy-note"]');
+            await waitForClipboardWrite(page);
+            await waitForCopyFeedback(page, "note-copy-expanded-check");
+
+            const clipboardPayload = await page.evaluate(() => window.__clipboardWrites.at(-1));
+            const typeMap = collectClipboardTypeMap(clipboardPayload);
+            const stripped = stripMetadataSentinel(typeMap["text/plain"]?.[0] ?? "");
+            assert.ok(stripped.includes(SAMPLE_IMAGE_DATA_URL));
+            assert.ok((typeMap["text/plain"]?.[0] ?? "").includes(CLIPBOARD_METADATA_DATA_URL_PREFIX));
+            assert.equal(typeMap["image/png"]?.[0], SAMPLE_IMAGE_DATA_URL);
         } finally {
             await page.close();
         }
@@ -173,8 +220,10 @@ test.describe("Clipboard integration", () => {
             const clipboardPayload = await page.evaluate(() => window.__clipboardWrites.at(-1));
             const [item] = clipboardPayload;
             assert.ok(typeof item["text/plain"] === "string");
-            assert.ok(!item["text/plain"].includes("<"));
+            assert.ok(item["text/plain"].includes(CLIPBOARD_METADATA_DATA_URL_PREFIX));
+            assert.ok(!stripMetadataSentinel(item["text/plain"]).includes("<"));
             assert.ok(item["text/html"].includes("<strong>"));
+            assert.ok(!item["image/png"]);
         } finally {
             await page.close();
         }
@@ -198,8 +247,217 @@ test.describe("Clipboard integration", () => {
 
             const clipboardPayload = await page.evaluate(() => window.__clipboardWrites.at(-1));
             const [item] = clipboardPayload;
+            assert.ok(item["text/plain"].includes(SAMPLE_IMAGE_DATA_URL));
+            assert.ok(item["text/plain"].includes(CLIPBOARD_METADATA_DATA_URL_PREFIX));
             assert.ok(item["text/html"].includes("<img"));
             assert.ok(item["text/html"].includes(SAMPLE_IMAGE_DATA_URL));
+        } finally {
+            await page.close();
+        }
+    });
+
+    test("fallback markdown copy restores attachments on paste", async () => {
+        const page = await preparePage(browser);
+        try {
+            await setClipboardAsyncSupport(page, false);
+            const markdown = "Intro text\n\n![[sample-image.png]]";
+            const attachments = {
+                "sample-image.png": { dataUrl: SAMPLE_IMAGE_DATA_URL, altText: "Sample attachment" }
+            };
+
+            await createCard(page, {
+                noteId: "fallback-markdown-copy",
+                markdownText: markdown,
+                attachments,
+                mode: "edit"
+            });
+
+            let clipboardCount = await getClipboardWriteCount(page);
+            await page.click('[data-note-id="fallback-markdown-copy"] [data-action="copy-note"]');
+            await waitForClipboardWrite(page, clipboardCount);
+            await waitForCopyFeedback(page, "fallback-markdown-copy");
+
+            const entry = await page.evaluate(() => window.__clipboardWrites.at(-1)[0]);
+            assert.ok(entry["text/plain"].includes(CLIPBOARD_METADATA_DATA_URL_PREFIX));
+            assert.ok(stripMetadataSentinel(entry["text/plain"]).includes(SAMPLE_IMAGE_DATA_URL));
+            const metadata = readMetadataFromPlainText(entry["text/plain"]);
+            assert.ok(metadata);
+            assert.deepStrictEqual(metadata.attachments, attachments);
+
+            const result = await page.evaluate(async ({ payload }) => {
+                const textarea = document.querySelector('#top-editor .markdown-editor');
+                const preview = document.querySelector('#top-editor .markdown-content');
+                textarea.focus();
+                const transfer = new DataTransfer();
+                Object.entries(payload).forEach(([type, value]) => transfer.setData(type, value));
+                const pasteEvent = new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true });
+                textarea.dispatchEvent(pasteEvent);
+                const { collectReferencedAttachments } = await import('./ui/imagePaste.js');
+                return {
+                    value: textarea.value,
+                    attachments: collectReferencedAttachments(textarea),
+                    previewHtml: preview.innerHTML
+                };
+            }, { payload: entry });
+
+            assert.equal(result.value, markdown);
+            assert.deepStrictEqual(result.attachments, attachments);
+            assert.ok(result.previewHtml.includes(SAMPLE_IMAGE_DATA_URL));
+        } finally {
+            await setClipboardAsyncSupport(page, true);
+            await page.close();
+        }
+    });
+
+    test("fallback rendered copy restores attachments on paste", async () => {
+        const page = await preparePage(browser);
+        try {
+            await setClipboardAsyncSupport(page, false);
+            const markdown = "Here is an image placeholder ![[sample-image.png]]";
+            const attachments = {
+                "sample-image.png": { dataUrl: SAMPLE_IMAGE_DATA_URL, altText: "Sample attachment" }
+            };
+
+            await createCard(page, {
+                noteId: "fallback-rendered-copy",
+                markdownText: markdown,
+                attachments,
+                mode: "view"
+            });
+
+            let clipboardCount = await getClipboardWriteCount(page);
+            await page.click('[data-note-id="fallback-rendered-copy"] [data-action="copy-note"]');
+            await waitForClipboardWrite(page, clipboardCount);
+            await waitForCopyFeedback(page, "fallback-rendered-copy");
+
+            const entry = await page.evaluate(() => window.__clipboardWrites.at(-1)[0]);
+            assert.ok(entry["text/plain"].includes(SAMPLE_IMAGE_DATA_URL));
+            assert.ok(entry["text/plain"].includes(CLIPBOARD_METADATA_DATA_URL_PREFIX));
+
+            const result = await page.evaluate(async ({ payload }) => {
+                const textarea = document.querySelector('#top-editor .markdown-editor');
+                const preview = document.querySelector('#top-editor .markdown-content');
+                textarea.focus();
+                const transfer = new DataTransfer();
+                Object.entries(payload).forEach(([type, value]) => transfer.setData(type, value));
+                const pasteEvent = new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true });
+                textarea.dispatchEvent(pasteEvent);
+                const { collectReferencedAttachments } = await import('./ui/imagePaste.js');
+                return {
+                    value: textarea.value,
+                    attachments: collectReferencedAttachments(textarea),
+                    previewHtml: preview.innerHTML
+                };
+            }, { payload: entry });
+
+            assert.equal(result.value.includes('![[sample-image.png]]'), true);
+            assert.deepStrictEqual(result.attachments, attachments);
+            assert.ok(result.previewHtml.includes(SAMPLE_IMAGE_DATA_URL));
+        } finally {
+            await setClipboardAsyncSupport(page, true);
+            await page.close();
+        }
+    });
+
+    test("fallback copy handles multiple attachments", async () => {
+        const page = await preparePage(browser);
+        try {
+            await setClipboardAsyncSupport(page, false);
+            const markdown = "Gallery\n\n![[image-one.png]]\n\n![[image-two.png]]";
+            const attachments = {
+                "image-one.png": { dataUrl: SAMPLE_IMAGE_DATA_URL, altText: "First attachment" },
+                "image-two.png": { dataUrl: SAMPLE_IMAGE_DATA_URL, altText: "Second attachment" }
+            };
+
+            await createCard(page, {
+                noteId: "fallback-multi-copy",
+                markdownText: markdown,
+                attachments,
+                mode: "edit"
+            });
+
+            let clipboardCount = await getClipboardWriteCount(page);
+            await page.click('[data-note-id="fallback-multi-copy"] [data-action="copy-note"]');
+            await waitForClipboardWrite(page, clipboardCount);
+            await waitForCopyFeedback(page, "fallback-multi-copy");
+
+            const entry = await page.evaluate(() => window.__clipboardWrites.at(-1)[0]);
+            assert.ok(entry["text/plain"].includes(CLIPBOARD_METADATA_DATA_URL_PREFIX));
+            const stripped = stripMetadataSentinel(entry["text/plain"]);
+            const occurrences = stripped.match(new RegExp(SAMPLE_IMAGE_DATA_URL, 'g')) || [];
+            assert.equal(occurrences.length >= 2, true);
+            const metadata = readMetadataFromPlainText(entry["text/plain"]);
+            assert.ok(metadata);
+            assert.deepStrictEqual(metadata.attachments, attachments);
+
+            const result = await page.evaluate(async ({ payload }) => {
+                const textarea = document.querySelector('#top-editor .markdown-editor');
+                textarea.focus();
+                const transfer = new DataTransfer();
+                Object.entries(payload).forEach(([type, value]) => transfer.setData(type, value));
+                const pasteEvent = new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true });
+                textarea.dispatchEvent(pasteEvent);
+                const { collectReferencedAttachments } = await import('./ui/imagePaste.js');
+                return {
+                    value: textarea.value,
+                    attachments: collectReferencedAttachments(textarea)
+                };
+            }, { payload: entry });
+
+            assert.equal(result.value, markdown);
+            assert.deepStrictEqual(result.attachments, attachments);
+        } finally {
+            await setClipboardAsyncSupport(page, true);
+            await page.close();
+        }
+    });
+
+    test("rendered-mode copy + paste recreates attachments", async () => {
+        const page = await preparePage(browser);
+        try {
+            const markdown = "Here is an image placeholder ![[sample-image.png]]";
+            const attachments = {
+                "sample-image.png": { dataUrl: SAMPLE_IMAGE_DATA_URL, altText: "Sample attachment" }
+            };
+
+            await createCard(page, {
+                noteId: "copy-view-attachments",
+                markdownText: markdown,
+                attachments,
+                mode: "view"
+            });
+
+            await page.click('[data-note-id="copy-view-attachments"] [data-action="copy-note"]');
+            await waitForClipboardWrite(page);
+            await waitForCopyFeedback(page, "copy-view-attachments");
+
+            const clipboardPayload = await page.evaluate(() => window.__clipboardWrites.at(-1));
+            const typeMap = collectClipboardTypeMap(clipboardPayload);
+            assert.equal(typeMap["image/png"]?.[0], SAMPLE_IMAGE_DATA_URL);
+            const payload = firstValueClipboardPayload(clipboardPayload);
+
+            const result = await page.evaluate(async ({ payload }) => {
+                const textarea = document.querySelector('#top-editor .markdown-editor');
+                const preview = document.querySelector('#top-editor .markdown-content');
+
+                textarea.focus();
+                const transfer = new DataTransfer();
+                Object.entries(payload).forEach(([type, value]) => transfer.setData(type, value));
+                const pasteEvent = new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true });
+                textarea.dispatchEvent(pasteEvent);
+
+                const { collectReferencedAttachments } = await import('./ui/imagePaste.js');
+
+                return {
+                    value: textarea.value,
+                    attachments: collectReferencedAttachments(textarea),
+                    previewHtml: preview.innerHTML
+                };
+            }, { payload });
+
+            assert.equal(result.value.includes('![[sample-image.png]]'), true);
+            assert.deepStrictEqual(result.attachments, attachments);
+            assert.equal(result.previewHtml.includes(SAMPLE_IMAGE_DATA_URL), true);
         } finally {
             await page.close();
         }
@@ -321,7 +579,8 @@ test.describe("Clipboard integration", () => {
             await waitForClipboardWrite(page);
             await waitForCopyFeedback(page, "note-copy-paste");
 
-            const payload = await page.evaluate(() => window.__clipboardWrites.at(-1)[0]);
+            const clipboardPayload = await page.evaluate(() => window.__clipboardWrites.at(-1));
+            const payload = firstValueClipboardPayload(clipboardPayload);
 
             const result = await page.evaluate(async ({ payload }) => {
                 const textarea = document.querySelector('#top-editor .markdown-editor');
@@ -423,40 +682,92 @@ async function preparePage(browser) {
 
     await page.evaluateOnNewDocument(() => {
         window.__clipboardWrites = [];
+
+        const clipboardWrites = window.__clipboardWrites;
+
         class ClipboardItemStub {
             constructor(items) {
                 this.__items = items;
             }
         }
-        window.ClipboardItem = ClipboardItemStub;
+
+        async function normalizeClipboardItems(items) {
+            const normalized = [];
+            for (const item of items) {
+                const entry = {};
+                const sources = item.__items || {};
+                const types = Object.keys(sources);
+                for (const type of types) {
+                    const blob = sources[type];
+                    if (blob && type.startsWith('image/') && typeof blob.arrayBuffer === 'function') {
+                        const buffer = await blob.arrayBuffer();
+                        const base64 = arrayBufferToBase64(buffer);
+                        entry[type] = `data:${blob.type};base64,${base64}`;
+                    } else if (blob && typeof blob.text === 'function') {
+                        entry[type] = await blob.text();
+                    } else if (blob != null) {
+                        entry[type] = String(blob);
+                    }
+                }
+                normalized.push(entry);
+            }
+            return normalized;
+        }
+
+        const clipboardStub = {
+            write: async (items) => {
+                const normalized = await normalizeClipboardItems(items);
+                clipboardWrites.push(normalized);
+            },
+            writeText: async (text) => {
+                clipboardWrites.push([{ 'text/plain': text }]);
+            }
+        };
+
         Object.defineProperty(navigator, 'clipboard', {
             configurable: true,
-            value: {
-                write: async (items) => {
-                    const normalized = [];
-                    for (const item of items) {
-                        const entry = {};
-                        const sources = item.__items || {};
-                        const types = Object.keys(sources);
-                        for (const type of types) {
-                            const blob = sources[type];
-                            if (blob && typeof blob.text === 'function') {
-                                entry[type] = await blob.text();
-                            } else if (blob != null) {
-                                entry[type] = String(blob);
-                            }
-                        }
-                        normalized.push(entry);
-                    }
-                    window.__clipboardWrites.push(normalized);
-                },
-                writeText: async (text) => {
-                    window.__clipboardWrites.push([{ 'text/plain': text }]);
+            value: clipboardStub
+        });
+
+        window.__setClipboardAsyncSupport = (enabled) => {
+            if (enabled) {
+                clipboardStub.write = async (items) => {
+                    const normalized = await normalizeClipboardItems(items);
+                    clipboardWrites.push(normalized);
+                };
+                window.ClipboardItem = ClipboardItemStub;
+            } else {
+                clipboardStub.write = undefined;
+                window.ClipboardItem = undefined;
+            }
+        };
+
+        window.__setClipboardAsyncSupport(true);
+
+        document.addEventListener('copy', (event) => {
+            if (!event?.clipboardData) return;
+            const entry = {};
+            for (const type of event.clipboardData.types) {
+                try {
+                    entry[type] = event.clipboardData.getData(type);
+                } catch (error) {
+                    // Ignore read errors for unsupported types
                 }
+            }
+            if (Object.keys(entry).length > 0) {
+                clipboardWrites.push([entry]);
             }
         });
 
         window.localStorage.clear();
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            for (let i = 0; i < bytes.byteLength; i += 1) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return btoa(binary);
+        }
     });
 
     await page.goto(PAGE_URL, { waitUntil: "networkidle0" });
@@ -494,6 +805,12 @@ async function createCard(page, { noteId, markdownText, attachments, mode }) {
     } else {
         await focusCardEditorField(page, noteId);
     }
+}
+
+async function setClipboardAsyncSupport(page, enabled) {
+    await page.evaluate((flag) => {
+        window.__setClipboardAsyncSupport(Boolean(flag));
+    }, enabled);
 }
 
 async function getCardStates(page) {
@@ -568,7 +885,59 @@ async function waitForCopyFeedback(page, noteId) {
 
 async function assertCardIsView(page, noteId, context) {
     const states = await getCardStates(page);
-    const cardState = states.find((state) => state.noteId === noteId);
+   const cardState = states.find((state) => state.noteId === noteId);
     assert.ok(cardState, `Expected card ${noteId} to exist (${context})`);
     assert.equal(cardState.mode, 'view', `Expected ${noteId} to be in view mode (${context})`);
+}
+
+function stripMetadataSentinel(plainText) {
+    if (typeof plainText !== 'string') return '';
+    const index = plainText.lastIndexOf(CLIPBOARD_METADATA_DATA_URL_PREFIX);
+    if (index === -1) return plainText;
+    let before = plainText.slice(0, index);
+    if (before.endsWith('\n\n')) {
+        before = before.slice(0, -2);
+    } else if (before.endsWith('\n') || before.endsWith('\r')) {
+        before = before.slice(0, -1);
+    }
+    return before;
+}
+
+function readMetadataFromPlainText(plainText) {
+    if (typeof plainText !== 'string') return null;
+    const index = plainText.lastIndexOf(CLIPBOARD_METADATA_DATA_URL_PREFIX);
+    if (index === -1) return null;
+    const encodedSection = plainText.slice(index + CLIPBOARD_METADATA_DATA_URL_PREFIX.length);
+    const match = encodedSection.match(/^([A-Za-z0-9+/=]+)/);
+    if (!match) return null;
+    try {
+        const json = Buffer.from(match[1], 'base64').toString('utf8');
+        return JSON.parse(json);
+    } catch (error) {
+        return null;
+    }
+}
+
+function collectClipboardTypeMap(payload) {
+    const map = {};
+    if (!Array.isArray(payload)) return map;
+    for (const item of payload) {
+        if (!item || typeof item !== 'object') continue;
+        for (const [type, value] of Object.entries(item)) {
+            if (!map[type]) map[type] = [];
+            map[type].push(value);
+        }
+    }
+    return map;
+}
+
+function firstValueClipboardPayload(payload) {
+    const typeMap = collectClipboardTypeMap(payload);
+    const result = {};
+    for (const [type, values] of Object.entries(typeMap)) {
+        if (values.length > 0) {
+            result[type] = values[0];
+        }
+    }
+    return result;
 }
