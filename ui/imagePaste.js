@@ -1,3 +1,5 @@
+import { CLIPBOARD_MIME_NOTE, CLIPBOARD_DATA_ATTRIBUTE, CLIPBOARD_METADATA_VERSION } from "../constants.js";
+
 const PASTED_IMAGE_ALT_TEXT_PREFIX = "Pasted image";
 const DOUBLE_LINE_BREAK = "\n\n";
 const IMAGE_READ_ERROR_MESSAGE = "Failed to read pasted image";
@@ -14,6 +16,7 @@ export const DATA_URL_PREFIX = "data:";
  */
 
 const attachmentsByTextarea = new WeakMap();
+const pendingInsertions = new WeakMap();
 let placeholderSequence = 0;
 
 /**
@@ -40,31 +43,109 @@ function buildMarkdownPlaceholder(filename) {
 }
 
 /**
- * Insert Markdown text at the current caret location, ensuring blank lines around it.
- * @param {HTMLTextAreaElement} textarea
- * @param {string} insertionText
+ * Compute the Markdown insertion string and next selection position.
+ * @param {object} params
+ * @param {string} params.existingText
+ * @param {number} params.selectionStart
+ * @param {number} params.selectionEnd
+ * @param {string} params.insertionText
+ * @returns {{ nextText: string, caretIndex: number, insertedText: string }}
  */
-function insertMarkdownAtCaret(textarea, insertionText) {
-    const selectionStart = textarea.selectionStart ?? textarea.value.length;
-    const selectionEnd = textarea.selectionEnd ?? selectionStart;
+export function buildMarkdownInsertion({ existingText, selectionStart, selectionEnd, insertionText }) {
+    const safeExistingText = typeof existingText === "string" ? existingText : "";
+    const start = Math.max(0, Math.min(Number(selectionStart) || 0, safeExistingText.length));
+    const end = Math.max(start, Math.min(Number(selectionEnd) || start, safeExistingText.length));
 
-    const textBeforeSelection = textarea.value.slice(0, selectionStart);
-    const textAfterSelection = textarea.value.slice(selectionEnd);
+    const textBeforeSelection = safeExistingText.slice(0, start);
+    const textAfterSelection = safeExistingText.slice(end);
 
-    const needsPrefixBreak = textBeforeSelection.length > 0 && !textBeforeSelection.endsWith("\n") && !textBeforeSelection.endsWith(DOUBLE_LINE_BREAK);
+    const needsPrefixBreak = textBeforeSelection.length > 0
+        && !textBeforeSelection.endsWith("\n")
+        && !textBeforeSelection.endsWith(DOUBLE_LINE_BREAK);
     const prefixBreak = needsPrefixBreak ? DOUBLE_LINE_BREAK : "";
 
     let suffixBreak = DOUBLE_LINE_BREAK;
     if (textAfterSelection.startsWith(DOUBLE_LINE_BREAK)) suffixBreak = "";
     else if (textAfterSelection.startsWith("\n")) suffixBreak = "\n";
 
-    const finalInsertion = `${prefixBreak}${insertionText}${suffixBreak}`;
+    const insertedText = `${prefixBreak}${insertionText}${suffixBreak}`;
+    const nextText = `${textBeforeSelection}${insertedText}${textAfterSelection}`;
+    const caretIndex = textBeforeSelection.length + insertedText.length;
 
-    const nextValue = `${textBeforeSelection}${finalInsertion}${textAfterSelection}`;
-    textarea.value = nextValue;
+    return { nextText, caretIndex, insertedText };
+}
 
-    const caretPosition = textBeforeSelection.length + finalInsertion.length;
-    textarea.setSelectionRange(caretPosition, caretPosition);
+/**
+ * Insert Markdown text at the current caret location, ensuring blank lines around it.
+ * @param {HTMLTextAreaElement} textarea
+ * @param {string} insertionText
+ */
+function insertMarkdownAtCaret(textarea, insertionText) {
+    const { nextText, caretIndex } = buildMarkdownInsertion({
+        existingText: textarea.value,
+        selectionStart: textarea.selectionStart ?? textarea.value.length,
+        selectionEnd: textarea.selectionEnd ?? textarea.selectionStart ?? textarea.value.length,
+        insertionText
+    });
+    textarea.value = nextText;
+    textarea.setSelectionRange(caretIndex, caretIndex);
+}
+
+async function processAttachmentFiles(textarea, files) {
+    const map = getOrCreateAttachmentMap(textarea);
+    let selectionStart = textarea.selectionStart ?? textarea.value.length;
+    let selectionEnd = textarea.selectionEnd ?? selectionStart;
+    let currentText = textarea.value ?? "";
+    const inserted = [];
+
+    for (const file of files) {
+        try {
+            const dataUrl = await readFileAsDataUrl(file);
+            if (!dataUrl || !dataUrl.startsWith(DATA_URL_PREFIX)) continue;
+            const attachment = createAttachmentRecord(file, dataUrl);
+            map.set(attachment.filename, { dataUrl: attachment.dataUrl, altText: attachment.altText });
+            const markdown = buildMarkdownPlaceholder(attachment.filename);
+            const { nextText, caretIndex, insertedText } = buildMarkdownInsertion({
+                existingText: currentText,
+                selectionStart,
+                selectionEnd,
+                insertionText: markdown
+            });
+            currentText = nextText;
+            selectionStart = caretIndex;
+            selectionEnd = caretIndex;
+            inserted.push({ placeholder: markdown, filename: attachment.filename, altText: attachment.altText, insertedText });
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    textarea.value = currentText;
+    textarea.setSelectionRange(selectionStart, selectionEnd);
+
+    return { text: currentText, caretIndex: selectionStart, inserted };
+}
+
+/**
+ * Insert image files by creating attachment placeholders for the textarea.
+ * @param {HTMLTextAreaElement} textarea
+ * @param {File[]} files
+ * @returns {Promise<{ text: string, caretIndex: number, inserted: Array<{ placeholder: string, filename: string, altText: string }> }>}
+ */
+export async function insertAttachmentPlaceholders(textarea, files) {
+    if (!textarea || !Array.isArray(files) || files.length === 0) {
+        return { text: textarea?.value ?? "", caretIndex: textarea?.selectionEnd ?? 0, inserted: [] };
+    }
+
+    const pending = pendingInsertions.get(textarea) ?? Promise.resolve();
+    const run = () => processAttachmentFiles(textarea, files);
+    const next = pending.then(run);
+    pendingInsertions.set(textarea, next.finally(() => {
+        if (pendingInsertions.get(textarea) === next) {
+            pendingInsertions.delete(textarea);
+        }
+    }));
+    return next;
 }
 
 /**
@@ -73,23 +154,9 @@ function insertMarkdownAtCaret(textarea, insertionText) {
  * @param {File[]} files
  */
 async function handleClipboardImages(textarea, files) {
-    const attachmentMap = getOrCreateAttachmentMap(textarea);
-    for (const file of files) {
-        try {
-            const dataUrl = await readFileAsDataUrl(file);
-            if (!dataUrl || !dataUrl.startsWith(DATA_URL_PREFIX)) continue;
-            const attachment = createAttachmentRecord(file, dataUrl);
-            attachmentMap.set(attachment.filename, { dataUrl: attachment.dataUrl, altText: attachment.altText });
-            const markdown = buildMarkdownPlaceholder(attachment.filename);
-            insertMarkdownAtCaret(textarea, markdown);
-        } catch (error) {
-            console.error(error);
-        }
-    }
+    await insertAttachmentPlaceholders(textarea, files);
     textarea.dispatchEvent(new Event("input", { bubbles: true }));
 }
-
-const pendingInsertions = new WeakMap();
 
 export async function waitForPendingImagePastes(textarea) {
     if (!textarea) return;
@@ -112,7 +179,16 @@ export function enableClipboardImagePaste(textarea) {
     if (!textarea) return;
     textarea.addEventListener("paste", (event) => {
         const clipboardData = event.clipboardData;
-        if (!clipboardData || !clipboardData.items) return;
+        if (!clipboardData) return;
+
+        const gravityPayload = extractGravityClipboardPayload(clipboardData);
+        if (gravityPayload) {
+            event.preventDefault();
+            applyGravityClipboardPayload(textarea, gravityPayload);
+            return;
+        }
+
+        if (!clipboardData.items) return;
 
         const imageFiles = Array.from(clipboardData.items)
             .filter((item) => typeof item.type === "string" && item.type.startsWith("image/"))
@@ -126,14 +202,7 @@ export function enableClipboardImagePaste(textarea) {
         if (imageFiles.length === 0) return;
 
         event.preventDefault();
-        const run = handleClipboardImages(textarea, imageFiles);
-        const pending = pendingInsertions.get(textarea) ?? Promise.resolve();
-        const next = pending.then(() => run);
-        pendingInsertions.set(textarea, next.finally(() => {
-            if (pendingInsertions.get(textarea) === next) {
-                pendingInsertions.delete(textarea);
-            }
-        }));
+        handleClipboardImages(textarea, imageFiles);
     });
 }
 
@@ -145,6 +214,78 @@ function getOrCreateAttachmentMap(textarea) {
         attachmentsByTextarea.set(textarea, map);
     }
     return map;
+}
+
+function extractGravityClipboardPayload(clipboardData) {
+    if (!clipboardData) return null;
+
+    let raw = clipboardData.getData(CLIPBOARD_MIME_NOTE);
+    if (typeof raw !== "string" || raw.trim().length === 0) {
+        const html = clipboardData.getData("text/html");
+        raw = extractGravityPayloadFromHtml(html);
+    }
+
+    if (typeof raw !== "string" || raw.trim().length === 0) {
+        return null;
+    }
+
+    try {
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object") return null;
+        const markdown = typeof parsed.markdown === "string" ? parsed.markdown : "";
+        const version = Number(parsed.version ?? 1);
+        if (!markdown) return null;
+        if (Number.isFinite(version) && version > CLIPBOARD_METADATA_VERSION) return null;
+        return {
+            markdown,
+            attachments: typeof parsed.attachments === "object" && parsed.attachments ? parsed.attachments : {}
+        };
+    } catch (error) {
+        return null;
+    }
+}
+
+function extractGravityPayloadFromHtml(html) {
+    if (typeof html !== "string" || html.trim().length === 0) return "";
+    if (typeof DOMParser !== "function") return "";
+    try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, "text/html");
+        const marker = doc.querySelector(`[${CLIPBOARD_DATA_ATTRIBUTE}]`);
+        return marker?.textContent || "";
+    } catch (error) {
+        return "";
+    }
+}
+
+function applyGravityClipboardPayload(textarea, payload) {
+    if (!textarea || !payload) return;
+    const markdown = typeof payload.markdown === "string" ? payload.markdown : "";
+    if (!markdown) return;
+
+    const sanitizedAttachments = sanitizeAttachmentDictionary(payload.attachments);
+    if (Object.keys(sanitizedAttachments).length > 0) {
+        const existing = getAllAttachments(textarea);
+        const merged = { ...existing, ...sanitizedAttachments };
+        registerInitialAttachments(textarea, merged);
+    }
+
+    replaceSelectionWith(textarea, markdown);
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function replaceSelectionWith(textarea, insertionText) {
+    const safeText = typeof insertionText === "string" ? insertionText : "";
+    const value = typeof textarea.value === "string" ? textarea.value : "";
+    const start = textarea.selectionStart ?? value.length;
+    const end = textarea.selectionEnd ?? start;
+    const boundedStart = Math.max(0, Math.min(start, value.length));
+    const boundedEnd = Math.max(boundedStart, Math.min(end, value.length));
+    const before = value.slice(0, boundedStart);
+    const after = value.slice(boundedEnd);
+    textarea.value = `${before}${safeText}${after}`;
+    const nextCaret = boundedStart + safeText.length;
+    textarea.setSelectionRange(nextCaret, nextCaret);
 }
 
 function sanitizeFilenameComponent(component) {

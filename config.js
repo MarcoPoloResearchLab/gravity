@@ -4,5 +4,6 @@ export const appConfig = {
     classifyPath: "/v1/gravity/classify",
     classificationTimeoutMs: 5000,
     defaultPrivacy: "private",
-    storageKey: "gravityNotesData"          // single, current key
+    storageKey: "gravityNotesData",         // single, current key
+    useMarkdownEditor: true                 // feature flag for EasyMDE-based editor
 };

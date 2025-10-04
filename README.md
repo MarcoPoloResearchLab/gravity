@@ -15,6 +15,9 @@ ones.
   and entering edit mode.
 * **Note Reordering:** Move passive notes up or down relative to other passive notes using the `▲` (Up) and `▼` (Down)
   buttons. You cannot move a note above the currently active note.
+* **Markdown Toggle & Copy:** Each persisted note exposes a toggle in its action column to flip between Markdown editing
+  and rendered preview. The adjacent copy control mirrors that state—copying source when in Markdown mode and sanitized
+  HTML when in Rendered mode.
 * **Note Merging:**
     * Merge a passive note *down* into the note immediately below it using the `Merge ↓` button (available on all
       passive notes except the bottom one).
@@ -52,18 +55,37 @@ ones.
 
 ## Setup
 
-No installation is required. Simply open the HTML file in a modern web browser that supports the necessary JavaScript
-features.
+No installation is required to view the app—open `index.html` in any modern browser. For development and testing, install
+the Node tooling:
 
-### Local Enviornment
+```shell
+npm install
+```
+
+### Local Environment
 
 ```shell
 python3 -m http.server 8000
 ```
 
+## Testing
+
+- `npm test` runs the Node test suite, including the Puppeteer-based clipboard integration specs.
+- Run `npx puppeteer browsers install chrome` once to download the Chromium binary that Puppeteer drives in tests.
+- GitHub Actions executes the same test command on every push and pull request, ensuring clipboard behaviour stays
+  stable.
+
 ## Dependencies
 
-* **[marked.js](https://marked.js.org/):** Used for rendering Markdown to HTML. Included via CDN.
+* **marked.js** — rendered via `https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js`.
+* **DOMPurify** — sanitiser loaded from `https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js`.
+* **EasyMDE** — Markdown editor UI delivered through `https://cdn.jsdelivr.net/npm/easymde@2.19.1/dist/easymde.min.js` and its companion stylesheet.
+
+## Markdown Editor
+
+* Enable or disable the EasyMDE experience via the `appConfig.useMarkdownEditor` flag in `config.js` — set it to `false` to fall back to the legacy `<textarea>` editors.
+* Clipboard and drag-and-drop image handling remains routed through `insertAttachmentPlaceholders` in `ui/imagePaste.js`, ensuring all storage logic and attachment sanitisation are unchanged.
+* CDN assets for the editor live exclusively in `index.html`; no build tooling or bundlers are required.
 
 ## License
 

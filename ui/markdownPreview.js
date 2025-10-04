@@ -44,4 +44,17 @@ export function getSanitizedRenderedHtml(previewElement) {
     return previewElement.dataset?.[PREVIEW_RENDERED_HTML_DATASET_KEY] ?? EMPTY_MARKDOWN_FALLBACK;
 }
 
+/**
+ * Retrieve the plain text representation of the most recently rendered preview.
+ * @param {HTMLElement} previewElement
+ * @returns {string}
+ */
+export function getRenderedPlainText(previewElement) {
+    if (!(previewElement instanceof HTMLElement)) {
+        return EMPTY_MARKDOWN_FALLBACK;
+    }
+
+    return previewElement.textContent ?? EMPTY_MARKDOWN_FALLBACK;
+}
+
 export { PREVIEW_RENDERED_HTML_DATASET_KEY };

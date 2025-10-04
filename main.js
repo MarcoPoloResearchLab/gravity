@@ -4,7 +4,13 @@ import { initializeImportExport } from "./ui/importExport.js";
 import { GravityStore } from "./store.js";
 
 // Markdown options
-marked.setOptions({ gfm: true, breaks: true });
+marked.setOptions({
+    gfm: true,
+    breaks: false,
+    headerIds: true,
+    mangle: false,
+    smartLists: true
+});
 
 const notesContainer = document.getElementById("notes-container");
 const exportNotesButton = document.getElementById("export-notes-button");

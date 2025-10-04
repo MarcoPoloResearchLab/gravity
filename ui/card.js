@@ -1,7 +1,12 @@
-import { nowIso, createElement, autoResize } from "../utils.js";
+import { nowIso, createElement, autoResize, copyToClipboard } from "../utils.js";
+import { CLIPBOARD_METADATA_VERSION } from "../constants.js";
 import { GravityStore } from "../store.js";
 import { ClassifierClient } from "../classifier.js";
-import { renderSanitizedMarkdown } from "./markdownPreview.js";
+import {
+    renderSanitizedMarkdown,
+    getSanitizedRenderedHtml,
+    getRenderedPlainText
+} from "./markdownPreview.js";
 import {
     enableClipboardImagePaste,
     waitForPendingImagePastes,
@@ -10,20 +15,23 @@ import {
     collectReferencedAttachments,
     transformMarkdownWithAttachments
 } from "./imagePaste.js";
-import {
-    shouldNavigateToPreviousEditor,
-    shouldNavigateToNextEditor
-} from "./navigation.js";
+import { createMarkdownEditorHost, MARKDOWN_MODE_EDIT, MARKDOWN_MODE_VIEW } from "./markdownEditorHost.js";
 
 const DIRECTION_PREVIOUS = -1;
 const DIRECTION_NEXT = 1;
 const ACTION_LABEL_DELETE = "🗑️";
+const ACTION_ICON_VIEW = "👁️";
+const ACTION_ICON_EDIT = "✏️";
+const ACTION_ICON_COPY = "📋";
 
 const CARET_PLACEMENT_START = "start";
 const CARET_PLACEMENT_END = "end";
 
 let currentEditingCard = null;
 let mergeInProgress = false;
+const editorHosts = new WeakMap();
+const finalizeSuppression = new WeakMap();
+const suppressionState = new WeakMap();
 
 /** Public: render a persisted note card */
 export function renderCard(record, { notesContainer }) {
@@ -32,6 +40,83 @@ export function renderCard(record, { notesContainer }) {
 
     // Actions column
     const actions = createElement("div", "actions");
+    let editorHostRef = null;
+
+    const handleToggleMode = async () => {
+        const host = editorHostRef;
+        if (!host) return;
+        if (host.getMode() === MARKDOWN_MODE_EDIT) {
+            await finalizeCard(card, notesContainer);
+            host.setMode(MARKDOWN_MODE_VIEW);
+        } else {
+            enableInPlaceEditing(card, notesContainer, { bubblePreviousCardToTop: false });
+        }
+    };
+
+    const handleCopy = async () => {
+        const host = editorHostRef;
+        if (!host) return;
+        const suppressedCards = new Set();
+        const protectCard = (candidate) => {
+            if (!candidate) return;
+            const host = editorHosts.get(candidate);
+            const cardSuppression = suppressionState.get(candidate) || {}; // { mode, wasEditClass }
+            if (!cardSuppression.mode) {
+                cardSuppression.mode = host?.getMode() ?? null;
+                cardSuppression.wasEditing = candidate.classList.contains("editing-in-place");
+                suppressionState.set(candidate, cardSuppression);
+            }
+            suppressedCards.add(candidate);
+            suppressFinalize(candidate);
+        };
+
+        protectCard(card);
+        protectCard(currentEditingCard);
+        try {
+            const markdownValue = host.getValue();
+            const attachments = collectReferencedAttachments(editor);
+            const metadata = {
+                version: CLIPBOARD_METADATA_VERSION,
+                markdown: markdownValue
+            };
+            if (Object.keys(attachments).length > 0) {
+                metadata.attachments = attachments;
+            }
+
+            let copied = false;
+            const renderedHtml = getSanitizedRenderedHtml(preview);
+            const renderedText = getRenderedPlainText(preview);
+
+            if (host.getMode() === MARKDOWN_MODE_EDIT) {
+                copied = await copyToClipboard({ text: markdownValue, html: renderedHtml, metadata });
+            } else {
+                copied = await copyToClipboard({ text: renderedText, html: renderedHtml, metadata });
+            }
+            if (!copied) throw new Error("Clipboard copy failed");
+        } catch (error) {
+            console.error(error);
+        } finally {
+            suppressedCards.forEach((item) => {
+                restoreSuppressedState(item);
+                releaseFinalize(item);
+            });
+            requestAnimationFrame(() => {
+                if (host?.getMode() === MARKDOWN_MODE_EDIT) {
+                    host.focus();
+                }
+            });
+        }
+    };
+
+    const btnToggleMode = button(ACTION_ICON_VIEW, () => handleToggleMode(), { extraClass: "action-button--icon" });
+    btnToggleMode.dataset.action = "toggle-mode";
+
+    const btnCopy = button(ACTION_ICON_COPY, () => handleCopy(), { extraClass: "action-button--icon" });
+    btnCopy.dataset.action = "copy-note";
+
+    const modeCopyGroup = createElement("div", "action-group action-group--row");
+    modeCopyGroup.append(btnToggleMode, btnCopy);
+
     const btnMergeDown = button("Merge ↓", () => mergeDown(card, notesContainer), { variant: "merge" });
     btnMergeDown.dataset.action = "merge-down";
 
@@ -51,7 +136,7 @@ export function renderCard(record, { notesContainer }) {
     const btnDelete = button(ACTION_LABEL_DELETE, () => deleteCard(card, notesContainer), { extraClass: "action-button--icon" });
     btnDelete.dataset.action = "delete";
 
-    actions.append(btnMergeDown, btnMergeUp, arrowRow, btnDelete);
+    actions.append(modeCopyGroup, btnMergeDown, btnMergeUp, arrowRow, btnDelete);
 
     // Chips + content
     const chips   = createElement("div", "meta-chips");
@@ -71,40 +156,58 @@ export function renderCard(record, { notesContainer }) {
     registerInitialAttachments(editor, initialAttachments);
     enableClipboardImagePaste(editor);
 
-    // Live preview
-    editor.addEventListener("input", () => {
-        autoResize(editor);
+    const editorHost = createMarkdownEditorHost({
+        container: card,
+        textarea: editor,
+        previewElement: preview,
+        initialMode: MARKDOWN_MODE_EDIT,
+        showToolbar: false
+    });
+    editorHostRef = editorHost;
+    editorHosts.set(card, editorHost);
+    card.__markdownHost = editorHost;
+    card.dataset.initialValue = record.markdownText;
+
+    const refreshPreview = () => {
         const attachments = getAllAttachments(editor);
-        const markdownWithAttachments = transformMarkdownWithAttachments(editor.value, attachments);
+        const markdownWithAttachments = transformMarkdownWithAttachments(editorHost.getValue(), attachments);
         renderSanitizedMarkdown(preview, markdownWithAttachments);
+        if (!editorHost.isEnhanced()) {
+            autoResize(editor);
+        }
+    };
+
+    const updateModeControls = () => {
+        const mode = editorHost.getMode();
+        if (mode === MARKDOWN_MODE_EDIT) {
+            btnToggleMode.textContent = ACTION_ICON_VIEW;
+            btnToggleMode.title = "Switch to rendered view";
+            btnToggleMode.setAttribute("aria-label", "Switch to rendered view");
+            btnCopy.title = "Copy Markdown";
+            btnCopy.setAttribute("aria-label", "Copy Markdown");
+        } else {
+            btnToggleMode.textContent = ACTION_ICON_EDIT;
+            btnToggleMode.title = "Switch to Markdown editor";
+            btnToggleMode.setAttribute("aria-label", "Switch to Markdown editor");
+            btnCopy.title = "Copy Rendered HTML";
+            btnCopy.setAttribute("aria-label", "Copy Rendered HTML");
+        }
+    };
+
+    editorHost.on("change", refreshPreview);
+    editorHost.on("modechange", ({ mode }) => {
+        updateModeControls();
+        if (mode === MARKDOWN_MODE_VIEW) {
+            card.classList.remove("editing-in-place");
+        }
     });
+    editorHost.on("submit", () => finalizeCard(card, notesContainer));
+    editorHost.on("blur", () => finalizeCard(card, notesContainer));
+    editorHost.on("navigatePrevious", () => navigateToAdjacentCard(card, DIRECTION_PREVIOUS, notesContainer));
+    editorHost.on("navigateNext", () => navigateToAdjacentCard(card, DIRECTION_NEXT, notesContainer));
 
-    // Finalize on Enter (no Shift)
-    editor.addEventListener("keydown", (ev) => {
-        if (ev.key === "Enter" && !ev.shiftKey) {
-            ev.preventDefault();
-            finalizeCard(card, notesContainer);
-        }
-
-        if (shouldNavigateToPreviousEditor(ev, editor)) {
-            const navigated = navigateToAdjacentCard(card, DIRECTION_PREVIOUS, notesContainer);
-            if (navigated) {
-                ev.preventDefault();
-                return;
-            }
-        }
-
-        if (shouldNavigateToNextEditor(ev, editor)) {
-            const navigated = navigateToAdjacentCard(card, DIRECTION_NEXT, notesContainer);
-            if (navigated) {
-                ev.preventDefault();
-                return;
-            }
-        }
-    });
-
-    // Finalize on blur
-    editor.addEventListener("blur", () => finalizeCard(card, notesContainer));
+    refreshPreview();
+    updateModeControls();
 
     // Switch to in-place editing on click (without changing order)
     preview.addEventListener("mousedown", () => enableInPlaceEditing(card, notesContainer));
@@ -165,6 +268,38 @@ function button(label, handler, options = {}) {
 
 function show(el, yes) { if (el) el.style.display = yes ? "block" : "none"; }
 
+function suppressFinalize(card) {
+    if (!card) return;
+    const count = finalizeSuppression.get(card) || 0;
+    finalizeSuppression.set(card, count + 1);
+}
+
+function releaseFinalize(card) {
+    if (!card) return;
+    const count = finalizeSuppression.get(card) || 0;
+    if (count <= 1) finalizeSuppression.delete(card);
+    else finalizeSuppression.set(card, count - 1);
+}
+
+function isFinalizeSuppressed(card) {
+    if (!card) return false;
+    return (finalizeSuppression.get(card) || 0) > 0;
+}
+
+function restoreSuppressedState(card) {
+    const state = suppressionState.get(card);
+    if (!state) return;
+    suppressionState.delete(card);
+    const host = editorHosts.get(card);
+    if (!host) return;
+    if (state.mode) {
+        host.setMode(state.mode);
+    }
+    if (state.wasEditing) {
+        card.classList.add("editing-in-place");
+    }
+}
+
 function enableInPlaceEditing(card, notesContainer, options = {}) {
     const { bubblePreviousCardToTop = true } = options;
     if (currentEditingCard && currentEditingCard !== card && !mergeInProgress) {
@@ -178,21 +313,27 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
 
     const editor  = card.querySelector(".markdown-editor");
     const preview = card.querySelector(".markdown-content");
+    const editorHost = editorHosts.get(card);
 
     // Remember original text so we can detect "no changes"
-    card.dataset.initialValue = editor.value;
+    const initialValue = editorHost ? editorHost.getValue() : editor?.value ?? "";
+    card.dataset.initialValue = initialValue;
 
-    // Lock height to preview height to avoid jump on entry
-    const h = Math.max(preview.offsetHeight, 36);
-    editor.style.height = `${h}px`;
-    editor.style.minHeight = `${h}px`;
+    if (editorHost && !editorHost.isEnhanced() && editor) {
+        const h = Math.max(preview.offsetHeight, 36);
+        editor.style.height = `${h}px`;
+        editor.style.minHeight = `${h}px`;
+    }
 
     card.classList.add("editing-in-place");
+    editorHost?.setMode(MARKDOWN_MODE_EDIT);
 
     // Focus after paint; then release the height lock
     requestAnimationFrame(() => {
-        editor?.focus({ preventScroll: true });
-        setTimeout(() => { editor.style.minHeight = ""; }, 120);
+        editorHost?.focus();
+        if (editorHost && !editorHost.isEnhanced() && editor) {
+            setTimeout(() => { editor.style.minHeight = ""; }, 120);
+        }
     });
 
     updateActionButtons(notesContainer);
@@ -200,26 +341,34 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
 
 async function finalizeCard(card, notesContainer, options = {}) {
     const { bubbleToTop = true } = options;
-    if (!card || (currentEditingCard && currentEditingCard !== card) || mergeInProgress) return;
-    if (!card.classList.contains("editing-in-place")) return;
+    if (!card || mergeInProgress) return;
+    if (isFinalizeSuppressed(card)) return;
+
+    const editorHost = editorHosts.get(card);
+    const isEditMode = card.classList.contains("editing-in-place") || editorHost?.getMode() === MARKDOWN_MODE_EDIT;
+    if (!isEditMode) return;
 
     const editor  = card.querySelector(".markdown-editor");
     const preview = card.querySelector(".markdown-content");
-    await waitForPendingImagePastes(editor);
-    const text    = editor.value;
+    await (editorHost ? editorHost.waitForPendingImages() : waitForPendingImagePastes(editor));
+    const text    = editorHost ? editorHost.getValue() : editor.value;
     const trimmed = text.trim();
     const was     = card.dataset.initialValue ?? text;
     const changed = text !== was; // only reorder/persist if user actually changed something
     const attachments = collectReferencedAttachments(editor);
 
-    card.classList.remove("editing-in-place");
-    currentEditingCard = null;
-
+    if (card.classList.contains("editing-in-place")) {
+        card.classList.remove("editing-in-place");
+    }
+    if (currentEditingCard === card) {
+        currentEditingCard = null;
+    }
     // If cleared, delete the card entirely
     if (trimmed.length === 0) {
         const id = card.getAttribute("data-note-id");
         GravityStore.removeById(id);
         card.remove();
+        editorHosts.delete(card);
         GravityStore.syncFromDom(notesContainer);
         updateActionButtons(notesContainer);
         return;
@@ -228,6 +377,9 @@ async function finalizeCard(card, notesContainer, options = {}) {
     // Update preview (safe either way)
     const markdownWithAttachments = transformMarkdownWithAttachments(text, attachments);
     renderSanitizedMarkdown(preview, markdownWithAttachments);
+    if (!editorHost || !editorHost.isEnhanced()) {
+        autoResize(editor);
+    }
 
     if (!changed) {
         // Keep position; nothing else to do
@@ -248,6 +400,8 @@ async function finalizeCard(card, notesContainer, options = {}) {
         lastActivityIso: ts,
         attachments
     });
+
+    card.dataset.initialValue = text;
 
     if (bubbleToTop) {
         const first = notesContainer.firstElementChild;
@@ -302,11 +456,15 @@ function mergeDown(card, notesContainer) {
     const attachmentsBelow = getAllAttachments(editorBelow);
     const mergedAttachments = { ...attachmentsBelow, ...attachmentsHere };
 
-    editorBelow.value = merged;
+    editorHosts.get(card)?.setValue("");
+    const hostBelow = editorHosts.get(below);
+    hostBelow?.setValue(merged);
     registerInitialAttachments(editorBelow, mergedAttachments);
     const mergedMarkdown = transformMarkdownWithAttachments(merged, mergedAttachments);
     renderSanitizedMarkdown(previewBelow, mergedMarkdown);
-    autoResize(editorBelow);
+    if (!hostBelow || !hostBelow.isEnhanced()) {
+        autoResize(editorBelow);
+    }
 
     const idHere = card.getAttribute("data-note-id");
     GravityStore.removeById(idHere);
@@ -316,6 +474,7 @@ function mergeDown(card, notesContainer) {
         currentEditingCard = null;
     }
     card.remove();
+    editorHosts.delete(card);
 
     const idBelow = below.getAttribute("data-note-id");
     const ts = nowIso();
@@ -351,11 +510,15 @@ function mergeUp(card, notesContainer) {
     const attachmentsHere = getAllAttachments(editorHere);
     const mergedAttachments = { ...attachmentsAbove, ...attachmentsHere };
 
-    editorAbove.value = merged;
+    editorHosts.get(card)?.setValue("");
+    const hostAbove = editorHosts.get(above);
+    hostAbove?.setValue(merged);
     registerInitialAttachments(editorAbove, mergedAttachments);
     const mergedMarkdown = transformMarkdownWithAttachments(merged, mergedAttachments);
     renderSanitizedMarkdown(previewAbove, mergedMarkdown);
-    autoResize(editorAbove);
+    if (!hostAbove || !hostAbove.isEnhanced()) {
+        autoResize(editorAbove);
+    }
 
     const idHere = card.getAttribute("data-note-id");
     GravityStore.removeById(idHere);
@@ -365,6 +528,7 @@ function mergeUp(card, notesContainer) {
         currentEditingCard = null;
     }
     card.remove();
+    editorHosts.delete(card);
 
     const idAbove = above.getAttribute("data-note-id");
     const ts = nowIso();
@@ -412,31 +576,27 @@ export function focusCardEditor(card, notesContainer, options = {}) {
     enableInPlaceEditing(card, notesContainer, { bubblePreviousCardToTop });
 
     requestAnimationFrame(() => {
-        const targetEditor = card.querySelector(".markdown-editor");
-        if (!targetEditor) return;
-        const caretIndex = caretPlacement === CARET_PLACEMENT_END
-            ? targetEditor.value.length
-            : 0;
-        try {
-            targetEditor.setSelectionRange(caretIndex, caretIndex);
-        } catch {}
+        const host = editorHosts.get(card);
+        if (!host) return;
+        host.setMode(MARKDOWN_MODE_EDIT);
+        host.focus();
+        host.setCaretPosition(caretPlacement === CARET_PLACEMENT_END ? "end" : "start");
     });
 
     return true;
 }
 
 function focusTopEditorFromCard(card, notesContainer) {
-    const topEditor = document.querySelector("#top-editor .markdown-editor");
-    if (!(topEditor instanceof HTMLTextAreaElement)) return false;
+    const topWrapper = document.querySelector("#top-editor .markdown-block.top-editor");
+    const topHost = topWrapper?.__markdownHost;
+    if (!topHost) return false;
 
     finalizeCard(card, notesContainer, { bubbleToTop: false });
 
     requestAnimationFrame(() => {
-        topEditor.focus({ preventScroll: true });
-        try {
-            const caretIndex = topEditor.value.length;
-            topEditor.setSelectionRange(caretIndex, caretIndex);
-        } catch {}
+        topHost.setMode(MARKDOWN_MODE_EDIT);
+        topHost.focus();
+        topHost.setCaretPosition("end");
     });
 
     return true;

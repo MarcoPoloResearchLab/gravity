@@ -135,8 +135,17 @@ html, body {
 }
 
 /* Mode toggles */
-.edit-mode .markdown-content, .editing-in-place .markdown-content { display: none; }
-.edit-mode .markdown-editor,  .editing-in-place .markdown-editor  { display: block; }
+.edit-mode .markdown-content,
+.editing-in-place .markdown-content,
+.markdown-editor-host--edit .markdown-content { display: none; }
+.edit-mode .markdown-editor,
+.editing-in-place .markdown-editor,
+.markdown-editor-host--edit .markdown-editor { display: block; }
+
+.markdown-editor-host--view .markdown-editor,
+.markdown-editor-host--view .CodeMirror { display: none; }
+.markdown-editor-host--view .markdown-content { display: block; }
+.markdown-editor-host--edit .CodeMirror { display: block; }
 
 /* Actions column (cards only) */
 .actions { grid-column: 2; display: flex; flex-direction: column; gap: 0.35rem; }
@@ -157,10 +166,109 @@ html, body {
     align-items: center;
     justify-content: center;
 }
+.action-group--row .action-button--icon {
+    flex: 0 0 auto;
+}
 .markdown-block:hover .action-button,
 .markdown-block.edit-mode .action-button,
 .markdown-block.editing-in-place .action-button { opacity: 1; }
 .action-button:hover { color: #b4c8ff; border-color: #3a4b71; }
+
+.clipboard-feedback {
+    align-self: flex-start;
+    background: rgba(30, 81, 50, 0.9);
+    border: 1px solid #3b9a5f;
+    border-radius: 4px;
+    color: #9df6b9;
+    font-size: 0.72rem;
+    padding: 0.18rem 0.4rem;
+    opacity: 0;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    transform: translateY(-4px);
+    margin-top: -0.1rem;
+}
+
+.clipboard-feedback--visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Editor toolbar */
+.editor-mode-toolbar {
+    grid-column: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.35rem;
+}
+
+.editor-mode-toggle-group,
+.editor-mode-utility-group {
+    display: inline-flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+
+.editor-mode-utility-group { margin-left: auto; }
+
+.editor-button {
+    background: transparent;
+    border: 1px solid #28314a;
+    border-radius: 6px;
+    color: #9db7ff;
+    cursor: pointer;
+    font-size: 0.75rem;
+    padding: 0.2rem 0.6rem;
+    line-height: 1.2;
+    transition: border-color 0.12s ease, color 0.12s ease, background-color 0.12s ease;
+}
+
+.editor-button:hover {
+    border-color: #3a4b71;
+    color: #c4d4ff;
+}
+
+.editor-mode-toggle.is-active {
+    background: #1a2237;
+    border-color: #3a4b71;
+    color: #d6e2ff;
+}
+
+.markdown-editor-host--view .editor-mode-toggle[aria-pressed="true"] {
+    background: #121420;
+}
+
+.markdown-editor-host--edit .editor-mode-toggle[aria-pressed="true"] {
+    background: #1f2840;
+}
+
+/* EasyMDE skin tweaks */
+.CodeMirror {
+    background: #121420;
+    color: #e7e9ee;
+    border: 1px solid #20232b;
+    border-radius: 6px;
+    padding: 0.35rem 0.4rem;
+    line-height: 1.35;
+    min-height: 2.4rem;
+}
+
+.CodeMirror-cursor { border-left: 1px solid #e7e9ee; }
+
+.CodeMirror-lines {
+    padding: 0;
+}
+
+.CodeMirror pre {
+    padding: 0;
+    color: inherit;
+}
+
+.cm-header { color: #9db7ff; }
+.cm-strong { color: #f9d67a; }
+.cm-em { color: #f5a7ff; }
+.cm-link { color: #7ad4ff; }
+.cm-quote { color: #8adca1; }
 
 @media (max-width: 480px) {
     .markdown-block { grid-template-columns: 1fr 5.25rem; }
