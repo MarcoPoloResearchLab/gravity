@@ -2,8 +2,13 @@
 // @ts-check
 
 import { DATA_ATTRIBUTE_RENDERED_HTML } from "../constants.js";
+
 const INLINE_CODE_PATTERN = /`[^`]+`/;
 const FENCED_CODE_PATTERN = /(^|\n)\s*(```+|~~~+)/;
+const SANITIZE_CONFIG = Object.freeze({
+    ADD_TAGS: ["input"],
+    ADD_ATTR: ["type", "checked", "disabled", "aria-checked", "class"]
+});
 
 const PREVIEW_RENDERED_HTML_DATASET_KEY = DATA_ATTRIBUTE_RENDERED_HTML;
 const EMPTY_MARKDOWN_FALLBACK = "";
@@ -27,11 +32,12 @@ export function renderSanitizedMarkdown(previewElement, markdownSource) {
         ? marked.parse(safeMarkdownSource)
         : safeMarkdownSource;
     const sanitizedHtml = typeof DOMPurify !== "undefined" && typeof DOMPurify.sanitize === "function"
-        ? DOMPurify.sanitize(parsedHtml)
+        ? DOMPurify.sanitize(parsedHtml, SANITIZE_CONFIG)
         : parsedHtml;
 
     previewElement.innerHTML = sanitizedHtml;
     previewElement.dataset[PREVIEW_RENDERED_HTML_DATASET_KEY] = sanitizedHtml;
+    decorateTaskCheckboxes(previewElement);
     return sanitizedHtml;
 }
 
@@ -89,4 +95,29 @@ function hasAnyCode(source) {
         return false;
     }
     return INLINE_CODE_PATTERN.test(source) || FENCED_CODE_PATTERN.test(source);
+}
+
+function decorateTaskCheckboxes(previewElement) {
+    if (!(previewElement instanceof HTMLElement)) {
+        return;
+    }
+    const checkboxNodes = previewElement.querySelectorAll("input");
+    let taskIndex = 0;
+    checkboxNodes.forEach((node) => {
+        if (!(node instanceof HTMLInputElement)) {
+            node.remove();
+            return;
+        }
+        if ((node.getAttribute("type") || "").toLowerCase() !== "checkbox") {
+            node.remove();
+            return;
+        }
+        node.removeAttribute("disabled");
+        node.removeAttribute("name");
+        node.removeAttribute("value");
+        node.setAttribute("data-task-index", String(taskIndex));
+        node.classList.add("note-task-checkbox");
+        node.tabIndex = -1;
+        taskIndex += 1;
+    });
 }

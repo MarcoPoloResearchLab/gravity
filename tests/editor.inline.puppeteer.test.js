@@ -29,6 +29,8 @@ const TABLE_NOTE_ID = "inline-table-fixture";
 const TABLE_MARKDOWN = "| Col1 | Col2 |\n| --- | --- |\n| A | B |";
 const FENCE_NOTE_ID = "inline-fence-fixture";
 const FENCE_MARKDOWN = "```js";
+const TASK_NOTE_ID = "inline-task-fixture";
+const TASK_MARKDOWN = "- [ ] Pending task\n- [x] Completed task";
 const LONG_NOTE_ID = "inline-long-fixture";
 const LONG_NOTE_PARAGRAPH_COUNT = 18;
 const LONG_NOTE_MARKDOWN = Array.from({ length: LONG_NOTE_PARAGRAPH_COUNT }, (_, index) => `Paragraph ${index + 1} maintains scroll state.`).join("\n\n");
@@ -120,6 +122,54 @@ if (!puppeteerModule) {
                     (el) => el.textContent || ""
                 );
                 assert.ok(previewText.includes("Additional line one."));
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("checkbox toggles from preview persist to markdown", async () => {
+            const seededRecords = [buildNoteRecord({
+                noteId: TASK_NOTE_ID,
+                markdownText: TASK_MARKDOWN,
+                attachments: {}
+            })];
+
+            const page = await preparePage(browser, { records: seededRecords });
+            const cardSelector = `.markdown-block[data-note-id="${TASK_NOTE_ID}"]`;
+            const checkboxSelector = `${cardSelector} input[type="checkbox"][data-task-index="0"]`;
+
+            try {
+                await page.waitForSelector(cardSelector);
+                await page.waitForSelector(checkboxSelector);
+
+                await page.click(checkboxSelector);
+                await page.waitForFunction((selector) => {
+                    const textarea = document.querySelector(selector);
+                    return textarea instanceof HTMLTextAreaElement && textarea.value.includes("- [x] Pending task");
+                }, {}, `${cardSelector} .markdown-editor`);
+
+                let storedMarkdown = await page.evaluate(async (noteId) => {
+                    const { GravityStore } = await import("./js/core/store.js");
+                    const record = GravityStore.getById(noteId);
+                    return record ? record.markdownText : null;
+                }, TASK_NOTE_ID);
+                assert.ok(storedMarkdown);
+                assert.ok(storedMarkdown.includes("- [x] Pending task"));
+
+                await page.waitForSelector(checkboxSelector);
+                await page.click(checkboxSelector);
+                await page.waitForFunction((selector) => {
+                    const textarea = document.querySelector(selector);
+                    return textarea instanceof HTMLTextAreaElement && textarea.value.includes("- [ ] Pending task");
+                }, {}, `${cardSelector} .markdown-editor`);
+
+                storedMarkdown = await page.evaluate(async (noteId) => {
+                    const { GravityStore } = await import("./js/core/store.js");
+                    const record = GravityStore.getById(noteId);
+                    return record ? record.markdownText : null;
+                }, TASK_NOTE_ID);
+                assert.ok(storedMarkdown);
+                assert.ok(storedMarkdown.includes("- [ ] Pending task"));
             } finally {
                 await page.close();
             }

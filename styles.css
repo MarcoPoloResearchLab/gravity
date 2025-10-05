@@ -127,6 +127,43 @@ html, body {
     opacity: 1;
 }
 
+.note-preview.note-preview--expanded {
+    max-height: none;
+    overflow: visible;
+}
+
+.note-preview.note-preview--expanded::after {
+    opacity: 0;
+}
+
+.note-expand-toggle {
+    grid-column: 1;
+    align-self: center;
+    justify-self: center;
+    background: transparent;
+    border: none;
+    color: #7aa2ff;
+    cursor: pointer;
+    padding: 0.15rem 0.4rem;
+    font-size: 0.9rem;
+    line-height: 1;
+    transform: rotate(90deg);
+    transition: color 0.12s ease, transform 0.18s ease;
+}
+
+.note-expand-toggle:hover {
+    color: #b4c8ff;
+}
+
+.note-expand-toggle[aria-expanded="true"] {
+    transform: rotate(-90deg);
+}
+
+.note-task-checkbox {
+    margin-right: 0.4rem;
+    cursor: pointer;
+}
+
 /* PREVIEW (rendered markdown) */
 .markdown-content {
     white-space: normal;                /* let HTML decide layout */

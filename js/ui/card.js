@@ -5,6 +5,8 @@ import {
     ARIA_LABEL_COPY_MARKDOWN,
     ARIA_LABEL_COPY_RENDERED,
     BADGE_LABEL_CODE,
+    LABEL_COLLAPSE_NOTE,
+    LABEL_EXPAND_NOTE,
     CLIPBOARD_METADATA_VERSION,
     ERROR_CLIPBOARD_COPY_FAILED,
     ERROR_NOTES_CONTAINER_NOT_FOUND,
@@ -39,13 +41,12 @@ import { showSaveFeedback } from "./saveFeedback.js";
 
 const DIRECTION_PREVIOUS = -1;
 const DIRECTION_NEXT = 1;
-const INDICATOR_HIDE_THRESHOLD_PX = 6;
-
 const CARET_PLACEMENT_START = "start";
 const CARET_PLACEMENT_END = "end";
-
+const TASK_LINE_REGEX = /^(\s*(?:[-*+]|\d+[.)])\s+\[)( |x|X)(\])([^\n]*)$/;
 let currentEditingCard = null;
 let mergeInProgress = false;
+let expandedPreviewCard = null;
 const editorHosts = new WeakMap();
 const finalizeSuppression = new WeakMap();
 const suppressionState = new WeakMap();
@@ -162,11 +163,23 @@ export function renderCard(record, options = {}) {
     const preview = createElement("div", "markdown-content");
     previewWrapper.appendChild(preview);
 
+    const expandToggle = createElement("button", "note-expand-toggle", "»");
+    expandToggle.type = "button";
+    expandToggle.setAttribute("aria-expanded", "false");
+    expandToggle.setAttribute("aria-label", LABEL_EXPAND_NOTE);
+    expandToggle.hidden = true;
+    expandToggle.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const isExpanded = previewWrapper.classList.contains("note-preview--expanded");
+        setCardExpanded(card, isExpanded ? false : true);
+    });
+
     const initialAttachments = record.attachments || {};
     const initialPreviewMarkdown = transformMarkdownWithAttachments(record.markdownText, initialAttachments);
     const { previewMarkdown, meta } = buildDeterministicPreview(initialPreviewMarkdown);
     renderSanitizedMarkdown(preview, previewMarkdown);
-    scheduleOverflowCheck(previewWrapper, preview);
+    scheduleOverflowCheck(previewWrapper, preview, expandToggle);
     applyPreviewBadges(badges, meta);
 
     const editor  = createElement("textarea", "markdown-editor");
@@ -177,7 +190,7 @@ export function renderCard(record, options = {}) {
     registerInitialAttachments(editor, initialAttachments);
     enableClipboardImagePaste(editor);
 
-    card.append(chips, badges, previewWrapper, editor, actions);
+    card.append(chips, badges, previewWrapper, expandToggle, editor, actions);
 
     const handleCardInteraction = (event) => {
         const target = /** @type {HTMLElement} */ (event.target);
@@ -196,6 +209,7 @@ export function renderCard(record, options = {}) {
     };
 
     card.addEventListener("click", handleCardInteraction);
+    preview.addEventListener("click", handlePreviewInteraction);
 
     const editorHost = createMarkdownEditorHost({
         container: card,
@@ -216,7 +230,7 @@ export function renderCard(record, options = {}) {
         const { previewMarkdown: nextPreviewMarkdown, meta: nextMeta } = buildDeterministicPreview(markdownWithAttachments);
         renderSanitizedMarkdown(preview, nextPreviewMarkdown);
         applyPreviewBadges(badges, nextMeta);
-        scheduleOverflowCheck(previewWrapper, preview);
+        scheduleOverflowCheck(previewWrapper, preview, expandToggle);
         if (!editorHost.isEnhanced()) {
             autoResize(editor);
         }
@@ -249,6 +263,34 @@ export function renderCard(record, options = {}) {
     updateModeControls();
 
     return card;
+
+    function handlePreviewInteraction(event) {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement) || target.type !== "checkbox") {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const taskIndex = Number(target.dataset.taskIndex);
+        if (!Number.isInteger(taskIndex) || taskIndex < 0) {
+            return;
+        }
+
+        const host = editorHosts.get(card);
+        if (!host) return;
+
+        const currentMarkdown = host.getValue();
+        const nextMarkdown = toggleTaskAtIndex(currentMarkdown, taskIndex);
+        if (nextMarkdown === null) {
+            return;
+        }
+
+        host.setValue(nextMarkdown);
+        refreshPreview();
+        persistCardState(card, notesContainer, nextMarkdown);
+    }
 }
 
 /**
@@ -367,6 +409,120 @@ function showClipboardFeedback(container, message) {
     copyFeedbackTimers.set(feedback, timer);
 }
 
+function persistCardState(card, notesContainer, markdownText) {
+    if (!(card instanceof HTMLElement) || typeof markdownText !== "string") {
+        return;
+    }
+    const noteId = card.getAttribute("data-note-id");
+    if (!noteId) {
+        return;
+    }
+    const editor = /** @type {HTMLTextAreaElement|null} */ (card.querySelector(".markdown-editor"));
+    if (!(editor instanceof HTMLTextAreaElement)) {
+        return;
+    }
+
+    const timestamp = nowIso();
+    const records = GravityStore.loadAllNotes();
+    const existing = records.find((record) => record.noteId === noteId);
+    const attachments = collectReferencedAttachments(editor);
+
+    GravityStore.upsertNonEmpty({
+        noteId,
+        markdownText,
+        createdAtIso: existing?.createdAtIso ?? timestamp,
+        updatedAtIso: timestamp,
+        lastActivityIso: timestamp,
+        attachments
+    });
+
+    card.dataset.initialValue = markdownText;
+
+    if (notesContainer instanceof HTMLElement) {
+        const firstCard = notesContainer.firstElementChild;
+        if (firstCard && firstCard !== card) {
+            notesContainer.insertBefore(card, firstCard);
+        }
+        syncStoreFromDom(notesContainer);
+        updateActionButtons(notesContainer);
+    }
+
+    triggerClassificationForCard(noteId, markdownText, notesContainer);
+    showSaveFeedback();
+}
+
+function setCardExpanded(card, shouldExpand) {
+    if (!(card instanceof HTMLElement)) {
+        return;
+    }
+    const preview = /** @type {HTMLElement|null} */ (card.querySelector(".note-preview"));
+    const content = /** @type {HTMLElement|null} */ (card.querySelector(".note-preview .markdown-content"));
+    const toggle = /** @type {HTMLElement|null} */ (card.querySelector(".note-expand-toggle"));
+    if (!preview || !content) {
+        return;
+    }
+
+    if (shouldExpand) {
+        if (expandedPreviewCard && expandedPreviewCard !== card) {
+            setCardExpanded(expandedPreviewCard, false);
+        }
+        preview.classList.add("note-preview--expanded");
+        if (toggle) {
+            toggle.setAttribute("aria-expanded", "true");
+            toggle.setAttribute("aria-label", LABEL_COLLAPSE_NOTE);
+        }
+        expandedPreviewCard = card;
+    } else {
+        preview.classList.remove("note-preview--expanded");
+        if (toggle) {
+            toggle.setAttribute("aria-expanded", "false");
+            toggle.setAttribute("aria-label", LABEL_EXPAND_NOTE);
+        }
+        if (expandedPreviewCard === card) {
+            expandedPreviewCard = null;
+        }
+    }
+    scheduleOverflowCheck(preview, content, toggle);
+}
+
+function collapseExpandedPreview(card) {
+    if (!(card instanceof HTMLElement)) {
+        return;
+    }
+    setCardExpanded(card, false);
+}
+
+function toggleTaskAtIndex(markdown, targetIndex) {
+    if (typeof markdown !== "string") {
+        return null;
+    }
+    if (!Number.isInteger(targetIndex) || targetIndex < 0) {
+        return null;
+    }
+
+    const lines = markdown.split("\n");
+    let matchIndex = -1;
+    let mutated = false;
+    const nextLines = lines.map((line) => {
+        const match = line.match(TASK_LINE_REGEX);
+        if (!match) {
+            return line;
+        }
+        matchIndex += 1;
+        if (matchIndex !== targetIndex) {
+            return line;
+        }
+        mutated = true;
+        const nextState = match[2].toLowerCase() === "x" ? " " : "x";
+        return `${match[1]}${nextState}${match[3]}${match[4]}`;
+    });
+
+    if (!mutated) {
+        return null;
+    }
+    return nextLines.join("\n");
+}
+
 function enableInPlaceEditing(card, notesContainer, options = {}) {
     const {
         bubblePreviousCardToTop = true,
@@ -376,6 +532,10 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
     if (currentEditingCard && currentEditingCard !== card && !mergeInProgress) {
         finalizeCard(currentEditingCard, notesContainer, { bubbleToTop: bubblePreviousCardToTop });
     }
+    if (expandedPreviewCard && expandedPreviewCard !== card) {
+        collapseExpandedPreview(expandedPreviewCard);
+    }
+    collapseExpandedPreview(card);
     currentEditingCard = card;
 
     // Remove edit mode from others
@@ -454,6 +614,7 @@ async function finalizeCard(card, notesContainer, options = {}) {
     }
     // If cleared, delete the card entirely
     if (trimmed.length === 0) {
+        collapseExpandedPreview(card);
         const id = card.getAttribute("data-note-id");
         GravityStore.removeById(id);
         card.remove();
@@ -507,6 +668,7 @@ async function finalizeCard(card, notesContainer, options = {}) {
 
 function deleteCard(card, notesContainer) {
     if (!card) return;
+    collapseExpandedPreview(card);
     if (currentEditingCard === card) {
         currentEditingCard = null;
     }
@@ -533,6 +695,11 @@ function move(card, direction, notesContainer) {
 function mergeDown(card, notesContainer) {
     const below = card.nextElementSibling;
     if (!below) return;
+
+    collapseExpandedPreview(card);
+    if (below instanceof HTMLElement) {
+        collapseExpandedPreview(below);
+    }
 
     const editorHere  = card.querySelector(".markdown-editor");
     const editorBelow = below.querySelector(".markdown-editor");
@@ -591,6 +758,11 @@ function mergeUp(card, notesContainer) {
     const editorAbove  = above.querySelector(".markdown-editor");
     const editorHere   = card.querySelector(".markdown-editor");
     const previewAbove = above.querySelector(".markdown-content");
+
+    collapseExpandedPreview(card);
+    if (above instanceof HTMLElement) {
+        collapseExpandedPreview(above);
+    }
 
     const a = editorAbove.value.trim();
     const b = editorHere.value.trim();
@@ -782,13 +954,43 @@ function applyPreviewBadges(container, meta) {
     }
 }
 
-function scheduleOverflowCheck(wrapper, content) {
+function scheduleOverflowCheck(wrapper, content, toggle) {
     if (!(wrapper instanceof HTMLElement) || !(content instanceof HTMLElement)) {
+        if (toggle instanceof HTMLElement) {
+            toggle.hidden = true;
+        }
         return;
     }
     requestAnimationFrame(() => {
-        const overflowing = content.scrollHeight > wrapper.clientHeight + 1;
-        wrapper.classList.toggle("note-preview--overflow", overflowing);
+        const isExpanded = wrapper.classList.contains("note-preview--expanded");
+        const overflowing = isExpanded || content.scrollHeight > wrapper.clientHeight + 1;
+        wrapper.classList.toggle("note-preview--overflow", overflowing && !isExpanded);
+
+        if (toggle instanceof HTMLElement) {
+            toggle.hidden = !overflowing;
+            if (toggle.hidden) {
+                toggle.setAttribute("aria-expanded", "false");
+                toggle.setAttribute("aria-label", LABEL_EXPAND_NOTE);
+            } else if (isExpanded) {
+                toggle.setAttribute("aria-expanded", "true");
+                toggle.setAttribute("aria-label", LABEL_COLLAPSE_NOTE);
+            } else {
+                toggle.setAttribute("aria-expanded", "false");
+                toggle.setAttribute("aria-label", LABEL_EXPAND_NOTE);
+            }
+        }
+
+        if (!overflowing && isExpanded) {
+            wrapper.classList.remove("note-preview--expanded");
+            if (toggle instanceof HTMLElement) {
+                toggle.setAttribute("aria-expanded", "false");
+                toggle.setAttribute("aria-label", LABEL_EXPAND_NOTE);
+            }
+            const card = wrapper.closest(".markdown-block");
+            if (expandedPreviewCard === card) {
+                expandedPreviewCard = null;
+            }
+        }
     });
 }
 

@@ -17,6 +17,8 @@ export const ARIA_LABEL_NEW_NOTE = "New note";
 export const ARIA_LABEL_COPY_MARKDOWN = "Copy Markdown";
 export const ARIA_LABEL_COPY_RENDERED = "Copy Rendered HTML";
 export const BADGE_LABEL_CODE = "code";
+export const LABEL_EXPAND_NOTE = "Expand note";
+export const LABEL_COLLAPSE_NOTE = "Collapse note";
 
 export const MESSAGE_NOTE_SAVED = "Saved";
 

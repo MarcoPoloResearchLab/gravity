@@ -8,6 +8,8 @@ with bounded previews, and every note edits inline—no modal overlays or contex
 * **Bounded previews:** Each card renders the first two paragraphs (or ~450 characters), the first image as a cover
   thumbnail, and a six-line preview of the first code block. A fade mask signals truncated content.
 * **Code badge:** Notes that contain code display a `code` pill so technical snippets stand out at a glance.
+* **Interactive checklists:** Click rendered task checkboxes to flip their state without entering edit mode; updates
+  persist immediately and bubble that note to the top.
 * **Inline editor:** Click any card—or the blank capture slot at the top—to switch that note into Markdown mode in
   place. The textarea auto-grows with your prose, accepts `Cmd/Ctrl+Enter` or `Cmd/Ctrl+S` to commit, and supports
   `Tab`/`Shift+Tab` indentation for lists and code blocks.
@@ -31,7 +33,7 @@ with bounded previews, and every note edits inline—no modal overlays or contex
 4. **Edit existing notes:** Click anywhere in a rendered note to switch it into Markdown mode inline. The grid stays in
    place while you edit, then re-renders the preview once you finish.
 5. **Skim with previews:** Each card shows a deterministic snippet and fade mask; notes with code call it out with a
-   `code` badge. Scroll the main page instead of individual cards.
+   `code` badge, and overflowing notes expose a rotated double-chevron toggle to expand the full preview in place.
 6. **Organise:** Reorder, merge, or delete notes with the familiar toolbar actions along the right edge. The copy button
    still mirrors either Markdown or sanitized HTML (including attachment metadata) depending on the current mode.
 7. **Import / Export:** Use the header buttons to move notebooks between browsers. Imports skip records that match on
@@ -45,6 +47,8 @@ with bounded previews, and every note edits inline—no modal overlays or contex
   keeping the card height capped at roughly `18vh` when content overflows.
 - **Dynamic height:** Cards shrink to match their rendered content and grow only up to the shared `18vh` limit, so short
   notes stay compact while longer ones fade out.
+- **Expandable overflow:** Overflowing notes get a rotated `»` toggle at the bottom border—click to expand the rendered
+  preview downward, click again (or edit any note) to collapse.
 - **Code indicator:** A `code` badge appears when a note includes inline or fenced code so heavy snippets are easy to
   spot without opening the editor.
 - **Autosave:** Inline edits flush on blur or `Cmd/Ctrl+Enter` and surface a non-blocking “Saved” toast. Shortcuts still

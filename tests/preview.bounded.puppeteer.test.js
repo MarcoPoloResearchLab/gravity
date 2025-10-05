@@ -102,6 +102,17 @@ if (!puppeteerModule) {
                 const badgeTexts = await page.$$eval(`[data-note-id="${LONG_NOTE_ID}"] .note-badge`, (nodes) => nodes.map((node) => node.textContent?.trim() || ""));
                 assert.deepEqual(badgeTexts, ["code"], "only the code badge should remain for long notes");
 
+                const toggleSelector = `[data-note-id="${LONG_NOTE_ID}"] .note-expand-toggle`;
+                await page.waitForSelector(toggleSelector);
+                const toggleVisible = await page.$eval(toggleSelector, (button) => button instanceof HTMLElement && button.hidden === false);
+                assert.equal(toggleVisible, true, "expand toggle should appear for overflowing previews");
+
+                await page.click(toggleSelector);
+                await page.waitForFunction((selector) => {
+                    const node = document.querySelector(selector);
+                    return node?.classList.contains("note-preview--expanded") ?? false;
+                }, {}, previewSelector);
+
                 const imagePreviewHtml = await page.$eval(`[data-note-id="image-only"] .note-preview`, (element) => element.innerHTML);
                 assert.ok(/<img/i.test(imagePreviewHtml), "image-only note should render inline <img>");
 
@@ -135,6 +146,31 @@ if (!puppeteerModule) {
                         "trailing image should fall below the visible preview window"
                     );
                 }
+
+                const trailingToggleSelector = `[data-note-id="${TRAILING_IMAGE_NOTE_ID}"] .note-expand-toggle`;
+                await page.waitForSelector(trailingToggleSelector);
+                await page.click(trailingToggleSelector);
+                await page.waitForFunction((selector) => {
+                    const node = document.querySelector(selector);
+                    return node?.classList.contains("note-preview--expanded") ?? false;
+                }, {}, `[data-note-id="${TRAILING_IMAGE_NOTE_ID}"] .note-preview`);
+
+                const longExpanded = await page.$eval(previewSelector, (node) => node.classList.contains("note-preview--expanded"));
+                assert.equal(longExpanded, false, "expanding a different note collapses the first preview");
+
+                await page.click(`[data-note-id="${TRAILING_IMAGE_NOTE_ID}"] .note-preview`);
+                await page.waitForSelector(`[data-note-id="${TRAILING_IMAGE_NOTE_ID}"].editing-in-place`);
+
+                const trailingPreviewExpanded = await page.$eval(`[data-note-id="${TRAILING_IMAGE_NOTE_ID}"] .note-preview`, (node) => node.classList.contains("note-preview--expanded"));
+                assert.equal(trailingPreviewExpanded, false, "editing collapses expanded previews");
+
+                await page.keyboard.down("Control");
+                await page.keyboard.press("Enter");
+                await page.keyboard.up("Control");
+                await page.waitForFunction((selector) => {
+                    const card = document.querySelector(selector);
+                    return card && !card.classList.contains("editing-in-place");
+                }, {}, `[data-note-id="${TRAILING_IMAGE_NOTE_ID}"]`);
 
                 const blankHeight = await page.$eval("#top-editor .markdown-editor", (element) => element.getBoundingClientRect().height);
                 assert.ok(blankHeight < maxHeightPx * 0.25, "blank top editor should remain a single-line height");
