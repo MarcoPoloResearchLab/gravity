@@ -29,6 +29,9 @@ const TABLE_NOTE_ID = "inline-table-fixture";
 const TABLE_MARKDOWN = "| Col1 | Col2 |\n| --- | --- |\n| A | B |";
 const FENCE_NOTE_ID = "inline-fence-fixture";
 const FENCE_MARKDOWN = "```js";
+const LONG_NOTE_ID = "inline-long-fixture";
+const LONG_NOTE_PARAGRAPH_COUNT = 18;
+const LONG_NOTE_MARKDOWN = Array.from({ length: LONG_NOTE_PARAGRAPH_COUNT }, (_, index) => `Paragraph ${index + 1} maintains scroll state.`).join("\n\n");
 
 if (!puppeteerModule) {
     test("puppeteer unavailable", () => {
@@ -117,6 +120,59 @@ if (!puppeteerModule) {
                     (el) => el.textContent || ""
                 );
                 assert.ok(previewText.includes("Additional line one."));
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("clicking a long note reveals the full content and caret at end", async () => {
+            const seededRecords = [buildNoteRecord({
+                noteId: LONG_NOTE_ID,
+                markdownText: LONG_NOTE_MARKDOWN,
+                attachments: {}
+            })];
+
+            const page = await preparePage(browser, { records: seededRecords });
+            const cardSelector = `.markdown-block[data-note-id="${LONG_NOTE_ID}"]`;
+            const editorSelector = `${cardSelector} .markdown-editor`;
+
+            try {
+                await page.waitForSelector(cardSelector);
+                await page.click(`${cardSelector} .note-preview`);
+                await page.waitForSelector(`${cardSelector}.editing-in-place`);
+                await page.waitForSelector(editorSelector);
+
+                await page.waitForFunction((selector) => {
+                    const textarea = document.querySelector(selector);
+                    if (!(textarea instanceof HTMLTextAreaElement)) return false;
+                    const { selectionStart, selectionEnd, value } = textarea;
+                    if (typeof selectionStart !== "number" || typeof selectionEnd !== "number") return false;
+                    const valueLength = value.length;
+                    return selectionStart === valueLength && selectionEnd === valueLength;
+                }, {}, editorSelector);
+
+                const editorState = await page.$eval(editorSelector, (el) => ({
+                    clientHeight: el.clientHeight,
+                    scrollHeight: el.scrollHeight,
+                    selectionStart: el.selectionStart ?? 0,
+                    selectionEnd: el.selectionEnd ?? 0,
+                    valueLength: el.value.length
+                }));
+
+                assert.ok(
+                    editorState.scrollHeight <= editorState.clientHeight + 1,
+                    "Fallback textarea expands immediately to fit long notes"
+                );
+                assert.equal(
+                    editorState.selectionStart,
+                    editorState.valueLength,
+                    "Caret snaps to the end of the long note"
+                );
+                assert.equal(
+                    editorState.selectionEnd,
+                    editorState.valueLength,
+                    "Caret selection collapses at the note end"
+                );
             } finally {
                 await page.close();
             }

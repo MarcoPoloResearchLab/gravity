@@ -414,6 +414,7 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
     requestAnimationFrame(() => {
         editorHost?.focus();
         if (editorHost && !editorHost.isEnhanced() && editor) {
+            autoResize(editor);
             setTimeout(() => { editor.style.minHeight = ""; }, 120);
         }
     });

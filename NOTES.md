@@ -9,5 +9,3 @@ Fix bugs one by one. Write a nice comprehensive commit message AFTER EACH bug is
 Leave Bugfix section empty but dont delete the section itself.
 
 ## Bugfix
-
-
