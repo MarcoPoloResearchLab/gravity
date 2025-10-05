@@ -28,9 +28,13 @@ test.describe("Clipboard integration", () => {
     let browser;
 
     test.before(async () => {
+        const launchArgs = ["--allow-file-access-from-files"];
+        if (process.env.CI) {
+            launchArgs.push("--no-sandbox", "--disable-setuid-sandbox");
+        }
         browser = await puppeteerModule.launch({
             headless: "new",
-            args: ["--allow-file-access-from-files"]
+            args: launchArgs
         });
     });
 
