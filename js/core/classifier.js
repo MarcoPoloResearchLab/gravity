@@ -1,16 +1,33 @@
+/* global fetch */
+// @ts-check
+
 import { appConfig } from "./config.js";
-import { clampEnum, titleCase, toTagToken } from "./utils.js";
+import { clampEnum, titleCase, toTagToken } from "../utils/index.js";
+import {
+    CLASSIFIER_ALLOWED_HANDLES,
+    CLASSIFIER_CATEGORIES,
+    CLASSIFIER_KNOWN_AREAS,
+    CLASSIFIER_KNOWN_PROJECTS,
+    CLASSIFIER_PRIVACY,
+    CLASSIFIER_STATUSES
+} from "../constants.js";
 
 export const ClassifierClient = (() => {
+    /**
+     * Submit content to the remote classifier and fall back to conservative defaults on failure.
+     * @param {string} titleText
+     * @param {string} bodyText
+     * @returns {Promise<import("../types.d.js").NoteClassification>}
+     */
     async function classifyOrFallback(titleText, bodyText) {
         const requestBody = {
             now: new Date().toISOString(),
             timezone: appConfig.timezone,
             hints: {
                 suggested_category: null,
-                known_projects: ["Moving Maps", "Blanket"],
-                known_areas: ["Finance", "Infra", "Health", "Family Ops"],
-                allowed_handles: ["@self", "@alice", "@peter", "@nat"],
+                known_projects: Array.from(CLASSIFIER_KNOWN_PROJECTS),
+                known_areas: Array.from(CLASSIFIER_KNOWN_AREAS),
+                allowed_handles: Array.from(CLASSIFIER_ALLOWED_HANDLES),
                 default_privacy: appConfig.defaultPrivacy
             },
             title: titleText ?? "",
@@ -31,9 +48,9 @@ export const ClassifierClient = (() => {
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const json = await res.json();
 
-            const category = clampEnum(json.category, ["Projects","Areas","Knowledge","Journal","Content","People"], "Journal");
-            const status   = clampEnum(json.status,   ["idea","draft","final","published","blocked"], "idea");
-            const privacy  = clampEnum(json.privacy,  ["private","shareable","public"], appConfig.defaultPrivacy);
+            const category = clampEnum(json.category, CLASSIFIER_CATEGORIES, "Journal");
+            const status   = clampEnum(json.status, CLASSIFIER_STATUSES, "idea");
+            const privacy  = clampEnum(json.privacy, CLASSIFIER_PRIVACY, appConfig.defaultPrivacy);
             const occurredAt = (typeof json.occurred_at === "string") ? json.occurred_at : requestBody.now;
 
             return {
@@ -64,5 +81,5 @@ export const ClassifierClient = (() => {
         }
     }
 
-    return { classifyOrFallback };
+    return Object.freeze({ classifyOrFallback });
 })();

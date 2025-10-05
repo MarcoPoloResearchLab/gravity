@@ -1,15 +1,36 @@
-import { CLIPBOARD_MIME_NOTE, CLIPBOARD_DATA_ATTRIBUTE, CLIPBOARD_METADATA_DATA_URL_PREFIX } from "./constants.js";
+/* global ClipboardItem, atob */
+// @ts-check
+
+import {
+    CLIPBOARD_DATA_ATTRIBUTE,
+    CLIPBOARD_METADATA_DATA_URL_PREFIX,
+    CLIPBOARD_MIME_NOTE
+} from "../constants.js";
 
 const PLACEHOLDER_PATTERN = /!\[\[([^\[\]]+)\]\]/g;
 
-export function nowIso() { return new Date().toISOString(); }
+/**
+ * @returns {string}
+ */
+export function nowIso() {
+    return new Date().toISOString();
+}
 
+/**
+ * @returns {string}
+ */
 export function generateNoteId() {
     if (crypto?.randomUUID) return crypto.randomUUID();
     const randomSegment = Math.random().toString(36).slice(2, 10);
     return `n-${Date.now()}-${randomSegment}`;
 }
 
+/**
+ * @param {keyof HTMLElementTagNameMap} tag
+ * @param {string} [className]
+ * @param {string|null} [text]
+ * @returns {HTMLElement}
+ */
 export function createElement(tag, className, text) {
     const el = document.createElement(tag);
     if (className) el.className = className;
@@ -20,23 +41,9 @@ export function createElement(tag, className, text) {
 /**
  * Copy text, optional HTML, and optional metadata to the clipboard, using the async API
  * when available and falling back to execCommand for legacy browsers.
- * @param {{text?: string, html?: string, metadata?: any}} content
+ * @param {{ text?: string, html?: string, metadata?: any, attachments?: Record<string, import("../types.d.js").AttachmentRecord> }} content
  * @returns {Promise<boolean>} resolves true when the copy succeeded
  */
-function appendMetadataToHtml(html, metadataJson) {
-    if (!metadataJson) return html;
-    const container = document.createElement("div");
-    container.innerHTML = html;
-    const marker = document.createElement("span");
-    marker.setAttribute(CLIPBOARD_DATA_ATTRIBUTE, "1");
-    marker.style.display = "none";
-    marker.style.setProperty("display", "none", "important");
-    marker.style.setProperty("white-space", "pre", "important");
-    marker.textContent = metadataJson;
-    container.appendChild(marker);
-    return container.innerHTML;
-}
-
 export async function copyToClipboard(content = {}) {
     const { text = "", html = "", metadata = null, attachments = {} } = content;
     const safeText = typeof text === "string" ? text : "";
@@ -163,6 +170,69 @@ export async function copyToClipboard(content = {}) {
     return success;
 }
 
+/**
+ * @param {HTMLTextAreaElement} textarea
+ * @returns {void}
+ */
+export function autoResize(textarea) {
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight + 5}px`;
+}
+
+/**
+ * @template T
+ * @param {string} value
+ * @param {readonly T[]} allowed
+ * @param {T} fallback
+ * @returns {T}
+ */
+export function clampEnum(value, allowed, fallback) {
+    return (typeof value === "string" && allowed.includes(/** @type {T & string} */ (value))) ? /** @type {T} */ (value) : fallback;
+}
+
+/**
+ * @param {string} text
+ * @returns {string}
+ */
+export function titleCase(text) {
+    if (typeof text !== "string" || !text) return "";
+    return text.toLowerCase().split(" ").filter(Boolean)
+        .map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+}
+
+/**
+ * @param {string} text
+ * @returns {string}
+ */
+export function toTagToken(text) {
+    if (typeof text !== "string") return "";
+    return text.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/--+/g, "-").replace(/^-|-$/g, "");
+}
+
+/**
+ * @param {string} html
+ * @param {string} metadataJson
+ * @returns {string}
+ */
+function appendMetadataToHtml(html, metadataJson) {
+    if (!metadataJson) return html;
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    const marker = document.createElement("span");
+    marker.setAttribute(CLIPBOARD_DATA_ATTRIBUTE, "1");
+    marker.style.display = "none";
+    marker.style.setProperty("display", "none", "important");
+    marker.style.setProperty("white-space", "pre", "important");
+    marker.textContent = metadataJson;
+    container.appendChild(marker);
+    return container.innerHTML;
+}
+
+/**
+ * @param {{ text: string, attachments: Record<string, import("../types.d.js").AttachmentRecord>, metadataDataUrl: string }} params
+ * @returns {string}
+ */
 function buildPlainTextPayload({ text, attachments, metadataDataUrl }) {
     const segments = [];
     const inline = inlineAttachmentsInText(text, attachments);
@@ -189,6 +259,10 @@ function buildPlainTextPayload({ text, attachments, metadataDataUrl }) {
     return segments.join("\n\n");
 }
 
+/**
+ * @param {Record<string, import("../types.d.js").AttachmentRecord>} attachments
+ * @returns {string[]}
+ */
 function collectAttachmentDataUrls(attachments) {
     if (!attachments || typeof attachments !== "object") return [];
     const urls = [];
@@ -199,6 +273,10 @@ function collectAttachmentDataUrls(attachments) {
     return urls;
 }
 
+/**
+ * @param {Record<string, import("../types.d.js").AttachmentRecord>} attachments
+ * @returns {Record<string, import("../types.d.js").AttachmentRecord>}
+ */
 function normalizeAttachments(attachments) {
     if (!attachments || typeof attachments !== "object") return {};
     const normalized = {};
@@ -213,6 +291,11 @@ function normalizeAttachments(attachments) {
     return normalized;
 }
 
+/**
+ * @param {string} text
+ * @param {Record<string, import("../types.d.js").AttachmentRecord>} attachments
+ * @returns {string}
+ */
 function inlineAttachmentsInText(text, attachments) {
     if (typeof text !== "string" || text.length === 0) return "";
     if (!attachments || typeof attachments !== "object") return text;
@@ -223,6 +306,10 @@ function inlineAttachmentsInText(text, attachments) {
     });
 }
 
+/**
+ * @param {string} metadataJson
+ * @returns {string}
+ */
 function encodeMetadataDataUrl(metadataJson) {
     if (typeof metadataJson !== "string" || metadataJson.length === 0) return "";
     try {
@@ -236,6 +323,10 @@ function encodeMetadataDataUrl(metadataJson) {
     }
 }
 
+/**
+ * @param {Record<string, import("../types.d.js").AttachmentRecord>} attachments
+ * @returns {{ name: string, type: string, blob: Blob }[]}
+ */
 function createAttachmentBlobs(attachments) {
     if (!attachments || typeof attachments !== "object") return [];
     const blobs = [];
@@ -248,6 +339,10 @@ function createAttachmentBlobs(attachments) {
     return blobs;
 }
 
+/**
+ * @param {string} dataUrl
+ * @returns {Blob|null}
+ */
 function dataUrlToBlob(dataUrl) {
     try {
         const [header, data] = dataUrl.split(",");
@@ -269,25 +364,4 @@ function dataUrlToBlob(dataUrl) {
     } catch (error) {
         return null;
     }
-}
-
-export function autoResize(textarea) {
-    if (!textarea) return;
-    textarea.style.height = "auto";
-    textarea.style.height = `${textarea.scrollHeight + 5}px`;
-}
-
-export function clampEnum(value, allowed, fallback) {
-    return (typeof value === "string" && allowed.includes(value)) ? value : fallback;
-}
-
-export function titleCase(text) {
-    if (typeof text !== "string" || !text) return "";
-    return text.toLowerCase().split(" ").filter(Boolean)
-        .map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
-}
-
-export function toTagToken(text) {
-    if (typeof text !== "string") return "";
-    return text.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/--+/g, "-").replace(/^-|-$/g, "");
 }

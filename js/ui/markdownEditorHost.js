@@ -1,7 +1,9 @@
 // @ts-check
 
-import { appConfig } from "../config.js";
-import { createElement } from "../utils.js";
+import { appConfig } from "../core/config.js";
+import { createElement } from "../utils/index.js";
+import { LABEL_EDIT_MARKDOWN, LABEL_VIEW_RENDERED } from "../constants.js";
+import { logging } from "../utils/logging.js";
 import {
     insertAttachmentPlaceholders,
     waitForPendingImagePastes,
@@ -87,7 +89,7 @@ export function createMarkdownEditorHost(options) {
             try {
                 handler(detail);
             } catch (error) {
-                console.error(error);
+                logging.error(error);
             }
         }
     };
@@ -123,8 +125,8 @@ export function createMarkdownEditorHost(options) {
         const toggleGroup = createElement("div", "editor-mode-toggle-group");
         const utilityGroup = createElement("div", "editor-mode-utility-group");
 
-        editButton = createButton("Edit (Markdown)", () => setMode(MODE_EDIT));
-        viewButton = createButton("View (Rendered)", () => setMode(MODE_VIEW));
+        editButton = createButton(LABEL_EDIT_MARKDOWN, () => setMode(MODE_EDIT));
+        viewButton = createButton(LABEL_VIEW_RENDERED, () => setMode(MODE_VIEW));
         editButton.classList.add("editor-mode-toggle");
         viewButton.classList.add("editor-mode-toggle");
         editButton.setAttribute("type", "button");

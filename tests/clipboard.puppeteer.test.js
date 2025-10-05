@@ -10,7 +10,12 @@ try {
     puppeteerModule = null;
 }
 
-import { CLIPBOARD_MIME_NOTE, CLIPBOARD_METADATA_VERSION, CLIPBOARD_METADATA_DATA_URL_PREFIX, MESSAGE_NOTE_COPIED } from "../constants.js";
+import {
+    CLIPBOARD_MIME_NOTE,
+    CLIPBOARD_METADATA_VERSION,
+    CLIPBOARD_METADATA_DATA_URL_PREFIX,
+    MESSAGE_NOTE_COPIED
+} from "../js/constants.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
@@ -296,7 +301,7 @@ test.describe("Clipboard integration", () => {
                 Object.entries(payload).forEach(([type, value]) => transfer.setData(type, value));
                 const pasteEvent = new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true });
                 textarea.dispatchEvent(pasteEvent);
-                const { collectReferencedAttachments } = await import('./ui/imagePaste.js');
+                const { collectReferencedAttachments } = await import('./js/ui/imagePaste.js');
                 return {
                     value: textarea.value,
                     attachments: collectReferencedAttachments(textarea),
@@ -346,7 +351,7 @@ test.describe("Clipboard integration", () => {
                 Object.entries(payload).forEach(([type, value]) => transfer.setData(type, value));
                 const pasteEvent = new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true });
                 textarea.dispatchEvent(pasteEvent);
-                const { collectReferencedAttachments } = await import('./ui/imagePaste.js');
+                const { collectReferencedAttachments } = await import('./js/ui/imagePaste.js');
                 return {
                     value: textarea.value,
                     attachments: collectReferencedAttachments(textarea),
@@ -401,7 +406,7 @@ test.describe("Clipboard integration", () => {
                 Object.entries(payload).forEach(([type, value]) => transfer.setData(type, value));
                 const pasteEvent = new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true });
                 textarea.dispatchEvent(pasteEvent);
-                const { collectReferencedAttachments } = await import('./ui/imagePaste.js');
+                const { collectReferencedAttachments } = await import('./js/ui/imagePaste.js');
                 return {
                     value: textarea.value,
                     attachments: collectReferencedAttachments(textarea)
@@ -450,7 +455,7 @@ test.describe("Clipboard integration", () => {
                 const pasteEvent = new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true });
                 textarea.dispatchEvent(pasteEvent);
 
-                const { collectReferencedAttachments } = await import('./ui/imagePaste.js');
+                const { collectReferencedAttachments } = await import('./js/ui/imagePaste.js');
 
                 return {
                     value: textarea.value,
@@ -516,7 +521,7 @@ test.describe("Clipboard integration", () => {
 
                 await new Promise((resolve) => setTimeout(resolve, 0));
 
-                const { collectReferencedAttachments } = await import('./ui/imagePaste.js');
+                const { collectReferencedAttachments } = await import('./js/ui/imagePaste.js');
                 return {
                     value: host.getValue(),
                     attachments: collectReferencedAttachments(host.getTextarea()),
@@ -665,7 +670,7 @@ test.describe("Clipboard integration", () => {
                 const pasteEvent = new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true });
                 textarea.dispatchEvent(pasteEvent);
 
-                const { collectReferencedAttachments } = await import('./ui/imagePaste.js');
+                const { collectReferencedAttachments } = await import('./js/ui/imagePaste.js');
 
                 return {
                     value: textarea.value,
@@ -726,7 +731,7 @@ test.describe("Clipboard integration", () => {
                 const card = document.querySelector(`[data-note-id="${noteId}"]`);
                 const textarea = card?.querySelector?.('.markdown-editor');
                 if (!textarea) return;
-                const { insertAttachmentPlaceholders } = await import('./ui/imagePaste.js');
+                const { insertAttachmentPlaceholders } = await import('./js/ui/imagePaste.js');
                 const response = await fetch(dataUrl);
                 const blob = await response.blob();
                 const file = new File([blob], 'pasted-image.png', { type: 'image/png' });
@@ -858,7 +863,7 @@ async function preparePage(browser, options = {}) {
 async function createCard(page, { noteId, markdownText, attachments, mode }) {
     const timestamp = new Date().toISOString();
     await page.evaluate(async ({ record }) => {
-        const { renderCard, updateActionButtons } = await import('./ui/card.js');
+        const { renderCard, updateActionButtons } = await import('./js/ui/card.js');
         const container = document.getElementById('notes-container');
         const card = renderCard(record, { notesContainer: container });
         container.appendChild(card);

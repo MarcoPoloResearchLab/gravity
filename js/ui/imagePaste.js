@@ -1,19 +1,22 @@
-import { CLIPBOARD_MIME_NOTE, CLIPBOARD_DATA_ATTRIBUTE, CLIPBOARD_METADATA_VERSION, CLIPBOARD_METADATA_DATA_URL_PREFIX } from "../constants.js";
+// @ts-check
 
-const PASTED_IMAGE_ALT_TEXT_PREFIX = "Pasted image";
+import {
+    CLIPBOARD_MIME_NOTE,
+    CLIPBOARD_DATA_ATTRIBUTE,
+    CLIPBOARD_METADATA_VERSION,
+    CLIPBOARD_METADATA_DATA_URL_PREFIX,
+    DATA_URL_PREFIX,
+    ERROR_IMAGE_READ_FAILED,
+    PASTED_IMAGE_ALT_TEXT_PREFIX
+} from "../constants.js";
+import { sanitizeAttachmentDictionary, isAttachmentRecord } from "../core/attachments.js";
+import { logging } from "../utils/logging.js";
+
 const DOUBLE_LINE_BREAK = "\n\n";
-const IMAGE_READ_ERROR_MESSAGE = "Failed to read pasted image";
 const PLACEHOLDER_PREFIX = "pasted-image";
 const PLACEHOLDER_OPEN = "![[";
 const PLACEHOLDER_CLOSE = "]]";
 const PLACEHOLDER_REGEX = /!\[\[([^\[\]]+)\]\]/g;
-export const DATA_URL_PREFIX = "data:";
-
-/**
- * @typedef {Object} AttachmentRecord
- * @property {string} dataUrl
- * @property {string} altText
- */
 
 const attachmentsByTextarea = new WeakMap();
 const pendingInsertions = new WeakMap();
@@ -28,7 +31,7 @@ function readFileAsDataUrl(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.addEventListener("load", () => resolve(typeof reader.result === "string" ? reader.result : ""));
-        reader.addEventListener("error", () => reject(new Error(IMAGE_READ_ERROR_MESSAGE)));
+        reader.addEventListener("error", () => reject(new Error(ERROR_IMAGE_READ_FAILED)));
         reader.readAsDataURL(file);
     });
 }
@@ -116,7 +119,7 @@ async function processAttachmentFiles(textarea, files) {
             selectionEnd = caretIndex;
             inserted.push({ placeholder: markdown, filename: attachment.filename, altText: attachment.altText, insertedText });
         } catch (error) {
-            console.error(error);
+            logging.error(error);
         }
     }
 
@@ -361,10 +364,6 @@ function determineExtension(mimeType) {
     return match ? match[1].toLowerCase() : "";
 }
 
-function isAttachmentRecord(value) {
-    return value && typeof value.dataUrl === "string" && value.dataUrl.startsWith(DATA_URL_PREFIX);
-}
-
 export function registerInitialAttachments(textarea, attachments) {
     const map = getOrCreateAttachmentMap(textarea);
     map.clear();
@@ -409,20 +408,4 @@ export function transformMarkdownWithAttachments(markdown, attachments) {
         const altText = (record.altText || `${PASTED_IMAGE_ALT_TEXT_PREFIX} ${filename}`).replace(/[\[\]]/g, "");
         return `![${altText}](${record.dataUrl})`;
     });
-}
-
-export function sanitizeAttachmentDictionary(attachments) {
-    if (!attachments || typeof attachments !== "object") return {};
-    const result = {};
-    for (const [key, value] of Object.entries(attachments)) {
-        if (typeof key !== "string") continue;
-        if (!isAttachmentRecord(value)) continue;
-        const fallbackAlt = `${PASTED_IMAGE_ALT_TEXT_PREFIX} ${key}`;
-        const altTextSource = typeof value.altText === "string" && value.altText.trim().length > 0
-            ? value.altText
-            : fallbackAlt;
-        const altText = altTextSource.replace(/[\[\]]/g, "");
-        result[key] = { dataUrl: value.dataUrl, altText };
-    }
-    return result;
 }

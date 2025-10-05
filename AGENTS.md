@@ -33,7 +33,8 @@
 
 ### 5. Dependencies & Organization
 
-* CDN-hosted dependencies only; no npm, bundlers, or Node tooling.
+* CDN-hosted dependencies only; no bundlers or Node-based build tooling.
+* Node-powered test tooling is permitted; production code stays browser-native.
 * Layout:
 
   ```
@@ -52,7 +53,7 @@
 ### 6. Testing
 
 * Under no circumstances may Playwright be introduced into this codebase. Prefer Puppeteer for browser automation.
-* Tests run in browser by opening `index.html?test=true`.
+* Primary test harness runs under Node (`npm test`); browser runs remain optional for manual verification.
 * Table-driven cases, iterate array of inputs/outputs.
 * Black-box only: test public APIs and DOM, not internals.
 * Provide `assertEqual`, `assertDeepEqual`, `assertThrows` in `tests/assert.js`.
@@ -100,4 +101,5 @@
 
 * No eval, no inline event handlers.
 * CSP-friendly ES modules only.
+* Google Analytics snippet is a sanctioned exception and must remain in `<head>`.
 * External calls go through `core/gateway.js`, mockable in tests.
