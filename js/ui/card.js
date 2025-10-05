@@ -4,11 +4,15 @@ import { nowIso, createElement, autoResize, copyToClipboard } from "../utils/ind
 import {
     ARIA_LABEL_COPY_MARKDOWN,
     ARIA_LABEL_COPY_RENDERED,
+    BADGE_LABEL_CODE,
+    BADGE_LABEL_IMAGES,
+    BADGE_LABEL_WORDS,
     CLIPBOARD_METADATA_VERSION,
     ERROR_CLIPBOARD_COPY_FAILED,
     ERROR_NOTES_CONTAINER_NOT_FOUND,
     LABEL_COPY_NOTE,
     LABEL_DELETE_NOTE,
+    LABEL_EXPAND_NOTE,
     LABEL_MERGE_DOWN,
     LABEL_MERGE_UP,
     LABEL_MOVE_DOWN,
@@ -21,7 +25,8 @@ import { logging } from "../utils/logging.js";
 import {
     renderSanitizedMarkdown,
     getSanitizedRenderedHtml,
-    getRenderedPlainText
+    getRenderedPlainText,
+    buildDeterministicPreview
 } from "./markdownPreview.js";
 import {
     enableClipboardImagePaste,
@@ -59,12 +64,19 @@ export function renderCard(record, options = {}) {
     if (!notesContainer) {
         throw new Error(ERROR_NOTES_CONTAINER_NOT_FOUND);
     }
+    const { onOpenOverlay } = options;
     const card = createElement("div", "markdown-block");
     card.setAttribute("data-note-id", record.noteId);
 
     // Actions column
     const actions = createElement("div", "actions");
     let editorHostRef = null;
+
+    const handleOpenOverlay = (mode) => {
+        if (typeof onOpenOverlay === "function") {
+            onOpenOverlay(record.noteId, { mode });
+        }
+    };
 
     const handleCopy = async () => {
         const host = editorHostRef;
@@ -125,6 +137,9 @@ export function renderCard(record, options = {}) {
         }
     };
 
+    const btnExpand = button(LABEL_EXPAND_NOTE, () => handleOpenOverlay("view"));
+    btnExpand.dataset.action = "expand";
+
     const btnCopy = button(LABEL_COPY_NOTE, () => handleCopy(), { extraClass: "action-button--icon" });
     btnCopy.dataset.action = "copy-note";
 
@@ -147,17 +162,24 @@ export function renderCard(record, options = {}) {
     const btnDelete = button(LABEL_DELETE_NOTE, () => deleteCard(card, notesContainer), { extraClass: "action-button--icon" });
     btnDelete.dataset.action = "delete";
 
-    actions.append(btnCopy, btnMergeDown, btnMergeUp, arrowRow, btnDelete);
+    actions.append(btnExpand, btnCopy, btnMergeDown, btnMergeUp, arrowRow, btnDelete);
 
     // Chips + content
-    const chips   = createElement("div", "meta-chips");
+    const chips = createElement("div", "meta-chips");
     applyChips(chips, record.classification);
 
-    // IMPORTANT: div (not <p>) so tables/lists/headings render correctly
+    const badges = createElement("div", "note-badges");
+
+    const previewWrapper = createElement("div", "note-preview");
     const preview = createElement("div", "markdown-content");
+    previewWrapper.appendChild(preview);
+
     const initialAttachments = record.attachments || {};
     const initialPreviewMarkdown = transformMarkdownWithAttachments(record.markdownText, initialAttachments);
-    renderSanitizedMarkdown(preview, initialPreviewMarkdown);
+    const { previewMarkdown, meta } = buildDeterministicPreview(initialPreviewMarkdown);
+    renderSanitizedMarkdown(preview, previewMarkdown);
+    scheduleOverflowCheck(previewWrapper, preview);
+    applyPreviewBadges(badges, meta);
 
     const editor  = createElement("textarea", "markdown-editor");
     editor.value  = record.markdownText;
@@ -167,7 +189,17 @@ export function renderCard(record, options = {}) {
     registerInitialAttachments(editor, initialAttachments);
     enableClipboardImagePaste(editor);
 
-    card.append(chips, preview, editor, actions);
+    card.append(chips, badges, previewWrapper, editor, actions);
+
+    const handleCardInteraction = (event) => {
+        const target = /** @type {HTMLElement} */ (event.target);
+        if (target.closest && target.closest(".actions")) {
+            return;
+        }
+        handleOpenOverlay("edit");
+    };
+
+    card.addEventListener("click", handleCardInteraction);
 
     const editorHost = createMarkdownEditorHost({
         container: card,
@@ -185,7 +217,10 @@ export function renderCard(record, options = {}) {
     const refreshPreview = () => {
         const attachments = getAllAttachments(editor);
         const markdownWithAttachments = transformMarkdownWithAttachments(editorHost.getValue(), attachments);
-        renderSanitizedMarkdown(preview, markdownWithAttachments);
+        const { previewMarkdown: nextPreviewMarkdown, meta: nextMeta } = buildDeterministicPreview(markdownWithAttachments);
+        renderSanitizedMarkdown(preview, nextPreviewMarkdown);
+        applyPreviewBadges(badges, nextMeta);
+        scheduleOverflowCheck(previewWrapper, preview);
         if (!editorHost.isEnhanced()) {
             autoResize(editor);
         }
@@ -216,9 +251,6 @@ export function renderCard(record, options = {}) {
 
     refreshPreview();
     updateModeControls();
-
-    // Switch to in-place editing on click (without changing order)
-    preview.addEventListener("mousedown", () => enableInPlaceEditing(card, notesContainer));
 
     return card;
 }
@@ -713,4 +745,41 @@ function applyChips(container, classification) {
 
 function chip(text, className) {
     return createElement("span", className, text);
+}
+
+function applyPreviewBadges(container, meta) {
+    if (!(container instanceof HTMLElement)) {
+        return;
+    }
+    container.innerHTML = "";
+    if (!meta) {
+        return;
+    }
+
+    const wordBadge = createBadge(`${meta.wordCount} ${BADGE_LABEL_WORDS}`);
+    const imageBadge = createBadge(`${meta.imageCount} ${BADGE_LABEL_IMAGES}`);
+    container.append(wordBadge, imageBadge);
+
+    if (meta.hasCode) {
+        const codeBadge = createBadge(BADGE_LABEL_CODE, "note-badge--code");
+        container.appendChild(codeBadge);
+    }
+}
+
+function scheduleOverflowCheck(wrapper, content) {
+    if (!(wrapper instanceof HTMLElement) || !(content instanceof HTMLElement)) {
+        return;
+    }
+    requestAnimationFrame(() => {
+        const overflowing = content.scrollHeight > wrapper.clientHeight + 1;
+        wrapper.classList.toggle("note-preview--overflow", overflowing);
+    });
+}
+
+function createBadge(label, extraClass = "") {
+    const badge = createElement("span", "note-badge", label);
+    if (extraClass) {
+        badge.classList.add(extraClass);
+    }
+    return badge;
 }

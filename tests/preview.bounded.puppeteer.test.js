@@ -1,0 +1,229 @@
+import assert from "node:assert/strict";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import test from "node:test";
+
+import { appConfig } from "../js/core/config.js";
+
+let puppeteerModule;
+try {
+    ({ default: puppeteerModule } = await import("puppeteer"));
+} catch {
+    puppeteerModule = null;
+}
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = path.resolve(__dirname, "..");
+const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}?test=preview`;
+
+const SHORT_NOTE_ID = "preview-short-note";
+const MEDIUM_NOTE_ID = "preview-medium-note";
+const LONG_NOTE_ID = "preview-long-note";
+const TRAILING_IMAGE_NOTE_ID = "preview-trailing-img";
+
+const SAMPLE_IMAGE_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAHUlEQVQoU2NkYGD4z0AEYBxVSFcwCiA5GgYAAP//AwBh0CY6AAAAAElFTkSuQmCC";
+const LARGE_IMAGE_DATA_URL = "https://via.placeholder.com/200x120.png";
+
+if (!puppeteerModule) {
+    test("puppeteer unavailable", () => {
+        test.skip("Puppeteer is not installed in this environment.");
+    });
+} else {
+    test.describe("Bounded previews", () => {
+        /** @type {import('puppeteer').Browser} */
+        let browser;
+
+        test.before(async () => {
+            const launchArgs = ["--allow-file-access-from-files"];
+            if (process.env.CI) {
+                launchArgs.push("--no-sandbox", "--disable-setuid-sandbox");
+            }
+            browser = await puppeteerModule.launch({ headless: "new", args: launchArgs });
+        });
+
+        test.after(async () => {
+            if (browser) await browser.close();
+        });
+
+        test("preview clamps content with fade, continuation marker, and badges", async () => {
+            const longMarkdown = buildLongMarkdown();
+            const records = [
+                buildNoteRecord({
+                    noteId: SHORT_NOTE_ID,
+                    markdownText: buildShortMarkdown(),
+                    attachments: {}
+                }),
+                buildNoteRecord({
+                    noteId: MEDIUM_NOTE_ID,
+                    markdownText: buildMediumMarkdown(),
+                    attachments: {}
+                }),
+                buildNoteRecord({
+                    noteId: LONG_NOTE_ID,
+                    markdownText: longMarkdown,
+                    attachments: {}
+                }),
+                buildNoteRecord({
+                    noteId: TRAILING_IMAGE_NOTE_ID,
+                    markdownText: buildTrailingImageMarkdown(),
+                    attachments: {}
+                }),
+                buildNoteRecord({
+                    noteId: "image-only",
+                    markdownText: buildImageOnlyMarkdown(),
+                    attachments: {}
+                })
+            ];
+            const page = await preparePage(browser, { records });
+            try {
+                const previewSelector = `[data-note-id="${LONG_NOTE_ID}"] .note-preview`;
+                await page.waitForSelector(previewSelector);
+
+                const { overflowY, offsetHeight, scrollHeight } = await page.$eval(previewSelector, (element) => {
+                    const computed = window.getComputedStyle(element);
+                    return {
+                        overflowY: computed.overflowY,
+                        offsetHeight: element.offsetHeight,
+                        scrollHeight: element.scrollHeight
+                    };
+                });
+                assert.equal(overflowY, "hidden");
+                const viewportHeight = await page.evaluate(() => window.innerHeight);
+                const maxHeightPx = viewportHeight * 0.18;
+                assert.ok(offsetHeight <= maxHeightPx + 4, "preview should remain within 18vh");
+                assert.ok(scrollHeight > offsetHeight, "long note should overflow and rely on fade");
+
+                const continuationHtml = await page.$eval(previewSelector, (element) => element.innerHTML || "");
+                assert.ok(!/…continues/.test(continuationHtml), "preview should not inject continuation marker text");
+
+                const fadeBackground = await page.$eval(previewSelector, (element) => window.getComputedStyle(element, "::after").backgroundImage || "");
+                assert.ok(fadeBackground.includes("linear-gradient"));
+
+                const badgeTexts = await page.$$eval(`[data-note-id="${LONG_NOTE_ID}"] .note-badge`, (nodes) => nodes.map((node) => node.textContent?.trim() || ""));
+                assert.ok(badgeTexts.some((text) => /words$/.test(text) && parseInt(text, 10) > 20));
+                assert.ok(badgeTexts.some((text) => /images$/.test(text) && text.startsWith("2")));
+                assert.ok(badgeTexts.includes("code"));
+
+                const imagePreviewHtml = await page.$eval(`[data-note-id="image-only"] .note-preview`, (element) => element.innerHTML);
+                assert.ok(/<img/i.test(imagePreviewHtml), "image-only note should render inline <img>");
+
+                const imageMetrics = await page.$eval(`[data-note-id="image-only"] .note-preview img`, (img) => {
+                    const style = window.getComputedStyle(img);
+                    return {
+                        objectFit: style.objectFit,
+                        objectPosition: style.objectPosition,
+                        clientHeight: Math.round(img.clientHeight),
+                        naturalHeight: img.naturalHeight
+                    };
+                });
+                assert.equal(imageMetrics.objectFit, "contain", "preview images should preserve aspect ratio inside container");
+                assert.ok(/^(0%|left)/i.test(imageMetrics.objectPosition), "preview image should anchor to the top");
+                assert.notEqual(imageMetrics.clientHeight, 120, "preview image height must not be hard-coded to 120px");
+
+                const trailingImageMetrics = await page.$eval(`[data-note-id="${TRAILING_IMAGE_NOTE_ID}"] .note-preview`, (preview) => {
+                    const img = preview.querySelector("img");
+                    if (!img) return null;
+                    const previewRect = preview.getBoundingClientRect();
+                    const imgRect = img.getBoundingClientRect();
+                    return {
+                        imgRelativeTop: imgRect.top - previewRect.top,
+                        previewHeight: previewRect.height
+                    };
+                });
+                assert.ok(trailingImageMetrics, "trailing image should exist in rendered markup");
+                if (trailingImageMetrics) {
+                    assert.ok(
+                        trailingImageMetrics.imgRelativeTop >= trailingImageMetrics.previewHeight,
+                        "trailing image should fall below the visible preview window"
+                    );
+                }
+
+                const blankHeight = await page.$eval(".new-note-blank .note-preview", (element) => element.getBoundingClientRect().height);
+                assert.ok(blankHeight < maxHeightPx - 2, "blank note should collapse to a minimal height");
+
+                const shortMetrics = await measurePreview(page, SHORT_NOTE_ID);
+                assert.ok(Math.abs(shortMetrics.scrollHeight - shortMetrics.clientHeight) <= 2, "short note should not overflow");
+                assert.ok(shortMetrics.clientHeight < maxHeightPx * 0.6, "short note height should track its content");
+                const shortFade = await getPreviewFadeOpacity(page, SHORT_NOTE_ID);
+                assert.equal(shortFade, 0, "short note should not display fading overlay");
+
+                const mediumMetrics = await measurePreview(page, MEDIUM_NOTE_ID);
+                assert.ok(Math.abs(mediumMetrics.scrollHeight - mediumMetrics.clientHeight) <= 2, "medium note should render fully without overflow");
+                assert.ok(mediumMetrics.clientHeight <= maxHeightPx + 4, "medium note should respect max height");
+                assert.ok(mediumMetrics.clientHeight > shortMetrics.clientHeight, "medium note should be taller than short note");
+                const mediumFade = await getPreviewFadeOpacity(page, MEDIUM_NOTE_ID);
+                assert.equal(mediumFade, 0, "medium note that fits should not display fading overlay");
+
+                const longFade = await getPreviewFadeOpacity(page, LONG_NOTE_ID);
+                assert.ok(longFade > 0, "long note should display fading overlay");
+            } finally {
+                await page.close();
+            }
+        });
+    });
+}
+
+function buildNoteRecord({ noteId, markdownText, attachments }) {
+    const timestamp = new Date().toISOString();
+    return {
+        noteId,
+        markdownText,
+        attachments,
+        createdAtIso: timestamp,
+        updatedAtIso: timestamp,
+        lastActivityIso: timestamp
+    };
+}
+
+function buildLongMarkdown() {
+    const paragraph = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed posuere viverra urna, vitae convallis turpis.";
+    const repeated = Array.from({ length: 12 }, () => paragraph).join(" \n\n");
+    return `# Long Preview Fixture\n\n${repeated}\n\n![first-image](${SAMPLE_IMAGE_DATA_URL})\n\n![second-image](${SAMPLE_IMAGE_DATA_URL})\n\n\n\`\`\`js\nconsole.log('line1');\nconsole.log('line2');\nconsole.log('line3');\nconsole.log('line4');\nconsole.log('line5');\nconsole.log('line6');\nconsole.log('line7');\n\`\`\``;
+}
+
+function buildImageOnlyMarkdown() {
+    return `![solo-image](${LARGE_IMAGE_DATA_URL})`;
+}
+
+function buildTrailingImageMarkdown() {
+    const sentence = "Aliquam vitae enim ac arcu tristique sagittis.";
+    const block = Array.from({ length: 25 }, () => sentence).join(" ");
+    return `${block}\n\n![late-image](${SAMPLE_IMAGE_DATA_URL})`;
+}
+
+function buildShortMarkdown() {
+    return "Short note that fits easily.";
+}
+
+function buildMediumMarkdown() {
+    const sentence = "Praesent commodo cursus magna, vel scelerisque nisl consectetur et.";
+    return Array.from({ length: 3 }, () => sentence).join(" \n");
+}
+
+async function preparePage(browser, { records }) {
+    const page = await browser.newPage();
+    const serialized = JSON.stringify(Array.isArray(records) ? records : []);
+    await page.evaluateOnNewDocument((storageKey, payload) => {
+        window.localStorage.clear();
+        window.localStorage.setItem(storageKey, payload);
+    }, appConfig.storageKey, serialized);
+
+    await page.goto(PAGE_URL, { waitUntil: "networkidle0" });
+    await page.waitForSelector(`[data-note-id="${LONG_NOTE_ID}"]`);
+    return page;
+}
+
+async function measurePreview(page, noteId) {
+    return page.$eval(`[data-note-id="${noteId}"] .note-preview`, (element) => ({
+        clientHeight: element.getBoundingClientRect().height,
+        scrollHeight: element.scrollHeight
+    }));
+}
+
+async function getPreviewFadeOpacity(page, noteId) {
+    return page.$eval(`[data-note-id="${noteId}"] .note-preview`, (element) => {
+        const style = window.getComputedStyle(element, "::after");
+        const opacity = parseFloat(style.opacity || "0");
+        return Number.isFinite(opacity) ? opacity : 0;
+    });
+}

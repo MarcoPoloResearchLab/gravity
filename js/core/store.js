@@ -124,7 +124,18 @@ export const GravityStore = (() => {
         saveAllNotes(remainingRecords);
     }
 
-    return Object.freeze({ loadAllNotes, saveAllNotes, exportNotes, importNotes, upsertNonEmpty, removeById });
+    /**
+     * Retrieve a note record by identifier.
+     * @param {string} noteId
+     * @returns {NoteRecord|null}
+     */
+    function getById(noteId) {
+        if (!isNonBlankString(noteId)) return null;
+        const records = loadAllNotes();
+        return records.find(record => record.noteId === noteId) ?? null;
+    }
+
+    return Object.freeze({ loadAllNotes, saveAllNotes, exportNotes, importNotes, upsertNonEmpty, removeById, getById });
 })();
 
 /**
