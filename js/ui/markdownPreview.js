@@ -1,6 +1,9 @@
 /* global DOMPurify, marked */
+// @ts-check
 
-const PREVIEW_RENDERED_HTML_DATASET_KEY = "renderedHtml";
+import { DATA_ATTRIBUTE_RENDERED_HTML } from "../constants.js";
+
+const PREVIEW_RENDERED_HTML_DATASET_KEY = DATA_ATTRIBUTE_RENDERED_HTML;
 const EMPTY_MARKDOWN_FALLBACK = "";
 
 /**

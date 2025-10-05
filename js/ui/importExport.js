@@ -1,5 +1,13 @@
-import { LABEL_EXPORT_NOTES, LABEL_IMPORT_NOTES, FILENAME_EXPORT_NOTES_JSON, ACCEPT_IMPORT_NOTES_JSON, ERROR_IMPORT_READ_FAILED } from "../constants.js";
-import { GravityStore } from "../store.js";
+// @ts-check
+
+import {
+    LABEL_EXPORT_NOTES,
+    LABEL_IMPORT_NOTES,
+    FILENAME_EXPORT_NOTES_JSON,
+    ACCEPT_IMPORT_NOTES_JSON,
+    ERROR_IMPORT_READ_FAILED
+} from "../constants.js";
+import { GravityStore } from "../core/store.js";
 
 const JSON_MIME_TYPE = ACCEPT_IMPORT_NOTES_JSON;
 
@@ -9,7 +17,7 @@ const JSON_MIME_TYPE = ACCEPT_IMPORT_NOTES_JSON;
  *   exportButton: HTMLButtonElement | null,
  *   importButton: HTMLButtonElement | null,
  *   fileInput: HTMLInputElement | null,
- *   onRecordsImported: (records: import("../store.js").NoteRecord[]) => void
+ *   onRecordsImported: (records: import("../core/store.js").NoteRecord[]) => void
  * }} options
  */
 export function initializeImportExport(options) {

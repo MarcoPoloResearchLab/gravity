@@ -1,5 +1,12 @@
-import { nowIso, generateNoteId, createElement, autoResize } from "../utils.js";
-import { GravityStore } from "../store.js";
+// @ts-check
+
+import { nowIso, generateNoteId, createElement, autoResize } from "../utils/index.js";
+import { GravityStore } from "../core/store.js";
+import {
+    ARIA_LABEL_NEW_NOTE,
+    ERROR_NOTES_CONTAINER_NOT_FOUND,
+    ERROR_TOP_EDITOR_NOT_FOUND
+} from "../constants.js";
 import { triggerClassificationForCard, focusCardEditor } from "./card.js";
 import { renderSanitizedMarkdown } from "./markdownPreview.js";
 import {
@@ -15,9 +22,17 @@ import { createMarkdownEditorHost, MARKDOWN_MODE_EDIT } from "./markdownEditorHo
 /**
  * Mount the always-empty top editor. It never persists empties; on finalize
  * it creates a record and passes it to onCreateRecord so a card can be inserted.
+ * @param {{ notesContainer: HTMLElement, onCreateRecord?: (record: import("../types.d.js").NoteRecord) => void }} params
+ * @returns {void}
  */
 export function mountTopEditor({ notesContainer, onCreateRecord }) {
+    if (!(notesContainer instanceof HTMLElement)) {
+        throw new Error(ERROR_NOTES_CONTAINER_NOT_FOUND);
+    }
     const host = document.getElementById("top-editor");
+    if (!(host instanceof HTMLElement)) {
+        throw new Error(ERROR_TOP_EDITOR_NOT_FOUND);
+    }
     host.innerHTML = "";
 
     const wrapper = createElement("div", "markdown-block top-editor");
@@ -26,7 +41,7 @@ export function mountTopEditor({ notesContainer, onCreateRecord }) {
 
     editor.value = "";
     editor.setAttribute("rows", "1");
-    editor.setAttribute("aria-label", "New note");
+    editor.setAttribute("aria-label", ARIA_LABEL_NEW_NOTE);
     editor.setAttribute("autofocus", "autofocus");
 
     registerInitialAttachments(editor, {});

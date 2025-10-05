@@ -1,7 +1,23 @@
-import { nowIso, createElement, autoResize, copyToClipboard } from "../utils.js";
-import { CLIPBOARD_METADATA_VERSION, MESSAGE_NOTE_COPIED } from "../constants.js";
-import { GravityStore } from "../store.js";
-import { ClassifierClient } from "../classifier.js";
+// @ts-check
+
+import { nowIso, createElement, autoResize, copyToClipboard } from "../utils/index.js";
+import {
+    ARIA_LABEL_COPY_MARKDOWN,
+    ARIA_LABEL_COPY_RENDERED,
+    CLIPBOARD_METADATA_VERSION,
+    ERROR_CLIPBOARD_COPY_FAILED,
+    ERROR_NOTES_CONTAINER_NOT_FOUND,
+    LABEL_COPY_NOTE,
+    LABEL_DELETE_NOTE,
+    LABEL_MERGE_DOWN,
+    LABEL_MERGE_UP,
+    LABEL_MOVE_DOWN,
+    LABEL_MOVE_UP,
+    MESSAGE_NOTE_COPIED
+} from "../constants.js";
+import { GravityStore } from "../core/store.js";
+import { ClassifierClient } from "../core/classifier.js";
+import { logging } from "../utils/logging.js";
 import {
     renderSanitizedMarkdown,
     getSanitizedRenderedHtml,
@@ -16,11 +32,10 @@ import {
     transformMarkdownWithAttachments
 } from "./imagePaste.js";
 import { createMarkdownEditorHost, MARKDOWN_MODE_EDIT, MARKDOWN_MODE_VIEW } from "./markdownEditorHost.js";
+import { syncStoreFromDom } from "./storeSync.js";
 
 const DIRECTION_PREVIOUS = -1;
 const DIRECTION_NEXT = 1;
-const ACTION_LABEL_DELETE = "🗑️";
-const ACTION_ICON_COPY = "📋";
 const INDICATOR_HIDE_THRESHOLD_PX = 6;
 
 const CARET_PLACEMENT_START = "start";
@@ -33,11 +48,16 @@ const finalizeSuppression = new WeakMap();
 const suppressionState = new WeakMap();
 const copyFeedbackTimers = new WeakMap();
 const COPY_FEEDBACK_DURATION_MS = 1800;
-/** Public: render a persisted note card */
+/**
+ * Render a persisted note card into the provided container.
+ * @param {import("../types.d.js").NoteRecord} record
+ * @param {{ notesContainer?: HTMLElement }} [options]
+ * @returns {HTMLElement}
+ */
 export function renderCard(record, options = {}) {
     const notesContainer = options.notesContainer ?? document.getElementById("notes-container");
     if (!notesContainer) {
-        throw new Error("Notes container not found");
+        throw new Error(ERROR_NOTES_CONTAINER_NOT_FOUND);
     }
     const card = createElement("div", "markdown-block");
     card.setAttribute("data-note-id", record.noteId);
@@ -88,10 +108,10 @@ export function renderCard(record, options = {}) {
             };
 
             const copied = await copyToClipboard({ text: plainTextPayload, html: renderedHtml, metadata, attachments });
-            if (!copied) throw new Error("Clipboard copy failed");
+            if (!copied) throw new Error(ERROR_CLIPBOARD_COPY_FAILED);
             showClipboardFeedback(actions, MESSAGE_NOTE_COPIED);
         } catch (error) {
-            console.error(error);
+            logging.error(error);
         } finally {
             suppressedCards.forEach((item) => {
                 restoreSuppressedState(item);
@@ -105,26 +125,26 @@ export function renderCard(record, options = {}) {
         }
     };
 
-    const btnCopy = button(ACTION_ICON_COPY, () => handleCopy(), { extraClass: "action-button--icon" });
+    const btnCopy = button(LABEL_COPY_NOTE, () => handleCopy(), { extraClass: "action-button--icon" });
     btnCopy.dataset.action = "copy-note";
 
-    const btnMergeDown = button("Merge ↓", () => mergeDown(card, notesContainer), { variant: "merge" });
+    const btnMergeDown = button(LABEL_MERGE_DOWN, () => mergeDown(card, notesContainer), { variant: "merge" });
     btnMergeDown.dataset.action = "merge-down";
 
-    const btnMergeUp   = button("Merge ↑", () => mergeUp(card, notesContainer), { variant: "merge" });
+    const btnMergeUp   = button(LABEL_MERGE_UP, () => mergeUp(card, notesContainer), { variant: "merge" });
     btnMergeUp.dataset.action = "merge-up";
 
     const arrowRow = createElement("div", "action-group action-group--row");
 
-    const btnUp        = button("▲", () => move(card, -1, notesContainer), { extraClass: "action-button--compact" });
+    const btnUp        = button(LABEL_MOVE_UP, () => move(card, -1, notesContainer), { extraClass: "action-button--compact" });
     btnUp.dataset.action = "move-up";
 
-    const btnDown      = button("▼", () => move(card,  1, notesContainer), { extraClass: "action-button--compact" });
+    const btnDown      = button(LABEL_MOVE_DOWN, () => move(card,  1, notesContainer), { extraClass: "action-button--compact" });
     btnDown.dataset.action = "move-down";
 
     arrowRow.append(btnUp, btnDown);
 
-    const btnDelete = button(ACTION_LABEL_DELETE, () => deleteCard(card, notesContainer), { extraClass: "action-button--icon" });
+    const btnDelete = button(LABEL_DELETE_NOTE, () => deleteCard(card, notesContainer), { extraClass: "action-button--icon" });
     btnDelete.dataset.action = "delete";
 
     actions.append(btnCopy, btnMergeDown, btnMergeUp, arrowRow, btnDelete);
@@ -174,11 +194,11 @@ export function renderCard(record, options = {}) {
     const updateModeControls = () => {
         const mode = editorHost.getMode();
         if (mode === MARKDOWN_MODE_EDIT) {
-            btnCopy.title = "Copy Markdown";
-            btnCopy.setAttribute("aria-label", "Copy Markdown");
+            btnCopy.title = ARIA_LABEL_COPY_MARKDOWN;
+            btnCopy.setAttribute("aria-label", ARIA_LABEL_COPY_MARKDOWN);
         } else {
-            btnCopy.title = "Copy Rendered HTML";
-            btnCopy.setAttribute("aria-label", "Copy Rendered HTML");
+            btnCopy.title = ARIA_LABEL_COPY_RENDERED;
+            btnCopy.setAttribute("aria-label", ARIA_LABEL_COPY_RENDERED);
         }
     };
 
@@ -203,7 +223,11 @@ export function renderCard(record, options = {}) {
     return card;
 }
 
-/** Public: re-evaluate which action buttons show/hide based on position */
+/**
+ * Re-evaluate which per-card action buttons should be visible based on list position.
+ * @param {HTMLElement} notesContainer
+ * @returns {void}
+ */
 export function updateActionButtons(notesContainer) {
     const cards = Array.from(notesContainer.children);
     const total = cards.length;
@@ -350,7 +374,7 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
         const firstCard = notesContainer.firstElementChild;
         if (firstCard && firstCard !== card) {
             notesContainer.insertBefore(card, firstCard);
-            GravityStore.syncFromDom(notesContainer);
+            syncStoreFromDom(notesContainer);
             updateActionButtons(notesContainer);
         }
     }
@@ -404,7 +428,7 @@ async function finalizeCard(card, notesContainer, options = {}) {
         GravityStore.removeById(id);
         card.remove();
         editorHosts.delete(card);
-        GravityStore.syncFromDom(notesContainer);
+        syncStoreFromDom(notesContainer);
         updateActionButtons(notesContainer);
         return;
     }
@@ -443,7 +467,7 @@ async function finalizeCard(card, notesContainer, options = {}) {
         if (first) notesContainer.insertBefore(card, first);
     }
 
-    GravityStore.syncFromDom(notesContainer);
+    syncStoreFromDom(notesContainer);
     updateActionButtons(notesContainer);
 
     // Re-classify edited content
@@ -459,7 +483,7 @@ function deleteCard(card, notesContainer) {
     const noteId = card.getAttribute("data-note-id");
     GravityStore.removeById(noteId);
     card.remove();
-    GravityStore.syncFromDom(notesContainer);
+    syncStoreFromDom(notesContainer);
     updateActionButtons(notesContainer);
 }
 
@@ -471,7 +495,7 @@ function move(card, direction, notesContainer) {
     const ref = list[target];
     if (direction === -1) notesContainer.insertBefore(card, ref);
     else notesContainer.insertBefore(card, ref.nextSibling);
-    GravityStore.syncFromDom(notesContainer);
+    syncStoreFromDom(notesContainer);
     updateActionButtons(notesContainer);
 }
 
@@ -525,7 +549,7 @@ function mergeDown(card, notesContainer) {
         attachments: collectReferencedAttachments(editorBelow)
     });
 
-    GravityStore.syncFromDom(notesContainer);
+    syncStoreFromDom(notesContainer);
     updateActionButtons(notesContainer);
 }
 
@@ -579,7 +603,7 @@ function mergeUp(card, notesContainer) {
         attachments: collectReferencedAttachments(editorAbove)
     });
 
-    GravityStore.syncFromDom(notesContainer);
+    syncStoreFromDom(notesContainer);
     updateActionButtons(notesContainer);
 }
 
@@ -600,6 +624,13 @@ function navigateToAdjacentCard(card, direction, notesContainer) {
     return false;
 }
 
+/**
+ * Focus the editor for a specific card.
+ * @param {HTMLElement} card
+ * @param {HTMLElement} notesContainer
+ * @param {{ caretPlacement?: typeof CARET_PLACEMENT_START | typeof CARET_PLACEMENT_END, bubblePreviousCardToTop?: boolean }} [options]
+ * @returns {boolean}
+ */
 export function focusCardEditor(card, notesContainer, options = {}) {
     if (!(card instanceof HTMLElement)) return false;
 
@@ -639,6 +670,13 @@ function focusTopEditorFromCard(card, notesContainer) {
 
 /* ---------- Chips & classification ---------- */
 
+/**
+ * Request a classification refresh for a note and update its chips on success.
+ * @param {string} noteId
+ * @param {string} text
+ * @param {HTMLElement} notesContainer
+ * @returns {void}
+ */
 export function triggerClassificationForCard(noteId, text, notesContainer) {
     const firstLine = text.split("\n").find((l) => l.trim().length > 0) || "";
     const title = firstLine.replace(/^#\s*/, "").slice(0, 120).trim();
@@ -658,7 +696,9 @@ export function triggerClassificationForCard(noteId, text, notesContainer) {
                 applyChips(chips, classification);
             }
         })
-        .catch(() => {});
+        .catch((error) => {
+            logging.error(error);
+        });
 }
 
 function applyChips(container, classification) {

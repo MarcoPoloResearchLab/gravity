@@ -1,22 +1,17 @@
+// @ts-check
+
 import { appConfig } from "./config.js";
-import { ERROR_IMPORT_INVALID_PAYLOAD } from "./constants.js";
-import { nowIso } from "./utils.js";
-import { collectReferencedAttachments, sanitizeAttachmentDictionary } from "./ui/imagePaste.js";
+import { ERROR_IMPORT_INVALID_PAYLOAD } from "../constants.js";
+import { sanitizeAttachmentDictionary } from "./attachments.js";
 
 const EMPTY_STRING = "";
 
-/**
- * @typedef {Object} NoteRecord
- * @property {string} noteId
- * @property {string} markdownText
- * @property {string} createdAtIso
- * @property {string} updatedAtIso
- * @property {string} lastActivityIso
- * @property {object=} classification
- * @property {Record<string, { dataUrl: string, altText: string }>=} [attachments]
- */
+/** @typedef {import("../types.d.js").NoteRecord} NoteRecord */
 
 export const GravityStore = (() => {
+    /**
+     * @returns {NoteRecord[]}
+     */
     function loadAllNotes() {
         const raw = localStorage.getItem(appConfig.storageKey);
         if (!raw) return [];
@@ -31,6 +26,10 @@ export const GravityStore = (() => {
         }
     }
 
+    /**
+     * @param {NoteRecord[]} records
+     * @returns {void}
+     */
     function saveAllNotes(records) {
         const normalized = Array.isArray(records)
             ? records
@@ -100,7 +99,11 @@ export const GravityStore = (() => {
         return appendedRecords;
     }
 
-    // Invariant: never persist empty notes
+    /**
+     * Persist a non-empty record, inserting or replacing by identifier.
+     * @param {NoteRecord} record
+     * @returns {void}
+     */
     function upsertNonEmpty(record) {
         const sanitizedRecord = normalizeRecord(record);
         if (!isValidNoteRecord(sanitizedRecord)) return;
@@ -111,56 +114,52 @@ export const GravityStore = (() => {
         saveAllNotes(allRecords);
     }
 
+    /**
+     * Remove a note by identifier.
+     * @param {string} noteId
+     * @returns {void}
+     */
     function removeById(noteId) {
         const remainingRecords = loadAllNotes().filter(noteRecord => noteRecord.noteId !== noteId);
         saveAllNotes(remainingRecords);
     }
 
-    // Sync DOM order to storage (cards only; the top editor is separate)
-    function syncFromDom(container) {
-        const cards = Array.from(container.querySelectorAll(".markdown-block:not(.top-editor)"));
-        const existingRecords = loadAllNotes();
-        const nextRecords = [];
-        for (const card of cards) {
-            const noteId = card.getAttribute("data-note-id");
-            const editor = card.querySelector(".markdown-editor");
-            const text = editor ? editor.value : EMPTY_STRING;
-            if (!isNonBlankString(text)) continue; // never create empties
-            const existing = existingRecords.find(existingRecord => existingRecord.noteId === noteId);
-            const base = existing ?? {
-                noteId,
-                createdAtIso: nowIso(),
-                updatedAtIso: nowIso(),
-                lastActivityIso: nowIso()
-            };
-            const attachments = collectReferencedAttachments(editor);
-            const candidate = normalizeRecord({ ...base, markdownText: text, attachments });
-            if (!isValidNoteRecord(candidate)) continue;
-            nextRecords.push(candidate);
-        }
-        saveAllNotes(nextRecords);
-    }
-
-    return { loadAllNotes, saveAllNotes, exportNotes, importNotes, upsertNonEmpty, removeById, syncFromDom };
+    return Object.freeze({ loadAllNotes, saveAllNotes, exportNotes, importNotes, upsertNonEmpty, removeById });
 })();
 
+/**
+ * @param {Partial<NoteRecord>} record
+ * @returns {NoteRecord}
+ */
 function normalizeRecord(record) {
     const markdownText = typeof record?.markdownText === "string" ? record.markdownText : EMPTY_STRING;
     const attachments = sanitizeAttachmentDictionary(record?.attachments || {});
     return { ...record, markdownText, attachments };
 }
 
+/**
+ * @param {unknown} value
+ * @returns {value is string}
+ */
 function isNonBlankString(value) {
     return typeof value === "string" && value.trim().length > 0;
 }
 
+/**
+ * @param {unknown} record
+ * @returns {record is NoteRecord}
+ */
 function isValidNoteRecord(record) {
     if (!record || typeof record !== "object") return false;
-    if (!isNonBlankString(record.noteId)) return false;
-    if (!isNonBlankString(record.markdownText)) return false;
+    if (!isNonBlankString(/** @type {{ noteId?: unknown }} */ (record).noteId)) return false;
+    if (!isNonBlankString(/** @type {{ markdownText?: unknown }} */ (record).markdownText)) return false;
     return true;
 }
 
+/**
+ * @param {NoteRecord} record
+ * @returns {string}
+ */
 function createContentFingerprint(record) {
     const attachmentsFingerprint = canonicalizeForFingerprint(record.attachments || {});
     const classificationFingerprint = canonicalizeForFingerprint(record.classification ?? null);
@@ -171,6 +170,10 @@ function createContentFingerprint(record) {
     });
 }
 
+/**
+ * @param {unknown} value
+ * @returns {unknown}
+ */
 function canonicalizeForFingerprint(value) {
     if (Array.isArray(value)) {
         return value.map(canonicalizeForFingerprint);

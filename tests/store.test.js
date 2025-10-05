@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { appConfig } from "../config.js";
-import { GravityStore } from "../store.js";
-import { ERROR_IMPORT_INVALID_PAYLOAD } from "../constants.js";
+import { appConfig } from "../js/core/config.js";
+import { GravityStore } from "../js/core/store.js";
+import { ERROR_IMPORT_INVALID_PAYLOAD } from "../js/constants.js";
 
 const SAMPLE_TIMESTAMP = "2024-01-01T00:00:00.000Z";
 
