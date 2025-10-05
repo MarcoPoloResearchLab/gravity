@@ -6,7 +6,7 @@ import { GravityStore } from "./store.js";
 // Markdown options
 marked.setOptions({
     gfm: true,
-    breaks: false,
+    breaks: true,
     headerIds: true,
     mangle: false,
     smartLists: true

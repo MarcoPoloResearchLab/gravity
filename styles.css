@@ -86,6 +86,9 @@ html, body {
     min-height: 2.2rem;                 /* matches editor baseline so no jump */
 }
 .markdown-content p { margin: 0; }    /* kill default p margins to stabilize height */
+.markdown-content p + p {
+    margin-top: 0.6rem;
+}
 .markdown-content ul,
 .markdown-content ol { margin: 0.25rem 0 0.25rem 1.2rem; }
 
@@ -158,6 +161,10 @@ html, body {
     opacity: .5; transition: border-color .12s ease, color .12s ease, opacity .12s ease;
 }
 .action-group--row .action-button { flex: 1; }
+
+.markdown-block { position: relative; }
+.markdown-block.top-editor { position: sticky; top: 64px; background: #0b0c0f; z-index: 5; }
+
 .action-button--compact { font-size: 0.72rem; padding: 0.16rem 0.3rem; }
 .action-button--icon {
     font-size: 0.7rem;

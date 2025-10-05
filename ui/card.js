@@ -21,6 +21,7 @@ const DIRECTION_PREVIOUS = -1;
 const DIRECTION_NEXT = 1;
 const ACTION_LABEL_DELETE = "🗑️";
 const ACTION_ICON_COPY = "📋";
+const INDICATOR_HIDE_THRESHOLD_PX = 6;
 
 const CARET_PLACEMENT_START = "start";
 const CARET_PLACEMENT_END = "end";
@@ -32,7 +33,6 @@ const finalizeSuppression = new WeakMap();
 const suppressionState = new WeakMap();
 const copyFeedbackTimers = new WeakMap();
 const COPY_FEEDBACK_DURATION_MS = 1800;
-
 /** Public: render a persisted note card */
 export function renderCard(record, options = {}) {
     const notesContainer = options.notesContainer ?? document.getElementById("notes-container");
