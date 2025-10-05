@@ -5,8 +5,6 @@ import {
     ARIA_LABEL_COPY_MARKDOWN,
     ARIA_LABEL_COPY_RENDERED,
     BADGE_LABEL_CODE,
-    BADGE_LABEL_IMAGES,
-    BADGE_LABEL_WORDS,
     CLIPBOARD_METADATA_VERSION,
     ERROR_CLIPBOARD_COPY_FAILED,
     ERROR_NOTES_CONTAINER_NOT_FOUND,
@@ -777,10 +775,6 @@ function applyPreviewBadges(container, meta) {
     if (!meta) {
         return;
     }
-
-    const wordBadge = createBadge(`${meta.wordCount} ${BADGE_LABEL_WORDS}`);
-    const imageBadge = createBadge(`${meta.imageCount} ${BADGE_LABEL_IMAGES}`);
-    container.append(wordBadge, imageBadge);
 
     if (meta.hasCode) {
         const codeBadge = createBadge(BADGE_LABEL_CODE, "note-badge--code");

@@ -45,7 +45,7 @@ if (!puppeteerModule) {
             if (browser) await browser.close();
         });
 
-        test("preview clamps content with fade, continuation marker, and badges", async () => {
+        test("preview clamps content with fade, continuation marker, and code badge", async () => {
             const longMarkdown = buildLongMarkdown();
             const records = [
                 buildNoteRecord({
@@ -100,9 +100,7 @@ if (!puppeteerModule) {
                 assert.ok(fadeBackground.includes("linear-gradient"));
 
                 const badgeTexts = await page.$$eval(`[data-note-id="${LONG_NOTE_ID}"] .note-badge`, (nodes) => nodes.map((node) => node.textContent?.trim() || ""));
-                assert.ok(badgeTexts.some((text) => /words$/.test(text) && parseInt(text, 10) > 20));
-                assert.ok(badgeTexts.some((text) => /images$/.test(text) && text.startsWith("2")));
-                assert.ok(badgeTexts.includes("code"));
+                assert.deepEqual(badgeTexts, ["code"], "only the code badge should remain for long notes");
 
                 const imagePreviewHtml = await page.$eval(`[data-note-id="image-only"] .note-preview`, (element) => element.innerHTML);
                 assert.ok(/<img/i.test(imagePreviewHtml), "image-only note should render inline <img>");

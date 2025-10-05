@@ -11,23 +11,22 @@ test("buildDeterministicPreview handles image-only markdown", () => {
     const { previewMarkdown, meta } = buildDeterministicPreview(SAMPLE_IMAGE);
 
     assert.equal(previewMarkdown.trim(), SAMPLE_IMAGE, "image-only markdown should be preserved in preview");
-    assert.equal(meta.imageCount, 1);
-    assert.equal(meta.hasCode, false);
+    assert.deepEqual(meta, { hasCode: false });
 });
 
 test("buildDeterministicPreview retains full image markdown when base64 exceeds preview cap", () => {
     const { previewMarkdown, meta } = buildDeterministicPreview(LARGE_IMAGE);
 
     assert.equal(previewMarkdown.trim(), LARGE_IMAGE, "large base64 image markdown should remain intact");
-    assert.equal(meta.imageCount, 1);
+    assert.deepEqual(meta, { hasCode: false });
 });
 
-test("buildDeterministicPreview preserves multiple images", () => {
+test("buildDeterministicPreview preserves multiple images without statistics", () => {
     const markdown = `${SAMPLE_IMAGE}\n\n${SECOND_IMAGE}`;
     const { previewMarkdown, meta } = buildDeterministicPreview(markdown);
 
     assert.equal(previewMarkdown, markdown);
-    assert.equal(meta.imageCount, 2);
+    assert.deepEqual(meta, { hasCode: false });
 });
 
 test("buildDeterministicPreview leaves long text untouched", () => {
@@ -40,12 +39,11 @@ test("buildDeterministicPreview leaves long text untouched", () => {
     assert.equal(previewMarkdown, markdown);
 });
 
-test("buildDeterministicPreview counts code and words alongside image", () => {
+test("buildDeterministicPreview flags code without tracking words or images", () => {
     const markdown = "```js\nconsole.log('hello');\n```\n\n" + SAMPLE_IMAGE + "\n\nSome trailing text.";
     const { previewMarkdown, meta } = buildDeterministicPreview(markdown);
 
     assert.ok(previewMarkdown.includes("console.log"));
     assert.ok(previewMarkdown.includes(SAMPLE_IMAGE));
-    assert.equal(meta.hasCode, true);
-    assert.ok(meta.wordCount > 0);
+    assert.deepEqual(meta, { hasCode: true });
 });

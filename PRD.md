@@ -16,7 +16,7 @@ Gravity Notes must provide a Markdown-only editor with stable previews, inline e
   - [x] Cards clamp at ≈18vh with a fade mask; shorter content shrinks naturally
   - [x] No inner scrollbars inside cards
   - [x] Inline media respects Markdown order; images display from the top of the rendered content
-- [x] Show badges for word count, image count, code presence
+- [x] Surface a badge when code is present in the note body
 - [x] Grid never reflows after render
 - [x] First note renders as an empty shell ready for immediate editing (no iconography)
 

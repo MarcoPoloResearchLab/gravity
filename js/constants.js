@@ -16,8 +16,6 @@ export const LABEL_APP_SUBTITLE = "Append anywhere · Bubble to top · Auto-orga
 export const ARIA_LABEL_NEW_NOTE = "New note";
 export const ARIA_LABEL_COPY_MARKDOWN = "Copy Markdown";
 export const ARIA_LABEL_COPY_RENDERED = "Copy Rendered HTML";
-export const BADGE_LABEL_WORDS = "words";
-export const BADGE_LABEL_IMAGES = "images";
 export const BADGE_LABEL_CODE = "code";
 
 export const MESSAGE_NOTE_SAVED = "Saved";

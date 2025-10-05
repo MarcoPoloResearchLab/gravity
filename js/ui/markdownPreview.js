@@ -2,8 +2,6 @@
 // @ts-check
 
 import { DATA_ATTRIBUTE_RENDERED_HTML } from "../constants.js";
-
-const IMAGE_PATTERN = /!\[[^\]]*\]\([^\s)]+(?:\s+"[^"]*")?\)/g;
 const INLINE_CODE_PATTERN = /`[^`]+`/;
 const FENCED_CODE_PATTERN = /(^|\n)\s*(```+|~~~+)/;
 
@@ -67,7 +65,7 @@ export function getRenderedPlainText(previewElement) {
 export { PREVIEW_RENDERED_HTML_DATASET_KEY };
 
 /**
- * @typedef {{ wordCount: number, imageCount: number, hasCode: boolean }} MarkdownPreviewMeta
+ * @typedef {{ hasCode: boolean }} MarkdownPreviewMeta
  */
 
 /**
@@ -81,25 +79,9 @@ export function buildDeterministicPreview(markdownSource) {
     return {
         previewMarkdown: safeSource,
         meta: {
-            wordCount: countWords(safeSource),
-            imageCount: countImages(safeSource),
             hasCode: hasAnyCode(safeSource)
         }
     };
-}
-
-function countWords(source) {
-    const trimmed = source.trim();
-    if (trimmed.length === 0) {
-        return 0;
-    }
-    const tokens = trimmed.split(/\s+/);
-    return tokens.filter(Boolean).length;
-}
-
-function countImages(source) {
-    const matches = source.match(IMAGE_PATTERN);
-    return matches ? matches.length : 0;
 }
 
 function hasAnyCode(source) {
