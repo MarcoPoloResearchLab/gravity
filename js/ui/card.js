@@ -676,9 +676,30 @@ export function focusCardEditor(card, notesContainer, options = {}) {
     requestAnimationFrame(() => {
         const host = editorHosts.get(card);
         if (!host) return;
+
+        const textarea = typeof host.getTextarea === "function" ? host.getTextarea() : null;
+        const selectionStart = textarea && typeof textarea.selectionStart === "number"
+            ? textarea.selectionStart
+            : null;
+        const selectionEnd = textarea && typeof textarea.selectionEnd === "number"
+            ? textarea.selectionEnd
+            : null;
+        const targetPosition = caretPlacement === CARET_PLACEMENT_END ? "end" : "start";
+        const expectedDefaultIndex = caretPlacement === CARET_PLACEMENT_END
+            ? 0
+            : (textarea?.value.length ?? 0);
+        const selectionDefined = selectionStart !== null && selectionEnd !== null;
+        const selectionAtDefault = selectionDefined
+            && selectionStart === selectionEnd
+            && selectionStart === expectedDefaultIndex;
+        const shouldRespectExistingCaret = selectionDefined && !selectionAtDefault;
+
         host.setMode(MARKDOWN_MODE_EDIT);
         host.focus();
-        host.setCaretPosition(caretPlacement === CARET_PLACEMENT_END ? "end" : "start");
+        // Respect caret adjustments made before this frame (e.g. user repositioning the cursor)
+        if (!shouldRespectExistingCaret) {
+            host.setCaretPosition(targetPosition);
+        }
     });
 
     return true;
