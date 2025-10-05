@@ -9,6 +9,7 @@ import {
 } from "../constants.js";
 import { triggerClassificationForCard, focusCardEditor } from "./card.js";
 import { renderSanitizedMarkdown } from "./markdownPreview.js";
+import { showSaveFeedback } from "./saveFeedback.js";
 import {
     enableClipboardImagePaste,
     registerInitialAttachments,
@@ -18,6 +19,8 @@ import {
     transformMarkdownWithAttachments
 } from "./imagePaste.js";
 import { createMarkdownEditorHost, MARKDOWN_MODE_EDIT } from "./markdownEditorHost.js";
+
+const TOP_EDITOR_RESIZE_OPTIONS = Object.freeze({ minHeightPx: 20, extraPaddingPx: 0 });
 
 /**
  * Mount the always-empty top editor. It never persists empties; on finalize
@@ -65,7 +68,7 @@ export function mountTopEditor({ notesContainer, onCreateRecord }) {
         const markdownWithAttachments = transformMarkdownWithAttachments(editorHost.getValue(), attachments);
         renderSanitizedMarkdown(preview, markdownWithAttachments);
         if (!editorHost.isEnhanced()) {
-            autoResize(editor);
+            autoResize(editor, TOP_EDITOR_RESIZE_OPTIONS);
         }
     };
 
@@ -124,6 +127,7 @@ export function mountTopEditor({ notesContainer, onCreateRecord }) {
         keepFocus();
 
         triggerClassificationForCard(record.noteId, text, notesContainer);
+        showSaveFeedback();
     }
 
     // Ensure the caret is visible even when empty (fallback textarea only)
@@ -163,7 +167,7 @@ export function mountTopEditor({ notesContainer, onCreateRecord }) {
 
             tries += 1;
             if (!editorHost.isEnhanced()) {
-                autoResize(editor);
+                autoResize(editor, TOP_EDITOR_RESIZE_OPTIONS);
             }
 
             if (!isFocused()) {

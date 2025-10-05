@@ -1,27 +1,18 @@
 // @ts-check
 
 import { appConfig } from "../core/config.js";
-import { createElement, autoResize } from "../utils/index.js";
+import { createElement } from "../utils/index.js";
 import {
     LABEL_EDIT_MARKDOWN,
-    LABEL_VIEW_RENDERED,
-    LABEL_CLOSE_OVERLAY,
-    LABEL_ENTER_EDIT_MODE,
-    MESSAGE_NOTE_SAVED
+    LABEL_VIEW_RENDERED
 } from "../constants.js";
 import { logging } from "../utils/logging.js";
 import {
     insertAttachmentPlaceholders,
     waitForPendingImagePastes,
     extractGravityClipboardPayload,
-    applyGravityClipboardPayload,
-    enableClipboardImagePaste,
-    registerInitialAttachments,
-    collectReferencedAttachments,
-    resetAttachments,
-    transformMarkdownWithAttachments
+    applyGravityClipboardPayload
 } from "./imagePaste.js";
-import { renderSanitizedMarkdown } from "./markdownPreview.js";
 
 const MODE_EDIT = "edit";
 const MODE_VIEW = "view";
@@ -41,7 +32,7 @@ const IMAGE_TIFF_TYPES = new Set(["image/tiff", "image/x-tiff"]);
  */
 
 /**
- * @typedef {"change" | "submit" | "blur" | "navigatePrevious" | "navigateNext" | "modechange" | "copymarkdown" | "copyhtml"} MarkdownEditorEvent
+ * @typedef {"change" | "submit" | "blur" | "navigatePrevious" | "navigateNext" | "modechange"} MarkdownEditorEvent
  */
 
 /**
@@ -387,10 +378,16 @@ export function createMarkdownEditorHost(options) {
         const { codemirror } = instance;
 
         codemirror.addKeyMap({
-            Enter: (cm) => handleEnter(cm),
+            Enter: (cm) => {
+                handleEnter(cm);
+            },
             "Shift-Enter": (cm) => {
                 cm.replaceSelection(SOFT_BREAK, "end");
-            }
+            },
+            "Cmd-Enter": () => emit("submit"),
+            "Ctrl-Enter": () => emit("submit"),
+            "Cmd-S": () => emit("submit"),
+            "Ctrl-S": () => emit("submit")
         });
 
         codemirror.on("change", () => {
@@ -402,6 +399,14 @@ export function createMarkdownEditorHost(options) {
 
         codemirror.on("keydown", (cm, event) => {
             if (event.defaultPrevented) return;
+
+            const isModifier = event.metaKey || event.ctrlKey;
+            if (isModifier && (event.key === "Enter" || event.key === "s" || event.key === "S")) {
+                event.preventDefault();
+                emit("submit");
+                return;
+            }
+
             if (!isNavigationKey(event)) return;
             if (!isSelectionCollapsed(cm)) return;
 
@@ -479,7 +484,7 @@ export function createMarkdownEditorHost(options) {
                 return;
             }
 
-            emit("submit");
+            cm.execCommand("newlineAndIndent");
         }
     }
 
@@ -487,11 +492,25 @@ export function createMarkdownEditorHost(options) {
         el.addEventListener("input", () => emitFn("change", { value: el.value }));
         el.addEventListener("blur", () => emitFn("blur"));
         el.addEventListener("keydown", (event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
+            const isModifier = event.metaKey || event.ctrlKey;
+
+            if ((event.key === "Enter" || event.key === "s" || event.key === "S") && isModifier) {
                 event.preventDefault();
                 emitFn("submit");
                 return;
             }
+
+            if (event.key === "Tab" && !isModifier && !event.altKey) {
+                event.preventDefault();
+                if (event.shiftKey) {
+                    applyOutdent(el);
+                } else {
+                    applyIndent(el);
+                }
+                emitFn("change", { value: el.value });
+                return;
+            }
+
             if (!isNavigationKey(event)) return;
             if (event.key === "ArrowUp" && isTextareaCaretOnFirstLine(el)) {
                 event.preventDefault();
@@ -640,367 +659,9 @@ function loadImage(source) {
     });
 }
 
-const OVERLAY_BODY_LOCK_CLASS = "body--overlay-locked";
-const TOAST_VISIBILITY_DURATION_MS = 2000;
 const INDENT_SEQUENCE = "    ";
-const OVERLAY_MODE_EDIT_CLASS = "editor-overlay--mode-edit";
-const OVERLAY_MODE_VIEW_CLASS = "editor-overlay--mode-view";
-const AUTOSAVE_DELAY_MS = 450;
 
-/**
- * @typedef {Object} OverlayOpenOptions
- * @property {string} noteId
- * @property {string} markdown
- * @property {Record<string, import("../types.d.js").AttachmentRecord>} attachments
- * @property {string} title
- * @property {"view" | "edit"} [mode]
- * @property {(payload: { noteId: string, markdown: string, attachments: Record<string, import("../types.d.js").AttachmentRecord> }) => Promise<void>|void} onSave
- */
 
-/**
- * Create an overlay controller responsible for presenting the Markdown editor in a modal dialog.
- * @param {Object} options
- * @param {HTMLElement} options.overlayElement
- * @param {HTMLTextAreaElement} options.textareaElement
- * @param {HTMLElement} options.titleElement
- * @param {HTMLButtonElement} options.closeButton
- * @param {HTMLButtonElement} options.enterEditButton
- * @param {HTMLElement} options.toastElement
- * @param {HTMLElement} options.liveRegionElement
- * @param {HTMLElement} options.renderedElement
- * @returns {{ open(options: OverlayOpenOptions): void, close(): void, isOpen(): boolean }}
- */
-export function createMarkdownEditorOverlay(options) {
-    const {
-        overlayElement,
-        textareaElement,
-        titleElement,
-        closeButton,
-        enterEditButton,
-        toastElement,
-        liveRegionElement,
-        renderedElement
-    } = options;
-
-    if (!(overlayElement instanceof HTMLElement)) throw new Error("Overlay element is required for markdown editor overlay.");
-    if (!(textareaElement instanceof HTMLTextAreaElement)) throw new Error("Textarea element is required for markdown editor overlay.");
-    if (!(titleElement instanceof HTMLElement)) throw new Error("Title element is required for markdown editor overlay.");
-    if (!(closeButton instanceof HTMLButtonElement)) throw new Error("Close button is required for markdown editor overlay.");
-    if (!(enterEditButton instanceof HTMLButtonElement)) throw new Error("Enter edit button is required for markdown editor overlay.");
-    if (!(toastElement instanceof HTMLElement)) throw new Error("Toast element is required for markdown editor overlay.");
-    if (!(liveRegionElement instanceof HTMLElement)) throw new Error("Live region element is required for markdown editor overlay.");
-    if (!(renderedElement instanceof HTMLElement)) throw new Error("Rendered element is required for markdown editor overlay.");
-
-    const scrollContainer = overlayElement.querySelector(".editor-overlay__scroll");
-    const overlayPanel = overlayElement.querySelector(".editor-overlay__panel");
-
-    enableClipboardImagePaste(textareaElement);
-
-    closeButton.textContent = LABEL_CLOSE_OVERLAY;
-    enterEditButton.textContent = LABEL_ENTER_EDIT_MODE;
-    enterEditButton.hidden = true;
-
-    const overlayState = {
-        isOpen: false,
-        noteId: "",
-        initialMarkdown: "",
-        initialAttachmentsSignature: "",
-        onSave: /** @type {((payload: { noteId: string, markdown: string, attachments: Record<string, import("../types.d.js").AttachmentRecord> }) => Promise<void>|void)|null} */ (null),
-        lastActiveElement: /** @type {HTMLElement|null} */ (null),
-        mode: /** @type {"view" | "edit"} */ ("edit"),
-        currentAttachments: /** @type {Record<string, import("../types.d.js").AttachmentRecord>} */ ({})
-    };
-
-    let toastTimerId = /** @type {number|undefined} */ (undefined);
-    let autosaveTimerId = /** @type {number|undefined} */ (undefined);
-    let isSaving = false;
-
-    const resizeObserver = new ResizeObserver(() => autoResize(textareaElement));
-    if (overlayPanel instanceof HTMLElement) {
-        resizeObserver.observe(overlayPanel);
-    } else if (scrollContainer instanceof HTMLElement) {
-        resizeObserver.observe(scrollContainer);
-    }
-
-    textareaElement.addEventListener("input", handleTextareaInput);
-    textareaElement.addEventListener("keydown", handleTextareaKeydown);
-    closeButton.addEventListener("click", () => void attemptClose());
-    enterEditButton.addEventListener("click", () => enterEditMode());
-    overlayElement.addEventListener("click", handleOverlayClick);
-    overlayElement.addEventListener("keydown", handleOverlayKeydown, { capture: true });
-
-    function handleTextareaInput() {
-        autoResize(textareaElement);
-        scheduleAutosave();
-    }
-
-    function handleTextareaKeydown(event) {
-        if (event.key !== "Tab" || event.altKey || event.ctrlKey || event.metaKey) {
-            return;
-        }
-        event.preventDefault();
-        if (event.shiftKey) {
-            applyOutdent(textareaElement);
-        } else {
-            applyIndent(textareaElement);
-        }
-        textareaElement.dispatchEvent(new Event("input", { bubbles: true }));
-    }
-
-    function handleOverlayClick(event) {
-        const target = /** @type {HTMLElement} */ (event.target);
-        if (target?.dataset?.overlayDismiss === "true") {
-            attemptClose();
-        }
-    }
-
-    function handleOverlayKeydown(event) {
-        if (!overlayState.isOpen) return;
-        const key = event.key;
-        const isModifier = event.metaKey || event.ctrlKey;
-
-        if ((key === "s" || key === "S") && isModifier) {
-            event.preventDefault();
-            cancelAutosave();
-            void persistChanges({ reason: "shortcut" });
-            return;
-        }
-
-        if (key === "Enter" && isModifier) {
-            event.preventDefault();
-            cancelAutosave();
-            void persistChanges({ reason: "shortcut" });
-            return;
-        }
-
-        if (key === "Escape" && !event.altKey && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
-            event.preventDefault();
-            attemptClose();
-        }
-    }
-
-    function enterEditMode() {
-        if (overlayState.mode === "edit") return;
-        setMode("edit");
-        focusTextarea();
-    }
-
-    function attemptClose(force = false) {
-        if (!overlayState.isOpen) {
-            return;
-        }
-        cancelAutosave();
-        if (overlayState.mode === "edit") {
-            void persistChanges({ reason: force ? "force" : "close" }).finally(() => close());
-            return;
-        }
-        close();
-    }
-
-    function isDirty() {
-        if (!overlayState.isOpen) return false;
-        if (textareaElement.value !== overlayState.initialMarkdown) {
-            return true;
-        }
-        const attachments = collectReferencedAttachments(textareaElement);
-        const signature = serializeAttachments(attachments);
-        return signature !== overlayState.initialAttachmentsSignature;
-    }
-
-    function setMode(nextMode) {
-        const normalized = nextMode === "view" ? "view" : "edit";
-        overlayState.mode = normalized;
-        overlayElement.classList.remove(OVERLAY_MODE_EDIT_CLASS, OVERLAY_MODE_VIEW_CLASS);
-        overlayElement.classList.add(normalized === "view" ? OVERLAY_MODE_VIEW_CLASS : OVERLAY_MODE_EDIT_CLASS);
-        if (normalized === "view") {
-            textareaElement.hidden = true;
-            enterEditButton.hidden = false;
-            enterEditButton.disabled = false;
-            renderedElement.hidden = false;
-            cancelAutosave();
-        } else {
-            textareaElement.hidden = false;
-            enterEditButton.hidden = true;
-            renderedElement.hidden = true;
-            autoResize(textareaElement);
-        }
-    }
-
-    function updateRenderedContent(markdown, attachments) {
-        if (!renderedElement) return;
-        const withAttachments = transformMarkdownWithAttachments(markdown || "", attachments || {});
-        renderSanitizedMarkdown(renderedElement, withAttachments);
-    }
-
-    function scheduleAutosave() {
-        if (!overlayState.isOpen || overlayState.mode !== "edit") {
-            return;
-        }
-        if (autosaveTimerId) {
-            window.clearTimeout(autosaveTimerId);
-        }
-        autosaveTimerId = window.setTimeout(() => {
-            autosaveTimerId = undefined;
-            void persistChanges({ reason: "autosave" });
-        }, AUTOSAVE_DELAY_MS);
-    }
-
-    function cancelAutosave() {
-        if (autosaveTimerId) {
-            window.clearTimeout(autosaveTimerId);
-            autosaveTimerId = undefined;
-        }
-    }
-
-    async function persistChanges({ reason } = {}) {
-        if (!overlayState.isOpen || overlayState.mode !== "edit" || typeof overlayState.onSave !== "function") {
-            return;
-        }
-        if (isSaving) {
-            return;
-        }
-
-        const markdown = textareaElement.value;
-        const attachments = collectReferencedAttachments(textareaElement);
-        const serializedAttachments = serializeAttachments(attachments);
-        const noContentChange = markdown === overlayState.initialMarkdown
-            && serializedAttachments === overlayState.initialAttachmentsSignature;
-        if (noContentChange) {
-            return;
-        }
-
-        isSaving = true;
-        try {
-            await waitForPendingImagePastes(textareaElement);
-            await overlayState.onSave({ noteId: overlayState.noteId, markdown, attachments });
-            overlayState.initialMarkdown = markdown;
-            overlayState.initialAttachmentsSignature = serializeAttachments(attachments);
-            overlayState.currentAttachments = attachments;
-            updateRenderedContent(markdown, attachments);
-            announceStatus(MESSAGE_NOTE_SAVED);
-            if (reason !== "close") {
-                showToast(MESSAGE_NOTE_SAVED);
-            }
-        } catch (error) {
-            logging.error(error);
-        } finally {
-            isSaving = false;
-            if (reason !== "close" && overlayState.isOpen && overlayState.mode === "edit" && isDirty()) {
-                scheduleAutosave();
-            }
-        }
-    }
-
-    function showToast(message) {
-        if (!message) return;
-        hideToast();
-        toastElement.textContent = message;
-        toastElement.hidden = false;
-        toastElement.classList.add("toast--visible");
-        toastTimerId = window.setTimeout(() => hideToast(), TOAST_VISIBILITY_DURATION_MS);
-    }
-
-    function hideToast() {
-        if (typeof toastTimerId === "number") {
-            window.clearTimeout(toastTimerId);
-            toastTimerId = undefined;
-        }
-        toastElement.classList.remove("toast--visible");
-        toastElement.hidden = true;
-    }
-
-    function announceStatus(message) {
-        if (!message) return;
-        liveRegionElement.textContent = message;
-    }
-
-    function focusTextarea() {
-        textareaElement.hidden = false;
-        textareaElement.focus();
-        const length = textareaElement.value.length;
-        textareaElement.setSelectionRange(length, length);
-        autoResize(textareaElement);
-    }
-
-    function lockBackground() {
-        document.body.classList.add(OVERLAY_BODY_LOCK_CLASS);
-    }
-
-    function unlockBackground() {
-        document.body.classList.remove(OVERLAY_BODY_LOCK_CLASS);
-    }
-
-    function resetOverlayState() {
-        overlayState.isOpen = false;
-        overlayState.noteId = "";
-        overlayState.initialMarkdown = "";
-        overlayState.initialAttachmentsSignature = "";
-        overlayState.onSave = null;
-        overlayState.lastActiveElement = null;
-        overlayState.mode = "edit";
-        overlayState.currentAttachments = {};
-    }
-
-    /**
-     * @param {OverlayOpenOptions} openOptions
-     */
-    function open(openOptions) {
-        if (!openOptions || typeof openOptions !== "object") {
-            throw new Error("Overlay open options are required.");
-        }
-        const { noteId, markdown, attachments, title, onSave, mode } = openOptions;
-        overlayState.isOpen = true;
-        overlayState.noteId = noteId;
-        overlayState.onSave = typeof onSave === "function" ? onSave : null;
-        overlayState.lastActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-
-        registerInitialAttachments(textareaElement, attachments || {});
-        textareaElement.value = markdown || "";
-        overlayState.initialMarkdown = textareaElement.value;
-        overlayState.initialAttachmentsSignature = serializeAttachments(attachments || {});
-        overlayState.currentAttachments = attachments || {};
-
-        titleElement.textContent = title || "Note";
-
-        overlayElement.hidden = false;
-        hideToast();
-        if (scrollContainer instanceof HTMLElement) {
-            scrollContainer.scrollTop = 0;
-        }
-        lockBackground();
-        updateRenderedContent(textareaElement.value, overlayState.currentAttachments);
-        setMode(mode === "view" ? "view" : "edit");
-        if (overlayState.mode === "edit") {
-            focusTextarea();
-        }
-        announceStatus("");
-    }
-
-    function close() {
-        if (!overlayState.isOpen) return;
-        const lastFocused = overlayState.lastActiveElement;
-        overlayElement.hidden = true;
-        overlayElement.classList.remove(OVERLAY_MODE_EDIT_CLASS, OVERLAY_MODE_VIEW_CLASS);
-        unlockBackground();
-        resetAttachments(textareaElement);
-        resetOverlayState();
-        textareaElement.value = "";
-        textareaElement.hidden = false;
-        renderedElement.innerHTML = "";
-        renderedElement.hidden = true;
-        enterEditButton.hidden = true;
-        hideToast();
-        if (lastFocused) {
-            lastFocused.focus();
-        }
-    }
-
-    return Object.freeze({
-        open,
-        close,
-        isOpen: () => overlayState.isOpen
-    });
-}
 
 function applyIndent(textarea) {
     const { selectionStart, selectionEnd, value } = textarea;
@@ -1081,19 +742,4 @@ function findLineEnd(text, index) {
         cursor += 1;
     }
     return cursor;
-}
-
-function serializeAttachments(attachments) {
-    if (!attachments || typeof attachments !== "object") {
-        return "[]";
-    }
-    const entries = Object.entries(attachments)
-        .filter(([name, record]) => typeof name === "string" && record)
-        .map(([name, record]) => ({
-            name,
-            dataUrl: typeof record.dataUrl === "string" ? record.dataUrl : "",
-            altText: typeof record.altText === "string" ? record.altText : ""
-        }))
-        .sort((a, b) => a.name.localeCompare(b.name));
-    return JSON.stringify(entries);
 }

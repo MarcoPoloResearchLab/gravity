@@ -1,40 +1,38 @@
 # PRD – Gravity Notes Editor
 
 ## Overview
-Gravity Notes must provide a Markdown-only editor with stable previews and a no-jump UX. This PRD defines the product behavior, UX principles, and technical constraints.
+Gravity Notes must provide a Markdown-only editor with stable previews, inline editing, and a no-jump UX. This PRD defines the product behavior, UX principles, and technical constraints.
 
 ## Goals
 - Markdown is the sole editing mode (no quick capture).
 - Grid remains visually stable; no layout jumps.
 - Previews are bounded but meaningful.
-- Full editor is distraction-free and accessible.
+- Inline editing must be lightweight and accessible (no modal overlays).
 
 ## Requirements
 
 ### 1. View Mode (Grid Preview)
-- [x] Render deterministic preview subset
-  - [x] First 2 paragraphs or ~450 chars
-  - [x] Honor inline media only when it appears inside the previewed range
-  - [x] First 6 lines of code blocks
-- [x] Cards shrink to natural height and fade once content exceeds ≈18vh
-- [x] No inner scrollbars inside cards
+- [x] Render the full note content with sanitised Markdown
+  - [x] Cards clamp at ≈18vh with a fade mask; shorter content shrinks naturally
+  - [x] No inner scrollbars inside cards
+  - [x] Inline media respects Markdown order; images display from the top of the rendered content
 - [x] Show badges for word count, image count, code presence
-- [x] Expand button → open full editor overlay
 - [x] Grid never reflows after render
+- [x] First note renders as an empty shell ready for immediate editing (no iconography)
 
-### 2. Editor Overlay
-- [x] Always full Markdown editor (no lightweight capture)
-- [x] Overlay is fixed, modal; background frozen
-- [x] Long notes scroll inside overlay only
-- [x] Textarea auto-grows to scrollHeight; no inner scrollbars
+### 2. Inline Editing
+- [x] Clicking any note (including the first blank note) switches it into Markdown edit mode inline
+- [x] While editing, the note expands to fit the full content with an auto-growing textarea
+- [x] Caret moves to the end of the note when entering edit mode
+- [x] Cmd/Ctrl+Enter finalises edits; clicking away (blur) also finalises and returns to rendered view
+- [x] No modal dialogs or overlays are used for editing
 
 ### 3. Editor Behavior
-- [x] Edits autosave continuously; no explicit Save button is shown
-- [x] Enter → newline
-- [x] Cmd/Ctrl+Enter or Cmd/Ctrl+S → optional manual sync (no UI affordance required)
-- [x] Esc → close overlay (pending changes flush before dismiss)
-- [x] Tab / Shift+Tab → indent / outdent lists and code
-- [x] Autosave completion surfaces a non-modal “Saved” toast
+- [x] Edits autosave on blur or Cmd/Ctrl+Enter; no explicit Save button is shown
+- [x] Enter inserts a newline (no mode switching)
+- [x] Cmd/Ctrl+S maps to the same save behavior as Cmd/Ctrl+Enter
+- [x] Tab / Shift+Tab indent / outdent lists and code
+- [x] Autosave completion surfaces a non-modal “Saved” toast without moving focus
 
 ### 4. UX Principles
 - No jumping or reflow in view mode or editor.

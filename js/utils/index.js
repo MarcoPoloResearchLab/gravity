@@ -171,13 +171,18 @@ export async function copyToClipboard(content = {}) {
 }
 
 /**
+ * Adjust a textarea's height so it fits its content without scrollbars.
  * @param {HTMLTextAreaElement} textarea
+ * @param {{ minHeightPx?: number, extraPaddingPx?: number }} [options]
  * @returns {void}
  */
-export function autoResize(textarea) {
+export function autoResize(textarea, options = {}) {
     if (!textarea) return;
+    const { minHeightPx = 0, extraPaddingPx = 5 } = options;
     textarea.style.height = "auto";
-    textarea.style.height = `${textarea.scrollHeight + 5}px`;
+    const measured = textarea.scrollHeight + extraPaddingPx;
+    const nextHeight = Math.max(measured, minHeightPx);
+    textarea.style.height = `${nextHeight}px`;
 }
 
 /**

@@ -1,7 +1,7 @@
 # Gravity Notes
 
 Gravity Notes is a simple, single-page web application for taking notes using Markdown. Notes surface in a stable grid
-with bounded previews, and a full-screen Markdown overlay handles all editing and creation.
+with bounded previews, and every note edits inline—no modal overlays or context switches.
 
 ## Features
 
@@ -9,10 +9,11 @@ with bounded previews, and a full-screen Markdown overlay handles all editing an
   thumbnail, and a six-line preview of the first code block. A fade mask signals truncated content.
 * **Preview badges:** Every note advertises its word count, total inline images, and whether code is present, making it
   easy to skim dense boards.
-* **Overlay editor:** Editing always happens inside a fixed overlay that locks the background, auto-grows to match the
-  note content, and supports keyboard shortcuts (`Cmd/Ctrl+Enter` or `Cmd/Ctrl+S` to save, `Esc` to close with a
-  confirmation when dirty, `Tab`/`Shift+Tab` to indent/outdent).
-* **New-note workflow:** Use the “New note” button in the sticky header to start a fresh entry inside the same overlay.
+* **Inline editor:** Click any card—or the blank capture slot at the top—to switch that note into Markdown mode in
+  place. The textarea auto-grows with your prose, accepts `Cmd/Ctrl+Enter` or `Cmd/Ctrl+S` to commit, and supports
+  `Tab`/`Shift+Tab` indentation for lists and code blocks.
+* **Always-ready capture:** The sticky blank note beneath the header is the entry point for brand new ideas. Type there,
+  click away, or hit `Cmd/Ctrl+Enter` to persist immediately.
 * **Rich Markdown:** Markdown rendering is powered by [marked.js](https://marked.js.org/) with sanitisation from
   [DOMPurify](https://github.com/cure53/DOMPurify). Inline image pasting is preserved through attachment placeholders.
 * **Organise & share:** Notes retain the existing move, merge, copy, and classification behaviours, and you can import
@@ -20,39 +21,35 @@ with bounded previews, and a full-screen Markdown overlay handles all editing an
 
 ## How to Use
 
-1. **Create a note:** Tap the empty “new note” card pinned beneath the header. The full-screen overlay opens immediately;
-   start typing with standard Markdown syntax. The editor auto-grows as you type and never adds inner scrollbars.
-2. **Autosave everywhere:** Gravity persists changes automatically while you type. A subtle “Saved” toast confirms each
-   sync—no manual save button required.
+1. **Capture a note:** Place the cursor in the blank card anchored beneath the header and start writing Markdown. The
+   editor auto-grows as you type and never introduces inner scrollbars.
+2. **Autosave everywhere:** Gravity persists changes whenever you click away or press `Cmd/Ctrl+Enter`. A subtle “Saved”
+   toast confirms each sync—no manual save button required.
 3. **Keyboard shortcuts:**
     * `Enter` inserts a newline (no implicit submission).
-    * `Cmd/Ctrl+Enter` or `Cmd/Ctrl+S` still trigger an on-demand sync if you want immediate confirmation.
-    * `Esc` closes the overlay; any pending changes are flushed before the overlay dismisses.
-    * `Tab` / `Shift+Tab` indents or outdents the selected block, making lists and code blocks easy to adjust.
-4. **Edit existing notes:** Click anywhere in a note to drop straight into the overlay editor. The grid remains frozen in
-   place—the background never jumps while you edit.
-5. **Preview in context:** Use the **Expand** control on a card to open a rendered, read-only view. From there, choose
-   **Edit** to switch into the Markdown overlay.
-6. **Skim with previews:** Each card shows a deterministic snippet, fade mask, and badges for total words, image count,
+    * `Cmd/Ctrl+Enter` or `Cmd/Ctrl+S` commit changes immediately.
+    * `Tab` / `Shift+Tab` indent or outdent the current selection, making lists and code blocks easy to adjust.
+4. **Edit existing notes:** Click anywhere in a rendered note to switch it into Markdown mode inline. The grid stays in
+   place while you edit, then re-renders the preview once you finish.
+5. **Skim with previews:** Each card shows a deterministic snippet, fade mask, and badges for total words, image count,
    and whether code appears. Scroll the main page instead of individual cards.
-7. **Organise:** Reorder, merge, or delete notes with the familiar toolbar actions along the right edge. The copy button
+6. **Organise:** Reorder, merge, or delete notes with the familiar toolbar actions along the right edge. The copy button
    still mirrors either Markdown or sanitized HTML (including attachment metadata) depending on the current mode.
-8. **Import / Export:** Use the header buttons to move notebooks between browsers. Imports skip records that match on
+7. **Import / Export:** Use the header buttons to move notebooks between browsers. Imports skip records that match on
    identifier and content, preserving the single source of truth.
 
 ## Editor & Preview
 
-- **Deterministic preview:** Cards render the first two paragraphs (or the first ~450 characters), the first inline image
-  as a cover thumbnail, and up to six lines of the earliest fenced code block. A `_…continues_` marker appears when the
-  source is truncated.
+- **Deterministic preview:** Cards render the full sanitized Markdown and clamp at roughly `18vh`. Shorter notes shrink
+  to their natural height, while longer ones fade out gracefully.
 - **Fade mask:** A gradient mask is layered over the last few pixels of the preview to avoid sudden cut-offs while
   keeping the card height capped at roughly `18vh` when content overflows.
 - **Dynamic height:** Cards shrink to match their rendered content and grow only up to the shared `18vh` limit, so short
   notes stay compact while longer ones fade out.
 - **Metadata badges:** Each card surface lists the note’s word count, total inline images, and whether code is present so
   you can judge complexity at a glance.
-- **Autosave:** The overlay syncs changes automatically and surfaces a non-blocking “Saved” toast. Shortcuts still work
-  for explicit saves, but no manual button is required.
+- **Autosave:** Inline edits flush on blur or `Cmd/Ctrl+Enter` and surface a non-blocking “Saved” toast. Shortcuts still
+  work for explicit saves, but no manual button is required.
 
 ## Setup
 
@@ -71,10 +68,10 @@ python3 -m http.server 8000
 
 ## Testing
 
-- `npm test` drives the Node test suite, including Puppeteer coverage for the overlay editor and bounded preview rules.
+- `npm test` drives the Node test suite, including Puppeteer coverage for the inline editor and bounded preview rules.
 - Run `npx puppeteer browsers install chrome` once to download the Chromium binary that Puppeteer uses during the
   end-to-end tests.
-- GitHub Actions executes the same test command on every push and pull request, validating the overlay workflow and
+- GitHub Actions executes the same test command on every push and pull request, validating the inline editing workflow and
   preview truncation remain stable.
 
 ## Dependencies

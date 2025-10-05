@@ -14,7 +14,7 @@ try {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}?test=preview`;
+const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
 
 const SHORT_NOTE_ID = "preview-short-note";
 const MEDIUM_NOTE_ID = "preview-medium-note";
@@ -22,7 +22,7 @@ const LONG_NOTE_ID = "preview-long-note";
 const TRAILING_IMAGE_NOTE_ID = "preview-trailing-img";
 
 const SAMPLE_IMAGE_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAHUlEQVQoU2NkYGD4z0AEYBxVSFcwCiA5GgYAAP//AwBh0CY6AAAAAElFTkSuQmCC";
-const LARGE_IMAGE_DATA_URL = "https://via.placeholder.com/200x120.png";
+const LARGE_IMAGE_DATA_URL = SAMPLE_IMAGE_DATA_URL;
 
 if (!puppeteerModule) {
     test("puppeteer unavailable", () => {
@@ -138,8 +138,8 @@ if (!puppeteerModule) {
                     );
                 }
 
-                const blankHeight = await page.$eval(".new-note-blank .note-preview", (element) => element.getBoundingClientRect().height);
-                assert.ok(blankHeight < maxHeightPx - 2, "blank note should collapse to a minimal height");
+                const blankHeight = await page.$eval("#top-editor .markdown-editor", (element) => element.getBoundingClientRect().height);
+                assert.ok(blankHeight < maxHeightPx * 0.25, "blank top editor should remain a single-line height");
 
                 const shortMetrics = await measurePreview(page, SHORT_NOTE_ID);
                 assert.ok(Math.abs(shortMetrics.scrollHeight - shortMetrics.clientHeight) <= 2, "short note should not overflow");
@@ -209,6 +209,7 @@ async function preparePage(browser, { records }) {
     }, appConfig.storageKey, serialized);
 
     await page.goto(PAGE_URL, { waitUntil: "networkidle0" });
+    await page.waitForSelector("#top-editor .markdown-editor");
     await page.waitForSelector(`[data-note-id="${LONG_NOTE_ID}"]`);
     return page;
 }

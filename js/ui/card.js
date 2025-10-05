@@ -12,7 +12,6 @@ import {
     ERROR_NOTES_CONTAINER_NOT_FOUND,
     LABEL_COPY_NOTE,
     LABEL_DELETE_NOTE,
-    LABEL_EXPAND_NOTE,
     LABEL_MERGE_DOWN,
     LABEL_MERGE_UP,
     LABEL_MOVE_DOWN,
@@ -38,6 +37,7 @@ import {
 } from "./imagePaste.js";
 import { createMarkdownEditorHost, MARKDOWN_MODE_EDIT, MARKDOWN_MODE_VIEW } from "./markdownEditorHost.js";
 import { syncStoreFromDom } from "./storeSync.js";
+import { showSaveFeedback } from "./saveFeedback.js";
 
 const DIRECTION_PREVIOUS = -1;
 const DIRECTION_NEXT = 1;
@@ -64,19 +64,12 @@ export function renderCard(record, options = {}) {
     if (!notesContainer) {
         throw new Error(ERROR_NOTES_CONTAINER_NOT_FOUND);
     }
-    const { onOpenOverlay } = options;
     const card = createElement("div", "markdown-block");
     card.setAttribute("data-note-id", record.noteId);
 
     // Actions column
     const actions = createElement("div", "actions");
     let editorHostRef = null;
-
-    const handleOpenOverlay = (mode) => {
-        if (typeof onOpenOverlay === "function") {
-            onOpenOverlay(record.noteId, { mode });
-        }
-    };
 
     const handleCopy = async () => {
         const host = editorHostRef;
@@ -137,9 +130,6 @@ export function renderCard(record, options = {}) {
         }
     };
 
-    const btnExpand = button(LABEL_EXPAND_NOTE, () => handleOpenOverlay("view"));
-    btnExpand.dataset.action = "expand";
-
     const btnCopy = button(LABEL_COPY_NOTE, () => handleCopy(), { extraClass: "action-button--icon" });
     btnCopy.dataset.action = "copy-note";
 
@@ -162,7 +152,7 @@ export function renderCard(record, options = {}) {
     const btnDelete = button(LABEL_DELETE_NOTE, () => deleteCard(card, notesContainer), { extraClass: "action-button--icon" });
     btnDelete.dataset.action = "delete";
 
-    actions.append(btnExpand, btnCopy, btnMergeDown, btnMergeUp, arrowRow, btnDelete);
+    actions.append(btnCopy, btnMergeDown, btnMergeUp, arrowRow, btnDelete);
 
     // Chips + content
     const chips = createElement("div", "meta-chips");
@@ -196,7 +186,10 @@ export function renderCard(record, options = {}) {
         if (target.closest && target.closest(".actions")) {
             return;
         }
-        handleOpenOverlay("edit");
+        focusCardEditor(card, notesContainer, {
+            caretPlacement: CARET_PLACEMENT_END,
+            bubblePreviousCardToTop: true
+        });
     };
 
     card.addEventListener("click", handleCardInteraction);
@@ -504,6 +497,7 @@ async function finalizeCard(card, notesContainer, options = {}) {
 
     // Re-classify edited content
     triggerClassificationForCard(id, text, notesContainer);
+    showSaveFeedback();
 }
 
 function deleteCard(card, notesContainer) {
