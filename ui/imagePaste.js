@@ -216,7 +216,7 @@ function getOrCreateAttachmentMap(textarea) {
     return map;
 }
 
-function extractGravityClipboardPayload(clipboardData) {
+export function extractGravityClipboardPayload(clipboardData) {
     if (!clipboardData) return null;
 
     let raw = clipboardData.getData(CLIPBOARD_MIME_NOTE);
@@ -300,8 +300,9 @@ function decodeClipboardMetadata(encoded) {
     }
 }
 
-function applyGravityClipboardPayload(textarea, payload) {
+export function applyGravityClipboardPayload(textarea, payload, options = {}) {
     if (!textarea || !payload) return;
+    const { codemirror } = options;
     const sanitizedAttachments = sanitizeAttachmentDictionary(payload.attachments);
     const hasAttachments = Object.keys(sanitizedAttachments).length > 0;
     const placeholderMarkdown = typeof payload.markdown === "string" ? payload.markdown : "";
@@ -318,7 +319,11 @@ function applyGravityClipboardPayload(textarea, payload) {
         registerInitialAttachments(textarea, merged);
     }
 
-    replaceSelectionWith(textarea, markdown);
+    if (codemirror && typeof codemirror.replaceSelection === "function") {
+        codemirror.replaceSelection(markdown, "end");
+    } else {
+        replaceSelectionWith(textarea, markdown);
+    }
     textarea.dispatchEvent(new Event("input", { bubbles: true }));
 }
 

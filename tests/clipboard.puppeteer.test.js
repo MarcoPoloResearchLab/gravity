@@ -463,6 +463,75 @@ test.describe("Clipboard integration", () => {
         }
     });
 
+    test("EasyMDE paste restores Gravity attachments", async () => {
+        const page = await preparePage(browser, { enableMarkdownEditor: true });
+        let pageClosed = false;
+        try {
+            const easyMdeAvailable = await page.evaluate(() => typeof window.EasyMDE === "function");
+            if (!easyMdeAvailable) {
+                await page.close();
+                pageClosed = true;
+                test.skip("EasyMDE unavailable in this environment.");
+            }
+
+            await page.waitForSelector("#top-editor .CodeMirror textarea");
+            const markdown = "Attachment holder\n\n![[sample-image.png]]";
+            const attachments = {
+                "sample-image.png": { dataUrl: SAMPLE_IMAGE_DATA_URL, altText: "Sample attachment" }
+            };
+
+            await createCard(page, {
+                noteId: "easymde-source-note",
+                markdownText: markdown,
+                attachments,
+                mode: "view"
+            });
+
+            await page.click('[data-note-id="easymde-source-note"] [data-action="copy-note"]');
+            await waitForClipboardWrite(page);
+            await waitForCopyFeedback(page, "easymde-source-note");
+
+            const clipboardPayload = await page.evaluate(() => window.__clipboardWrites.at(-1));
+            const payload = firstValueClipboardPayload(clipboardPayload);
+
+            const result = await page.evaluate(async ({ payload }) => {
+                const wrapper = document.querySelector('#top-editor .markdown-block');
+                const host = wrapper?.__markdownHost;
+                const preview = wrapper?.querySelector('.markdown-content');
+                const editorElement = wrapper?.querySelector('.CodeMirror textarea');
+                if (!wrapper || !host || !editorElement) {
+                    return { value: "", attachments: {}, previewHtml: "", enhanced: false };
+                }
+
+                host.focus();
+
+                const transfer = new DataTransfer();
+                Object.entries(payload).forEach(([type, value]) => transfer.setData(type, value));
+                const pasteEvent = new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true });
+                editorElement.dispatchEvent(pasteEvent);
+
+                await new Promise((resolve) => setTimeout(resolve, 0));
+
+                const { collectReferencedAttachments } = await import('./ui/imagePaste.js');
+                return {
+                    value: host.getValue(),
+                    attachments: collectReferencedAttachments(host.getTextarea()),
+                    previewHtml: preview?.innerHTML ?? "",
+                    enhanced: host.isEnhanced()
+                };
+            }, { payload });
+
+            assert.equal(result.enhanced, true);
+            assert.equal(result.value.includes('![[sample-image.png]]'), true);
+            assert.deepStrictEqual(result.attachments, attachments);
+            assert.equal(result.previewHtml.includes(SAMPLE_IMAGE_DATA_URL), true);
+        } finally {
+            if (!pageClosed) {
+                await page.close();
+            }
+        }
+    });
+
     test("initial view renders attachments", async () => {
         const page = await preparePage(browser);
         try {
@@ -677,8 +746,14 @@ test.describe("Clipboard integration", () => {
 });
 }
 
-async function preparePage(browser) {
+async function preparePage(browser, options = {}) {
     const page = await browser.newPage();
+
+    if (options.enableMarkdownEditor) {
+        await page.evaluateOnNewDocument(() => {
+            window.__gravityForceMarkdownEditor = true;
+        });
+    }
 
     await page.evaluateOnNewDocument(() => {
         window.__clipboardWrites = [];

@@ -4,7 +4,9 @@ import { appConfig } from "../config.js";
 import { createElement } from "../utils.js";
 import {
     insertAttachmentPlaceholders,
-    waitForPendingImagePastes
+    waitForPendingImagePastes,
+    extractGravityClipboardPayload,
+    applyGravityClipboardPayload
 } from "./imagePaste.js";
 
 const MODE_EDIT = "edit";
@@ -133,7 +135,7 @@ export function createMarkdownEditorHost(options) {
         container.insertBefore(toolbar, container.firstChild);
     }
 
-    const wantsEnhanced = Boolean(appConfig.useMarkdownEditor);
+    const wantsEnhanced = determineEnhancedPreference();
     const easyMdeAvailable = typeof window !== "undefined" && typeof window.EasyMDE === "function";
     const enhanceWithEasyMde = wantsEnhanced && easyMdeAvailable;
 
@@ -165,6 +167,13 @@ export function createMarkdownEditorHost(options) {
             editButton.setAttribute("aria-pressed", safeMode === MODE_EDIT ? "true" : "false");
             viewButton.setAttribute("aria-pressed", safeMode === MODE_VIEW ? "true" : "false");
         }
+    }
+
+    function determineEnhancedPreference() {
+        if (typeof globalThis !== "undefined" && typeof globalThis.__gravityForceMarkdownEditor === "boolean") {
+            return globalThis.__gravityForceMarkdownEditor;
+        }
+        return Boolean(appConfig.useMarkdownEditor);
     }
 
     function setMode(nextMode) {
@@ -405,7 +414,15 @@ export function createMarkdownEditorHost(options) {
         });
 
         codemirror.on("paste", async (cm, event) => {
-            const items = event?.clipboardData?.items || [];
+            const clipboardData = event?.clipboardData;
+            const gravityPayload = extractGravityClipboardPayload(clipboardData);
+            if (gravityPayload) {
+                event.preventDefault();
+                applyGravityClipboardPayload(textarea, gravityPayload, { codemirror: cm });
+                return;
+            }
+
+            const items = clipboardData?.items || [];
             const files = [];
             for (const item of items) {
                 if (item.kind === "file") {
