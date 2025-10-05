@@ -19,6 +19,14 @@ const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
 
 const NOTE_ID = "inline-fixture";
 const INITIAL_MARKDOWN = `# Inline Fixture\n\nThis note verifies inline editing.`;
+const CARET_NOTE_ID = "inline-caret-fixture";
+const CARET_MARKDOWN = `First paragraph line one.\nSecond paragraph line two.\nThird line to ensure scrolling.`;
+const UNORDERED_NOTE_ID = "inline-unordered-fixture";
+const UNORDERED_MARKDOWN = "- Alpha\n- Beta";
+const ORDERED_NOTE_ID = "inline-ordered-fixture";
+const ORDERED_MARKDOWN = "1. First\n2. Second";
+const TABLE_NOTE_ID = "inline-table-fixture";
+const TABLE_MARKDOWN = "| Col1 | Col2 |\n| --- | --- |\n| A | B |";
 
 if (!puppeteerModule) {
     test("puppeteer unavailable", () => {
@@ -107,6 +115,178 @@ if (!puppeteerModule) {
                     (el) => el.textContent || ""
                 );
                 assert.ok(previewText.includes("Additional line one."));
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("second click keeps caret position and prevents clipping", async () => {
+            const seededRecords = [buildNoteRecord({
+                noteId: CARET_NOTE_ID,
+                markdownText: CARET_MARKDOWN,
+                attachments: {}
+            })];
+
+            const page = await preparePage(browser, { records: seededRecords });
+            const cardSelector = `.markdown-block[data-note-id="${CARET_NOTE_ID}"]`;
+            const editorSelector = `${cardSelector} .markdown-editor`;
+
+            try {
+                await page.waitForSelector(cardSelector);
+                await page.click(`${cardSelector} .note-preview`);
+                await page.waitForSelector(`${cardSelector}.editing-in-place`);
+                await page.waitForSelector(editorSelector);
+
+                await page.click(editorSelector);
+
+                const caretSnapshot = await page.$eval(editorSelector, (el) => ({
+                    start: el.selectionStart ?? 0,
+                    length: el.value.length
+                }));
+                assert.ok(
+                    caretSnapshot.start < caretSnapshot.length,
+                    "Caret moves away from end after user click"
+                );
+
+                await page.type(editorSelector, "X");
+                const currentValue = await page.$eval(editorSelector, (el) => el.value);
+                assert.equal(
+                    currentValue.endsWith("X"),
+                    false,
+                    "Typing after reposition should not append at the very end"
+                );
+
+                const metrics = await page.$eval(editorSelector, (el) => ({
+                    scrollHeight: el.scrollHeight,
+                    clientHeight: el.clientHeight
+                }));
+                assert.ok(
+                    metrics.scrollHeight <= metrics.clientHeight + 1,
+                    "Textarea expands to show caret without clipping"
+                );
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("lists and tables auto-continue in fallback editor", async () => {
+            const seededRecords = [
+                buildNoteRecord({ noteId: UNORDERED_NOTE_ID, markdownText: UNORDERED_MARKDOWN, attachments: {} }),
+                buildNoteRecord({ noteId: ORDERED_NOTE_ID, markdownText: ORDERED_MARKDOWN, attachments: {} }),
+                buildNoteRecord({ noteId: TABLE_NOTE_ID, markdownText: TABLE_MARKDOWN, attachments: {} })
+            ];
+
+            const page = await preparePage(browser, { records: seededRecords });
+            try {
+                // Unordered list continuation and exit
+                const unorderedSelector = `.markdown-block[data-note-id="${UNORDERED_NOTE_ID}"]`;
+                const unorderedEditor = `${unorderedSelector} .markdown-editor`;
+                await page.click(`${unorderedSelector} .note-preview`);
+                await page.waitForSelector(`${unorderedSelector}.editing-in-place`);
+                await page.waitForSelector(unorderedEditor);
+
+
+                const enhancedMode = await page.$eval(unorderedSelector, (card) => Boolean(card.querySelector('.CodeMirror')));
+                assert.equal(enhancedMode, false, "Fallback textarea should be active for inline editor tests");
+
+                await page.evaluate((selector) => {
+                    const textarea = document.querySelector(selector);
+                    if (!(textarea instanceof HTMLTextAreaElement)) return;
+                    const newlineIndex = textarea.value.indexOf("\n");
+                    let caret = newlineIndex >= 0 ? newlineIndex : textarea.value.length;
+                    textarea.focus();
+                    textarea.setSelectionRange(caret, caret);
+                    if (textarea.selectionStart !== caret && caret > 0) {
+                        caret -= 1;
+                        textarea.setSelectionRange(caret, caret);
+                    }
+                }, unorderedEditor);
+                await page.type(unorderedEditor, "\n");
+                try {
+                    await page.waitForFunction((selector, expected) => {
+                        const textarea = document.querySelector(selector);
+                        return textarea instanceof HTMLTextAreaElement && textarea.value === expected;
+                    }, { timeout: 2000 }, unorderedEditor, "- Alpha\n- \n- Beta");
+                } catch (error) {
+                    const actual = await page.$eval(unorderedEditor, (el) => el.value);
+                    assert.equal(actual, "- Alpha\n- \n- Beta", "Unordered list continuation");
+                }
+                let unorderedValue = await page.$eval(unorderedEditor, (el) => el.value);
+                assert.equal(unorderedValue, "- Alpha\n- \n- Beta");
+
+                await page.keyboard.press("Enter");
+                try {
+                    await page.waitForFunction((selector, expected) => {
+                        const textarea = document.querySelector(selector);
+                        return textarea instanceof HTMLTextAreaElement && textarea.value === expected;
+                    }, { timeout: 2000 }, unorderedEditor, "- Alpha\n\n- Beta");
+                } catch (error) {
+                    const actual = await page.$eval(unorderedEditor, (el) => el.value);
+                    assert.equal(actual, "- Alpha\n\n- Beta", "Unordered list exit removes bullet");
+                }
+                unorderedValue = await page.$eval(unorderedEditor, (el) => el.value);
+                assert.equal(unorderedValue, "- Alpha\n\n- Beta");
+
+                await page.keyboard.down("Control");
+                await page.keyboard.press("Enter");
+                await page.keyboard.up("Control");
+
+                // Ordered list continuation with renumbering
+                const orderedSelector = `.markdown-block[data-note-id="${ORDERED_NOTE_ID}"]`;
+                const orderedEditor = `${orderedSelector} .markdown-editor`;
+                await page.click(`${orderedSelector} .note-preview`);
+                await page.waitForSelector(`${orderedSelector}.editing-in-place`);
+                await page.waitForSelector(orderedEditor);
+
+                await page.evaluate((selector) => {
+                    const textarea = document.querySelector(selector);
+                    if (!(textarea instanceof HTMLTextAreaElement)) return;
+                    const newlineIndex = textarea.value.indexOf("\n");
+                    const caret = newlineIndex >= 0 ? newlineIndex : textarea.value.length;
+                    textarea.focus();
+                    textarea.setSelectionRange(caret, caret);
+                }, orderedEditor);
+
+                await page.keyboard.press("Enter");
+                try {
+                    await page.waitForFunction((selector, expected) => {
+                        const textarea = document.querySelector(selector);
+                        return textarea instanceof HTMLTextAreaElement && textarea.value === expected;
+                    }, { timeout: 2000 }, orderedEditor, "1. First\n2. \n3. Second");
+                } catch (error) {
+                    const actual = await page.$eval(orderedEditor, (el) => el.value);
+                    assert.equal(actual, "1. First\n2. \n3. Second", "Ordered list renumbering");
+                }
+                const orderedLines = await page.$eval(orderedEditor, (el) => el.value.split("\n"));
+                assert.deepEqual(orderedLines, ["1. First", "2. ", "3. Second"]);
+
+                await page.keyboard.down("Control");
+                await page.keyboard.press("Enter");
+                await page.keyboard.up("Control");
+
+                // Table row insertion
+                const tableSelector = `.markdown-block[data-note-id="${TABLE_NOTE_ID}"]`;
+                const tableEditor = `${tableSelector} .markdown-editor`;
+                await page.click(`${tableSelector} .note-preview`);
+                await page.waitForSelector(`${tableSelector}.editing-in-place`);
+                await page.waitForSelector(tableEditor);
+
+                await page.evaluate((selector) => {
+                    const textarea = document.querySelector(selector);
+                    if (!(textarea instanceof HTMLTextAreaElement)) return;
+                    textarea.focus();
+                    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+                }, tableEditor);
+
+                await page.keyboard.press("Enter");
+                const tableState = await page.$eval(tableEditor, (el) => ({
+                    value: el.value,
+                    caret: el.selectionStart ?? 0
+                }));
+                const lastLineStart = tableState.value.lastIndexOf("\n") + 1;
+                const lastLine = tableState.value.slice(lastLineStart);
+                assert.match(lastLine, /^\|\s+\|\s+\|$/);
+                assert.equal(tableState.caret, lastLineStart + 2, "Caret moves to first cell of new table row");
             } finally {
                 await page.close();
             }

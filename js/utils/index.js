@@ -61,7 +61,7 @@ export async function copyToClipboard(content = {}) {
     }
 
     const metadataDataUrl = metadataJson ? encodeMetadataDataUrl(metadataJson) : "";
-    const textPayload = buildPlainTextPayload({ text: safeText, attachments: normalizedAttachments, metadataDataUrl });
+    const textPayload = buildPlainTextClipboardPayload({ text: safeText, attachments: normalizedAttachments });
     const htmlPayload = hasHtml ? appendMetadataToHtml(safeHtml, metadataJson) : safeHtml;
     const canUseClipboardItem = navigator?.clipboard?.write && typeof ClipboardItem !== "undefined";
     const attachmentBlobs = createAttachmentBlobs(normalizedAttachments);
@@ -238,7 +238,7 @@ function appendMetadataToHtml(html, metadataJson) {
  * @param {{ text: string, attachments: Record<string, import("../types.d.js").AttachmentRecord>, metadataDataUrl: string }} params
  * @returns {string}
  */
-function buildPlainTextPayload({ text, attachments, metadataDataUrl }) {
+export function buildPlainTextClipboardPayload({ text, attachments }) {
     const segments = [];
     const inline = inlineAttachmentsInText(text, attachments);
     const inlineHasContent = inline.trim().length > 0;
@@ -255,10 +255,6 @@ function buildPlainTextPayload({ text, attachments, metadataDataUrl }) {
 
     if (!segments.length && typeof text === "string" && text.length > 0) {
         segments.push(text);
-    }
-
-    if (metadataDataUrl) {
-        segments.push(metadataDataUrl);
     }
 
     return segments.join("\n\n");

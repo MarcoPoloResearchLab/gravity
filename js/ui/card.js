@@ -186,6 +186,11 @@ export function renderCard(record, options = {}) {
         if (target.closest && target.closest(".actions")) {
             return;
         }
+
+        if (card.classList.contains("editing-in-place")) {
+            return;
+        }
+
         focusCardEditor(card, notesContainer, {
             caretPlacement: CARET_PLACEMENT_END,
             bubblePreviousCardToTop: true
@@ -369,6 +374,7 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
         bubblePreviousCardToTop = true,
         bubbleSelfToTop = false
     } = options;
+    const wasEditing = card.classList.contains("editing-in-place");
     if (currentEditingCard && currentEditingCard !== card && !mergeInProgress) {
         finalizeCard(currentEditingCard, notesContainer, { bubbleToTop: bubblePreviousCardToTop });
     }
@@ -386,7 +392,7 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
     const initialValue = editorHost ? editorHost.getValue() : editor?.value ?? "";
     card.dataset.initialValue = initialValue;
 
-    if (editorHost && !editorHost.isEnhanced() && editor) {
+    if (!wasEditing && editorHost && !editorHost.isEnhanced() && editor) {
         const h = Math.max(preview.offsetHeight, 36);
         editor.style.height = `${h}px`;
         editor.style.minHeight = `${h}px`;

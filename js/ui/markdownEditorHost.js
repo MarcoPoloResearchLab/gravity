@@ -489,14 +489,50 @@ export function createMarkdownEditorHost(options) {
     }
 
     function setupFallbackTextarea(el, emitFn) {
-        el.addEventListener("input", () => emitFn("change", { value: el.value }));
+        el.addEventListener("input", () => {
+            if (el.__gravityHandlingInput) {
+                return;
+            }
+            if (el.__gravityLastKey === "Enter") {
+                el.__gravityHandlingInput = true;
+                const previousValue = typeof el.__gravityPrevValue === "string" ? el.__gravityPrevValue : el.value;
+                const previousCaret = typeof el.__gravityPrevSelectionStart === "number"
+                    ? el.__gravityPrevSelectionStart
+                    : (el.selectionStart ?? previousValue.length);
+                el.value = previousValue;
+                el.setSelectionRange(previousCaret, previousCaret);
+                handleTextareaEnter(el);
+                el.__gravityLastKey = undefined;
+                delete el.__gravityPrevValue;
+                delete el.__gravityPrevSelectionStart;
+                el.__gravityHandlingInput = false;
+                emitFn("change", { value: el.value });
+                return;
+            }
+            emitFn("change", { value: el.value });
+        });
         el.addEventListener("blur", () => emitFn("blur"));
         el.addEventListener("keydown", (event) => {
             const isModifier = event.metaKey || event.ctrlKey;
 
+            if (!isModifier && !event.altKey && !event.shiftKey && event.key === "Enter") {
+                el.__gravityPrevValue = el.value;
+                el.__gravityPrevSelectionStart = el.selectionStart ?? el.value.length;
+                el.__gravityLastKey = "Enter";
+            } else {
+                el.__gravityLastKey = undefined;
+            }
+
             if ((event.key === "Enter" || event.key === "s" || event.key === "S") && isModifier) {
                 event.preventDefault();
                 emitFn("submit");
+                return;
+            }
+
+            if (event.key === "Enter" && event.shiftKey && !isModifier) {
+                event.preventDefault();
+                insertSoftBreak(el);
+                emitFn("change", { value: el.value });
                 return;
             }
 
@@ -602,18 +638,6 @@ export function createMarkdownEditorHost(options) {
         });
     }
 
-    function isListLine(lineText) {
-        return ORDERED_LIST_REGEX.test(lineText) || UNORDERED_LIST_REGEX.test(lineText);
-    }
-
-    function isTableRow(lineText) {
-        return TABLE_ROW_REGEX.test(lineText);
-    }
-
-    function isTableSeparator(lineText) {
-        return TABLE_SEPARATOR_REGEX.test(lineText);
-    }
-
     function insertTableRow(cm, lineNumber, lineText) {
         const pipeCount = (lineText.match(/\|/g) || []).length;
         const cellCount = Math.max(pipeCount - 1, 1);
@@ -662,6 +686,176 @@ function loadImage(source) {
 const INDENT_SEQUENCE = "    ";
 
 
+
+function insertSoftBreak(textarea) {
+    const { selectionStart = 0, selectionEnd = 0, value } = textarea;
+    const before = value.slice(0, selectionStart);
+    const after = value.slice(selectionEnd);
+    const nextValue = `${before}${SOFT_BREAK}${after}`;
+    textarea.value = nextValue;
+    const caret = selectionStart + SOFT_BREAK.length;
+    textarea.setSelectionRange(caret, caret);
+}
+
+function handleTextareaEnter(textarea) {
+    const caret = textarea.selectionStart ?? 0;
+    const lineStart = findLineStart(textarea.value, caret);
+    const lineEnd = findLineEnd(textarea.value, caret);
+    const lineText = textarea.value.slice(lineStart, lineEnd);
+
+    if (isTableRow(lineText) && !isTableSeparator(lineText)) {
+        insertTableRowTextarea(textarea, lineEnd, lineText);
+        return;
+    }
+
+    if (isListLine(lineText)) {
+        handleListEnter(textarea, { caret, lineStart, lineEnd, lineText });
+        return;
+    }
+
+    insertPlainNewline(textarea, caret);
+}
+
+function insertPlainNewline(textarea, caret) {
+    const { value } = textarea;
+    const before = value.slice(0, caret);
+    const after = value.slice(caret);
+    textarea.value = `${before}\n${after}`;
+    const nextCaret = before.length + 1;
+    textarea.setSelectionRange(nextCaret, nextCaret);
+}
+
+function isListLine(lineText) {
+    return ORDERED_LIST_REGEX.test(lineText) || UNORDERED_LIST_REGEX.test(lineText);
+}
+
+function isTableRow(lineText) {
+    return TABLE_ROW_REGEX.test(lineText);
+}
+
+function isTableSeparator(lineText) {
+    return TABLE_SEPARATOR_REGEX.test(lineText);
+}
+
+function insertTableRowTextarea(textarea, lineEnd, lineText) {
+    const pipeCount = (lineText.match(/\|/g) || []).length;
+    const cellCount = Math.max(pipeCount - 1, 1);
+    const cells = Array.from({ length: cellCount }, () => " ");
+    const newRow = `\n| ${cells.join(" | ")} |`;
+    const before = textarea.value.slice(0, lineEnd);
+    const after = textarea.value.slice(lineEnd);
+    textarea.value = `${before}${newRow}${after}`;
+    const nextCaret = before.length + 3; // newline + "| "
+    textarea.setSelectionRange(nextCaret, nextCaret);
+}
+
+function handleListEnter(textarea, context) {
+    const { caret, lineStart, lineEnd, lineText } = context;
+    const listInfo = parseListLine(lineText);
+    if (!listInfo) {
+        insertPlainNewline(textarea, caret);
+        return;
+    }
+
+    const prefix = listInfo.type === "ordered"
+        ? `${listInfo.leading}${listInfo.number}${listInfo.separator}`
+        : `${listInfo.leading}- `;
+    const contentAfterPrefix = lineText.slice(prefix.length);
+    const caretInLine = caret - lineStart;
+    const trailingAfterCaret = lineText.slice(caretInLine).trim().length > 0;
+
+    if (contentAfterPrefix.trim().length === 0 && !trailingAfterCaret) {
+        const indentation = listInfo.leading;
+        const before = textarea.value.slice(0, lineStart);
+        const after = textarea.value.slice(lineEnd);
+        textarea.value = `${before}${indentation}${after}`;
+        const nextCaret = before.length + indentation.length;
+        textarea.setSelectionRange(nextCaret, nextCaret);
+        return;
+    }
+
+    const nextPrefix = listInfo.type === "ordered"
+        ? `${listInfo.leading}${listInfo.number + 1}${listInfo.separator}`
+        : `${listInfo.leading}- `;
+
+    const selectionStart = textarea.selectionStart ?? caret;
+    const selectionEnd = textarea.selectionEnd ?? selectionStart;
+    textarea.setRangeText(`\n${nextPrefix}`, selectionStart, selectionEnd, "end");
+    let caretIndex = textarea.selectionStart ?? (selectionStart + nextPrefix.length + 1);
+
+    if (listInfo.type === "ordered") {
+        caretIndex = renumberOrderedListTextarea(textarea, caretIndex);
+    }
+
+    textarea.setSelectionRange(caretIndex, caretIndex);
+}
+
+function parseListLine(lineText) {
+    const orderedMatch = lineText.match(/^(\s*)(\d+)(\.\s+)(.*)$/);
+    if (orderedMatch) {
+        return {
+            type: "ordered",
+            leading: orderedMatch[1] ?? "",
+            number: Number.parseInt(orderedMatch[2], 10) || 1,
+            separator: orderedMatch[3] ?? ". ",
+            rest: orderedMatch[4] ?? ""
+        };
+    }
+    const unorderedMatch = lineText.match(/^(\s*)[-*+]\s+.*$/);
+    if (unorderedMatch) {
+        return {
+            type: "unordered",
+            leading: unorderedMatch[1] ?? ""
+        };
+    }
+    return null;
+}
+
+function renumberOrderedListTextarea(textarea, caretIndex) {
+    const lines = textarea.value.split("\n");
+    let runningIndex = 0;
+    let insertedLineIndex = 0;
+    for (let i = 0; i < lines.length; i += 1) {
+        const line = lines[i];
+        const lineLength = line.length;
+        if (caretIndex <= runningIndex + lineLength) {
+            insertedLineIndex = i;
+            break;
+        }
+        runningIndex += lineLength + 1;
+    }
+
+    let start = insertedLineIndex;
+    while (start > 0 && ORDERED_LIST_REGEX.test(lines[start - 1])) start -= 1;
+    let end = insertedLineIndex;
+    while (end + 1 < lines.length && ORDERED_LIST_REGEX.test(lines[end + 1])) end += 1;
+
+    const firstMatch = lines[start]?.match(ORDERED_LIST_REGEX);
+    const baseNumber = firstMatch ? Number.parseInt(firstMatch[1], 10) : 1;
+    let nextNumber = Number.isFinite(baseNumber) ? baseNumber : 1;
+    for (let lineIdx = start; lineIdx <= end; lineIdx += 1) {
+        const content = lines[lineIdx];
+        const parsed = content.match(/^(\s*)(\d+)(\.\s+)(.*)$/);
+        if (!parsed) continue;
+        const updated = `${parsed[1] ?? ""}${nextNumber}${parsed[3] ?? ". "}${parsed[4] ?? ""}`;
+        lines[lineIdx] = updated;
+        nextNumber += 1;
+    }
+
+    textarea.value = lines.join("\n");
+
+    let newCaret = 0;
+    for (let i = 0; i < insertedLineIndex; i += 1) {
+        newCaret += lines[i].length + 1;
+    }
+    const currentLine = lines[insertedLineIndex] ?? "";
+    const caretMatch = currentLine.match(/^(\s*)(\d+)(\.\s+)/);
+    const prefixLength = caretMatch
+        ? (caretMatch[1]?.length ?? 0) + (caretMatch[2]?.length ?? 0) + (caretMatch[3]?.length ?? 0)
+        : 0;
+    newCaret += prefixLength;
+    return newCaret;
+}
 
 function applyIndent(textarea) {
     const { selectionStart, selectionEnd, value } = textarea;
