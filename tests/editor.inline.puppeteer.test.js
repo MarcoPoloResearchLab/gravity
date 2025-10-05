@@ -22,11 +22,13 @@ const INITIAL_MARKDOWN = `# Inline Fixture\n\nThis note verifies inline editing.
 const CARET_NOTE_ID = "inline-caret-fixture";
 const CARET_MARKDOWN = `First paragraph line one.\nSecond paragraph line two.\nThird line to ensure scrolling.`;
 const UNORDERED_NOTE_ID = "inline-unordered-fixture";
-const UNORDERED_MARKDOWN = "- Alpha\n- Beta";
+const UNORDERED_MARKDOWN = "* Alpha\n* Beta";
 const ORDERED_NOTE_ID = "inline-ordered-fixture";
 const ORDERED_MARKDOWN = "1. First\n2. Second";
 const TABLE_NOTE_ID = "inline-table-fixture";
 const TABLE_MARKDOWN = "| Col1 | Col2 |\n| --- | --- |\n| A | B |";
+const FENCE_NOTE_ID = "inline-fence-fixture";
+const FENCE_MARKDOWN = "```js";
 
 if (!puppeteerModule) {
     test("puppeteer unavailable", () => {
@@ -173,7 +175,8 @@ if (!puppeteerModule) {
             const seededRecords = [
                 buildNoteRecord({ noteId: UNORDERED_NOTE_ID, markdownText: UNORDERED_MARKDOWN, attachments: {} }),
                 buildNoteRecord({ noteId: ORDERED_NOTE_ID, markdownText: ORDERED_MARKDOWN, attachments: {} }),
-                buildNoteRecord({ noteId: TABLE_NOTE_ID, markdownText: TABLE_MARKDOWN, attachments: {} })
+                buildNoteRecord({ noteId: TABLE_NOTE_ID, markdownText: TABLE_MARKDOWN, attachments: {} }),
+                buildNoteRecord({ noteId: FENCE_NOTE_ID, markdownText: FENCE_MARKDOWN, attachments: {} })
             ];
 
             const page = await preparePage(browser, { records: seededRecords });
@@ -201,31 +204,32 @@ if (!puppeteerModule) {
                         textarea.setSelectionRange(caret, caret);
                     }
                 }, unorderedEditor);
-                await page.type(unorderedEditor, "\n");
+                await page.$eval(unorderedEditor, (el) => el.selectionStart);
+                await page.keyboard.press("Enter");
                 try {
                     await page.waitForFunction((selector, expected) => {
                         const textarea = document.querySelector(selector);
                         return textarea instanceof HTMLTextAreaElement && textarea.value === expected;
-                    }, { timeout: 2000 }, unorderedEditor, "- Alpha\n- \n- Beta");
+                    }, { timeout: 2000 }, unorderedEditor, "* Alpha\n* \n* Beta");
                 } catch (error) {
                     const actual = await page.$eval(unorderedEditor, (el) => el.value);
-                    assert.equal(actual, "- Alpha\n- \n- Beta", "Unordered list continuation");
+                    assert.equal(actual, "* Alpha\n* \n* Beta", "Unordered list continuation preserves bullet");
                 }
                 let unorderedValue = await page.$eval(unorderedEditor, (el) => el.value);
-                assert.equal(unorderedValue, "- Alpha\n- \n- Beta");
+                assert.equal(unorderedValue, "* Alpha\n* \n* Beta");
 
                 await page.keyboard.press("Enter");
                 try {
                     await page.waitForFunction((selector, expected) => {
                         const textarea = document.querySelector(selector);
                         return textarea instanceof HTMLTextAreaElement && textarea.value === expected;
-                    }, { timeout: 2000 }, unorderedEditor, "- Alpha\n\n- Beta");
+                    }, { timeout: 2000 }, unorderedEditor, "* Alpha\n\n* Beta");
                 } catch (error) {
                     const actual = await page.$eval(unorderedEditor, (el) => el.value);
-                    assert.equal(actual, "- Alpha\n\n- Beta", "Unordered list exit removes bullet");
+                    assert.equal(actual, "* Alpha\n\n* Beta", "Unordered list exit removes bullet");
                 }
                 unorderedValue = await page.$eval(unorderedEditor, (el) => el.value);
-                assert.equal(unorderedValue, "- Alpha\n\n- Beta");
+                assert.equal(unorderedValue, "* Alpha\n\n* Beta");
 
                 await page.keyboard.down("Control");
                 await page.keyboard.press("Enter");
@@ -242,11 +246,15 @@ if (!puppeteerModule) {
                     const textarea = document.querySelector(selector);
                     if (!(textarea instanceof HTMLTextAreaElement)) return;
                     const newlineIndex = textarea.value.indexOf("\n");
-                    const caret = newlineIndex >= 0 ? newlineIndex : textarea.value.length;
+                    let caret = newlineIndex >= 0 ? newlineIndex : textarea.value.length;
                     textarea.focus();
                     textarea.setSelectionRange(caret, caret);
+                    if (textarea.selectionStart !== caret && caret > 0) {
+                        caret -= 1;
+                        textarea.setSelectionRange(caret, caret);
+                    }
                 }, orderedEditor);
-
+                await page.$eval(orderedEditor, (el) => el.selectionStart);
                 await page.keyboard.press("Enter");
                 try {
                     await page.waitForFunction((selector, expected) => {
@@ -287,6 +295,33 @@ if (!puppeteerModule) {
                 const lastLine = tableState.value.slice(lastLineStart);
                 assert.match(lastLine, /^\|\s+\|\s+\|$/);
                 assert.equal(tableState.caret, lastLineStart + 2, "Caret moves to first cell of new table row");
+
+                await page.keyboard.down("Control");
+                await page.keyboard.press("Enter");
+                await page.keyboard.up("Control");
+
+                // Code fence auto-closure
+                const fenceSelector = `.markdown-block[data-note-id="${FENCE_NOTE_ID}"]`;
+                const fenceEditor = `${fenceSelector} .markdown-editor`;
+                await page.click(`${fenceSelector} .note-preview`);
+                await page.waitForSelector(`${fenceSelector}.editing-in-place`);
+                await page.waitForSelector(fenceEditor);
+
+                await page.evaluate((selector) => {
+                    const textarea = document.querySelector(selector);
+                    if (!(textarea instanceof HTMLTextAreaElement)) return;
+                    textarea.focus();
+                    const end = textarea.value.length;
+                    textarea.setSelectionRange(end, end);
+                }, fenceEditor);
+
+                await page.keyboard.press("Enter");
+                const fenceState = await page.$eval(fenceEditor, (el) => ({
+                    value: el.value,
+                    caret: el.selectionStart ?? 0
+                }));
+                assert.equal(fenceState.value, "```js\n\n```");
+                assert.equal(fenceState.caret, 6, "Caret moves inside the new code block");
             } finally {
                 await page.close();
             }

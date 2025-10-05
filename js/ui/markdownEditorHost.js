@@ -24,8 +24,16 @@ const ORDERED_LIST_REGEX = /^\s*(\d+)\.\s+/;
 const UNORDERED_LIST_REGEX = /^\s*[-*+]\s+/;
 const TABLE_ROW_REGEX = /^\s*\|.*\|\s*$/;
 const TABLE_SEPARATOR_REGEX = /^\s*\|?(?:-+:?\s*\|)+-*:?\s*\|?\s*$/;
+const CODE_FENCE_REGEX = /^(\s*)(`{3,}|~{3,})([^`~]*)$/;
 const SOFT_BREAK = "  \n";
 const IMAGE_TIFF_TYPES = new Set(["image/tiff", "image/x-tiff"]);
+const BRACKET_PAIRS = Object.freeze({
+    "(": ")",
+    "[": "]",
+    "{": "}",
+    '"': '"',
+    "'": "'"
+});
 
 /**
  * @typedef {"edit" | "view"} MarkdownEditorMode
@@ -370,6 +378,8 @@ export function createMarkdownEditorHost(options) {
             autofocus: false,
             toolbar: false,
             forceSync: true,
+            autoCloseBrackets: true,
+            autoCloseTags: true,
             renderingConfig: { singleLineBreaks: false, codeSyntaxHighlighting: false }
         });
     }
@@ -419,6 +429,17 @@ export function createMarkdownEditorHost(options) {
             if (event.key === "ArrowDown" && isCaretOnLastLine(cm)) {
                 event.preventDefault();
                 emit("navigateNext");
+            }
+        });
+
+        codemirror.on("keypress", (cm, event) => {
+            if (event.defaultPrevented) return;
+            if (event.metaKey || event.ctrlKey || event.altKey) return;
+            const closing = BRACKET_PAIRS[event.key];
+            if (!closing) return;
+            const handled = handleBracketAutoClose(cm, event.key, closing);
+            if (handled) {
+                event.preventDefault();
             }
         });
 
@@ -473,6 +494,10 @@ export function createMarkdownEditorHost(options) {
             const cursor = cm.getCursor();
             const lineText = cm.getLine(cursor.line);
 
+            if (handleCodeFenceInCodeMirror(cm, cursor, lineText)) {
+                return;
+            }
+
             if (isTableRow(lineText) && !isTableSeparator(lineText)) {
                 insertTableRow(cm, cursor.line, lineText);
                 return;
@@ -514,6 +539,13 @@ export function createMarkdownEditorHost(options) {
         el.addEventListener("blur", () => emitFn("blur"));
         el.addEventListener("keydown", (event) => {
             const isModifier = event.metaKey || event.ctrlKey;
+
+            if (!isModifier && !event.altKey && BRACKET_PAIRS[event.key]) {
+                event.preventDefault();
+                applyBracketPair(el, event.key, BRACKET_PAIRS[event.key]);
+                emitFn("change", { value: el.value });
+                return;
+            }
 
             if (!isModifier && !event.altKey && !event.shiftKey && event.key === "Enter") {
                 el.__gravityPrevValue = el.value;
@@ -697,11 +729,163 @@ function insertSoftBreak(textarea) {
     textarea.setSelectionRange(caret, caret);
 }
 
+function applyBracketPair(textarea, openChar, closeChar) {
+    if (typeof closeChar !== "string") return;
+    const start = typeof textarea.selectionStart === "number" ? textarea.selectionStart : textarea.value.length;
+    const end = typeof textarea.selectionEnd === "number" ? textarea.selectionEnd : start;
+    const before = textarea.value.slice(0, start);
+    const after = textarea.value.slice(end);
+    const selected = textarea.value.slice(start, end);
+    textarea.value = `${before}${openChar}${selected}${closeChar}${after}`;
+    const nextStart = start + 1;
+    const nextEnd = end + 1;
+    if (start === end) {
+        textarea.setSelectionRange(nextStart, nextStart);
+    } else {
+        textarea.setSelectionRange(nextStart, nextEnd);
+    }
+}
+
+function handleBracketAutoClose(cm, openChar, closeChar) {
+    if (typeof closeChar !== "string") return false;
+    const selections = cm.listSelections();
+    if (!Array.isArray(selections) || selections.length === 0) return false;
+    let handled = false;
+    cm.operation(() => {
+        for (const selection of selections) {
+            const { anchor, head } = selection;
+            const anchorBeforeHead = anchor.line < head.line
+                || (anchor.line === head.line && anchor.ch <= head.ch);
+            const start = anchorBeforeHead ? anchor : head;
+            const end = anchorBeforeHead ? head : anchor;
+            const isEmpty = start.line === end.line && start.ch === end.ch;
+
+            if (!isEmpty) {
+                const selectedText = cm.getRange(start, end);
+                cm.replaceRange(`${openChar}${selectedText}${closeChar}`, start, end, "+autoCloseBracket");
+                const startCursor = { line: start.line, ch: start.ch + 1 };
+                const endCursor = { line: startCursor.line, ch: startCursor.ch + selectedText.length };
+                cm.setSelection(startCursor, endCursor);
+                handled = true;
+                continue;
+            }
+
+            const cursor = cm.getCursor();
+            const nextChar = cm.getRange(cursor, { line: cursor.line, ch: cursor.ch + 1 });
+            if (nextChar === closeChar) {
+                cm.setCursor({ line: cursor.line, ch: cursor.ch + 1 });
+                handled = true;
+                continue;
+            }
+
+            cm.replaceRange(`${openChar}${closeChar}`, cursor, cursor, "+autoCloseBracket");
+            cm.setCursor({ line: cursor.line, ch: cursor.ch + 1 });
+            handled = true;
+        }
+    });
+    return handled;
+}
+
+function handleCodeFenceInCodeMirror(cm, cursor, lineText) {
+    const parsed = parseCodeFence(lineText);
+    if (!parsed) return false;
+    if (cursor.ch !== lineText.length) return false;
+    if (!isOpeningFenceInCodeMirror(cm, cursor.line, parsed.marker)) return false;
+    const nextLine = cm.getLine(cursor.line + 1);
+    if (isFenceLineWithMarker(nextLine, parsed.marker)) return false;
+
+    const insertion = `\n${parsed.leading}\n${parsed.leading}${parsed.fence}`;
+    cm.operation(() => {
+        cm.replaceRange(insertion, cursor, cursor, "+input");
+        cm.setCursor({ line: cursor.line + 1, ch: parsed.leading.length });
+    });
+    return true;
+}
+
+function handleCodeFenceEnterTextarea(textarea, context) {
+    const { caret, lineStart, lineEnd, lineText } = context;
+    const parsed = parseCodeFence(lineText);
+    if (!parsed) return false;
+    if (caret !== lineEnd) return false;
+    if (!isOpeningFenceInText(textarea.value.slice(0, lineStart), parsed.marker)) return false;
+
+    const nextLineStart = lineEnd + 1;
+    const nextLineEnd = findLineEnd(textarea.value, nextLineStart);
+    const nextLine = textarea.value.slice(nextLineStart, nextLineEnd);
+    if (isFenceLineWithMarker(nextLine, parsed.marker)) return false;
+
+    const before = textarea.value.slice(0, caret);
+   const after = textarea.value.slice(caret);
+   const insertion = `\n${parsed.leading}\n${parsed.leading}${parsed.fence}`;
+   textarea.value = `${before}${insertion}${after}`;
+   const caretIndex = before.length + 1 + parsed.leading.length;
+   textarea.setSelectionRange(caretIndex, caretIndex);
+    if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => {
+            try {
+                textarea.setSelectionRange(caretIndex, caretIndex);
+            } catch {}
+        });
+    }
+   return true;
+}
+
+function parseCodeFence(lineText) {
+    if (typeof lineText !== "string") return null;
+    const match = lineText.match(CODE_FENCE_REGEX);
+    if (!match) return null;
+    const sequence = match[2] ?? "";
+    if (sequence.length < 3) return null;
+    const marker = sequence.charAt(0);
+    return {
+        leading: match[1] ?? "",
+        fence: sequence,
+        info: (match[3] ?? "").trim(),
+        marker
+    };
+}
+
+function isOpeningFenceInCodeMirror(cm, lineNumber, marker) {
+    let parity = 0;
+    for (let lineIndex = 0; lineIndex < lineNumber; lineIndex += 1) {
+        const candidate = parseCodeFence(cm.getLine(lineIndex));
+        if (candidate && candidate.marker === marker) {
+            parity = parity === 0 ? 1 : 0;
+        }
+    }
+    return parity === 0;
+}
+
+function isOpeningFenceInText(text, marker) {
+    if (!text) return true;
+    const lines = text.split(/\n/);
+    let parity = 0;
+    for (const line of lines) {
+        const candidate = parseCodeFence(line);
+        if (candidate && candidate.marker === marker) {
+            parity = parity === 0 ? 1 : 0;
+        }
+    }
+    return parity === 0;
+}
+
+function isFenceLineWithMarker(lineText, marker) {
+    if (typeof lineText !== "string") return false;
+    const parsed = parseCodeFence(lineText.trimEnd());
+    if (!parsed) return false;
+    if (parsed.marker !== marker) return false;
+    return parsed.info.length === 0;
+}
+
 function handleTextareaEnter(textarea) {
     const caret = textarea.selectionStart ?? 0;
     const lineStart = findLineStart(textarea.value, caret);
     const lineEnd = findLineEnd(textarea.value, caret);
     const lineText = textarea.value.slice(lineStart, lineEnd);
+
+    if (handleCodeFenceEnterTextarea(textarea, { caret, lineStart, lineEnd, lineText })) {
+        return;
+    }
 
     if (isTableRow(lineText) && !isTableSeparator(lineText)) {
         insertTableRowTextarea(textarea, lineEnd, lineText);
@@ -747,6 +931,13 @@ function insertTableRowTextarea(textarea, lineEnd, lineText) {
     textarea.value = `${before}${newRow}${after}`;
     const nextCaret = before.length + 3; // newline + "| "
     textarea.setSelectionRange(nextCaret, nextCaret);
+    if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => {
+            try {
+                textarea.setSelectionRange(nextCaret, nextCaret);
+            } catch {}
+        });
+    }
 }
 
 function handleListEnter(textarea, context) {
@@ -759,7 +950,7 @@ function handleListEnter(textarea, context) {
 
     const prefix = listInfo.type === "ordered"
         ? `${listInfo.leading}${listInfo.number}${listInfo.separator}`
-        : `${listInfo.leading}- `;
+        : `${listInfo.leading}${listInfo.marker} `;
     const contentAfterPrefix = lineText.slice(prefix.length);
     const caretInLine = caret - lineStart;
     const trailingAfterCaret = lineText.slice(caretInLine).trim().length > 0;
@@ -776,7 +967,7 @@ function handleListEnter(textarea, context) {
 
     const nextPrefix = listInfo.type === "ordered"
         ? `${listInfo.leading}${listInfo.number + 1}${listInfo.separator}`
-        : `${listInfo.leading}- `;
+        : `${listInfo.leading}${listInfo.marker} `;
 
     const selectionStart = textarea.selectionStart ?? caret;
     const selectionEnd = textarea.selectionEnd ?? selectionStart;
@@ -801,11 +992,12 @@ function parseListLine(lineText) {
             rest: orderedMatch[4] ?? ""
         };
     }
-    const unorderedMatch = lineText.match(/^(\s*)[-*+]\s+.*$/);
+    const unorderedMatch = lineText.match(/^(\s*)([-*+])\s+.*$/);
     if (unorderedMatch) {
         return {
             type: "unordered",
-            leading: unorderedMatch[1] ?? ""
+            leading: unorderedMatch[1] ?? "",
+            marker: unorderedMatch[2] ?? "-"
         };
     }
     return null;
