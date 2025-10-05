@@ -182,7 +182,9 @@ html, body {
 
 /* Tables */
 .markdown-content table {
-    width: 100%;
+    display: inline-table;
+    width: auto;
+    max-width: 100%;
     border-collapse: collapse;
     margin: 0.25rem 0;
 }

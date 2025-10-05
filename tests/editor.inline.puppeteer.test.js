@@ -171,6 +171,45 @@ if (!puppeteerModule) {
             }
         });
 
+        test("tables render without forcing full card width", async () => {
+            const seededRecords = [buildNoteRecord({
+                noteId: TABLE_NOTE_ID,
+                markdownText: TABLE_MARKDOWN,
+                attachments: {}
+            })];
+
+            const page = await preparePage(browser, { records: seededRecords });
+            const cardSelector = `.markdown-block[data-note-id="${TABLE_NOTE_ID}"]`;
+            const tableSelector = `${cardSelector} .markdown-content table`;
+
+            try {
+                await page.waitForSelector(tableSelector);
+
+                const layoutMetrics = await page.$eval(cardSelector, (card) => {
+                    const content = card.querySelector(".markdown-content");
+                    const table = content?.querySelector("table");
+                    if (!content || !table) return null;
+
+                    const tableRect = table.getBoundingClientRect();
+                    const contentRect = content.getBoundingClientRect();
+                    return {
+                        display: window.getComputedStyle(table).display,
+                        tableWidth: tableRect.width,
+                        contentWidth: contentRect.width
+                    };
+                });
+
+                assert.ok(layoutMetrics, "Table layout metrics should be captured");
+                assert.equal(layoutMetrics.display, "inline-table");
+                assert.ok(
+                    layoutMetrics.tableWidth <= layoutMetrics.contentWidth - 24,
+                    "Table width stays narrower than preview container for compact data"
+                );
+            } finally {
+                await page.close();
+            }
+        });
+
         test("lists and tables auto-continue in fallback editor", async () => {
             const seededRecords = [
                 buildNoteRecord({ noteId: UNORDERED_NOTE_ID, markdownText: UNORDERED_MARKDOWN, attachments: {} }),
