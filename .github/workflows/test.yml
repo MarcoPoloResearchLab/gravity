@@ -1,0 +1,38 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "**/*.js"
+      - "**/*.html"
+      - "**/*.css"
+  pull_request:
+    branches:
+      - master
+    paths:
+      - "**/*.js"
+      - "**/*.html"
+      - "**/*.css"
+
+jobs:
+  node-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install browser runtime
+        run: npx puppeteer browsers install chrome
+
+      - name: Run tests
+        run: npm test
