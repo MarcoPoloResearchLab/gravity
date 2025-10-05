@@ -3,8 +3,16 @@ name: Tests
 on:
   push:
     branches: [ master ]
+    paths:
+      - '**/*.js'
+      - '**/*.html'
+      - '**/*.css'
   pull_request:
     branches: [ master ]
+    paths:
+      - '**/*.js'
+      - '**/*.html'
+      - '**/*.css'
 
 jobs:
   node-tests:
