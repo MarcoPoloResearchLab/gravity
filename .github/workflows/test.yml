@@ -2,17 +2,19 @@ name: Tests
 
 on:
   push:
-    branches: [ master ]
+    branches:
+      - master
     paths:
-      - '**/*.js'
-      - '**/*.html'
-      - '**/*.css'
+      - "**/*.js"
+      - "**/*.html"
+      - "**/*.css"
   pull_request:
-    branches: [ master ]
+    branches:
+      - master
     paths:
-      - '**/*.js'
-      - '**/*.html'
-      - '**/*.css'
+      - "**/*.js"
+      - "**/*.html"
+      - "**/*.css"
 
 jobs:
   node-tests:
