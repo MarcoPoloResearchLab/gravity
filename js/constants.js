@@ -10,11 +10,17 @@ export const LABEL_DELETE_NOTE = "🗑️";
 export const LABEL_COPY_NOTE = "📋";
 export const LABEL_EDIT_MARKDOWN = "Edit (Markdown)";
 export const LABEL_VIEW_RENDERED = "View (Rendered)";
+export const LABEL_NEW_NOTE = "New note";
 export const LABEL_APP_TITLE = "Gravity Notes";
 export const LABEL_APP_SUBTITLE = "Append anywhere · Bubble to top · Auto-organize";
 export const ARIA_LABEL_NEW_NOTE = "New note";
 export const ARIA_LABEL_COPY_MARKDOWN = "Copy Markdown";
 export const ARIA_LABEL_COPY_RENDERED = "Copy Rendered HTML";
+export const BADGE_LABEL_CODE = "code";
+export const LABEL_EXPAND_NOTE = "Expand note";
+export const LABEL_COLLAPSE_NOTE = "Collapse note";
+
+export const MESSAGE_NOTE_SAVED = "Saved";
 
 export const FILENAME_EXPORT_NOTES_JSON = "gravity-notes.json";
 export const ACCEPT_IMPORT_NOTES_JSON = "application/json";

@@ -4,6 +4,9 @@ import { nowIso, createElement, autoResize, copyToClipboard } from "../utils/ind
 import {
     ARIA_LABEL_COPY_MARKDOWN,
     ARIA_LABEL_COPY_RENDERED,
+    BADGE_LABEL_CODE,
+    LABEL_COLLAPSE_NOTE,
+    LABEL_EXPAND_NOTE,
     CLIPBOARD_METADATA_VERSION,
     ERROR_CLIPBOARD_COPY_FAILED,
     ERROR_NOTES_CONTAINER_NOT_FOUND,
@@ -21,7 +24,8 @@ import { logging } from "../utils/logging.js";
 import {
     renderSanitizedMarkdown,
     getSanitizedRenderedHtml,
-    getRenderedPlainText
+    getRenderedPlainText,
+    buildDeterministicPreview
 } from "./markdownPreview.js";
 import {
     enableClipboardImagePaste,
@@ -33,16 +37,16 @@ import {
 } from "./imagePaste.js";
 import { createMarkdownEditorHost, MARKDOWN_MODE_EDIT, MARKDOWN_MODE_VIEW } from "./markdownEditorHost.js";
 import { syncStoreFromDom } from "./storeSync.js";
+import { showSaveFeedback } from "./saveFeedback.js";
 
 const DIRECTION_PREVIOUS = -1;
 const DIRECTION_NEXT = 1;
-const INDICATOR_HIDE_THRESHOLD_PX = 6;
-
 const CARET_PLACEMENT_START = "start";
 const CARET_PLACEMENT_END = "end";
-
+const TASK_LINE_REGEX = /^(\s*(?:[-*+]|\d+[.)])\s+\[)( |x|X)(\])([^\n]*)$/;
 let currentEditingCard = null;
 let mergeInProgress = false;
+let expandedPreviewCard = null;
 const editorHosts = new WeakMap();
 const finalizeSuppression = new WeakMap();
 const suppressionState = new WeakMap();
@@ -150,14 +154,34 @@ export function renderCard(record, options = {}) {
     actions.append(btnCopy, btnMergeDown, btnMergeUp, arrowRow, btnDelete);
 
     // Chips + content
-    const chips   = createElement("div", "meta-chips");
+    const chips = createElement("div", "meta-chips");
     applyChips(chips, record.classification);
 
-    // IMPORTANT: div (not <p>) so tables/lists/headings render correctly
+    const badges = createElement("div", "note-badges");
+
+    const previewWrapper = createElement("div", "note-preview");
     const preview = createElement("div", "markdown-content");
+    previewWrapper.appendChild(preview);
+
+    const expandToggle = createElement("button", "note-expand-toggle", "»");
+    expandToggle.type = "button";
+    expandToggle.setAttribute("aria-expanded", "false");
+    expandToggle.setAttribute("aria-label", LABEL_EXPAND_NOTE);
+    expandToggle.hidden = true;
+    expandToggle.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const isExpanded = previewWrapper.classList.contains("note-preview--expanded");
+        setCardExpanded(card, isExpanded ? false : true);
+    });
+    previewWrapper.appendChild(expandToggle);
+
     const initialAttachments = record.attachments || {};
     const initialPreviewMarkdown = transformMarkdownWithAttachments(record.markdownText, initialAttachments);
-    renderSanitizedMarkdown(preview, initialPreviewMarkdown);
+    const { previewMarkdown, meta } = buildDeterministicPreview(initialPreviewMarkdown);
+    renderSanitizedMarkdown(preview, previewMarkdown);
+    scheduleOverflowCheck(previewWrapper, preview, expandToggle);
+    applyPreviewBadges(badges, meta);
 
     const editor  = createElement("textarea", "markdown-editor");
     editor.value  = record.markdownText;
@@ -167,7 +191,26 @@ export function renderCard(record, options = {}) {
     registerInitialAttachments(editor, initialAttachments);
     enableClipboardImagePaste(editor);
 
-    card.append(chips, preview, editor, actions);
+    card.append(chips, badges, previewWrapper, editor, actions);
+
+    const handleCardInteraction = (event) => {
+        const target = /** @type {HTMLElement} */ (event.target);
+        if (target.closest && target.closest(".actions")) {
+            return;
+        }
+
+        if (card.classList.contains("editing-in-place")) {
+            return;
+        }
+
+        focusCardEditor(card, notesContainer, {
+            caretPlacement: CARET_PLACEMENT_END,
+            bubblePreviousCardToTop: true
+        });
+    };
+
+    card.addEventListener("click", handleCardInteraction);
+    preview.addEventListener("click", handlePreviewInteraction);
 
     const editorHost = createMarkdownEditorHost({
         container: card,
@@ -185,7 +228,10 @@ export function renderCard(record, options = {}) {
     const refreshPreview = () => {
         const attachments = getAllAttachments(editor);
         const markdownWithAttachments = transformMarkdownWithAttachments(editorHost.getValue(), attachments);
-        renderSanitizedMarkdown(preview, markdownWithAttachments);
+        const { previewMarkdown: nextPreviewMarkdown, meta: nextMeta } = buildDeterministicPreview(markdownWithAttachments);
+        renderSanitizedMarkdown(preview, nextPreviewMarkdown);
+        applyPreviewBadges(badges, nextMeta);
+        scheduleOverflowCheck(previewWrapper, preview, expandToggle);
         if (!editorHost.isEnhanced()) {
             autoResize(editor);
         }
@@ -217,10 +263,35 @@ export function renderCard(record, options = {}) {
     refreshPreview();
     updateModeControls();
 
-    // Switch to in-place editing on click (without changing order)
-    preview.addEventListener("mousedown", () => enableInPlaceEditing(card, notesContainer));
-
     return card;
+
+    function handlePreviewInteraction(event) {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement) || target.type !== "checkbox") {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const taskIndex = Number(target.dataset.taskIndex);
+        if (!Number.isInteger(taskIndex) || taskIndex < 0) {
+            return;
+        }
+
+        const host = editorHosts.get(card);
+        if (!host) return;
+
+        const currentMarkdown = host.getValue();
+        const nextMarkdown = toggleTaskAtIndex(currentMarkdown, taskIndex);
+        if (nextMarkdown === null) {
+            return;
+        }
+
+        host.setValue(nextMarkdown);
+        refreshPreview();
+        persistCardState(card, notesContainer, nextMarkdown);
+    }
 }
 
 /**
@@ -339,14 +410,137 @@ function showClipboardFeedback(container, message) {
     copyFeedbackTimers.set(feedback, timer);
 }
 
+function persistCardState(card, notesContainer, markdownText) {
+    if (!(card instanceof HTMLElement) || typeof markdownText !== "string") {
+        return;
+    }
+    const noteId = card.getAttribute("data-note-id");
+    if (!noteId) {
+        return;
+    }
+    const editor = /** @type {HTMLTextAreaElement|null} */ (card.querySelector(".markdown-editor"));
+    if (!(editor instanceof HTMLTextAreaElement)) {
+        return;
+    }
+
+    const timestamp = nowIso();
+    const records = GravityStore.loadAllNotes();
+    const existing = records.find((record) => record.noteId === noteId);
+    const attachments = collectReferencedAttachments(editor);
+
+    GravityStore.upsertNonEmpty({
+        noteId,
+        markdownText,
+        createdAtIso: existing?.createdAtIso ?? timestamp,
+        updatedAtIso: timestamp,
+        lastActivityIso: timestamp,
+        attachments
+    });
+
+    card.dataset.initialValue = markdownText;
+
+    if (notesContainer instanceof HTMLElement) {
+        const firstCard = notesContainer.firstElementChild;
+        if (firstCard && firstCard !== card) {
+            notesContainer.insertBefore(card, firstCard);
+        }
+        syncStoreFromDom(notesContainer);
+        updateActionButtons(notesContainer);
+    }
+
+    triggerClassificationForCard(noteId, markdownText, notesContainer);
+    showSaveFeedback();
+    const preview = card.querySelector(".markdown-content");
+    const previewWrapper = card.querySelector(".note-preview");
+    const toggle = card.querySelector(".note-expand-toggle");
+    scheduleOverflowCheck(previewWrapper, preview, toggle);
+}
+
+function setCardExpanded(card, shouldExpand) {
+    if (!(card instanceof HTMLElement)) {
+        return;
+    }
+    const preview = /** @type {HTMLElement|null} */ (card.querySelector(".note-preview"));
+    const content = /** @type {HTMLElement|null} */ (card.querySelector(".note-preview .markdown-content"));
+    const toggle = /** @type {HTMLElement|null} */ (card.querySelector(".note-expand-toggle"));
+    if (!preview || !content) {
+        return;
+    }
+
+    if (shouldExpand) {
+        if (expandedPreviewCard && expandedPreviewCard !== card) {
+            setCardExpanded(expandedPreviewCard, false);
+        }
+        preview.classList.add("note-preview--expanded");
+        if (toggle) {
+            toggle.setAttribute("aria-expanded", "true");
+            toggle.setAttribute("aria-label", LABEL_COLLAPSE_NOTE);
+        }
+        expandedPreviewCard = card;
+    } else {
+        preview.classList.remove("note-preview--expanded");
+        if (toggle) {
+            toggle.setAttribute("aria-expanded", "false");
+            toggle.setAttribute("aria-label", LABEL_EXPAND_NOTE);
+        }
+        if (expandedPreviewCard === card) {
+            expandedPreviewCard = null;
+        }
+    }
+    scheduleOverflowCheck(preview, content, toggle);
+}
+
+function collapseExpandedPreview(card) {
+    if (!(card instanceof HTMLElement)) {
+        return;
+    }
+    setCardExpanded(card, false);
+}
+
+function toggleTaskAtIndex(markdown, targetIndex) {
+    if (typeof markdown !== "string") {
+        return null;
+    }
+    if (!Number.isInteger(targetIndex) || targetIndex < 0) {
+        return null;
+    }
+
+    const lines = markdown.split("\n");
+    let matchIndex = -1;
+    let mutated = false;
+    const nextLines = lines.map((line) => {
+        const match = line.match(TASK_LINE_REGEX);
+        if (!match) {
+            return line;
+        }
+        matchIndex += 1;
+        if (matchIndex !== targetIndex) {
+            return line;
+        }
+        mutated = true;
+        const nextState = match[2].toLowerCase() === "x" ? " " : "x";
+        return `${match[1]}${nextState}${match[3]}${match[4]}`;
+    });
+
+    if (!mutated) {
+        return null;
+    }
+    return nextLines.join("\n");
+}
+
 function enableInPlaceEditing(card, notesContainer, options = {}) {
     const {
         bubblePreviousCardToTop = true,
         bubbleSelfToTop = false
     } = options;
+    const wasEditing = card.classList.contains("editing-in-place");
     if (currentEditingCard && currentEditingCard !== card && !mergeInProgress) {
         finalizeCard(currentEditingCard, notesContainer, { bubbleToTop: bubblePreviousCardToTop });
     }
+    if (expandedPreviewCard && expandedPreviewCard !== card) {
+        collapseExpandedPreview(expandedPreviewCard);
+    }
+    collapseExpandedPreview(card);
     currentEditingCard = card;
 
     // Remove edit mode from others
@@ -361,7 +555,7 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
     const initialValue = editorHost ? editorHost.getValue() : editor?.value ?? "";
     card.dataset.initialValue = initialValue;
 
-    if (editorHost && !editorHost.isEnhanced() && editor) {
+    if (!wasEditing && editorHost && !editorHost.isEnhanced() && editor) {
         const h = Math.max(preview.offsetHeight, 36);
         editor.style.height = `${h}px`;
         editor.style.minHeight = `${h}px`;
@@ -383,6 +577,7 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
     requestAnimationFrame(() => {
         editorHost?.focus();
         if (editorHost && !editorHost.isEnhanced() && editor) {
+            autoResize(editor);
             setTimeout(() => { editor.style.minHeight = ""; }, 120);
         }
     });
@@ -424,6 +619,7 @@ async function finalizeCard(card, notesContainer, options = {}) {
     }
     // If cleared, delete the card entirely
     if (trimmed.length === 0) {
+        collapseExpandedPreview(card);
         const id = card.getAttribute("data-note-id");
         GravityStore.removeById(id);
         card.remove();
@@ -436,6 +632,9 @@ async function finalizeCard(card, notesContainer, options = {}) {
     // Update preview (safe either way)
     const markdownWithAttachments = transformMarkdownWithAttachments(text, attachments);
     renderSanitizedMarkdown(preview, markdownWithAttachments);
+    const previewWrapper = card.querySelector(".note-preview");
+    const expandToggle = card.querySelector(".note-expand-toggle");
+    scheduleOverflowCheck(previewWrapper, preview, expandToggle);
     if (!editorHost || !editorHost.isEnhanced()) {
         autoResize(editor);
     }
@@ -472,10 +671,13 @@ async function finalizeCard(card, notesContainer, options = {}) {
 
     // Re-classify edited content
     triggerClassificationForCard(id, text, notesContainer);
+    showSaveFeedback();
+    scheduleOverflowCheck(previewWrapper, preview, expandToggle);
 }
 
 function deleteCard(card, notesContainer) {
     if (!card) return;
+    collapseExpandedPreview(card);
     if (currentEditingCard === card) {
         currentEditingCard = null;
     }
@@ -502,6 +704,11 @@ function move(card, direction, notesContainer) {
 function mergeDown(card, notesContainer) {
     const below = card.nextElementSibling;
     if (!below) return;
+
+    collapseExpandedPreview(card);
+    if (below instanceof HTMLElement) {
+        collapseExpandedPreview(below);
+    }
 
     const editorHere  = card.querySelector(".markdown-editor");
     const editorBelow = below.querySelector(".markdown-editor");
@@ -560,6 +767,11 @@ function mergeUp(card, notesContainer) {
     const editorAbove  = above.querySelector(".markdown-editor");
     const editorHere   = card.querySelector(".markdown-editor");
     const previewAbove = above.querySelector(".markdown-content");
+
+    collapseExpandedPreview(card);
+    if (above instanceof HTMLElement) {
+        collapseExpandedPreview(above);
+    }
 
     const a = editorAbove.value.trim();
     const b = editorHere.value.trim();
@@ -644,9 +856,30 @@ export function focusCardEditor(card, notesContainer, options = {}) {
     requestAnimationFrame(() => {
         const host = editorHosts.get(card);
         if (!host) return;
+
+        const textarea = typeof host.getTextarea === "function" ? host.getTextarea() : null;
+        const selectionStart = textarea && typeof textarea.selectionStart === "number"
+            ? textarea.selectionStart
+            : null;
+        const selectionEnd = textarea && typeof textarea.selectionEnd === "number"
+            ? textarea.selectionEnd
+            : null;
+        const targetPosition = caretPlacement === CARET_PLACEMENT_END ? "end" : "start";
+        const expectedDefaultIndex = caretPlacement === CARET_PLACEMENT_END
+            ? 0
+            : (textarea?.value.length ?? 0);
+        const selectionDefined = selectionStart !== null && selectionEnd !== null;
+        const selectionAtDefault = selectionDefined
+            && selectionStart === selectionEnd
+            && selectionStart === expectedDefaultIndex;
+        const shouldRespectExistingCaret = selectionDefined && !selectionAtDefault;
+
         host.setMode(MARKDOWN_MODE_EDIT);
         host.focus();
-        host.setCaretPosition(caretPlacement === CARET_PLACEMENT_END ? "end" : "start");
+        // Respect caret adjustments made before this frame (e.g. user repositioning the cursor)
+        if (!shouldRespectExistingCaret) {
+            host.setCaretPosition(targetPosition);
+        }
     });
 
     return true;
@@ -713,4 +946,88 @@ function applyChips(container, classification) {
 
 function chip(text, className) {
     return createElement("span", className, text);
+}
+
+function applyPreviewBadges(container, meta) {
+    if (!(container instanceof HTMLElement)) {
+        return;
+    }
+    container.innerHTML = "";
+    if (!meta) {
+        return;
+    }
+
+    if (meta.hasCode) {
+        const codeBadge = createBadge(BADGE_LABEL_CODE, "note-badge--code");
+        container.appendChild(codeBadge);
+    }
+}
+
+function scheduleOverflowCheck(wrapper, content, toggle) {
+    if (!(wrapper instanceof HTMLElement) || !(content instanceof HTMLElement)) {
+        if (toggle instanceof HTMLElement) {
+            toggle.hidden = true;
+        }
+        return;
+    }
+
+    /**
+     * @returns {void}
+     */
+    const applyMeasurements = () => {
+        const isExpanded = wrapper.classList.contains("note-preview--expanded");
+        const overflowDelta = content.scrollHeight - wrapper.clientHeight;
+        const overflowing = isExpanded || overflowDelta > 0.5;
+        wrapper.classList.toggle("note-preview--overflow", overflowing && !isExpanded);
+
+        if (toggle instanceof HTMLElement) {
+            toggle.hidden = !overflowing;
+            toggle.style.display = overflowing ? "flex" : "none";
+            if (toggle.hidden) {
+                toggle.setAttribute("aria-expanded", "false");
+                toggle.setAttribute("aria-label", LABEL_EXPAND_NOTE);
+            } else if (isExpanded) {
+                toggle.setAttribute("aria-expanded", "true");
+                toggle.setAttribute("aria-label", LABEL_COLLAPSE_NOTE);
+            } else {
+                toggle.setAttribute("aria-expanded", "false");
+                toggle.setAttribute("aria-label", LABEL_EXPAND_NOTE);
+            }
+        }
+
+        if (!overflowing && isExpanded) {
+            wrapper.classList.remove("note-preview--expanded");
+            if (toggle instanceof HTMLElement) {
+                toggle.setAttribute("aria-expanded", "false");
+                toggle.setAttribute("aria-label", LABEL_EXPAND_NOTE);
+                toggle.style.display = "none";
+            }
+            const card = wrapper.closest(".markdown-block");
+            if (expandedPreviewCard === card) {
+                expandedPreviewCard = null;
+            }
+        }
+    };
+
+    if (toggle instanceof HTMLElement) {
+        toggle.hidden = true;
+        toggle.style.display = "none";
+    }
+
+    if (wrapper.clientHeight > 0) {
+        applyMeasurements();
+    }
+
+    requestAnimationFrame(() => {
+        applyMeasurements();
+        requestAnimationFrame(applyMeasurements);
+    });
+}
+
+function createBadge(label, extraClass = "") {
+    const badge = createElement("span", "note-badge", label);
+    if (extraClass) {
+        badge.classList.add(extraClass);
+    }
+    return badge;
 }

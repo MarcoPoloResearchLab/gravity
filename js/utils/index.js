@@ -61,7 +61,7 @@ export async function copyToClipboard(content = {}) {
     }
 
     const metadataDataUrl = metadataJson ? encodeMetadataDataUrl(metadataJson) : "";
-    const textPayload = buildPlainTextPayload({ text: safeText, attachments: normalizedAttachments, metadataDataUrl });
+    const textPayload = buildPlainTextClipboardPayload({ text: safeText, attachments: normalizedAttachments });
     const htmlPayload = hasHtml ? appendMetadataToHtml(safeHtml, metadataJson) : safeHtml;
     const canUseClipboardItem = navigator?.clipboard?.write && typeof ClipboardItem !== "undefined";
     const attachmentBlobs = createAttachmentBlobs(normalizedAttachments);
@@ -171,13 +171,18 @@ export async function copyToClipboard(content = {}) {
 }
 
 /**
+ * Adjust a textarea's height so it fits its content without scrollbars.
  * @param {HTMLTextAreaElement} textarea
+ * @param {{ minHeightPx?: number, extraPaddingPx?: number }} [options]
  * @returns {void}
  */
-export function autoResize(textarea) {
+export function autoResize(textarea, options = {}) {
     if (!textarea) return;
+    const { minHeightPx = 0, extraPaddingPx = 5 } = options;
     textarea.style.height = "auto";
-    textarea.style.height = `${textarea.scrollHeight + 5}px`;
+    const measured = textarea.scrollHeight + extraPaddingPx;
+    const nextHeight = Math.max(measured, minHeightPx);
+    textarea.style.height = `${nextHeight}px`;
 }
 
 /**
@@ -233,7 +238,7 @@ function appendMetadataToHtml(html, metadataJson) {
  * @param {{ text: string, attachments: Record<string, import("../types.d.js").AttachmentRecord>, metadataDataUrl: string }} params
  * @returns {string}
  */
-function buildPlainTextPayload({ text, attachments, metadataDataUrl }) {
+export function buildPlainTextClipboardPayload({ text, attachments }) {
     const segments = [];
     const inline = inlineAttachmentsInText(text, attachments);
     const inlineHasContent = inline.trim().length > 0;
@@ -250,10 +255,6 @@ function buildPlainTextPayload({ text, attachments, metadataDataUrl }) {
 
     if (!segments.length && typeof text === "string" && text.length > 0) {
         segments.push(text);
-    }
-
-    if (metadataDataUrl) {
-        segments.push(metadataDataUrl);
     }
 
     return segments.join("\n\n");

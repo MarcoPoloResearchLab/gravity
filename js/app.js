@@ -1,15 +1,16 @@
 /* global marked */
 // @ts-check
 
-import { mountTopEditor } from "./ui/topEditor.js";
-import { renderCard, updateActionButtons } from "./ui/card.js";
+import { renderCard, updateActionButtons, triggerClassificationForCard } from "./ui/card.js";
 import { initializeImportExport } from "./ui/importExport.js";
 import { GravityStore } from "./core/store.js";
+import { mountTopEditor } from "./ui/topEditor.js";
 import {
     LABEL_APP_SUBTITLE,
     LABEL_APP_TITLE,
     ERROR_NOTES_CONTAINER_NOT_FOUND
 } from "./constants.js";
+import { nowIso } from "./utils/index.js";
 
 /**
  * Ensure the main application chrome reflects the centralized string constants.
@@ -43,6 +44,7 @@ if (!notesContainer) {
 const exportNotesButton = /** @type {HTMLButtonElement|null} */ (document.getElementById("export-notes-button"));
 const importNotesButton = /** @type {HTMLButtonElement|null} */ (document.getElementById("import-notes-button"));
 const importNotesInput = /** @type {HTMLInputElement|null} */ (document.getElementById("import-notes-input"));
+const topEntryHost = document.getElementById("top-editor");
 
 (function boot() {
     mountTopEditor({
@@ -53,7 +55,6 @@ const importNotesInput = /** @type {HTMLInputElement|null} */ (document.getEleme
             updateActionButtons(notesContainer);
         }
     });
-
     renderPersistedNotes(GravityStore.loadAllNotes());
 
     initializeImportExport({

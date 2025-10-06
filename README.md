@@ -1,56 +1,58 @@
 # Gravity Notes
 
-Gravity Notes is a simple, single-page web application for taking notes using Markdown. It features a unique "gravity"
-model where the currently active note always stays at the top for easy editing, and new notes are added above finalized
-ones.
+Gravity Notes is a simple, single-page web application for taking notes using Markdown. Notes surface in a stable grid
+with bounded previews, and every note edits inline—no modal overlays or context switches.
 
 ## Features
 
-* **Markdown Support:** Write notes using standard Markdown syntax.
-* **Live Preview:** See your formatted Markdown as you type (powered by [marked.js](https://marked.js.org/)).
-* **Active Note Focus:** The top note is always the active editing area. New notes start here.
-* **Automatic Note Creation:** Pressing `Enter` (without `Shift`) or clicking away from a non-empty active note
-  finalizes it and creates a new empty active note above it. Empty active notes remain active.
-* **Easy Navigation:** Click any passive (non-top) note's content area to make it the active note, moving it to the top
-  and entering edit mode.
-* **Note Reordering:** Move passive notes up or down relative to other passive notes using the `▲` (Up) and `▼` (Down)
-  buttons. You cannot move a note above the currently active note.
-* **Clipboard-Friendly Copy:** The copy control mirrors the current note state, returning Markdown or sanitized HTML and
-  preserving any pasted images via metadata so they can be restored on paste.
-* **Note Merging:**
-    * Merge a passive note *down* into the note immediately below it using the `Merge ↓` button (available on all
-      passive notes except the bottom one).
-    * Merge the *bottom-most* note *up* into the active (top) note using the `Merge ↑` button (only available on the
-      bottom note when there are at least two notes).
-* **Image Pasting:** Paste images directly from your clipboard into the editor. Notes keep readable placeholders such as
-  `![[pasted-image-*.png]]` while the rendered preview displays the actual image data.
-* **Auto-Resizing Editor:** The text area automatically adjusts its height to fit the content as you type.
-* **Session-Based:** Notes exist only within the current browser session. Reloading the page will clear all notes.
-* **Import & Export:** Download all saved notes as JSON and import them in another browser without creating duplicates.
+* **Bounded previews:** Each card renders the first two paragraphs (or ~450 characters), the first image as a cover
+  thumbnail, and a six-line preview of the first code block. A fade mask signals truncated content.
+* **Code badge:** Notes that contain code display a `code` pill so technical snippets stand out at a glance.
+* **Interactive checklists:** Click rendered task checkboxes to flip their state without entering edit mode; updates
+  persist immediately and bubble that note to the top.
+* **Inline editor:** Click any card—or the blank capture slot at the top—to switch that note into Markdown mode in
+  place. The textarea auto-grows with your prose, accepts `Cmd/Ctrl+Enter` or `Cmd/Ctrl+S` to commit, and supports
+  `Tab`/`Shift+Tab` indentation for lists and code blocks.
+* **Always-ready capture:** The sticky blank note beneath the header is the entry point for brand new ideas. Type there,
+  click away, or hit `Cmd/Ctrl+Enter` to persist immediately.
+* **Rich Markdown:** Markdown rendering is powered by [marked.js](https://marked.js.org/) with sanitisation from
+  [DOMPurify](https://github.com/cure53/DOMPurify). Inline image pasting is preserved through attachment placeholders.
+* **Organise & share:** Notes retain the existing move, merge, copy, and classification behaviours, and you can import
+  or export notebooks as JSON snapshots without introducing duplicates.
 
 ## How to Use
 
-1. **Start Typing:** You begin with a single, empty note at the top in edit mode. Start typing your notes using Markdown
-   syntax.
-2. **Create New Note:** When you're done with the current note:
-    * Press `Enter` (without holding `Shift`).
-    * Or, click outside the editing area (blur the textarea).
-    * If the note wasn't empty, it will be finalized (displaying the rendered Markdown), and a new empty note will
-      appear above it, ready for editing. If the note was empty, it remains the active note.
-3. **Edit Existing Notes:** Click on the content area of any note below the top one. It will instantly move to the top
-   and become the active note in edit mode.
-4. **Export Notes:** Click **Export** in the header to download a `gravity-notes.json` file containing every saved note.
-5. **Import Notes:** Click **Import** and choose a Gravity Notes JSON export to append non-duplicate notes from another browser.
-   The import ignores records whose `noteId`, Markdown content, attachments, and classification all match an existing note.
-6. **Move Notes:** Use the `▲` and `▼` buttons on passive notes to change their order relative to other passive notes.
-7. **Merge Notes:**
-    * To combine a note with the one below it, click the `Merge ↓` button on that note. Its content will be appended to
-      the note below it, separated by newlines.
-    * To combine the very last note with the currently active (top) note, click the `Merge ↑` button on the last note.
-      Its content will be appended to the active note's content, separated by newlines, and the active note will remain
-      focused.
-8. **Paste Images:** Copy an image to your clipboard and paste (`Ctrl+V` or `Cmd+V`) directly into the editor textarea.
-   The image will be inserted as Markdown `![pasted image](data:...)`.
+1. **Capture a note:** Place the cursor in the blank card anchored beneath the header and start writing Markdown. The
+   editor auto-grows as you type and never introduces inner scrollbars.
+2. **Autosave everywhere:** Gravity persists changes whenever you click away or press `Cmd/Ctrl+Enter`. A subtle “Saved”
+   toast confirms each sync—no manual save button required.
+3. **Keyboard shortcuts:**
+    * `Enter` inserts a newline (no implicit submission).
+    * `Cmd/Ctrl+Enter` or `Cmd/Ctrl+S` commit changes immediately.
+    * `Tab` / `Shift+Tab` indent or outdent the current selection, making lists and code blocks easy to adjust.
+4. **Edit existing notes:** Click anywhere in a rendered note to switch it into Markdown mode inline. The grid stays in
+   place while you edit, then re-renders the preview once you finish.
+5. **Skim with previews:** Each card shows a deterministic snippet and fade mask; notes with code call it out with a
+   `code` badge, and overflowing notes expose a rotated double-chevron toggle to expand the full preview in place.
+6. **Organise:** Reorder, merge, or delete notes with the familiar toolbar actions along the right edge. The copy button
+   still mirrors either Markdown or sanitized HTML (including attachment metadata) depending on the current mode.
+7. **Import / Export:** Use the header buttons to move notebooks between browsers. Imports skip records that match on
+   identifier and content, preserving the single source of truth.
+
+## Editor & Preview
+
+- **Deterministic preview:** Cards render the full sanitized Markdown and clamp at roughly `18vh`. Shorter notes shrink
+  to their natural height, while longer ones fade out gracefully.
+- **Fade mask:** A gradient mask is layered over the last few pixels of the preview to avoid sudden cut-offs while
+  keeping the card height capped at roughly `18vh` when content overflows.
+- **Dynamic height:** Cards shrink to match their rendered content and grow only up to the shared `18vh` limit, so short
+  notes stay compact while longer ones fade out.
+- **Expandable overflow:** Overflowing notes get a rotated `»` toggle at the bottom border—click to expand the rendered
+  preview downward, click again (or edit any note) to collapse.
+- **Code indicator:** A `code` badge appears when a note includes inline or fenced code so heavy snippets are easy to
+  spot without opening the editor.
+- **Autosave:** Inline edits flush on blur or `Cmd/Ctrl+Enter` and surface a non-blocking “Saved” toast. Shortcuts still
+  work for explicit saves, but no manual button is required.
 
 ## Setup
 
@@ -69,10 +71,11 @@ python3 -m http.server 8000
 
 ## Testing
 
-- `npm test` runs the Node test suite, including the Puppeteer-based clipboard integration specs.
-- Run `npx puppeteer browsers install chrome` once to download the Chromium binary that Puppeteer drives in tests.
-- GitHub Actions executes the same test command on every push and pull request, ensuring clipboard behaviour stays
-  stable.
+- `npm test` drives the Node test suite, including Puppeteer coverage for the inline editor and bounded preview rules.
+- Run `npx puppeteer browsers install chrome` once to download the Chromium binary that Puppeteer uses during the
+  end-to-end tests.
+- GitHub Actions executes the same test command on every push and pull request, validating the inline editing workflow and
+  preview truncation remain stable.
 
 ## Dependencies
 

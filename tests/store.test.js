@@ -101,6 +101,26 @@ test.describe("GravityStore.loadAllNotes", () => {
 
         assert.deepStrictEqual(parsedRecords, [expectedRecord]);
     });
+
+    test("getById returns stored record or null", () => {
+        const record = {
+            noteId: "lookup-note",
+            markdownText: "Lookup content",
+            createdAtIso: SAMPLE_TIMESTAMP,
+            updatedAtIso: SAMPLE_TIMESTAMP,
+            lastActivityIso: SAMPLE_TIMESTAMP,
+            attachments: {}
+        };
+        GravityStore.saveAllNotes([record]);
+
+        const fetched = GravityStore.getById("lookup-note");
+        assert.ok(fetched);
+        assert.equal(fetched.noteId, record.noteId);
+        assert.equal(fetched.markdownText, record.markdownText);
+
+        const missing = GravityStore.getById("missing-id");
+        assert.equal(missing, null);
+    });
 });
 
 test.describe("GravityStore export/import", () => {

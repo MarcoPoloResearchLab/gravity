@@ -2,7 +2,10 @@
 
 import { appConfig } from "../core/config.js";
 import { createElement } from "../utils/index.js";
-import { LABEL_EDIT_MARKDOWN, LABEL_VIEW_RENDERED } from "../constants.js";
+import {
+    LABEL_EDIT_MARKDOWN,
+    LABEL_VIEW_RENDERED
+} from "../constants.js";
 import { logging } from "../utils/logging.js";
 import {
     insertAttachmentPlaceholders,
@@ -21,15 +24,23 @@ const ORDERED_LIST_REGEX = /^\s*(\d+)\.\s+/;
 const UNORDERED_LIST_REGEX = /^\s*[-*+]\s+/;
 const TABLE_ROW_REGEX = /^\s*\|.*\|\s*$/;
 const TABLE_SEPARATOR_REGEX = /^\s*\|?(?:-+:?\s*\|)+-*:?\s*\|?\s*$/;
+const CODE_FENCE_REGEX = /^(\s*)(`{3,}|~{3,})([^`~]*)$/;
 const SOFT_BREAK = "  \n";
 const IMAGE_TIFF_TYPES = new Set(["image/tiff", "image/x-tiff"]);
+const BRACKET_PAIRS = Object.freeze({
+    "(": ")",
+    "[": "]",
+    "{": "}",
+    '"': '"',
+    "'": "'"
+});
 
 /**
  * @typedef {"edit" | "view"} MarkdownEditorMode
  */
 
 /**
- * @typedef {"change" | "submit" | "blur" | "navigatePrevious" | "navigateNext" | "modechange" | "copymarkdown" | "copyhtml"} MarkdownEditorEvent
+ * @typedef {"change" | "submit" | "blur" | "navigatePrevious" | "navigateNext" | "modechange"} MarkdownEditorEvent
  */
 
 /**
@@ -367,6 +378,8 @@ export function createMarkdownEditorHost(options) {
             autofocus: false,
             toolbar: false,
             forceSync: true,
+            autoCloseBrackets: true,
+            autoCloseTags: true,
             renderingConfig: { singleLineBreaks: false, codeSyntaxHighlighting: false }
         });
     }
@@ -375,10 +388,16 @@ export function createMarkdownEditorHost(options) {
         const { codemirror } = instance;
 
         codemirror.addKeyMap({
-            Enter: (cm) => handleEnter(cm),
+            Enter: (cm) => {
+                handleEnter(cm);
+            },
             "Shift-Enter": (cm) => {
                 cm.replaceSelection(SOFT_BREAK, "end");
-            }
+            },
+            "Cmd-Enter": () => emit("submit"),
+            "Ctrl-Enter": () => emit("submit"),
+            "Cmd-S": () => emit("submit"),
+            "Ctrl-S": () => emit("submit")
         });
 
         codemirror.on("change", () => {
@@ -390,6 +409,14 @@ export function createMarkdownEditorHost(options) {
 
         codemirror.on("keydown", (cm, event) => {
             if (event.defaultPrevented) return;
+
+            const isModifier = event.metaKey || event.ctrlKey;
+            if (isModifier && (event.key === "Enter" || event.key === "s" || event.key === "S")) {
+                event.preventDefault();
+                emit("submit");
+                return;
+            }
+
             if (!isNavigationKey(event)) return;
             if (!isSelectionCollapsed(cm)) return;
 
@@ -402,6 +429,17 @@ export function createMarkdownEditorHost(options) {
             if (event.key === "ArrowDown" && isCaretOnLastLine(cm)) {
                 event.preventDefault();
                 emit("navigateNext");
+            }
+        });
+
+        codemirror.on("keypress", (cm, event) => {
+            if (event.defaultPrevented) return;
+            if (event.metaKey || event.ctrlKey || event.altKey) return;
+            const closing = BRACKET_PAIRS[event.key];
+            if (!closing) return;
+            const handled = handleBracketAutoClose(cm, event.key, closing);
+            if (handled) {
+                event.preventDefault();
             }
         });
 
@@ -456,6 +494,10 @@ export function createMarkdownEditorHost(options) {
             const cursor = cm.getCursor();
             const lineText = cm.getLine(cursor.line);
 
+            if (handleCodeFenceInCodeMirror(cm, cursor, lineText)) {
+                return;
+            }
+
             if (isTableRow(lineText) && !isTableSeparator(lineText)) {
                 insertTableRow(cm, cursor.line, lineText);
                 return;
@@ -467,19 +509,76 @@ export function createMarkdownEditorHost(options) {
                 return;
             }
 
-            emit("submit");
+            cm.execCommand("newlineAndIndent");
         }
     }
 
     function setupFallbackTextarea(el, emitFn) {
-        el.addEventListener("input", () => emitFn("change", { value: el.value }));
+        el.addEventListener("input", () => {
+            if (el.__gravityHandlingInput) {
+                return;
+            }
+            if (el.__gravityLastKey === "Enter") {
+                el.__gravityHandlingInput = true;
+                const previousValue = typeof el.__gravityPrevValue === "string" ? el.__gravityPrevValue : el.value;
+                const previousCaret = typeof el.__gravityPrevSelectionStart === "number"
+                    ? el.__gravityPrevSelectionStart
+                    : (el.selectionStart ?? previousValue.length);
+                el.value = previousValue;
+                el.setSelectionRange(previousCaret, previousCaret);
+                handleTextareaEnter(el);
+                el.__gravityLastKey = undefined;
+                delete el.__gravityPrevValue;
+                delete el.__gravityPrevSelectionStart;
+                el.__gravityHandlingInput = false;
+                emitFn("change", { value: el.value });
+                return;
+            }
+            emitFn("change", { value: el.value });
+        });
         el.addEventListener("blur", () => emitFn("blur"));
         el.addEventListener("keydown", (event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
+            const isModifier = event.metaKey || event.ctrlKey;
+
+            if (!isModifier && !event.altKey && BRACKET_PAIRS[event.key]) {
+                event.preventDefault();
+                applyBracketPair(el, event.key, BRACKET_PAIRS[event.key]);
+                emitFn("change", { value: el.value });
+                return;
+            }
+
+            if (!isModifier && !event.altKey && !event.shiftKey && event.key === "Enter") {
+                el.__gravityPrevValue = el.value;
+                el.__gravityPrevSelectionStart = el.selectionStart ?? el.value.length;
+                el.__gravityLastKey = "Enter";
+            } else {
+                el.__gravityLastKey = undefined;
+            }
+
+            if ((event.key === "Enter" || event.key === "s" || event.key === "S") && isModifier) {
                 event.preventDefault();
                 emitFn("submit");
                 return;
             }
+
+            if (event.key === "Enter" && event.shiftKey && !isModifier) {
+                event.preventDefault();
+                insertSoftBreak(el);
+                emitFn("change", { value: el.value });
+                return;
+            }
+
+            if (event.key === "Tab" && !isModifier && !event.altKey) {
+                event.preventDefault();
+                if (event.shiftKey) {
+                    applyOutdent(el);
+                } else {
+                    applyIndent(el);
+                }
+                emitFn("change", { value: el.value });
+                return;
+            }
+
             if (!isNavigationKey(event)) return;
             if (event.key === "ArrowUp" && isTextareaCaretOnFirstLine(el)) {
                 event.preventDefault();
@@ -571,18 +670,6 @@ export function createMarkdownEditorHost(options) {
         });
     }
 
-    function isListLine(lineText) {
-        return ORDERED_LIST_REGEX.test(lineText) || UNORDERED_LIST_REGEX.test(lineText);
-    }
-
-    function isTableRow(lineText) {
-        return TABLE_ROW_REGEX.test(lineText);
-    }
-
-    function isTableSeparator(lineText) {
-        return TABLE_SEPARATOR_REGEX.test(lineText);
-    }
-
     function insertTableRow(cm, lineNumber, lineText) {
         const pipeCount = (lineText.match(/\|/g) || []).length;
         const cellCount = Math.max(pipeCount - 1, 1);
@@ -626,4 +713,419 @@ function loadImage(source) {
         image.addEventListener("error", () => reject(new Error("Unable to decode image")));
         image.src = source;
     });
+}
+
+const INDENT_SEQUENCE = "    ";
+
+
+
+function insertSoftBreak(textarea) {
+    const { selectionStart = 0, selectionEnd = 0, value } = textarea;
+    const before = value.slice(0, selectionStart);
+    const after = value.slice(selectionEnd);
+    const nextValue = `${before}${SOFT_BREAK}${after}`;
+    textarea.value = nextValue;
+    const caret = selectionStart + SOFT_BREAK.length;
+    textarea.setSelectionRange(caret, caret);
+}
+
+function applyBracketPair(textarea, openChar, closeChar) {
+    if (typeof closeChar !== "string") return;
+    const start = typeof textarea.selectionStart === "number" ? textarea.selectionStart : textarea.value.length;
+    const end = typeof textarea.selectionEnd === "number" ? textarea.selectionEnd : start;
+    const before = textarea.value.slice(0, start);
+    const after = textarea.value.slice(end);
+    const selected = textarea.value.slice(start, end);
+    textarea.value = `${before}${openChar}${selected}${closeChar}${after}`;
+    const nextStart = start + 1;
+    const nextEnd = end + 1;
+    if (start === end) {
+        textarea.setSelectionRange(nextStart, nextStart);
+    } else {
+        textarea.setSelectionRange(nextStart, nextEnd);
+    }
+}
+
+function handleBracketAutoClose(cm, openChar, closeChar) {
+    if (typeof closeChar !== "string") return false;
+    const selections = cm.listSelections();
+    if (!Array.isArray(selections) || selections.length === 0) return false;
+    let handled = false;
+    cm.operation(() => {
+        for (const selection of selections) {
+            const { anchor, head } = selection;
+            const anchorBeforeHead = anchor.line < head.line
+                || (anchor.line === head.line && anchor.ch <= head.ch);
+            const start = anchorBeforeHead ? anchor : head;
+            const end = anchorBeforeHead ? head : anchor;
+            const isEmpty = start.line === end.line && start.ch === end.ch;
+
+            if (!isEmpty) {
+                const selectedText = cm.getRange(start, end);
+                cm.replaceRange(`${openChar}${selectedText}${closeChar}`, start, end, "+autoCloseBracket");
+                const startCursor = { line: start.line, ch: start.ch + 1 };
+                const endCursor = { line: startCursor.line, ch: startCursor.ch + selectedText.length };
+                cm.setSelection(startCursor, endCursor);
+                handled = true;
+                continue;
+            }
+
+            const cursor = cm.getCursor();
+            const nextChar = cm.getRange(cursor, { line: cursor.line, ch: cursor.ch + 1 });
+            if (nextChar === closeChar) {
+                cm.setCursor({ line: cursor.line, ch: cursor.ch + 1 });
+                handled = true;
+                continue;
+            }
+
+            cm.replaceRange(`${openChar}${closeChar}`, cursor, cursor, "+autoCloseBracket");
+            cm.setCursor({ line: cursor.line, ch: cursor.ch + 1 });
+            handled = true;
+        }
+    });
+    return handled;
+}
+
+function handleCodeFenceInCodeMirror(cm, cursor, lineText) {
+    const parsed = parseCodeFence(lineText);
+    if (!parsed) return false;
+    if (cursor.ch !== lineText.length) return false;
+    if (!isOpeningFenceInCodeMirror(cm, cursor.line, parsed.marker)) return false;
+    const nextLine = cm.getLine(cursor.line + 1);
+    if (isFenceLineWithMarker(nextLine, parsed.marker)) return false;
+
+    const insertion = `\n${parsed.leading}\n${parsed.leading}${parsed.fence}`;
+    cm.operation(() => {
+        cm.replaceRange(insertion, cursor, cursor, "+input");
+        cm.setCursor({ line: cursor.line + 1, ch: parsed.leading.length });
+    });
+    return true;
+}
+
+function handleCodeFenceEnterTextarea(textarea, context) {
+    const { caret, lineStart, lineEnd, lineText } = context;
+    const parsed = parseCodeFence(lineText);
+    if (!parsed) return false;
+    if (caret !== lineEnd) return false;
+    if (!isOpeningFenceInText(textarea.value.slice(0, lineStart), parsed.marker)) return false;
+
+    const nextLineStart = lineEnd + 1;
+    const nextLineEnd = findLineEnd(textarea.value, nextLineStart);
+    const nextLine = textarea.value.slice(nextLineStart, nextLineEnd);
+    if (isFenceLineWithMarker(nextLine, parsed.marker)) return false;
+
+    const before = textarea.value.slice(0, caret);
+   const after = textarea.value.slice(caret);
+   const insertion = `\n${parsed.leading}\n${parsed.leading}${parsed.fence}`;
+   textarea.value = `${before}${insertion}${after}`;
+   const caretIndex = before.length + 1 + parsed.leading.length;
+   textarea.setSelectionRange(caretIndex, caretIndex);
+    if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => {
+            try {
+                textarea.setSelectionRange(caretIndex, caretIndex);
+            } catch {}
+        });
+    }
+   return true;
+}
+
+function parseCodeFence(lineText) {
+    if (typeof lineText !== "string") return null;
+    const match = lineText.match(CODE_FENCE_REGEX);
+    if (!match) return null;
+    const sequence = match[2] ?? "";
+    if (sequence.length < 3) return null;
+    const marker = sequence.charAt(0);
+    return {
+        leading: match[1] ?? "",
+        fence: sequence,
+        info: (match[3] ?? "").trim(),
+        marker
+    };
+}
+
+function isOpeningFenceInCodeMirror(cm, lineNumber, marker) {
+    let parity = 0;
+    for (let lineIndex = 0; lineIndex < lineNumber; lineIndex += 1) {
+        const candidate = parseCodeFence(cm.getLine(lineIndex));
+        if (candidate && candidate.marker === marker) {
+            parity = parity === 0 ? 1 : 0;
+        }
+    }
+    return parity === 0;
+}
+
+function isOpeningFenceInText(text, marker) {
+    if (!text) return true;
+    const lines = text.split(/\n/);
+    let parity = 0;
+    for (const line of lines) {
+        const candidate = parseCodeFence(line);
+        if (candidate && candidate.marker === marker) {
+            parity = parity === 0 ? 1 : 0;
+        }
+    }
+    return parity === 0;
+}
+
+function isFenceLineWithMarker(lineText, marker) {
+    if (typeof lineText !== "string") return false;
+    const parsed = parseCodeFence(lineText.trimEnd());
+    if (!parsed) return false;
+    if (parsed.marker !== marker) return false;
+    return parsed.info.length === 0;
+}
+
+function handleTextareaEnter(textarea) {
+    const caret = textarea.selectionStart ?? 0;
+    const lineStart = findLineStart(textarea.value, caret);
+    const lineEnd = findLineEnd(textarea.value, caret);
+    const lineText = textarea.value.slice(lineStart, lineEnd);
+
+    if (handleCodeFenceEnterTextarea(textarea, { caret, lineStart, lineEnd, lineText })) {
+        return;
+    }
+
+    if (isTableRow(lineText) && !isTableSeparator(lineText)) {
+        insertTableRowTextarea(textarea, lineEnd, lineText);
+        return;
+    }
+
+    if (isListLine(lineText)) {
+        handleListEnter(textarea, { caret, lineStart, lineEnd, lineText });
+        return;
+    }
+
+    insertPlainNewline(textarea, caret);
+}
+
+function insertPlainNewline(textarea, caret) {
+    const { value } = textarea;
+    const before = value.slice(0, caret);
+    const after = value.slice(caret);
+    textarea.value = `${before}\n${after}`;
+    const nextCaret = before.length + 1;
+    textarea.setSelectionRange(nextCaret, nextCaret);
+}
+
+function isListLine(lineText) {
+    return ORDERED_LIST_REGEX.test(lineText) || UNORDERED_LIST_REGEX.test(lineText);
+}
+
+function isTableRow(lineText) {
+    return TABLE_ROW_REGEX.test(lineText);
+}
+
+function isTableSeparator(lineText) {
+    return TABLE_SEPARATOR_REGEX.test(lineText);
+}
+
+function insertTableRowTextarea(textarea, lineEnd, lineText) {
+    const pipeCount = (lineText.match(/\|/g) || []).length;
+    const cellCount = Math.max(pipeCount - 1, 1);
+    const cells = Array.from({ length: cellCount }, () => " ");
+    const newRow = `\n| ${cells.join(" | ")} |`;
+    const before = textarea.value.slice(0, lineEnd);
+    const after = textarea.value.slice(lineEnd);
+    textarea.value = `${before}${newRow}${after}`;
+    const nextCaret = before.length + 3; // newline + "| "
+    textarea.setSelectionRange(nextCaret, nextCaret);
+    if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => {
+            try {
+                textarea.setSelectionRange(nextCaret, nextCaret);
+            } catch {}
+        });
+    }
+}
+
+function handleListEnter(textarea, context) {
+    const { caret, lineStart, lineEnd, lineText } = context;
+    const listInfo = parseListLine(lineText);
+    if (!listInfo) {
+        insertPlainNewline(textarea, caret);
+        return;
+    }
+
+    const prefix = listInfo.type === "ordered"
+        ? `${listInfo.leading}${listInfo.number}${listInfo.separator}`
+        : `${listInfo.leading}${listInfo.marker} `;
+    const contentAfterPrefix = lineText.slice(prefix.length);
+    const caretInLine = caret - lineStart;
+    const trailingAfterCaret = lineText.slice(caretInLine).trim().length > 0;
+
+    if (contentAfterPrefix.trim().length === 0 && !trailingAfterCaret) {
+        const indentation = listInfo.leading;
+        const before = textarea.value.slice(0, lineStart);
+        const after = textarea.value.slice(lineEnd);
+        textarea.value = `${before}${indentation}${after}`;
+        const nextCaret = before.length + indentation.length;
+        textarea.setSelectionRange(nextCaret, nextCaret);
+        return;
+    }
+
+    const nextPrefix = listInfo.type === "ordered"
+        ? `${listInfo.leading}${listInfo.number + 1}${listInfo.separator}`
+        : `${listInfo.leading}${listInfo.marker} `;
+
+    const selectionStart = textarea.selectionStart ?? caret;
+    const selectionEnd = textarea.selectionEnd ?? selectionStart;
+    textarea.setRangeText(`\n${nextPrefix}`, selectionStart, selectionEnd, "end");
+    let caretIndex = textarea.selectionStart ?? (selectionStart + nextPrefix.length + 1);
+
+    if (listInfo.type === "ordered") {
+        caretIndex = renumberOrderedListTextarea(textarea, caretIndex);
+    }
+
+    textarea.setSelectionRange(caretIndex, caretIndex);
+}
+
+function parseListLine(lineText) {
+    const orderedMatch = lineText.match(/^(\s*)(\d+)(\.\s+)(.*)$/);
+    if (orderedMatch) {
+        return {
+            type: "ordered",
+            leading: orderedMatch[1] ?? "",
+            number: Number.parseInt(orderedMatch[2], 10) || 1,
+            separator: orderedMatch[3] ?? ". ",
+            rest: orderedMatch[4] ?? ""
+        };
+    }
+    const unorderedMatch = lineText.match(/^(\s*)([-*+])\s+.*$/);
+    if (unorderedMatch) {
+        return {
+            type: "unordered",
+            leading: unorderedMatch[1] ?? "",
+            marker: unorderedMatch[2] ?? "-"
+        };
+    }
+    return null;
+}
+
+function renumberOrderedListTextarea(textarea, caretIndex) {
+    const lines = textarea.value.split("\n");
+    let runningIndex = 0;
+    let insertedLineIndex = 0;
+    for (let i = 0; i < lines.length; i += 1) {
+        const line = lines[i];
+        const lineLength = line.length;
+        if (caretIndex <= runningIndex + lineLength) {
+            insertedLineIndex = i;
+            break;
+        }
+        runningIndex += lineLength + 1;
+    }
+
+    let start = insertedLineIndex;
+    while (start > 0 && ORDERED_LIST_REGEX.test(lines[start - 1])) start -= 1;
+    let end = insertedLineIndex;
+    while (end + 1 < lines.length && ORDERED_LIST_REGEX.test(lines[end + 1])) end += 1;
+
+    const firstMatch = lines[start]?.match(ORDERED_LIST_REGEX);
+    const baseNumber = firstMatch ? Number.parseInt(firstMatch[1], 10) : 1;
+    let nextNumber = Number.isFinite(baseNumber) ? baseNumber : 1;
+    for (let lineIdx = start; lineIdx <= end; lineIdx += 1) {
+        const content = lines[lineIdx];
+        const parsed = content.match(/^(\s*)(\d+)(\.\s+)(.*)$/);
+        if (!parsed) continue;
+        const updated = `${parsed[1] ?? ""}${nextNumber}${parsed[3] ?? ". "}${parsed[4] ?? ""}`;
+        lines[lineIdx] = updated;
+        nextNumber += 1;
+    }
+
+    textarea.value = lines.join("\n");
+
+    let newCaret = 0;
+    for (let i = 0; i < insertedLineIndex; i += 1) {
+        newCaret += lines[i].length + 1;
+    }
+    const currentLine = lines[insertedLineIndex] ?? "";
+    const caretMatch = currentLine.match(/^(\s*)(\d+)(\.\s+)/);
+    const prefixLength = caretMatch
+        ? (caretMatch[1]?.length ?? 0) + (caretMatch[2]?.length ?? 0) + (caretMatch[3]?.length ?? 0)
+        : 0;
+    newCaret += prefixLength;
+    return newCaret;
+}
+
+function applyIndent(textarea) {
+    const { selectionStart, selectionEnd, value } = textarea;
+    const start = findLineStart(value, selectionStart);
+    const end = findLineEnd(value, selectionEnd);
+    const segment = value.slice(start, end);
+    const lines = segment.split(/\n/);
+    const indented = lines.map((line) => `${INDENT_SEQUENCE}${line}`).join("\n");
+    const before = value.slice(0, start);
+    const after = value.slice(end);
+    textarea.value = `${before}${indented}${after}`;
+    if (selectionStart === selectionEnd) {
+        const caretOffset = selectionStart - start;
+        const nextCaret = start + INDENT_SEQUENCE.length + caretOffset;
+        textarea.setSelectionRange(nextCaret, nextCaret);
+    } else {
+        textarea.setSelectionRange(start, start + indented.length);
+    }
+}
+
+function applyOutdent(textarea) {
+    const { selectionStart, selectionEnd, value } = textarea;
+    const start = findLineStart(value, selectionStart);
+    const end = findLineEnd(value, selectionEnd);
+    const segment = value.slice(start, end);
+    const lines = segment.split(/\n/);
+    let removedFromFirstLine = 0;
+    const outdented = lines.map((line, index) => {
+        const { text, removed } = outdentLine(line);
+        if (index === 0) removedFromFirstLine = removed;
+        return text;
+    }).join("\n");
+
+    const before = value.slice(0, start);
+    const after = value.slice(end);
+    textarea.value = `${before}${outdented}${after}`;
+
+    if (selectionStart === selectionEnd) {
+        const caretOffset = selectionStart - start;
+        const nextCaret = start + Math.max(caretOffset - removedFromFirstLine, 0);
+        textarea.setSelectionRange(nextCaret, nextCaret);
+    } else {
+        textarea.setSelectionRange(start, start + outdented.length);
+    }
+}
+
+function outdentLine(line) {
+    if (!line) {
+        return { text: line, removed: 0 };
+    }
+    if (line.startsWith("\t")) {
+        return { text: line.slice(1), removed: 1 };
+    }
+    if (line.startsWith(INDENT_SEQUENCE)) {
+        return { text: line.slice(INDENT_SEQUENCE.length), removed: INDENT_SEQUENCE.length };
+    }
+    const spacesMatch = line.match(/^ +/);
+    if (spacesMatch) {
+        const count = Math.min(spacesMatch[0].length, INDENT_SEQUENCE.length);
+        return { text: line.slice(count), removed: count };
+    }
+    return { text: line, removed: 0 };
+}
+
+function findLineStart(text, index) {
+    const safeIndex = Math.max(0, Math.min(index ?? 0, text.length));
+    let cursor = safeIndex;
+    while (cursor > 0 && text.charAt(cursor - 1) !== "\n") {
+        cursor -= 1;
+    }
+    return cursor;
+}
+
+function findLineEnd(text, index) {
+    const safeIndex = Math.max(0, Math.min(index ?? text.length, text.length));
+    let cursor = safeIndex;
+    while (cursor < text.length && text.charAt(cursor) !== "\n") {
+        cursor += 1;
+    }
+    return cursor;
 }
