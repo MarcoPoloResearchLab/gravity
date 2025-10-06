@@ -204,6 +204,33 @@ if (!puppeteerModule) {
                 await page.close();
             }
         });
+
+        test("short and medium previews hide the expand toggle", async () => {
+            const records = [
+                buildNoteRecord({ noteId: SHORT_NOTE_ID, markdownText: buildShortMarkdown(), attachments: {} }),
+                buildNoteRecord({ noteId: MEDIUM_NOTE_ID, markdownText: buildMediumMarkdown(), attachments: {} }),
+                buildNoteRecord({ noteId: LONG_NOTE_ID, markdownText: buildLongMarkdown(), attachments: {} })
+            ];
+
+            const page = await preparePage(browser, { records });
+            try {
+                await page.waitForSelector(`[data-note-id="${SHORT_NOTE_ID}"]`);
+
+                const shortToggleDisplay = await page.$eval(
+                    `[data-note-id="${SHORT_NOTE_ID}"] .note-expand-toggle`,
+                    (button) => window.getComputedStyle(button).display
+                );
+                assert.equal(shortToggleDisplay, "none", "short previews must not render the expand toggle");
+
+                const mediumToggleDisplay = await page.$eval(
+                    `[data-note-id="${MEDIUM_NOTE_ID}"] .note-expand-toggle`,
+                    (button) => window.getComputedStyle(button).display
+                );
+                assert.equal(mediumToggleDisplay, "none", "medium previews must not render the expand toggle");
+            } finally {
+                await page.close();
+            }
+        });
     });
 }
 

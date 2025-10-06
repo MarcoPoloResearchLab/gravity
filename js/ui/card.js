@@ -982,6 +982,7 @@ function scheduleOverflowCheck(wrapper, content, toggle) {
 
         if (toggle instanceof HTMLElement) {
             toggle.hidden = !overflowing;
+            toggle.style.display = overflowing ? "flex" : "none";
             if (toggle.hidden) {
                 toggle.setAttribute("aria-expanded", "false");
                 toggle.setAttribute("aria-label", LABEL_EXPAND_NOTE);
@@ -999,6 +1000,7 @@ function scheduleOverflowCheck(wrapper, content, toggle) {
             if (toggle instanceof HTMLElement) {
                 toggle.setAttribute("aria-expanded", "false");
                 toggle.setAttribute("aria-label", LABEL_EXPAND_NOTE);
+                toggle.style.display = "none";
             }
             const card = wrapper.closest(".markdown-block");
             if (expandedPreviewCard === card) {
@@ -1009,6 +1011,7 @@ function scheduleOverflowCheck(wrapper, content, toggle) {
 
     if (toggle instanceof HTMLElement) {
         toggle.hidden = true;
+        toggle.style.display = "none";
     }
 
     if (wrapper.clientHeight > 0) {
