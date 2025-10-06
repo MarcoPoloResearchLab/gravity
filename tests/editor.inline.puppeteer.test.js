@@ -43,6 +43,10 @@ const TASK_MARKDOWN = "- [ ] Pending task\n- [x] Completed task";
 const LONG_NOTE_ID = "inline-long-fixture";
 const LONG_NOTE_PARAGRAPH_COUNT = 18;
 const LONG_NOTE_MARKDOWN = Array.from({ length: LONG_NOTE_PARAGRAPH_COUNT }, (_, index) => `Paragraph ${index + 1} maintains scroll state.`).join("\n\n");
+const BRACKET_NOTE_ID = "inline-bracket-fixture";
+const BRACKET_MARKDOWN = "Bracket baseline";
+const NESTED_ORDER_NOTE_ID = "inline-nested-ordered-fixture";
+const NESTED_ORDER_MARKDOWN = "1. Alpha\n2. Beta\n3. Gamma";
 
 if (!puppeteerModule) {
     test("puppeteer unavailable", () => {
@@ -176,6 +180,41 @@ if (!puppeteerModule) {
             }
         });
 
+        test("top editor collapses height after submitting long note", async () => {
+            if (skipIfNoBrowser()) return;
+
+            const page = await preparePage(browser, { records: [] });
+            const editorSelector = "#top-editor .markdown-editor";
+
+            try {
+                await page.waitForSelector(editorSelector);
+                const initialHeight = await page.$eval(editorSelector, (el) => el.clientHeight);
+
+                const longNote = Array.from({ length: 14 }, (_, index) => `Line ${index + 1} of extended content.`).join("\n");
+                await page.type(editorSelector, longNote);
+
+                const expandedHeight = await page.$eval(editorSelector, (el) => el.clientHeight);
+                assert.ok(expandedHeight > initialHeight, "top editor expands for long input");
+
+                await page.keyboard.down("Control");
+                await page.keyboard.press("Enter");
+                await page.keyboard.up("Control");
+
+                await page.waitForSelector(".markdown-block[data-note-id]", { timeout: 2000 });
+                await page.waitForSelector("#editor-toast.toast--visible", { timeout: 2000 });
+                await page.waitForFunction((selector, maxHeight) => {
+                    const textarea = document.querySelector(selector);
+                    if (!(textarea instanceof HTMLTextAreaElement)) return false;
+                    return textarea.value.length === 0 && textarea.clientHeight <= maxHeight + 4;
+                }, {}, editorSelector, initialHeight);
+
+                const finalHeight = await page.$eval(editorSelector, (el) => el.clientHeight);
+                assert.ok(finalHeight <= initialHeight + 4, "top editor resets to compact height after submit");
+            } finally {
+                await page.close();
+            }
+        });
+
         test("checkbox toggles from preview persist to markdown", async () => {
             if (skipIfNoBrowser()) return;
             const seededRecords = [buildNoteRecord({
@@ -220,6 +259,175 @@ if (!puppeteerModule) {
                 }, TASK_NOTE_ID);
                 assert.ok(storedMarkdown);
                 assert.ok(storedMarkdown.includes("- [ ] Pending task"));
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("typing [ inserts spaced brackets and advances the caret", async () => {
+            if (skipIfNoBrowser()) return;
+            const seededRecords = [buildNoteRecord({
+                noteId: BRACKET_NOTE_ID,
+                markdownText: BRACKET_MARKDOWN,
+                attachments: {}
+            })];
+
+            const page = await preparePage(browser, { records: seededRecords });
+            const cardSelector = `.markdown-block[data-note-id="${BRACKET_NOTE_ID}"]`;
+            const editorSelector = `${cardSelector} .markdown-editor`;
+
+            try {
+                await page.waitForSelector(cardSelector);
+                await page.click(`${cardSelector} .note-preview`);
+                await page.waitForSelector(`${cardSelector}.editing-in-place`);
+                await page.focus(editorSelector);
+                await page.evaluate((selector) => {
+                    const textarea = document.querySelector(selector);
+                    if (!(textarea instanceof HTMLTextAreaElement)) return;
+                    const caretIndex = textarea.value.length;
+                    textarea.selectionStart = caretIndex;
+                    textarea.selectionEnd = caretIndex;
+                }, editorSelector);
+
+                await page.keyboard.type("[");
+
+                const textareaState = await page.$eval(editorSelector, (el) => ({
+                    value: el.value,
+                    selectionStart: el.selectionStart ?? 0,
+                    selectionEnd: el.selectionEnd ?? 0
+                }));
+
+                assert.ok(
+                    textareaState.value.endsWith("[ ]"),
+                    "square bracket expands with interior space"
+                );
+                assert.equal(
+                    textareaState.selectionStart,
+                    textareaState.value.length,
+                    "caret advances past the closing bracket"
+                );
+                assert.equal(
+                    textareaState.selectionEnd,
+                    textareaState.selectionStart,
+                    "caret remains collapsed after insertion"
+                );
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("nested ordered lists restart numbering at each depth", async () => {
+            if (skipIfNoBrowser()) return;
+            const seededRecords = [buildNoteRecord({
+                noteId: NESTED_ORDER_NOTE_ID,
+                markdownText: NESTED_ORDER_MARKDOWN,
+                attachments: {}
+            })];
+
+            const page = await preparePage(browser, { records: seededRecords });
+            const cardSelector = `.markdown-block[data-note-id="${NESTED_ORDER_NOTE_ID}"]`;
+            const editorSelector = `${cardSelector} .markdown-editor`;
+
+            try {
+                await page.waitForSelector(cardSelector);
+                await page.click(`${cardSelector} .note-preview`);
+                await page.waitForSelector(`${cardSelector}.editing-in-place`);
+                await page.focus(editorSelector);
+
+                await page.evaluate((selector) => {
+                    const textarea = document.querySelector(selector);
+                    if (!(textarea instanceof HTMLTextAreaElement)) return;
+                    const lines = textarea.value.split("\n");
+                    const targetIndex = 2; // third line
+                    if (lines.length <= targetIndex) return;
+                    let caret = 0;
+                    for (let index = 0; index < targetIndex; index += 1) {
+                        caret += lines[index].length + 1;
+                    }
+                    textarea.selectionStart = caret;
+                    textarea.selectionEnd = caret;
+                }, editorSelector);
+
+                await page.keyboard.press("Tab");
+
+                let lines = await page.$eval(editorSelector, (el) => el.value.split("\n"));
+                assert.equal(lines[0], "1. Alpha");
+                assert.equal(lines[1], "2. Beta");
+                assert.equal(lines[2], "    1. Gamma");
+
+                await page.keyboard.press("Enter");
+
+                lines = await page.$eval(editorSelector, (el) => el.value.split("\n"));
+                assert.ok(lines[3].startsWith("    2. "), "second nested item increments from one");
+
+                await page.keyboard.down("Shift");
+                await page.keyboard.press("Tab");
+                await page.keyboard.up("Shift");
+
+                lines = await page.$eval(editorSelector, (el) => el.value.split("\n"));
+                assert.equal(lines[2], "    1. Gamma", "existing nested item keeps its numbering");
+                assert.ok(lines[3].startsWith("3. "), "outdented line resumes top-level numbering");
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("ctrl-enter bubbles notes to the top even without edits", async () => {
+            if (skipIfNoBrowser()) return;
+
+            const RECENT_NOTE_ID = "bubble-recent";
+            const TARGET_NOTE_ID = "bubble-target";
+
+            const recentNote = buildNoteRecord({
+                noteId: RECENT_NOTE_ID,
+                markdownText: "Recent entry",
+                attachments: {}
+            });
+            recentNote.createdAtIso = "2024-04-01T00:00:00.000Z";
+            recentNote.updatedAtIso = "2024-04-01T00:00:00.000Z";
+            recentNote.lastActivityIso = "2024-04-01T00:00:00.000Z";
+
+            const targetNote = buildNoteRecord({
+                noteId: TARGET_NOTE_ID,
+                markdownText: "Older entry",
+                attachments: {}
+            });
+            targetNote.createdAtIso = "2024-01-01T00:00:00.000Z";
+            targetNote.updatedAtIso = "2024-01-01T00:00:00.000Z";
+            targetNote.lastActivityIso = "2024-01-01T00:00:00.000Z";
+
+            const page = await preparePage(browser, { records: [recentNote, targetNote] });
+            const getNoteOrder = async () => page.evaluate(() => (
+                Array.from(document.querySelectorAll('.markdown-block[data-note-id]:not(.top-editor)'))
+                    .map((node) => node.getAttribute('data-note-id'))
+            ));
+
+            try {
+                await page.waitForSelector(`.markdown-block[data-note-id="${TARGET_NOTE_ID}"]`);
+                const initialOrder = await getNoteOrder();
+                assert.deepEqual(initialOrder.slice(0, 2), [RECENT_NOTE_ID, TARGET_NOTE_ID]);
+
+                const targetSelector = `.markdown-block[data-note-id="${TARGET_NOTE_ID}"]`;
+                await page.click(`${targetSelector} .note-preview`);
+                await page.waitForSelector(`${targetSelector}.editing-in-place`);
+
+                await page.keyboard.down("Control");
+                await page.keyboard.press("Enter");
+                await page.keyboard.up("Control");
+
+                await page.waitForFunction((noteId) => {
+                    const node = document.querySelector(`.markdown-block[data-note-id="${noteId}"]`);
+                    return node && !node.classList.contains("editing-in-place");
+                }, {}, TARGET_NOTE_ID);
+
+                await page.waitForFunction((noteId) => {
+                    const ids = Array.from(document.querySelectorAll('.markdown-block[data-note-id]:not(.top-editor)'))
+                        .map((node) => node.getAttribute('data-note-id'));
+                    return ids.length > 0 && ids[0] === noteId;
+                }, {}, TARGET_NOTE_ID);
+
+                const finalOrder = await getNoteOrder();
+                assert.equal(finalOrder[0], TARGET_NOTE_ID, "target note bubbles to the top after ctrl-enter");
             } finally {
                 await page.close();
             }
@@ -283,6 +491,89 @@ if (!puppeteerModule) {
 
                 const finalOrder = await getNoteOrder();
                 assert.equal(finalOrder[0], TARGET_NOTE_ID);
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("activating a second note exits the first from edit mode", async () => {
+            if (skipIfNoBrowser()) return;
+
+            const FIRST_NOTE_ID = "exclusive-first";
+            const SECOND_NOTE_ID = "exclusive-second";
+            const baseTimestamp = "2024-01-01T00:00:00.000Z";
+            const firstNote = buildNoteRecord({
+                noteId: FIRST_NOTE_ID,
+                markdownText: "First note body",
+                attachments: {}
+            });
+            firstNote.createdAtIso = baseTimestamp;
+            firstNote.updatedAtIso = baseTimestamp;
+            firstNote.lastActivityIso = baseTimestamp;
+
+            const secondTimestamp = "2024-02-01T00:00:00.000Z";
+            const secondNote = buildNoteRecord({
+                noteId: SECOND_NOTE_ID,
+                markdownText: "Second note body",
+                attachments: {}
+            });
+            secondNote.createdAtIso = secondTimestamp;
+            secondNote.updatedAtIso = secondTimestamp;
+            secondNote.lastActivityIso = secondTimestamp;
+
+            const page = await preparePage(browser, { records: [firstNote, secondNote] });
+            const firstSelector = `.markdown-block[data-note-id="${FIRST_NOTE_ID}"]`;
+            const secondSelector = `.markdown-block[data-note-id="${SECOND_NOTE_ID}"]`;
+
+            const readState = async (noteId) => page.evaluate((targetId) => {
+                const card = document.querySelector(`.markdown-block[data-note-id="${targetId}"]`);
+                if (!card) return null;
+                const preview = card.querySelector(".markdown-content");
+                const host = card.__markdownHost;
+                return {
+                    editing: card.classList.contains("editing-in-place"),
+                    mode: typeof host?.getMode === "function" ? host.getMode() : null,
+                    previewDisplay: preview ? window.getComputedStyle(preview).display : null
+                };
+            }, noteId);
+
+            try {
+                await page.waitForSelector(firstSelector);
+                await page.waitForSelector(secondSelector);
+
+                await page.click(`${firstSelector} .note-preview`);
+                await page.waitForSelector(`${firstSelector}.editing-in-place`);
+
+                const initialStates = {
+                    first: await readState(FIRST_NOTE_ID),
+                    second: await readState(SECOND_NOTE_ID)
+                };
+                assert.equal(initialStates.first?.editing, true, "first note enters edit mode");
+                assert.equal(initialStates.second?.editing, false, "second note remains in preview mode");
+                assert.notEqual(initialStates.second?.previewDisplay, "none", "second preview stays visible");
+
+                await page.click(`${secondSelector} .note-preview`);
+                await page.waitForSelector(`${secondSelector}.editing-in-place`);
+
+                await page.waitForFunction((noteId) => {
+                    const card = document.querySelector(`.markdown-block[data-note-id="${noteId}"]`);
+                    if (!card) return false;
+                    const host = card.__markdownHost;
+                    const mode = typeof host?.getMode === "function" ? host.getMode() : null;
+                    const preview = card.querySelector(".markdown-content");
+                    const previewDisplay = preview ? window.getComputedStyle(preview).display : null;
+                    return !card.classList.contains("editing-in-place") && mode === "view" && previewDisplay !== "none";
+                }, {}, FIRST_NOTE_ID);
+
+                const finalStates = {
+                    first: await readState(FIRST_NOTE_ID),
+                    second: await readState(SECOND_NOTE_ID)
+                };
+                assert.equal(finalStates.first?.editing, false, "first note leaves edit mode");
+                assert.equal(finalStates.first?.mode, "view", "first note host switches to view mode");
+                assert.notEqual(finalStates.first?.previewDisplay, "none", "first preview becomes visible again");
+                assert.equal(finalStates.second?.editing, true, "second note is editing");
+                assert.equal(finalStates.second?.mode, "edit", "second note host is editing");
             } finally {
                 await page.close();
             }
@@ -505,6 +796,36 @@ if (!puppeteerModule) {
             }
         });
 
+        test("pressing F1 shows the keyboard shortcuts modal", async () => {
+            if (skipIfNoBrowser()) return;
+
+            const page = await preparePage(browser, { records: [] });
+
+            try {
+                await page.waitForSelector("#top-editor .markdown-editor");
+
+                await page.keyboard.press("F1");
+
+                await page.waitForFunction(() => {
+                    const overlay = document.querySelector('.keyboard-shortcuts-overlay');
+                    return overlay instanceof HTMLElement && overlay.hidden === false;
+                });
+
+                const titleText = await page.$eval('.keyboard-shortcuts-title', (el) => el.textContent?.trim());
+                assert.equal(typeof titleText, "string");
+                assert.ok(titleText?.length);
+
+                await page.keyboard.press("Escape");
+
+                await page.waitForFunction(() => {
+                    const overlay = document.querySelector('.keyboard-shortcuts-overlay');
+                    return overlay instanceof HTMLElement && overlay.hidden === true;
+                });
+            } finally {
+                await page.close();
+            }
+        });
+
         test("lists and tables auto-continue in fallback editor", async () => {
             if (skipIfNoBrowser()) return;
             const seededRecords = [
@@ -689,7 +1010,9 @@ async function preparePage(browser, { records, previewBubbleDelayMs }) {
 
     await page.goto(PAGE_URL, { waitUntil: "networkidle0" });
     await page.waitForSelector("#top-editor .markdown-editor");
-    await page.waitForSelector(".markdown-block[data-note-id]");
+    if (Array.isArray(records) && records.length > 0) {
+        await page.waitForSelector(".markdown-block[data-note-id]");
+    }
     return page;
 }
 

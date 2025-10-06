@@ -259,7 +259,7 @@ export function renderCard(record, options = {}) {
             card.classList.remove("editing-in-place");
         }
     });
-    editorHost.on("submit", () => finalizeCard(card, notesContainer));
+    editorHost.on("submit", () => finalizeCard(card, notesContainer, { forceBubble: true }));
     editorHost.on("blur", () => finalizeCard(card, notesContainer));
     editorHost.on("navigatePrevious", () => navigateToAdjacentCard(card, DIRECTION_PREVIOUS, notesContainer));
     editorHost.on("navigateNext", () => navigateToAdjacentCard(card, DIRECTION_NEXT, notesContainer));
@@ -448,14 +448,15 @@ function persistCardState(card, notesContainer, markdownText, options = {}) {
 
     if (notesContainer instanceof HTMLElement) {
         if (bubbleToTop) {
-            bubbleCardToTop(card, notesContainer);
+            bubbleCardToTop(card, notesContainer, markdownText);
         } else {
+            refreshCardPreview(card, markdownText);
             syncStoreFromDom(notesContainer);
             updateActionButtons(notesContainer);
         }
+    } else {
+        refreshCardPreview(card, markdownText);
     }
-
-    refreshCardPreview(card);
 
     triggerClassificationForCard(noteId, markdownText, notesContainer);
     showSaveFeedback();
@@ -485,7 +486,7 @@ function schedulePreviewBubble(card, notesContainer) {
     previewBubbleTimers.set(card, timer);
 }
 
-function bubbleCardToTop(card, notesContainer) {
+function bubbleCardToTop(card, notesContainer, markdownOverride) {
     if (!(card instanceof HTMLElement) || !(notesContainer instanceof HTMLElement)) {
         return;
     }
@@ -500,7 +501,7 @@ function bubbleCardToTop(card, notesContainer) {
     }
     syncStoreFromDom(notesContainer);
     updateActionButtons(notesContainer);
-    refreshCardPreview(card);
+    refreshCardPreview(card, markdownOverride);
 }
 
 function getPreviewCheckboxBubbleDelayMs() {
@@ -514,7 +515,7 @@ function getPreviewCheckboxBubbleDelayMs() {
     return PREVIEW_CHECKBOX_BUBBLE_DELAY_MS_DEFAULT;
 }
 
-function refreshCardPreview(card) {
+function refreshCardPreview(card, markdownOverride) {
     if (!(card instanceof HTMLElement)) {
         return;
     }
@@ -524,7 +525,11 @@ function refreshCardPreview(card) {
     }
     const editor = /** @type {HTMLTextAreaElement|null} */ (card.querySelector(".markdown-editor"));
     const editorHost = editorHosts.get(card);
-    const markdownValue = editorHost ? editorHost.getValue() : editor?.value ?? "";
+    const markdownValue = typeof markdownOverride === "string"
+        ? markdownOverride
+        : editorHost
+            ? editorHost.getValue()
+            : editor?.value ?? "";
     const attachments = editor instanceof HTMLTextAreaElement ? collectReferencedAttachments(editor) : {};
     const markdownWithAttachments = transformMarkdownWithAttachments(markdownValue, attachments);
     renderSanitizedMarkdown(preview, markdownWithAttachments);
@@ -649,7 +654,16 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
 
     // Remove edit mode from others
     const all = notesContainer.querySelectorAll(".markdown-block");
-    for (const c of all) c.classList.remove("editing-in-place");
+    all.forEach((candidate) => {
+        if (candidate === card) {
+            return;
+        }
+        candidate.classList.remove("editing-in-place");
+        const candidateHost = editorHosts.get(candidate);
+        if (candidateHost && candidateHost.getMode() === MARKDOWN_MODE_EDIT) {
+            candidateHost.setMode(MARKDOWN_MODE_VIEW);
+        }
+    });
 
     const editor  = card.querySelector(".markdown-editor");
     const preview = card.querySelector(".markdown-content");
@@ -695,7 +709,7 @@ function stripMarkdownImages(markdown) {
 }
 
 async function finalizeCard(card, notesContainer, options = {}) {
-    const { bubbleToTop = true } = options;
+    const { bubbleToTop = true, forceBubble = false } = options;
     if (!card || mergeInProgress) return;
     if (isFinalizeSuppressed(card)) return;
 
@@ -721,6 +735,10 @@ async function finalizeCard(card, notesContainer, options = {}) {
     if (editorHost) {
         editorHost.setMode(MARKDOWN_MODE_VIEW);
     }
+    if (editor instanceof HTMLTextAreaElement) {
+        editor.style.height = "";
+        editor.style.minHeight = "";
+    }
     // If cleared, delete the card entirely
     if (trimmed.length === 0) {
         collapseExpandedPreview(card);
@@ -739,43 +757,11 @@ async function finalizeCard(card, notesContainer, options = {}) {
     const previewWrapper = card.querySelector(".note-preview");
     const expandToggle = card.querySelector(".note-expand-toggle");
     scheduleOverflowCheck(previewWrapper, preview, expandToggle);
-    if (!editorHost || !editorHost.isEnhanced()) {
-        autoResize(editor);
-    }
-
-    if (!changed) {
-        // Keep position; nothing else to do
+    if (!changed && !forceBubble) {
         return;
     }
 
-    // Persist changes and bubble to top
-    const id = card.getAttribute("data-note-id");
-    const ts = nowIso();
-    const records = GravityStore.loadAllNotes();
-    const existing = records.find(r => r.noteId === id);
-
-    GravityStore.upsertNonEmpty({
-        noteId: id,
-        markdownText: text,
-        createdAtIso: existing?.createdAtIso ?? ts, // preserve creation time
-        updatedAtIso: ts,
-        lastActivityIso: ts,
-        attachments
-    });
-
-    card.dataset.initialValue = text;
-
-    if (bubbleToTop) {
-        bubbleCardToTop(card, notesContainer);
-    } else {
-        syncStoreFromDom(notesContainer);
-        updateActionButtons(notesContainer);
-    }
-
-    // Re-classify edited content
-    triggerClassificationForCard(id, text, notesContainer);
-    showSaveFeedback();
-    scheduleOverflowCheck(previewWrapper, preview, expandToggle);
+    persistCardState(card, notesContainer, text, { bubbleToTop });
 }
 
 function deleteCard(card, notesContainer) {

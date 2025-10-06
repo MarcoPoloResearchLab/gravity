@@ -19,6 +19,15 @@ export const ARIA_LABEL_COPY_RENDERED = "Copy Rendered HTML";
 export const BADGE_LABEL_CODE = "code";
 export const LABEL_EXPAND_NOTE = "Expand note";
 export const LABEL_COLLAPSE_NOTE = "Collapse note";
+export const LABEL_KEYBOARD_SHORTCUTS = "Keyboard shortcuts";
+export const LABEL_CLOSE_KEYBOARD_SHORTCUTS = "Close shortcuts";
+export const LABEL_SHORTCUT_SAVE_NOTE = "Save note and bubble to top";
+export const LABEL_SHORTCUT_SOFT_BREAK = "Insert soft line break";
+export const LABEL_SHORTCUT_INDENT = "Indent selection";
+export const LABEL_SHORTCUT_OUTDENT = "Outdent selection";
+export const LABEL_SHORTCUT_NAVIGATE_PREVIOUS = "Focus previous note";
+export const LABEL_SHORTCUT_NAVIGATE_NEXT = "Focus next note";
+export const LABEL_SHORTCUT_OPEN_HELP = "Show keyboard shortcuts";
 
 export const MESSAGE_NOTE_SAVED = "Saved";
 

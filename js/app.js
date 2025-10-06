@@ -11,6 +11,7 @@ import {
     ERROR_NOTES_CONTAINER_NOT_FOUND
 } from "./constants.js";
 import { nowIso } from "./utils/index.js";
+import { initializeKeyboardShortcutsModal } from "./ui/keyboardShortcutsModal.js";
 
 /**
  * Ensure the main application chrome reflects the centralized string constants.
@@ -28,6 +29,7 @@ function initializeStaticCopy() {
 }
 
 initializeStaticCopy();
+initializeKeyboardShortcutsModal();
 
 marked.setOptions({
     gfm: true,

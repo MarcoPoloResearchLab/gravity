@@ -457,6 +457,117 @@ body.${OVERLAY_BODY_LOCK_CLASS} ???
     display: none;
 }
 
+/* Keyboard shortcuts modal */
+.keyboard-shortcuts-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    background: rgba(8, 12, 22, 0.78);
+    z-index: 1200;
+}
+
+.keyboard-shortcuts-overlay[hidden] { display: none; }
+
+.keyboard-shortcuts-modal {
+    position: relative;
+    width: min(520px, 100%);
+    background: #111723;
+    border: 1px solid #27324a;
+    border-radius: 14px;
+    padding: 1.75rem 1.6rem;
+    box-shadow: 0 22px 48px rgba(0, 0, 0, 0.45);
+    color: #e7e9ee;
+}
+
+.keyboard-shortcuts-title {
+    margin: 0 0 1.2rem;
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: #dbe3ff;
+}
+
+.keyboard-shortcuts-close {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    background: transparent;
+    border: none;
+    color: #98a6cd;
+    font-size: 1.2rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0.25rem;
+    border-radius: 6px;
+}
+
+.keyboard-shortcuts-close:hover,
+.keyboard-shortcuts-close:focus {
+    background: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+    outline: none;
+}
+
+.keyboard-shortcuts-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+}
+
+.keyboard-shortcut {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+}
+
+.keyboard-shortcut-description {
+    margin: 0;
+    font-size: 0.95rem;
+    color: #c7d2f2;
+    flex: 1;
+}
+
+.keyboard-shortcut-keys {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.35rem;
+}
+
+.keyboard-shortcut-keys-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.keyboard-shortcut-keys kbd {
+    background: #1c2333;
+    border: 1px solid #36405a;
+    border-radius: 6px;
+    padding: 0.28rem 0.6rem;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.85rem;
+    color: #f4f6ff;
+    box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.28);
+    min-width: 2.1rem;
+    text-align: center;
+}
+
+.keyboard-shortcut-keys-plus {
+    color: #6e7793;
+    font-size: 0.85rem;
+}
+
+body.keyboard-shortcuts-open {
+    overflow: hidden;
+}
+
 @media (max-width: 480px) {
     .markdown-block { grid-template-columns: 1fr 5.25rem; }
     .action-button { font-size: 0.85rem; padding: 0.2rem 0.3rem; }
