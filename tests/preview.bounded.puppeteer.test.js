@@ -172,6 +172,9 @@ if (!puppeteerModule) {
                     return card && !card.classList.contains("editing-in-place");
                 }, {}, `[data-note-id="${TRAILING_IMAGE_NOTE_ID}"]`);
 
+                const trailingToggleHidden = await page.$eval(trailingToggleSelector, (node) => node.hidden);
+                assert.equal(trailingToggleHidden, false, "expand toggle should remain visible after editing finishes");
+
                 const blankHeight = await page.$eval("#top-editor .markdown-editor", (element) => element.getBoundingClientRect().height);
                 assert.ok(blankHeight < maxHeightPx * 0.25, "blank top editor should remain a single-line height");
 

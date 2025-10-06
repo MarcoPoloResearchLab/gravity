@@ -174,6 +174,7 @@ export function renderCard(record, options = {}) {
         const isExpanded = previewWrapper.classList.contains("note-preview--expanded");
         setCardExpanded(card, isExpanded ? false : true);
     });
+    previewWrapper.appendChild(expandToggle);
 
     const initialAttachments = record.attachments || {};
     const initialPreviewMarkdown = transformMarkdownWithAttachments(record.markdownText, initialAttachments);
@@ -190,7 +191,7 @@ export function renderCard(record, options = {}) {
     registerInitialAttachments(editor, initialAttachments);
     enableClipboardImagePaste(editor);
 
-    card.append(chips, badges, previewWrapper, expandToggle, editor, actions);
+    card.append(chips, badges, previewWrapper, editor, actions);
 
     const handleCardInteraction = (event) => {
         const target = /** @type {HTMLElement} */ (event.target);
@@ -449,6 +450,10 @@ function persistCardState(card, notesContainer, markdownText) {
 
     triggerClassificationForCard(noteId, markdownText, notesContainer);
     showSaveFeedback();
+    const preview = card.querySelector(".markdown-content");
+    const previewWrapper = card.querySelector(".note-preview");
+    const toggle = card.querySelector(".note-expand-toggle");
+    scheduleOverflowCheck(previewWrapper, preview, toggle);
 }
 
 function setCardExpanded(card, shouldExpand) {
@@ -627,6 +632,9 @@ async function finalizeCard(card, notesContainer, options = {}) {
     // Update preview (safe either way)
     const markdownWithAttachments = transformMarkdownWithAttachments(text, attachments);
     renderSanitizedMarkdown(preview, markdownWithAttachments);
+    const previewWrapper = card.querySelector(".note-preview");
+    const expandToggle = card.querySelector(".note-expand-toggle");
+    scheduleOverflowCheck(previewWrapper, preview, expandToggle);
     if (!editorHost || !editorHost.isEnhanced()) {
         autoResize(editor);
     }
@@ -664,6 +672,7 @@ async function finalizeCard(card, notesContainer, options = {}) {
     // Re-classify edited content
     triggerClassificationForCard(id, text, notesContainer);
     showSaveFeedback();
+    scheduleOverflowCheck(previewWrapper, preview, expandToggle);
 }
 
 function deleteCard(card, notesContainer) {
