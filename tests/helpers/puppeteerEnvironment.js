@@ -1,39 +1,58 @@
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-const BASE_DIR = path.join(os.tmpdir(), `gravity-puppeteer-${process.pid}`);
-const HOME_DIR = path.join(BASE_DIR, "home");
-const USER_DATA_DIR = path.join(HOME_DIR, "user-data");
-const CRASHPAD_DIR = path.join(USER_DATA_DIR, "Crashpad");
-const CACHE_DIR = path.join(HOME_DIR, ".cache");
-const CONFIG_DIR = path.join(HOME_DIR, ".config");
-const CRASH_DUMPS_DIR = path.join(HOME_DIR, "crash-dumps");
+const ACTIVE_BASE_DIRS = new Set();
 
-let prepared = false;
-
+/**
+ * @returns {{
+ *   id: string,
+ *   baseDir: string,
+ *   homeDir: string,
+ *   userDataDir: string,
+ *   cacheDir: string,
+ *   configDir: string,
+ *   crashDumpsDir: string
+ * }}
+ */
 export async function ensurePuppeteerSandbox() {
-    if (!prepared) {
-        await fs.rm(BASE_DIR, { recursive: true, force: true }).catch(() => {});
-        await fs.mkdir(HOME_DIR, { recursive: true });
-        await fs.mkdir(USER_DATA_DIR, { recursive: true });
-        await fs.mkdir(CRASHPAD_DIR, { recursive: true });
-        await fs.mkdir(CACHE_DIR, { recursive: true });
-        await fs.mkdir(CONFIG_DIR, { recursive: true });
-        await fs.mkdir(CRASH_DUMPS_DIR, { recursive: true });
-        prepared = true;
-    }
+    const sandboxId = crypto.randomUUID();
+    const baseDir = path.join(os.tmpdir(), `gravity-puppeteer-${sandboxId}`);
+    const homeDir = path.join(baseDir, "home");
+    const userDataDir = path.join(homeDir, "user-data");
+    const crashpadDir = path.join(userDataDir, "Crashpad");
+    const cacheDir = path.join(homeDir, ".cache");
+    const configDir = path.join(homeDir, ".config");
+    const crashDumpsDir = path.join(homeDir, "crash-dumps");
+
+    await fs.mkdir(crashpadDir, { recursive: true });
+    await fs.mkdir(cacheDir, { recursive: true });
+    await fs.mkdir(configDir, { recursive: true });
+    await fs.mkdir(crashDumpsDir, { recursive: true });
+
+    ACTIVE_BASE_DIRS.add(baseDir);
 
     return {
-        homeDir: HOME_DIR,
-        userDataDir: USER_DATA_DIR,
-        cacheDir: CACHE_DIR,
-        configDir: CONFIG_DIR,
-        crashDumpsDir: CRASH_DUMPS_DIR
+        id: sandboxId,
+        baseDir,
+        homeDir,
+        userDataDir,
+        cacheDir,
+        configDir,
+        crashDumpsDir
     };
 }
 
-export async function cleanupPuppeteerSandbox() {
-    await fs.rm(BASE_DIR, { recursive: true, force: true }).catch(() => {});
-    prepared = false;
+/**
+ * @param {{ baseDir: string } | string | undefined | null} sandbox
+ */
+export async function cleanupPuppeteerSandbox(sandbox) {
+    const baseDir = typeof sandbox === "string" ? sandbox : sandbox?.baseDir;
+    if (!baseDir) {
+        return;
+    }
+
+    await fs.rm(baseDir, { recursive: true, force: true }).catch(() => {});
+    ACTIVE_BASE_DIRS.delete(baseDir);
 }

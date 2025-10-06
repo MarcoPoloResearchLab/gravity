@@ -7,13 +7,14 @@ import { appConfig } from "../js/core/config.js";
 import { MESSAGE_NOTE_SAVED } from "../js/constants.js";
 import { ensurePuppeteerSandbox, cleanupPuppeteerSandbox } from "./helpers/puppeteerEnvironment.js";
 
+const SANDBOX = await ensurePuppeteerSandbox();
 const {
     homeDir: SANDBOX_HOME_DIR,
     userDataDir: SANDBOX_USER_DATA_DIR,
     cacheDir: SANDBOX_CACHE_DIR,
     configDir: SANDBOX_CONFIG_DIR,
     crashDumpsDir: SANDBOX_CRASH_DUMPS_DIR
-} = await ensurePuppeteerSandbox();
+} = SANDBOX;
 
 let puppeteerModule;
 try {
@@ -105,7 +106,7 @@ if (!puppeteerModule) {
 
         test.after(async () => {
             if (browser) await browser.close();
-            await cleanupPuppeteerSandbox();
+            await cleanupPuppeteerSandbox(SANDBOX);
         });
 
         test("click-to-edit auto-grows and saves inline", async () => {
