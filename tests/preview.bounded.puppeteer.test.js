@@ -106,6 +106,8 @@ if (!puppeteerModule) {
                 await page.waitForSelector(toggleSelector);
                 const toggleVisible = await page.$eval(toggleSelector, (button) => button instanceof HTMLElement && button.hidden === false);
                 assert.equal(toggleVisible, true, "expand toggle should appear for overflowing previews");
+                const toggleColor = await page.$eval(toggleSelector, (button) => window.getComputedStyle(button).color);
+                assert.equal(toggleColor, "rgb(216, 228, 255)", "chevron toggle should remain high-contrast against fade");
 
                 await page.click(toggleSelector);
                 await page.waitForFunction((selector) => {

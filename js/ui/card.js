@@ -970,9 +970,14 @@ function scheduleOverflowCheck(wrapper, content, toggle) {
         }
         return;
     }
-    requestAnimationFrame(() => {
+
+    /**
+     * @returns {void}
+     */
+    const applyMeasurements = () => {
         const isExpanded = wrapper.classList.contains("note-preview--expanded");
-        const overflowing = isExpanded || content.scrollHeight > wrapper.clientHeight + 1;
+        const overflowDelta = content.scrollHeight - wrapper.clientHeight;
+        const overflowing = isExpanded || overflowDelta > 0.5;
         wrapper.classList.toggle("note-preview--overflow", overflowing && !isExpanded);
 
         if (toggle instanceof HTMLElement) {
@@ -1000,7 +1005,10 @@ function scheduleOverflowCheck(wrapper, content, toggle) {
                 expandedPreviewCard = null;
             }
         }
-    });
+    };
+
+    applyMeasurements();
+    requestAnimationFrame(applyMeasurements);
 }
 
 function createBadge(label, extraClass = "") {
