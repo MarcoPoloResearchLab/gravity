@@ -5,6 +5,15 @@ import test from "node:test";
 
 import { appConfig } from "../js/core/config.js";
 import { MESSAGE_NOTE_SAVED } from "../js/constants.js";
+import { ensurePuppeteerSandbox, cleanupPuppeteerSandbox } from "./helpers/puppeteerEnvironment.js";
+
+const {
+    homeDir: SANDBOX_HOME_DIR,
+    userDataDir: SANDBOX_USER_DATA_DIR,
+    cacheDir: SANDBOX_CACHE_DIR,
+    configDir: SANDBOX_CONFIG_DIR,
+    crashDumpsDir: SANDBOX_CRASH_DUMPS_DIR
+} = await ensurePuppeteerSandbox();
 
 let puppeteerModule;
 try {
@@ -40,23 +49,63 @@ if (!puppeteerModule) {
         test.skip("Puppeteer is not installed in this environment.");
     });
 } else {
+    const executablePath = typeof puppeteerModule.executablePath === "function"
+        ? puppeteerModule.executablePath()
+        : undefined;
+    if (typeof executablePath === "string" && executablePath.length > 0) {
+        process.env.PUPPETEER_EXECUTABLE_PATH = executablePath;
+    }
     test.describe("Markdown inline editor", () => {
         /** @type {import('puppeteer').Browser} */
         let browser;
+        /** @type {Error|null} */
+        let launchError = null;
+
+        const skipIfNoBrowser = () => {
+            if (!browser) {
+                test.skip(launchError ? launchError.message : "Puppeteer launch unavailable in sandbox.");
+                return true;
+            }
+            return false;
+        };
 
         test.before(async () => {
-            const launchArgs = ["--allow-file-access-from-files"];
+            const launchArgs = [
+                "--allow-file-access-from-files",
+                "--disable-crashpad",
+                "--disable-features=Crashpad",
+                "--noerrdialogs",
+                "--no-crash-upload",
+                "--enable-crash-reporter=0",
+                `--crash-dumps-dir=${SANDBOX_CRASH_DUMPS_DIR}`
+            ];
             if (process.env.CI) {
                 launchArgs.push("--no-sandbox", "--disable-setuid-sandbox");
             }
-            browser = await puppeteerModule.launch({ headless: "new", args: launchArgs });
+            try {
+                browser = await puppeteerModule.launch({
+                    headless: "new",
+                    args: launchArgs,
+                    userDataDir: SANDBOX_USER_DATA_DIR,
+                    env: {
+                        ...process.env,
+                        HOME: SANDBOX_HOME_DIR,
+                        XDG_CACHE_HOME: SANDBOX_CACHE_DIR,
+                        XDG_CONFIG_HOME: SANDBOX_CONFIG_DIR
+                    }
+                });
+            } catch (error) {
+                launchError = error instanceof Error ? error : new Error(String(error));
+            }
         });
 
         test.after(async () => {
             if (browser) await browser.close();
+            await cleanupPuppeteerSandbox();
         });
 
         test("click-to-edit auto-grows and saves inline", async () => {
+            if (skipIfNoBrowser()) return;
             const seededRecords = [buildNoteRecord({
                 noteId: NOTE_ID,
                 markdownText: INITIAL_MARKDOWN,
@@ -128,6 +177,7 @@ if (!puppeteerModule) {
         });
 
         test("checkbox toggles from preview persist to markdown", async () => {
+            if (skipIfNoBrowser()) return;
             const seededRecords = [buildNoteRecord({
                 noteId: TASK_NOTE_ID,
                 markdownText: TASK_MARKDOWN,
@@ -175,7 +225,144 @@ if (!puppeteerModule) {
             }
         });
 
+        test("preview checkbox bubbling waits before reordering", async () => {
+            if (skipIfNoBrowser()) return;
+
+            const RECENT_NOTE_ID = "recent-note";
+            const TARGET_NOTE_ID = "checkbox-note";
+            const recentNote = buildNoteRecord({
+                noteId: RECENT_NOTE_ID,
+                markdownText: "Recent note",
+                attachments: {}
+            });
+            recentNote.createdAtIso = "2024-02-01T00:00:00.000Z";
+            recentNote.updatedAtIso = "2024-02-01T00:00:00.000Z";
+            recentNote.lastActivityIso = "2024-02-01T00:00:00.000Z";
+
+            const targetNote = buildNoteRecord({
+                noteId: TARGET_NOTE_ID,
+                markdownText: "- [ ] First task\n- [x] Second task",
+                attachments: {}
+            });
+            targetNote.createdAtIso = "2024-01-01T00:00:00.000Z";
+            targetNote.updatedAtIso = "2024-01-01T00:00:00.000Z";
+            targetNote.lastActivityIso = "2024-01-01T00:00:00.000Z";
+
+            const page = await preparePage(browser, {
+                records: [recentNote, targetNote],
+                previewBubbleDelayMs: 300
+            });
+
+            const getNoteOrder = async () => page.evaluate(() => (
+                Array.from(document.querySelectorAll('.markdown-block:not(.top-editor)'))
+                    .map((node) => node.getAttribute('data-note-id'))
+            ));
+
+            try {
+                await page.waitForSelector(`.markdown-block[data-note-id="${TARGET_NOTE_ID}"]`);
+                const initialOrder = await getNoteOrder();
+                assert.deepEqual(initialOrder.slice(0, 2), [RECENT_NOTE_ID, TARGET_NOTE_ID]);
+
+                const checkboxSelector = `[data-note-id="${TARGET_NOTE_ID}"] input[type="checkbox"][data-task-index="0"]`;
+                await page.waitForSelector(checkboxSelector);
+                await page.click(checkboxSelector);
+                await pause(page, 120);
+                const afterFirstClick = await getNoteOrder();
+                assert.deepEqual(afterFirstClick.slice(0, 2), [RECENT_NOTE_ID, TARGET_NOTE_ID]);
+
+                await page.click(checkboxSelector);
+                await pause(page, 120);
+                const afterSecondClick = await getNoteOrder();
+                assert.deepEqual(afterSecondClick.slice(0, 2), [RECENT_NOTE_ID, TARGET_NOTE_ID]);
+
+                await page.waitForFunction((targetId) => {
+                    const ids = Array.from(document.querySelectorAll('.markdown-block:not(.top-editor)'))
+                        .map((node) => node.getAttribute('data-note-id'));
+                    return ids.length > 0 && ids[0] === targetId;
+                }, {}, TARGET_NOTE_ID);
+
+                const finalOrder = await getNoteOrder();
+                assert.equal(finalOrder[0], TARGET_NOTE_ID);
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("editing re-renders preview after bubbling", async () => {
+            if (skipIfNoBrowser()) return;
+
+            const OTHER_NOTE_ID = "up-to-date-note";
+            const TARGET_NOTE_ID = "render-update-note";
+            const otherNote = buildNoteRecord({
+                noteId: OTHER_NOTE_ID,
+                markdownText: "Other note",
+                attachments: {}
+            });
+            otherNote.createdAtIso = "2024-03-01T00:00:00.000Z";
+            otherNote.updatedAtIso = "2024-03-01T00:00:00.000Z";
+            otherNote.lastActivityIso = "2024-03-01T00:00:00.000Z";
+
+            const targetNote = buildNoteRecord({
+                noteId: TARGET_NOTE_ID,
+                markdownText: "Original content",
+                attachments: {}
+            });
+            targetNote.createdAtIso = "2024-01-01T00:00:00.000Z";
+            targetNote.updatedAtIso = "2024-01-01T00:00:00.000Z";
+            targetNote.lastActivityIso = "2024-01-01T00:00:00.000Z";
+
+            const page = await preparePage(browser, {
+                records: [otherNote, targetNote]
+            });
+
+            const targetSelector = `.markdown-block[data-note-id="${TARGET_NOTE_ID}"]`;
+            const editorSelector = `${targetSelector} .markdown-editor`;
+            const previewSelector = `${targetSelector} .markdown-content`;
+
+            try {
+                await page.waitForSelector(targetSelector);
+                const initialOrder = await page.evaluate(() => (
+                    Array.from(document.querySelectorAll('.markdown-block:not(.top-editor)'))
+                        .map((node) => node.getAttribute('data-note-id'))
+                ));
+                assert.deepEqual(initialOrder.slice(0, 2), [OTHER_NOTE_ID, TARGET_NOTE_ID]);
+
+                await page.click(`${targetSelector} .note-preview`);
+                await page.waitForSelector(`${targetSelector}.editing-in-place`);
+                await page.focus(editorSelector);
+                await page.evaluate((noteId, markdown) => {
+                    const card = document.querySelector(`.markdown-block[data-note-id="${noteId}"]`);
+                    const host = card?.__markdownHost;
+                    if (host) {
+                        host.setValue(markdown);
+                    }
+                }, TARGET_NOTE_ID, '# Updated Title\n\nExpanded body.');
+
+                await page.keyboard.down('Control');
+                await page.keyboard.press('Enter');
+                await page.keyboard.up('Control');
+
+                await page.waitForFunction((selector) => {
+                    const node = document.querySelector(selector);
+                    return node && !node.classList.contains('editing-in-place');
+                }, {}, targetSelector);
+
+                await page.waitForFunction((targetId) => {
+                    const ids = Array.from(document.querySelectorAll('.markdown-block:not(.top-editor)'))
+                        .map((node) => node.getAttribute('data-note-id'));
+                    return ids.length > 0 && ids[0] === targetId;
+                }, {}, TARGET_NOTE_ID);
+
+                const previewHtml = await page.$eval(previewSelector, (element) => element.innerHTML || "");
+                assert.match(previewHtml, /<h1[^>]*>Updated Title<\/h1>/);
+                assert.ok(previewHtml.includes('<p>Expanded body.</p>'));
+            } finally {
+                await page.close();
+            }
+        });
+
         test("clicking a long note reveals the full content and caret at end", async () => {
+            if (skipIfNoBrowser()) return;
             const seededRecords = [buildNoteRecord({
                 noteId: LONG_NOTE_ID,
                 markdownText: LONG_NOTE_MARKDOWN,
@@ -229,6 +416,7 @@ if (!puppeteerModule) {
         });
 
         test("second click keeps caret position and prevents clipping", async () => {
+            if (skipIfNoBrowser()) return;
             const seededRecords = [buildNoteRecord({
                 noteId: CARET_NOTE_ID,
                 markdownText: CARET_MARKDOWN,
@@ -278,6 +466,7 @@ if (!puppeteerModule) {
         });
 
         test("tables render without forcing full card width", async () => {
+            if (skipIfNoBrowser()) return;
             const seededRecords = [buildNoteRecord({
                 noteId: TABLE_NOTE_ID,
                 markdownText: TABLE_MARKDOWN,
@@ -317,6 +506,7 @@ if (!puppeteerModule) {
         });
 
         test("lists and tables auto-continue in fallback editor", async () => {
+            if (skipIfNoBrowser()) return;
             const seededRecords = [
                 buildNoteRecord({ noteId: UNORDERED_NOTE_ID, markdownText: UNORDERED_MARKDOWN, attachments: {} }),
                 buildNoteRecord({ noteId: ORDERED_NOTE_ID, markdownText: ORDERED_MARKDOWN, attachments: {} }),
@@ -486,16 +676,25 @@ function buildNoteRecord({ noteId, markdownText, attachments }) {
     };
 }
 
-async function preparePage(browser, { records }) {
+async function preparePage(browser, { records, previewBubbleDelayMs }) {
     const page = await browser.newPage();
     const serialized = JSON.stringify(Array.isArray(records) ? records : []);
-    await page.evaluateOnNewDocument((storageKey, payload) => {
+    await page.evaluateOnNewDocument((storageKey, payload, bubbleDelay) => {
         window.localStorage.clear();
         window.localStorage.setItem(storageKey, payload);
-    }, appConfig.storageKey, serialized);
+        if (typeof bubbleDelay === "number") {
+            window.__gravityPreviewBubbleDelayMs = bubbleDelay;
+        }
+    }, appConfig.storageKey, serialized, typeof previewBubbleDelayMs === "number" ? previewBubbleDelayMs : null);
 
     await page.goto(PAGE_URL, { waitUntil: "networkidle0" });
     await page.waitForSelector("#top-editor .markdown-editor");
     await page.waitForSelector(".markdown-block[data-note-id]");
     return page;
+}
+
+async function pause(page, durationMs) {
+    await page.evaluate((ms) => new Promise((resolve) => {
+        setTimeout(resolve, typeof ms === "number" ? Math.max(ms, 0) : 0);
+    }), durationMs);
 }

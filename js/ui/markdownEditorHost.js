@@ -156,6 +156,7 @@ export function createMarkdownEditorHost(options) {
     let easyMdeInstance = null;
     let isProgrammaticUpdate = false;
     let isDestroyed = false;
+    let isApplyingListAutoRenumber = false;
 
     if (enhanceWithEasyMde) {
         easyMdeInstance = createEasyMdeInstance(textarea);
@@ -400,7 +401,12 @@ export function createMarkdownEditorHost(options) {
             "Ctrl-S": () => emit("submit")
         });
 
-        codemirror.on("change", () => {
+        codemirror.on("change", (cm, change) => {
+            if (!isProgrammaticUpdate && !isApplyingListAutoRenumber) {
+                if (maybeRenumberOrderedLists(cm, change)) {
+                    syncTextareaValue();
+                }
+            }
             syncTextareaValue();
             emitChange();
         });
@@ -505,11 +511,128 @@ export function createMarkdownEditorHost(options) {
 
             if (isListLine(lineText)) {
                 cm.execCommand("newlineAndIndentContinueMarkdownList");
-                autoRenumberOrderedList(cm, cm.getCursor().line);
+                withListAutoRenumber(() => {
+                    autoRenumberOrderedList(cm, cm.getCursor().line);
+                });
                 return;
             }
 
             cm.execCommand("newlineAndIndent");
+        }
+
+        function maybeRenumberOrderedLists(cm, change) {
+            if (!change) return false;
+            let adjusted = false;
+            let pointer = change;
+            const processedBlocks = new Set();
+
+            while (pointer) {
+                if (!shouldInspectChange(pointer)) {
+                    pointer = pointer.next;
+                    continue;
+                }
+
+                const candidateLines = collectCandidateListLines(cm, pointer);
+                for (const line of candidateLines) {
+                    const bounds = findOrderedListBounds(cm, line);
+                    if (!bounds) {
+                        continue;
+                    }
+                    const key = `${bounds.start}:${bounds.end}`;
+                    if (processedBlocks.has(key)) {
+                        continue;
+                    }
+                    withListAutoRenumber(() => {
+                        autoRenumberOrderedList(cm, line);
+                    });
+                    processedBlocks.add(key);
+                    adjusted = true;
+                }
+
+                pointer = pointer.next;
+            }
+
+            return adjusted;
+        }
+
+        function shouldInspectChange(change) {
+            if (!change) return false;
+            const inserted = Array.isArray(change.text) ? change.text : [];
+            const removed = Array.isArray(change.removed) ? change.removed : [];
+            if (change.origin === "paste" || change.origin === "paste+") return true;
+            if (inserted.length > 1 || removed.length > 1) return true;
+            if (inserted.some((line) => ORDERED_LIST_REGEX.test(line))) return true;
+            if (removed.some((line) => ORDERED_LIST_REGEX.test(line))) return true;
+            return false;
+        }
+
+        function collectCandidateListLines(cm, change) {
+            const lineCount = cm.lineCount();
+            const range = new Set();
+            const insertedLength = Array.isArray(change.text) ? change.text.length : 0;
+            const baseLine = change.from?.line ?? 0;
+            const startLine = Math.max(baseLine - 1, 0);
+            const endLine = Math.min(lineCount - 1, baseLine + Math.max(insertedLength, 1));
+            for (let line = startLine; line <= endLine; line += 1) {
+                range.add(line);
+            }
+
+            const removed = Array.isArray(change.removed) ? change.removed : [];
+            removed.forEach((lineText, index) => {
+                if (!ORDERED_LIST_REGEX.test(lineText)) {
+                    return;
+                }
+                const candidateLine = baseLine + index;
+                if (candidateLine >= 0 && candidateLine < lineCount) {
+                    range.add(candidateLine);
+                }
+                if (candidateLine - 1 >= 0) {
+                    range.add(candidateLine - 1);
+                }
+            });
+
+            return Array.from(range).filter((line) => {
+                const content = safeGetLine(cm, line);
+                return ORDERED_LIST_REGEX.test(content);
+            });
+        }
+
+        function findOrderedListBounds(cm, line) {
+            const content = safeGetLine(cm, line);
+            if (!ORDERED_LIST_REGEX.test(content)) {
+                return null;
+            }
+            let start = line;
+            while (start > 0 && ORDERED_LIST_REGEX.test(safeGetLine(cm, start - 1))) {
+                start -= 1;
+            }
+            let end = line;
+            while (end + 1 < cm.lineCount() && ORDERED_LIST_REGEX.test(safeGetLine(cm, end + 1))) {
+                end += 1;
+            }
+            return { start, end };
+        }
+
+        function safeGetLine(cm, lineIndex) {
+            if (typeof lineIndex !== "number") return "";
+            if (lineIndex < 0 || lineIndex >= cm.lineCount()) return "";
+            return cm.getLine(lineIndex) ?? "";
+        }
+
+        function withListAutoRenumber(action) {
+            if (typeof action !== "function") {
+                return;
+            }
+            if (isApplyingListAutoRenumber) {
+                action();
+                return;
+            }
+            isApplyingListAutoRenumber = true;
+            try {
+                action();
+            } finally {
+                isApplyingListAutoRenumber = false;
+            }
         }
     }
 
