@@ -1007,8 +1007,18 @@ function scheduleOverflowCheck(wrapper, content, toggle) {
         }
     };
 
-    applyMeasurements();
-    requestAnimationFrame(applyMeasurements);
+    if (toggle instanceof HTMLElement) {
+        toggle.hidden = true;
+    }
+
+    if (wrapper.clientHeight > 0) {
+        applyMeasurements();
+    }
+
+    requestAnimationFrame(() => {
+        applyMeasurements();
+        requestAnimationFrame(applyMeasurements);
+    });
 }
 
 function createBadge(label, extraClass = "") {
