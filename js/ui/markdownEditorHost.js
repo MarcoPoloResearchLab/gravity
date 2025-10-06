@@ -156,6 +156,7 @@ export function createMarkdownEditorHost(options) {
     let easyMdeInstance = null;
     let isProgrammaticUpdate = false;
     let isDestroyed = false;
+    let isApplyingListAutoRenumber = false;
 
     if (enhanceWithEasyMde) {
         easyMdeInstance = createEasyMdeInstance(textarea);
@@ -400,7 +401,12 @@ export function createMarkdownEditorHost(options) {
             "Ctrl-S": () => emit("submit")
         });
 
-        codemirror.on("change", () => {
+        codemirror.on("change", (cm, change) => {
+            if (!isProgrammaticUpdate && !isApplyingListAutoRenumber) {
+                if (maybeRenumberOrderedLists(cm, change)) {
+                    syncTextareaValue();
+                }
+            }
             syncTextareaValue();
             emitChange();
         });
@@ -505,11 +511,128 @@ export function createMarkdownEditorHost(options) {
 
             if (isListLine(lineText)) {
                 cm.execCommand("newlineAndIndentContinueMarkdownList");
-                autoRenumberOrderedList(cm, cm.getCursor().line);
+                withListAutoRenumber(() => {
+                    autoRenumberOrderedList(cm, cm.getCursor().line);
+                });
                 return;
             }
 
             cm.execCommand("newlineAndIndent");
+        }
+
+        function maybeRenumberOrderedLists(cm, change) {
+            if (!change) return false;
+            let adjusted = false;
+            let pointer = change;
+            const processedBlocks = new Set();
+
+            while (pointer) {
+                if (!shouldInspectChange(pointer)) {
+                    pointer = pointer.next;
+                    continue;
+                }
+
+                const candidateLines = collectCandidateListLines(cm, pointer);
+                for (const line of candidateLines) {
+                    const bounds = findOrderedListBounds(cm, line);
+                    if (!bounds) {
+                        continue;
+                    }
+                    const key = `${bounds.start}:${bounds.end}`;
+                    if (processedBlocks.has(key)) {
+                        continue;
+                    }
+                    withListAutoRenumber(() => {
+                        autoRenumberOrderedList(cm, line);
+                    });
+                    processedBlocks.add(key);
+                    adjusted = true;
+                }
+
+                pointer = pointer.next;
+            }
+
+            return adjusted;
+        }
+
+        function shouldInspectChange(change) {
+            if (!change) return false;
+            const inserted = Array.isArray(change.text) ? change.text : [];
+            const removed = Array.isArray(change.removed) ? change.removed : [];
+            if (change.origin === "paste" || change.origin === "paste+") return true;
+            if (inserted.length > 1 || removed.length > 1) return true;
+            if (inserted.some((line) => ORDERED_LIST_REGEX.test(line))) return true;
+            if (removed.some((line) => ORDERED_LIST_REGEX.test(line))) return true;
+            return false;
+        }
+
+        function collectCandidateListLines(cm, change) {
+            const lineCount = cm.lineCount();
+            const range = new Set();
+            const insertedLength = Array.isArray(change.text) ? change.text.length : 0;
+            const baseLine = change.from?.line ?? 0;
+            const startLine = Math.max(baseLine - 1, 0);
+            const endLine = Math.min(lineCount - 1, baseLine + Math.max(insertedLength, 1));
+            for (let line = startLine; line <= endLine; line += 1) {
+                range.add(line);
+            }
+
+            const removed = Array.isArray(change.removed) ? change.removed : [];
+            removed.forEach((lineText, index) => {
+                if (!ORDERED_LIST_REGEX.test(lineText)) {
+                    return;
+                }
+                const candidateLine = baseLine + index;
+                if (candidateLine >= 0 && candidateLine < lineCount) {
+                    range.add(candidateLine);
+                }
+                if (candidateLine - 1 >= 0) {
+                    range.add(candidateLine - 1);
+                }
+            });
+
+            return Array.from(range).filter((line) => {
+                const content = safeGetLine(cm, line);
+                return ORDERED_LIST_REGEX.test(content);
+            });
+        }
+
+        function findOrderedListBounds(cm, line) {
+            const content = safeGetLine(cm, line);
+            if (!ORDERED_LIST_REGEX.test(content)) {
+                return null;
+            }
+            let start = line;
+            while (start > 0 && ORDERED_LIST_REGEX.test(safeGetLine(cm, start - 1))) {
+                start -= 1;
+            }
+            let end = line;
+            while (end + 1 < cm.lineCount() && ORDERED_LIST_REGEX.test(safeGetLine(cm, end + 1))) {
+                end += 1;
+            }
+            return { start, end };
+        }
+
+        function safeGetLine(cm, lineIndex) {
+            if (typeof lineIndex !== "number") return "";
+            if (lineIndex < 0 || lineIndex >= cm.lineCount()) return "";
+            return cm.getLine(lineIndex) ?? "";
+        }
+
+        function withListAutoRenumber(action) {
+            if (typeof action !== "function") {
+                return;
+            }
+            if (isApplyingListAutoRenumber) {
+                action();
+                return;
+            }
+            isApplyingListAutoRenumber = true;
+            try {
+                action();
+            } finally {
+                isApplyingListAutoRenumber = false;
+            }
         }
     }
 
@@ -650,22 +773,48 @@ export function createMarkdownEditorHost(options) {
         let end = atLine;
         while (end + 1 < cm.lineCount() && ORDERED_LIST_REGEX.test(cm.getLine(end + 1))) end += 1;
         const initial = cm.getLine(start);
-        const match = initial.match(ORDERED_LIST_REGEX);
-        const baseNumber = match ? Number.parseInt(match[1], 10) : 1;
-        let nextNumber = Number.isFinite(baseNumber) ? baseNumber : 1;
+        const initialMatch = initial?.match(/^(\s*)(\d+)(\.\s+)(.*)$/);
+        const initialIndent = initialMatch ? (initialMatch[1] ?? "").length : 0;
+        const initialNumber = initialMatch ? Number.parseInt(initialMatch[2], 10) : 1;
+        const stack = [{
+            indent: initialIndent,
+            counter: Number.isFinite(initialNumber) ? initialNumber : 1
+        }];
+
         cm.operation(() => {
             for (let line = start; line <= end; line += 1) {
                 const content = cm.getLine(line);
                 const parsed = content.match(/^(\s*)(\d+)(\.\s+)(.*)$/);
                 if (!parsed) continue;
                 const leading = parsed[1] ?? "";
+                const indentLength = leading.length;
+
+                while (stack.length > 0 && indentLength < stack[stack.length - 1].indent) {
+                    stack.pop();
+                }
+
+                if (stack.length === 0) {
+                    stack.push({ indent: indentLength, counter: 1 });
+                }
+
+                let frame = stack[stack.length - 1];
+                if (indentLength > frame.indent) {
+                    frame = { indent: indentLength, counter: 1 };
+                    stack.push(frame);
+                } else if (indentLength < frame.indent) {
+                    frame = { indent: indentLength, counter: 1 };
+                    stack.push(frame);
+                }
+
+                const currentNumber = frame.counter;
+                frame.counter += 1;
+
                 const separator = parsed[3] ?? ". ";
                 const rest = parsed[4] ?? "";
-                const updated = `${leading}${nextNumber}${separator}${rest}`;
+                const updated = `${leading}${currentNumber}${separator}${rest}`;
                 if (updated !== content) {
                     cm.replaceRange(updated, { line, ch: 0 }, { line, ch: content.length });
                 }
-                nextNumber += 1;
             }
         });
     }
@@ -736,6 +885,16 @@ function applyBracketPair(textarea, openChar, closeChar) {
     const before = textarea.value.slice(0, start);
     const after = textarea.value.slice(end);
     const selected = textarea.value.slice(start, end);
+    const isSquarePair = openChar === "[" && closeChar === "]";
+
+    if (isSquarePair && start === end) {
+        const insertion = "[ ]";
+        textarea.value = `${before}${insertion}${after}`;
+        const caretAfterClose = start + insertion.length;
+        textarea.setSelectionRange(caretAfterClose, caretAfterClose);
+        return;
+    }
+
     textarea.value = `${before}${openChar}${selected}${closeChar}${after}`;
     const nextStart = start + 1;
     const nextEnd = end + 1;
@@ -759,6 +918,7 @@ function handleBracketAutoClose(cm, openChar, closeChar) {
             const start = anchorBeforeHead ? anchor : head;
             const end = anchorBeforeHead ? head : anchor;
             const isEmpty = start.line === end.line && start.ch === end.ch;
+            const isSquarePair = openChar === "[" && closeChar === "]";
 
             if (!isEmpty) {
                 const selectedText = cm.getRange(start, end);
@@ -778,8 +938,13 @@ function handleBracketAutoClose(cm, openChar, closeChar) {
                 continue;
             }
 
-            cm.replaceRange(`${openChar}${closeChar}`, cursor, cursor, "+autoCloseBracket");
-            cm.setCursor({ line: cursor.line, ch: cursor.ch + 1 });
+            if (isSquarePair) {
+                cm.replaceRange("[ ]", cursor, cursor, "+autoCloseBracket");
+                cm.setCursor({ line: cursor.line, ch: cursor.ch + 3 });
+            } else {
+                cm.replaceRange(`${openChar}${closeChar}`, cursor, cursor, "+autoCloseBracket");
+                cm.setCursor({ line: cursor.line, ch: cursor.ch + 1 });
+            }
             handled = true;
         }
     });
@@ -971,6 +1136,42 @@ function handleListEnter(textarea, context) {
 
     const selectionStart = textarea.selectionStart ?? caret;
     const selectionEnd = textarea.selectionEnd ?? selectionStart;
+
+    if (selectionStart === selectionEnd) {
+        const collapsedCaret = selectionStart;
+        let caretInLine = collapsedCaret - lineStart;
+        if (caretInLine < 0) caretInLine = 0;
+        if (caretInLine > lineText.length) caretInLine = lineText.length;
+
+        const prefixLength = listInfo.type === "ordered"
+            ? `${listInfo.number}${listInfo.separator}`.length + listInfo.leading.length
+            : `${listInfo.marker} `.length + listInfo.leading.length;
+        const content = lineText.slice(prefixLength);
+        let caretInContent = caretInLine - prefixLength;
+        if (caretInContent <= 0) caretInContent = content.length;
+        if (caretInContent > content.length) caretInContent = content.length;
+
+        const headContent = content.slice(0, caretInContent);
+        const tailContent = content.slice(caretInContent);
+
+        const beforeLine = textarea.value.slice(0, lineStart);
+        const afterLine = textarea.value.slice(lineEnd);
+        const currentPrefix = listInfo.type === "ordered"
+            ? `${listInfo.leading}${listInfo.number}${listInfo.separator}`
+            : `${listInfo.leading}${listInfo.marker} `;
+        const updatedCurrentLine = `${currentPrefix}${headContent}`;
+        const newLine = `${nextPrefix}${tailContent}`;
+
+        textarea.value = `${beforeLine}${updatedCurrentLine}\n${newLine}${afterLine}`;
+
+        let caretIndex = beforeLine.length + updatedCurrentLine.length + 1 + nextPrefix.length;
+        if (listInfo.type === "ordered") {
+            caretIndex = renumberOrderedListTextarea(textarea, caretIndex);
+        }
+        textarea.setSelectionRange(caretIndex, caretIndex);
+        return;
+    }
+
     textarea.setRangeText(`\n${nextPrefix}`, selectionStart, selectionEnd, "end");
     let caretIndex = textarea.selectionStart ?? (selectionStart + nextPrefix.length + 1);
 
@@ -1022,16 +1223,43 @@ function renumberOrderedListTextarea(textarea, caretIndex) {
     let end = insertedLineIndex;
     while (end + 1 < lines.length && ORDERED_LIST_REGEX.test(lines[end + 1])) end += 1;
 
-    const firstMatch = lines[start]?.match(ORDERED_LIST_REGEX);
-    const baseNumber = firstMatch ? Number.parseInt(firstMatch[1], 10) : 1;
-    let nextNumber = Number.isFinite(baseNumber) ? baseNumber : 1;
+    const firstMatch = lines[start]?.match(/^(\s*)(\d+)(\.\s+)(.*)$/);
+    const initialIndent = firstMatch ? (firstMatch[1] ?? "").length : 0;
+    const initialNumber = firstMatch ? Number.parseInt(firstMatch[2], 10) : 1;
+    const stack = [{
+        indent: initialIndent,
+        counter: Number.isFinite(initialNumber) ? initialNumber : 1
+    }];
     for (let lineIdx = start; lineIdx <= end; lineIdx += 1) {
         const content = lines[lineIdx];
         const parsed = content.match(/^(\s*)(\d+)(\.\s+)(.*)$/);
         if (!parsed) continue;
-        const updated = `${parsed[1] ?? ""}${nextNumber}${parsed[3] ?? ". "}${parsed[4] ?? ""}`;
-        lines[lineIdx] = updated;
-        nextNumber += 1;
+        const leading = parsed[1] ?? "";
+        const indentLength = leading.length;
+
+        while (stack.length > 0 && indentLength < stack[stack.length - 1].indent) {
+            stack.pop();
+        }
+
+        if (stack.length === 0) {
+            stack.push({ indent: indentLength, counter: 1 });
+        }
+
+        let frame = stack[stack.length - 1];
+        if (indentLength > frame.indent) {
+            frame = { indent: indentLength, counter: 1 };
+            stack.push(frame);
+        } else if (indentLength < frame.indent) {
+            frame = { indent: indentLength, counter: 1 };
+            stack.push(frame);
+        }
+
+        const currentNumber = frame.counter;
+        frame.counter += 1;
+
+        const separator = parsed[3] ?? ". ";
+        const rest = parsed[4] ?? "";
+        lines[lineIdx] = `${leading}${currentNumber}${separator}${rest}`;
     }
 
     textarea.value = lines.join("\n");
@@ -1059,12 +1287,22 @@ function applyIndent(textarea) {
     const before = value.slice(0, start);
     const after = value.slice(end);
     textarea.value = `${before}${indented}${after}`;
+    let caretAfterIndent = null;
     if (selectionStart === selectionEnd) {
         const caretOffset = selectionStart - start;
         const nextCaret = start + INDENT_SEQUENCE.length + caretOffset;
         textarea.setSelectionRange(nextCaret, nextCaret);
+        caretAfterIndent = nextCaret;
     } else {
         textarea.setSelectionRange(start, start + indented.length);
+    }
+
+    if (lines.some((line) => ORDERED_LIST_REGEX.test(line))) {
+        const targetCaret = caretAfterIndent ?? (start + indented.length);
+        const adjustedCaret = renumberOrderedListTextarea(textarea, targetCaret);
+        if (caretAfterIndent !== null) {
+            textarea.setSelectionRange(adjustedCaret, adjustedCaret);
+        }
     }
 }
 
@@ -1085,12 +1323,22 @@ function applyOutdent(textarea) {
     const after = value.slice(end);
     textarea.value = `${before}${outdented}${after}`;
 
+    let caretAfterOutdent = null;
     if (selectionStart === selectionEnd) {
         const caretOffset = selectionStart - start;
         const nextCaret = start + Math.max(caretOffset - removedFromFirstLine, 0);
         textarea.setSelectionRange(nextCaret, nextCaret);
+        caretAfterOutdent = nextCaret;
     } else {
         textarea.setSelectionRange(start, start + outdented.length);
+    }
+
+    if (lines.some((line) => ORDERED_LIST_REGEX.test(line))) {
+        const targetCaret = caretAfterOutdent ?? (start + outdented.length);
+        const adjustedCaret = renumberOrderedListTextarea(textarea, targetCaret);
+        if (caretAfterOutdent !== null) {
+            textarea.setSelectionRange(adjustedCaret, adjustedCaret);
+        }
     }
 }
 

@@ -4,6 +4,16 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import { appConfig } from "../js/core/config.js";
+import { ensurePuppeteerSandbox, cleanupPuppeteerSandbox } from "./helpers/puppeteerEnvironment.js";
+
+const SANDBOX = await ensurePuppeteerSandbox();
+const {
+    homeDir: SANDBOX_HOME_DIR,
+    userDataDir: SANDBOX_USER_DATA_DIR,
+    cacheDir: SANDBOX_CACHE_DIR,
+    configDir: SANDBOX_CONFIG_DIR,
+    crashDumpsDir: SANDBOX_CRASH_DUMPS_DIR
+} = SANDBOX;
 
 let puppeteerModule;
 try {
@@ -21,23 +31,64 @@ if (!puppeteerModule) {
         test.skip("Puppeteer is not installed in this environment.");
     });
 } else {
+    const executablePath = typeof puppeteerModule.executablePath === "function"
+        ? puppeteerModule.executablePath()
+        : undefined;
+    if (typeof executablePath === "string" && executablePath.length > 0) {
+        process.env.PUPPETEER_EXECUTABLE_PATH = executablePath;
+    }
+
     test.describe("Enhanced Markdown editor", () => {
         /** @type {import('puppeteer').Browser} */
         let browser;
+        /** @type {Error|null} */
+        let launchError = null;
+
+        const shouldSkip = () => {
+            if (!browser) {
+                test.skip(launchError ? launchError.message : "Puppeteer launch unavailable in sandbox.");
+                return true;
+            }
+            return false;
+        };
 
         test.before(async () => {
-            const launchArgs = ["--allow-file-access-from-files"];
+            const launchArgs = [
+                "--allow-file-access-from-files",
+                "--disable-crashpad",
+                "--disable-features=Crashpad",
+                "--noerrdialogs",
+                "--no-crash-upload",
+                "--enable-crash-reporter=0",
+                `--crash-dumps-dir=${SANDBOX_CRASH_DUMPS_DIR}`
+            ];
             if (process.env.CI) {
                 launchArgs.push("--no-sandbox", "--disable-setuid-sandbox");
             }
-            browser = await puppeteerModule.launch({ headless: "new", args: launchArgs });
+            try {
+                browser = await puppeteerModule.launch({
+                    headless: "new",
+                    args: launchArgs,
+                    userDataDir: SANDBOX_USER_DATA_DIR,
+                    env: {
+                        ...process.env,
+                        HOME: SANDBOX_HOME_DIR,
+                        XDG_CACHE_HOME: SANDBOX_CACHE_DIR,
+                        XDG_CONFIG_HOME: SANDBOX_CONFIG_DIR
+                    }
+                });
+            } catch (error) {
+                launchError = error instanceof Error ? error : new Error(String(error));
+            }
         });
 
         test.after(async () => {
             if (browser) await browser.close();
+            await cleanupPuppeteerSandbox(SANDBOX);
         });
 
         test("EasyMDE auto-continues lists, fences, and brackets", async () => {
+            if (shouldSkip()) return;
             const page = await prepareEnhancedPage(browser);
             try {
                 const cmSelector = "#top-editor .CodeMirror";
@@ -93,6 +144,35 @@ if (!puppeteerModule) {
                 assert.equal(bracketState.value, "()");
                 assert.equal(bracketState.cursor.line, 0);
                 assert.equal(bracketState.cursor.ch, 1);
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("EasyMDE renumbers ordered lists after pasted insertion", async () => {
+            if (shouldSkip()) return;
+            const page = await prepareEnhancedPage(browser);
+            try {
+                await page.evaluate(() => {
+                    const wrapper = document.querySelector("#top-editor .CodeMirror");
+                    if (!wrapper) {
+                        throw new Error("CodeMirror wrapper not found");
+                    }
+                    const cm = wrapper.CodeMirror;
+                    cm.setValue("1. First\n2. Third");
+                    cm.setCursor({ line: 1, ch: 0 });
+                    cm.replaceSelection("2. Second\n", "start");
+                });
+
+                await page.waitForFunction(() => {
+                    const wrapper = document.querySelector("#top-editor .CodeMirror");
+                    if (!wrapper) return false;
+                    const cm = wrapper.CodeMirror;
+                    return cm.getValue() === "1. First\n2. Second\n3. Third";
+                });
+
+                const state = await getCodeMirrorState(page);
+                assert.equal(state.value, "1. First\n2. Second\n3. Third");
             } finally {
                 await page.close();
             }

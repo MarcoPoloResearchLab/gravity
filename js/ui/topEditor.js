@@ -124,6 +124,7 @@ export function mountTopEditor({ notesContainer, onCreateRecord }) {
         editorHost.setMode(MARKDOWN_MODE_EDIT);
         renderSanitizedMarkdown(preview, "");
         resetAttachments(editor);
+        autoResize(editor, TOP_EDITOR_RESIZE_OPTIONS);
         keepFocus();
 
         triggerClassificationForCard(record.noteId, text, notesContainer);
