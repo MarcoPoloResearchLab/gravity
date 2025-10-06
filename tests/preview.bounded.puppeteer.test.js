@@ -109,6 +109,11 @@ if (!puppeteerModule) {
                 const toggleColor = await page.$eval(toggleSelector, (button) => window.getComputedStyle(button).color);
                 assert.equal(toggleColor, "rgb(216, 228, 255)", "chevron toggle should remain high-contrast against fade");
 
+                const shortToggleHidden = await page.$eval(`[data-note-id="${SHORT_NOTE_ID}"] .note-expand-toggle`, (button) => button.hidden);
+                assert.equal(shortToggleHidden, true, "chevron toggle should stay hidden on short previews");
+                const mediumToggleHidden = await page.$eval(`[data-note-id="${MEDIUM_NOTE_ID}"] .note-expand-toggle`, (button) => button.hidden);
+                assert.equal(mediumToggleHidden, true, "chevron toggle should stay hidden on medium previews that fit");
+
                 await page.click(toggleSelector);
                 await page.waitForFunction((selector) => {
                     const node = document.querySelector(selector);
