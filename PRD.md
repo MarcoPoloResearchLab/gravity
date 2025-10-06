@@ -18,6 +18,8 @@ Gravity Notes must provide a Markdown-only editor with stable previews, inline e
 - [x] Inline media respects Markdown order; images display from the top of the rendered content
 - [x] Surface a badge when code is present in the note body
 - [x] Overflowing previews expose a downward expand control that grows the card without shifting the surrounding layout
+  - [x] Control remains hidden for previews that fit within the bounded viewport
+  - [x] Click target stays accessible without covering adjacent notes and remains visible after edits or refreshes when content still overflows
 - [x] Clicking rendered checklist items toggles their Markdown state and persists immediately
 - [x] Grid never reflows after render
 - [x] First note renders as an empty shell ready for immediate editing (no iconography)
