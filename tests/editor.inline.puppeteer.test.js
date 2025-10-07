@@ -52,6 +52,8 @@ const PIN_FIRST_NOTE_ID = "inline-pin-first";
 const PIN_FIRST_MARKDOWN = "First note to pin.";
 const PIN_SECOND_NOTE_ID = "inline-pin-second";
 const PIN_SECOND_MARKDOWN = "Second note to pin.";
+const FOCUS_SUPPRESSION_NOTE_ID = "inline-focus-suppression";
+const FOCUS_SUPPRESSION_MARKDOWN = "Focus suppression baseline.";
 
 if (!puppeteerModule) {
     test("puppeteer unavailable", () => {
@@ -433,6 +435,55 @@ if (!puppeteerModule) {
 
                 const finalOrder = await getNoteOrder();
                 assert.equal(finalOrder[0], TARGET_NOTE_ID, "target note bubbles to the top after ctrl-enter");
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("ctrl-enter leaves focus available for the next choice", async () => {
+            if (skipIfNoBrowser()) return;
+
+            const seededRecords = [buildNoteRecord({
+                noteId: FOCUS_SUPPRESSION_NOTE_ID,
+                markdownText: FOCUS_SUPPRESSION_MARKDOWN,
+                attachments: {}
+            })];
+
+            const page = await preparePage(browser, { records: seededRecords });
+            const cardSelector = `.markdown-block[data-note-id="${FOCUS_SUPPRESSION_NOTE_ID}"]`;
+            const editorSelector = `${cardSelector} .markdown-editor`;
+
+            try {
+                await page.waitForSelector(cardSelector);
+                await page.click(`${cardSelector} .note-preview`);
+                await page.waitForSelector(`${cardSelector}.editing-in-place`);
+                await page.focus(editorSelector);
+
+                await page.keyboard.down("Control");
+                await page.keyboard.press("Enter");
+                await page.keyboard.up("Control");
+
+                await page.waitForFunction(() => !document.querySelector('.markdown-block.editing-in-place'));
+
+                const focusState = await page.evaluate(() => {
+                    const activeElement = document.activeElement;
+                    const activeBlock = typeof activeElement?.closest === "function"
+                        ? activeElement.closest('.markdown-block')
+                        : null;
+                    const isTopEditor = Boolean(activeBlock && activeBlock.classList.contains('top-editor'));
+                    const activeCardId = activeBlock && !isTopEditor
+                        ? activeBlock.getAttribute('data-note-id')
+                        : null;
+                    return {
+                        isBody: activeElement === document.body,
+                        isTopEditor,
+                        activeCardId
+                    };
+                });
+
+                assert.equal(focusState.isTopEditor, false, "top editor does not reclaim focus after submit");
+                assert.equal(focusState.activeCardId, null, "no other note is forced into focus");
+                assert.equal(focusState.isBody, true, "focus returns to the document body so the user can choose next steps");
             } finally {
                 await page.close();
             }

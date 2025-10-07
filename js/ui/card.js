@@ -42,6 +42,7 @@ import { createMarkdownEditorHost, MARKDOWN_MODE_EDIT, MARKDOWN_MODE_VIEW } from
 import { syncStoreFromDom } from "./storeSync.js";
 import { showSaveFeedback } from "./saveFeedback.js";
 import { togglePinnedNote, clearPinnedNoteIfMatches } from "./notesState.js";
+import { suppressTopEditorAutofocus } from "./focusManager.js";
 
 const DIRECTION_PREVIOUS = -1;
 const DIRECTION_NEXT = 1;
@@ -283,7 +284,10 @@ export function renderCard(record, options = {}) {
             card.classList.remove("editing-in-place");
         }
     });
-    editorHost.on("submit", () => finalizeCard(card, notesContainer, { forceBubble: true }));
+    editorHost.on("submit", () => finalizeCard(card, notesContainer, {
+        forceBubble: true,
+        suppressTopEditorAutofocus: true
+    }));
     editorHost.on("blur", () => finalizeCard(card, notesContainer));
     editorHost.on("navigatePrevious", () => navigateToAdjacentCard(card, DIRECTION_PREVIOUS, notesContainer));
     editorHost.on("navigateNext", () => navigateToAdjacentCard(card, DIRECTION_NEXT, notesContainer));
@@ -893,13 +897,21 @@ function stripMarkdownImages(markdown) {
 }
 
 async function finalizeCard(card, notesContainer, options = {}) {
-    const { bubbleToTop = true, forceBubble = false } = options;
+    const {
+        bubbleToTop = true,
+        forceBubble = false,
+        suppressTopEditorAutofocus: shouldSuppressTopEditorAutofocus = false
+    } = options;
     if (!card || mergeInProgress) return;
     if (isFinalizeSuppressed(card)) return;
 
     const editorHost = editorHosts.get(card);
     const isEditMode = card.classList.contains("editing-in-place") || editorHost?.getMode() === MARKDOWN_MODE_EDIT;
     if (!isEditMode) return;
+
+    if (shouldSuppressTopEditorAutofocus) {
+        suppressTopEditorAutofocus();
+    }
 
     const editor  = card.querySelector(".markdown-editor");
     const preview = card.querySelector(".markdown-content");
