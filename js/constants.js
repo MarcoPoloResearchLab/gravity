@@ -30,6 +30,7 @@ export const LABEL_SHORTCUT_NAVIGATE_PREVIOUS = "Focus previous note";
 export const LABEL_SHORTCUT_NAVIGATE_NEXT = "Focus next note";
 export const LABEL_SHORTCUT_OPEN_HELP = "Show keyboard shortcuts";
 export const LABEL_SHORTCUT_DELETE_LINE = "Delete current line";
+export const LABEL_SHORTCUT_DUPLICATE_LINE = "Duplicate current line";
 export const ARIA_LABEL_PIN_NOTE = "Pin note";
 export const ARIA_LABEL_UNPIN_NOTE = "Unpin note";
 

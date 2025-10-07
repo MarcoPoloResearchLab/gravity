@@ -441,6 +441,42 @@ export function createMarkdownEditorHost(options) {
             }
         };
 
+        const executeDuplicateLine = (cm) => {
+            if (!cm) return;
+            const doc = typeof cm.getDoc === "function" ? cm.getDoc() : null;
+            if (!doc) return;
+            cm.operation(() => {
+                const selections = doc.listSelections();
+                const ranges = selections.length > 0 ? selections : [{ anchor: doc.getCursor(), head: doc.getCursor() }];
+                const updates = ranges.map((range) => {
+                    const anchorBeforeHead = range.anchor.line < range.head.line
+                        || (range.anchor.line === range.head.line && range.anchor.ch <= range.head.ch);
+                    const start = anchorBeforeHead ? range.anchor : range.head;
+                    const end = anchorBeforeHead ? range.head : range.anchor;
+                    const startLine = Math.min(start.line, end.line);
+                    const endLine = Math.max(start.line, end.line);
+                    const from = { line: startLine, ch: 0 };
+                    const to = { line: endLine, ch: doc.getLine(endLine)?.length ?? 0 };
+                    const segment = doc.getRange(from, to);
+                    const insertPos = { line: endLine, ch: doc.getLine(endLine)?.length ?? 0 };
+                    const caretColumn = start.ch;
+                    return { insertPos, segment, caretColumn, startLine, endLine };
+                });
+
+                for (let index = updates.length - 1; index >= 0; index -= 1) {
+                    const update = updates[index];
+                    doc.replaceRange(`\n${update.segment}`, update.insertPos, undefined, "+duplicateLine");
+                }
+
+                if (updates.length > 0) {
+                    const primary = updates[0];
+                    const targetLine = primary.insertPos.line + 1;
+                    const targetCh = Math.min(primary.caretColumn, doc.getLine(targetLine)?.length ?? 0);
+                    doc.setCursor({ line: targetLine, ch: targetCh });
+                }
+            });
+        };
+
         codemirror.addKeyMap({
             Enter: (cm) => {
                 handleEnter(cm);
@@ -490,15 +526,35 @@ export function createMarkdownEditorHost(options) {
             },
             "Cmd-Shift-K": (cm) => {
                 executeDeleteLine(cm);
+                normalizeOrderedLists();
             },
             "Ctrl-Shift-K": (cm) => {
                 executeDeleteLine(cm);
+                normalizeOrderedLists();
             },
             "Shift-Cmd-K": (cm) => {
                 executeDeleteLine(cm);
+                normalizeOrderedLists();
             },
             "Shift-Ctrl-K": (cm) => {
                 executeDeleteLine(cm);
+                normalizeOrderedLists();
+            },
+            "Cmd-Shift-D": (cm) => {
+                executeDuplicateLine(cm);
+                normalizeOrderedLists();
+            },
+            "Ctrl-Shift-D": (cm) => {
+                executeDuplicateLine(cm);
+                normalizeOrderedLists();
+            },
+            "Shift-Cmd-D": (cm) => {
+                executeDuplicateLine(cm);
+                normalizeOrderedLists();
+            },
+            "Shift-Ctrl-D": (cm) => {
+                executeDuplicateLine(cm);
+                normalizeOrderedLists();
             }
         });
 
@@ -827,6 +883,14 @@ export function createMarkdownEditorHost(options) {
             if (isModifier && event.shiftKey && (event.key === "k" || event.key === "K")) {
                 event.preventDefault();
                 deleteCurrentLineTextarea(el);
+                normalizeOrderedLists();
+                emitFn("change", { value: el.value });
+                return;
+            }
+
+            if (isModifier && event.shiftKey && (event.key === "d" || event.key === "D")) {
+                event.preventDefault();
+                duplicateCurrentLineTextarea(el);
                 normalizeOrderedLists();
                 emitFn("change", { value: el.value });
                 return;
@@ -1180,6 +1244,41 @@ function deleteCurrentLineTextarea(textarea) {
     const nextCaret = Math.min(deleteStart, textarea.value.length);
     try {
         textarea.setSelectionRange(nextCaret, nextCaret);
+    } catch {}
+}
+
+function duplicateCurrentLineTextarea(textarea) {
+    if (!(textarea instanceof HTMLTextAreaElement)) return;
+    const value = textarea.value;
+    const selectionStart = textarea.selectionStart ?? 0;
+    const selectionEnd = textarea.selectionEnd ?? selectionStart;
+    const anchor = Math.min(selectionStart, selectionEnd);
+    const head = Math.max(selectionStart, selectionEnd);
+    const lineStart = findLineStart(value, anchor);
+    const lineEnd = findLineEnd(value, head);
+    const plainSegment = value.slice(lineStart, lineEnd);
+    const hasTrailingNewline = value.charAt(lineEnd) === "\n";
+
+    let nextValue;
+    let duplicateStart;
+    if (hasTrailingNewline) {
+        const before = value.slice(0, lineEnd + 1);
+        const insertion = value.slice(lineStart, lineEnd + 1);
+        const after = value.slice(lineEnd + 1);
+        nextValue = `${before}${insertion}${after}`;
+        duplicateStart = before.length;
+    } else {
+        const before = value.slice(0, lineEnd);
+        const after = value.slice(lineEnd);
+        const insertion = `\n${plainSegment}`;
+        nextValue = `${before}${insertion}${after}`;
+        duplicateStart = before.length + 1;
+    }
+
+    textarea.value = nextValue;
+    const duplicateEnd = Math.min(duplicateStart + plainSegment.length, textarea.value.length);
+    try {
+        textarea.setSelectionRange(duplicateStart, duplicateEnd);
     } catch {}
 }
 

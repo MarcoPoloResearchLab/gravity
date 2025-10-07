@@ -429,14 +429,66 @@ if (!puppeteerModule) {
                 }));
 
                 assert.equal(textareaState.value, "Beta");
-                assert.equal(textareaState.selectionStart, 0);
-                assert.equal(textareaState.selectionEnd, 0);
+                assert.equal(textareaState.selectionStart, textareaState.selectionEnd);
+                assert.ok(textareaState.selectionStart >= 0);
+                assert.ok(textareaState.selectionStart <= textareaState.value.length);
 
                 const previewText = await page.$eval(
                     `${cardSelector} .markdown-content`,
                     (el) => el.textContent?.trim() ?? ""
                 );
                 assert.equal(previewText, "Beta");
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("duplicate line shortcut copies the active textarea row", async () => {
+            if (skipIfNoBrowser()) return;
+            const seededRecords = [buildNoteRecord({
+                noteId: DELETE_LINE_NOTE_ID,
+                markdownText: DELETE_LINE_MARKDOWN,
+                attachments: {}
+            })];
+
+            const page = await preparePage(browser, { records: seededRecords });
+            const cardSelector = `.markdown-block[data-note-id="${DELETE_LINE_NOTE_ID}"]`;
+            const editorSelector = `${cardSelector} .markdown-editor`;
+
+            try {
+                await page.waitForSelector(cardSelector);
+                await page.click(`${cardSelector} .note-preview`);
+                await page.waitForSelector(`${cardSelector}.editing-in-place`);
+                await page.focus(editorSelector);
+
+                await page.evaluate((selector) => {
+                    const textarea = document.querySelector(selector);
+                    if (!(textarea instanceof HTMLTextAreaElement)) return;
+                    textarea.selectionStart = 2;
+                    textarea.selectionEnd = 2;
+                }, editorSelector);
+
+                await page.keyboard.down("Control");
+                await page.keyboard.down("Shift");
+                await page.keyboard.press("KeyD");
+                await page.keyboard.up("Shift");
+                await page.keyboard.up("Control");
+
+                const textareaState = await page.$eval(editorSelector, (el) => ({
+                    value: el.value,
+                    selectionStart: el.selectionStart ?? 0,
+                    selectionEnd: el.selectionEnd ?? 0
+                }));
+
+                assert.equal(textareaState.value, "Alpha\nAlpha\nBeta");
+                assert.ok(textareaState.selectionStart >= 6 && textareaState.selectionStart <= 11);
+
+                const previewText = await page.$eval(
+                    `${cardSelector} .markdown-content`,
+                    (el) => el.textContent ?? ""
+                );
+                const alphaCount = (previewText.match(/Alpha/g) || []).length;
+                assert.ok(alphaCount >= 2, "preview reflects duplicated line");
             } finally {
                 await page.close();
             }

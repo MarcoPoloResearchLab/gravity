@@ -259,6 +259,39 @@ if (!puppeteerModule) {
             }
         });
 
+        test("EasyMDE duplicate line shortcut copies the active row", async () => {
+            if (shouldSkip()) return;
+            const page = await prepareEnhancedPage(browser);
+            try {
+                const cmSelector = "#top-editor .CodeMirror";
+                const cmTextarea = `${cmSelector} textarea`;
+                await page.waitForSelector(cmSelector);
+                await page.waitForSelector(cmTextarea);
+
+                await page.evaluate(() => {
+                    const wrapper = document.querySelector("#top-editor .CodeMirror");
+                    if (!wrapper) return;
+                    const cm = wrapper.CodeMirror;
+                    cm.setValue("Alpha\nBeta");
+                    cm.setCursor({ line: 0, ch: 2 });
+                });
+
+                await page.focus(cmTextarea);
+                await page.keyboard.down("Control");
+                await page.keyboard.down("Shift");
+                await page.keyboard.press("KeyD");
+                await page.keyboard.up("Shift");
+                await page.keyboard.up("Control");
+
+                const state = await getCodeMirrorState(page);
+                assert.equal(state.value, "Alpha\nAlpha\nBeta");
+                assert.equal(state.cursor.line, 1);
+                assert.equal(state.cursor.ch, 2);
+            } finally {
+                await page.close();
+            }
+        });
+
         test("EasyMDE renumbers ordered lists before submit", async () => {
             if (shouldSkip()) return;
             const page = await prepareEnhancedPage(browser);
