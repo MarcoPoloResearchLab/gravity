@@ -915,6 +915,26 @@ async function finalizeCard(card, notesContainer, options = {}) {
         if (activeElement instanceof HTMLElement && card.contains(activeElement)) {
             activeElement.blur();
         }
+        if (typeof document !== "undefined" && typeof requestAnimationFrame === "function") {
+            requestAnimationFrame(() => {
+                const { body } = document;
+                if (!(body instanceof HTMLElement)) {
+                    return;
+                }
+                const hadTabIndex = body.hasAttribute("tabindex");
+                if (!hadTabIndex) {
+                    body.setAttribute("tabindex", "-1");
+                }
+                try {
+                    body.focus({ preventScroll: true });
+                } catch {
+                    body.focus();
+                }
+                if (!hadTabIndex) {
+                    setTimeout(() => body.removeAttribute("tabindex"), 0);
+                }
+            });
+        }
     }
 
     const editor  = card.querySelector(".markdown-editor");
