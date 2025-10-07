@@ -95,6 +95,9 @@ export function createMarkdownEditorHost(options) {
      * @param {any} detail
      */
     const emit = (event, detail) => {
+        if (event === "submit" || event === "blur" || event === "navigatePrevious" || event === "navigateNext") {
+            normalizeOrderedLists();
+        }
         const handlers = listeners.get(event);
         if (!handlers) return;
         for (const handler of handlers) {
@@ -158,6 +161,7 @@ export function createMarkdownEditorHost(options) {
     let isProgrammaticUpdate = false;
     let isDestroyed = false;
     let isApplyingListAutoRenumber = false;
+    let renumberEnhancedOrderedLists = null;
 
     if (enhanceWithEasyMde) {
         easyMdeInstance = createEasyMdeInstance(textarea);
@@ -322,6 +326,7 @@ export function createMarkdownEditorHost(options) {
         if (isDestroyed) return;
         isDestroyed = true;
         listeners.clear();
+        renumberEnhancedOrderedLists = null;
         if (easyMdeInstance) {
             easyMdeInstance.toTextArea();
         }
@@ -344,6 +349,20 @@ export function createMarkdownEditorHost(options) {
 
     function waitForPendingImages() {
         return waitForPendingImagePastes(textarea);
+    }
+
+    function normalizeOrderedLists() {
+        if (easyMdeInstance && typeof renumberEnhancedOrderedLists === "function") {
+            renumberEnhancedOrderedLists();
+            syncTextareaValue();
+            return;
+        }
+        if (!easyMdeInstance) {
+            const mutated = normalizeOrderedListsTextarea(textarea);
+            if (mutated) {
+                emit("change", { value: textarea.value });
+            }
+        }
     }
 
     return {
@@ -418,10 +437,22 @@ export function createMarkdownEditorHost(options) {
             "Shift-Enter": (cm) => {
                 cm.replaceSelection(SOFT_BREAK, "end");
             },
-            "Cmd-Enter": () => emit("submit"),
-            "Ctrl-Enter": () => emit("submit"),
-            "Cmd-S": () => emit("submit"),
-            "Ctrl-S": () => emit("submit"),
+            "Cmd-Enter": () => {
+                normalizeOrderedLists();
+                emit("submit");
+            },
+            "Ctrl-Enter": () => {
+                normalizeOrderedLists();
+                emit("submit");
+            },
+            "Cmd-S": () => {
+                normalizeOrderedLists();
+                emit("submit");
+            },
+            "Ctrl-S": () => {
+                normalizeOrderedLists();
+                emit("submit");
+            },
             "Cmd-Z": (cm) => {
                 executeUndo(cm);
             },
@@ -458,7 +489,10 @@ export function createMarkdownEditorHost(options) {
             emitChange();
         });
 
-        codemirror.on("blur", () => emit("blur"));
+        codemirror.on("blur", () => {
+            normalizeOrderedLists();
+            emit("blur");
+        });
 
         codemirror.on("keydown", (cm, event) => {
             if (event.defaultPrevented) return;
@@ -475,12 +509,14 @@ export function createMarkdownEditorHost(options) {
 
             if (event.key === "ArrowUp" && isCaretOnFirstLine(cm)) {
                 event.preventDefault();
+                normalizeOrderedLists();
                 emit("navigatePrevious");
                 return;
             }
 
             if (event.key === "ArrowDown" && isCaretOnLastLine(cm)) {
                 event.preventDefault();
+                normalizeOrderedLists();
                 emit("navigateNext");
             }
         });
@@ -691,6 +727,33 @@ export function createMarkdownEditorHost(options) {
                 isApplyingListAutoRenumber = false;
             }
         }
+
+        function renumberAllOrderedListsInCodeMirror(cm) {
+            if (!cm) return;
+            withListAutoRenumber(() => {
+                let line = 0;
+                const lineCount = cm.lineCount();
+                while (line < lineCount) {
+                    if (!ORDERED_LIST_REGEX.test(safeGetLine(cm, line))) {
+                        line += 1;
+                        continue;
+                    }
+                    const content = safeGetLine(cm, line);
+                    const adjusted = typeof content === "string"
+                        ? content.replace(/^(\s*)(\d+)(\.\s+)/, (_, leading = "", _num, separator = ". ") => `${leading}1${separator}`)
+                        : content;
+                    if (adjusted !== content) {
+                        cm.replaceRange(adjusted, { line, ch: 0 }, { line, ch: content.length }, "+autoRenumber");
+                    }
+                    autoRenumberOrderedList(cm, line);
+                    while (line < lineCount && ORDERED_LIST_REGEX.test(safeGetLine(cm, line))) {
+                        line += 1;
+                    }
+                }
+            });
+        }
+
+        renumberEnhancedOrderedLists = () => renumberAllOrderedListsInCodeMirror(codemirror);
     }
 
     function setupFallbackTextarea(el, emitFn) {
@@ -716,7 +779,10 @@ export function createMarkdownEditorHost(options) {
             }
             emitFn("change", { value: el.value });
         });
-        el.addEventListener("blur", () => emitFn("blur"));
+        el.addEventListener("blur", () => {
+            normalizeOrderedLists();
+            emitFn("blur");
+        });
         el.addEventListener("keydown", (event) => {
             const isModifier = event.metaKey || event.ctrlKey;
 
@@ -745,6 +811,7 @@ export function createMarkdownEditorHost(options) {
 
             if ((event.key === "Enter" || event.key === "s" || event.key === "S") && isModifier) {
                 event.preventDefault();
+                normalizeOrderedLists();
                 emitFn("submit");
                 return;
             }
@@ -770,10 +837,12 @@ export function createMarkdownEditorHost(options) {
             if (!isNavigationKey(event)) return;
             if (event.key === "ArrowUp" && isTextareaCaretOnFirstLine(el)) {
                 event.preventDefault();
+                normalizeOrderedLists();
                 emitFn("navigatePrevious");
             }
             if (event.key === "ArrowDown" && isTextareaCaretOnLastLine(el)) {
                 event.preventDefault();
+                normalizeOrderedLists();
                 emitFn("navigateNext");
             }
         });
@@ -1382,6 +1451,65 @@ function renumberOrderedListTextarea(textarea, caretIndex) {
         : 0;
     newCaret += prefixLength;
     return newCaret;
+}
+
+function normalizeOrderedListsTextarea(textarea) {
+    if (!(textarea instanceof HTMLTextAreaElement)) return false;
+    const computeCaretIndex = (rows, targetLine) => {
+        let offset = 0;
+        for (let i = 0; i < targetLine && i < rows.length; i += 1) {
+            offset += rows[i].length;
+            if (i < rows.length - 1) offset += 1;
+        }
+        return offset;
+    };
+
+    let lines = textarea.value.split("\n");
+    let mutated = false;
+    let lineIndex = 0;
+
+    while (lineIndex < lines.length) {
+        if (!ORDERED_LIST_REGEX.test(lines[lineIndex])) {
+            lineIndex += 1;
+            continue;
+        }
+
+        const blockStart = lineIndex;
+        while (lineIndex < lines.length && ORDERED_LIST_REGEX.test(lines[lineIndex])) {
+            lineIndex += 1;
+        }
+
+        const firstLine = lines[blockStart] ?? "";
+        const adjustedFirstLine = firstLine.replace(/^(\s*)(\d+)(\.\s+)/, (_, leading = "", _num, separator = ". ") => `${leading}1${separator}`);
+        if (adjustedFirstLine !== firstLine) {
+            lines[blockStart] = adjustedFirstLine;
+            textarea.value = lines.join("\n");
+            mutated = true;
+            lines = textarea.value.split("\n");
+        }
+
+        const caretIndex = computeCaretIndex(lines, blockStart);
+        const beforeValue = textarea.value;
+        renumberOrderedListTextarea(textarea, caretIndex);
+        if (textarea.value !== beforeValue) {
+            mutated = true;
+        }
+
+        lines = textarea.value.split("\n");
+        lineIndex = blockStart;
+        while (lineIndex < lines.length && ORDERED_LIST_REGEX.test(lines[lineIndex])) {
+            lineIndex += 1;
+        }
+    }
+
+    if (mutated) {
+        try {
+            const caret = textarea.value.length;
+            textarea.setSelectionRange(caret, caret);
+        } catch {}
+    }
+
+    return mutated;
 }
 
 function applyIndent(textarea) {

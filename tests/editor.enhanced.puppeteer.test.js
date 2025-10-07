@@ -226,6 +226,58 @@ if (!puppeteerModule) {
             }
         });
 
+        test("EasyMDE renumbers ordered lists before submit", async () => {
+            if (shouldSkip()) return;
+            const page = await prepareEnhancedPage(browser);
+            try {
+                const cmSelector = "#top-editor .CodeMirror";
+                const cmTextarea = `${cmSelector} textarea`;
+                await page.waitForSelector(cmSelector);
+                await page.waitForSelector(cmTextarea);
+
+                await page.evaluate(() => {
+                    const wrapper = document.querySelector("#top-editor .CodeMirror");
+                    if (!wrapper) return;
+                    const cm = wrapper.CodeMirror;
+                    cm.setValue("1. Alpha\n2. Bravo\n3. Charlie");
+                });
+
+                await page.evaluate(() => {
+                    const wrapper = document.querySelector("#top-editor .CodeMirror");
+                    if (!wrapper) return;
+                    const cm = wrapper.CodeMirror;
+                    cm.replaceRange("", { line: 0, ch: 0 }, { line: 1, ch: 0 });
+                });
+
+                let state = await getCodeMirrorState(page);
+                assert.equal(state.value, "2. Bravo\n3. Charlie");
+
+                await page.keyboard.down("Control");
+                await page.keyboard.press("Enter");
+                await page.keyboard.up("Control");
+
+                await page.waitForFunction((storageKey) => {
+                    const raw = window.localStorage.getItem(storageKey);
+                    if (!raw) return false;
+                    try {
+                        const records = JSON.parse(raw);
+                        return Array.isArray(records) && records.length === 1;
+                    } catch {
+                        return false;
+                    }
+                }, {}, appConfig.storageKey);
+
+                const savedRecords = await page.evaluate((storageKey) => {
+                    const raw = window.localStorage.getItem(storageKey);
+                    return raw ? JSON.parse(raw) : [];
+                }, appConfig.storageKey);
+
+                assert.equal(savedRecords[0]?.markdownText, "1. Bravo\n2. Charlie");
+            } finally {
+                await page.close();
+            }
+        });
+
         test("EasyMDE renumbers ordered lists after pasted insertion", async () => {
             if (shouldSkip()) return;
             const page = await prepareEnhancedPage(browser);

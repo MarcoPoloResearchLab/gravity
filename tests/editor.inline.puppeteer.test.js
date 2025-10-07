@@ -35,6 +35,8 @@ const UNORDERED_NOTE_ID = "inline-unordered-fixture";
 const UNORDERED_MARKDOWN = "* Alpha\n* Beta";
 const ORDERED_NOTE_ID = "inline-ordered-fixture";
 const ORDERED_MARKDOWN = "1. First\n2. Second";
+const ORDERED_RENUMBER_NOTE_ID = "inline-ordered-renumber-fixture";
+const ORDERED_RENUMBER_MARKDOWN = "1. Alpha\n2. Bravo\n3. Charlie";
 const TABLE_NOTE_ID = "inline-table-fixture";
 const TABLE_MARKDOWN = "| Col1 | Col2 |\n| --- | --- |\n| A | B |";
 const FENCE_NOTE_ID = "inline-fence-fixture";
@@ -382,6 +384,84 @@ if (!puppeteerModule) {
                 assert.equal(textareaState.value, "{}");
                 assert.equal(textareaState.selectionStart, 2);
                 assert.equal(textareaState.selectionEnd, 2);
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("ordered lists renumber on submit and navigation", async () => {
+            if (skipIfNoBrowser()) return;
+            const seededRecords = [
+                buildNoteRecord({
+                    noteId: ORDERED_RENUMBER_NOTE_ID,
+                    markdownText: ORDERED_RENUMBER_MARKDOWN,
+                    attachments: {}
+                }),
+                buildNoteRecord({
+                    noteId: UNORDERED_NOTE_ID,
+                    markdownText: UNORDERED_MARKDOWN,
+                    attachments: {}
+                })
+            ];
+
+            const page = await preparePage(browser, { records: seededRecords });
+            const renumberSelector = `.markdown-block[data-note-id="${ORDERED_RENUMBER_NOTE_ID}"]`;
+            const editorSelector = `${renumberSelector} .markdown-editor`;
+
+            try {
+                await page.waitForSelector(renumberSelector);
+                await page.click(`${renumberSelector} .note-preview`);
+                await page.waitForSelector(`${renumberSelector}.editing-in-place`);
+
+                await page.evaluate((selector) => {
+                    const textarea = document.querySelector(selector);
+                    if (!(textarea instanceof HTMLTextAreaElement)) return;
+                    textarea.value = textarea.value.replace(/^.*?\n/, "");
+                    const caret = textarea.value.length;
+                    textarea.selectionStart = caret;
+                    textarea.selectionEnd = caret;
+                }, editorSelector);
+
+                let textareaState = await page.$eval(editorSelector, (el) => ({
+                    value: el.value,
+                    selectionStart: el.selectionStart ?? 0
+                }));
+                assert.equal(textareaState.value, "2. Bravo\n3. Charlie");
+
+                await page.keyboard.down("Control");
+                await page.keyboard.press("Enter");
+                await page.keyboard.up("Control");
+
+                await page.waitForSelector(`${renumberSelector}:not(.editing-in-place)`);
+
+                const storedAfterSubmit = await page.evaluate(async (noteId) => {
+                    const { GravityStore } = await import("./js/core/store.js");
+                    const record = GravityStore.getById(noteId);
+                    return record ? record.markdownText : null;
+                }, ORDERED_RENUMBER_NOTE_ID);
+                assert.equal(storedAfterSubmit, "1. Bravo\n2. Charlie");
+
+                await page.click(`${renumberSelector} .note-preview`);
+                await page.waitForSelector(`${renumberSelector}.editing-in-place`);
+
+                await page.evaluate((selector) => {
+                    const textarea = document.querySelector(selector);
+                    if (!(textarea instanceof HTMLTextAreaElement)) return;
+                    textarea.value = textarea.value.replace(/^.*?\n/, "");
+                    const caret = textarea.value.length;
+                    textarea.selectionStart = caret;
+                    textarea.selectionEnd = caret;
+                }, editorSelector);
+
+                await page.keyboard.press("ArrowDown");
+                await page.waitForSelector(`${renumberSelector}:not(.editing-in-place)`);
+
+                const storedAfterNavigate = await page.evaluate(async (noteId) => {
+                    const { GravityStore } = await import("./js/core/store.js");
+                    const record = GravityStore.getById(noteId);
+                    return record ? record.markdownText : null;
+                }, ORDERED_RENUMBER_NOTE_ID);
+                assert.equal(storedAfterNavigate, "1. Charlie");
             } finally {
                 await page.close();
             }
