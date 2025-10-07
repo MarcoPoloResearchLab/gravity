@@ -29,7 +29,12 @@ export function syncStoreFromDom(container) {
             lastActivityIso: timestamp
         };
         const attachments = editor ? collectReferencedAttachments(editor) : {};
-        const candidate = { ...base, markdownText: text, attachments };
+        const candidate = {
+            ...base,
+            markdownText: text,
+            attachments,
+            pinned: existing?.pinned === true
+        };
         nextRecords.push(candidate);
     }
     GravityStore.saveAllNotes(nextRecords);

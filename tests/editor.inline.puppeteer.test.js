@@ -48,6 +48,10 @@ const BRACKET_NOTE_ID = "inline-bracket-fixture";
 const BRACKET_MARKDOWN = "Bracket baseline";
 const NESTED_ORDER_NOTE_ID = "inline-nested-ordered-fixture";
 const NESTED_ORDER_MARKDOWN = "1. Alpha\n2. Beta\n3. Gamma";
+const PIN_FIRST_NOTE_ID = "inline-pin-first";
+const PIN_FIRST_MARKDOWN = "First note to pin.";
+const PIN_SECOND_NOTE_ID = "inline-pin-second";
+const PIN_SECOND_MARKDOWN = "Second note to pin.";
 
 if (!puppeteerModule) {
     test("puppeteer unavailable", () => {
@@ -492,6 +496,127 @@ if (!puppeteerModule) {
 
                 const finalOrder = await getNoteOrder();
                 assert.equal(finalOrder[0], TARGET_NOTE_ID);
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("pin toggle keeps a single pinned card and persists", async () => {
+            if (skipIfNoBrowser()) return;
+
+            const seededRecords = [
+                buildNoteRecord({
+                    noteId: PIN_FIRST_NOTE_ID,
+                    markdownText: PIN_FIRST_MARKDOWN,
+                    attachments: {}
+                }),
+                buildNoteRecord({
+                    noteId: PIN_SECOND_NOTE_ID,
+                    markdownText: PIN_SECOND_MARKDOWN,
+                    attachments: {}
+                })
+            ];
+
+            const page = await preparePage(browser, { records: seededRecords });
+            const firstCardSelector = `.markdown-block[data-note-id="${PIN_FIRST_NOTE_ID}"]`;
+            const secondCardSelector = `.markdown-block[data-note-id="${PIN_SECOND_NOTE_ID}"]`;
+            const firstPinSelector = `${firstCardSelector} [data-action="toggle-pin"]`;
+            const secondPinSelector = `${secondCardSelector} [data-action="toggle-pin"]`;
+
+            try {
+                await page.waitForSelector(firstCardSelector);
+                await page.waitForSelector(secondCardSelector);
+
+                const initialPressed = await page.evaluate((firstSelector, secondSelector) => ({
+                    first: document.querySelector(firstSelector)?.getAttribute("aria-pressed"),
+                    second: document.querySelector(secondSelector)?.getAttribute("aria-pressed")
+                }), firstPinSelector, secondPinSelector);
+                assert.equal(initialPressed.first, "false", "first pin starts unpressed");
+                assert.equal(initialPressed.second, "false", "second pin starts unpressed");
+
+                await page.click(firstPinSelector);
+                await page.waitForFunction((selector) => {
+                    const button = document.querySelector(selector);
+                    return button?.getAttribute("aria-pressed") === "true";
+                }, {}, firstPinSelector);
+
+                let order = await page.evaluate(() => {
+                    return Array.from(document.querySelectorAll('#notes-container .markdown-block[data-note-id]'))
+                        .map((node) => node.getAttribute('data-note-id'));
+                });
+                assert.equal(order[0], PIN_FIRST_NOTE_ID, "first note moves to the top when pinned");
+
+                const firstPinnedLayout = await page.evaluate((cardSelector) => {
+                    const element = document.querySelector(cardSelector);
+                    if (!(element instanceof HTMLElement)) return null;
+                    const styles = window.getComputedStyle(element);
+                    return {
+                        position: styles.position,
+                        top: styles.top,
+                        offset: element.style.getPropertyValue("--pinned-top-offset")
+                    };
+                }, firstCardSelector);
+                assert.ok(firstPinnedLayout);
+                assert.equal(firstPinnedLayout.position, "sticky", "pinned card stays sticky");
+                assert.notEqual(firstPinnedLayout.top, "auto", "sticky card reserves viewport offset");
+                assert.ok(Number.parseFloat(firstPinnedLayout.offset) > 0, "pinned card tracks offset variable");
+
+                let pinnedFromStore = await page.evaluate(async () => {
+                    const { GravityStore } = await import("./js/core/store.js");
+                    return GravityStore.loadAllNotes()
+                        .filter((record) => record.pinned === true)
+                        .map((record) => record.noteId);
+                });
+                assert.deepEqual(pinnedFromStore, [PIN_FIRST_NOTE_ID], "only first note is persisted as pinned");
+
+                await page.click(secondPinSelector);
+                await page.waitForFunction((firstSelector, secondSelector) => {
+                    const firstButton = document.querySelector(firstSelector);
+                    const secondButton = document.querySelector(secondSelector);
+                    return secondButton?.getAttribute("aria-pressed") === "true"
+                        && firstButton?.getAttribute("aria-pressed") === "false";
+                }, {}, firstPinSelector, secondPinSelector);
+
+                order = await page.evaluate(() => {
+                    return Array.from(document.querySelectorAll('#notes-container .markdown-block[data-note-id]'))
+                        .map((node) => node.getAttribute('data-note-id'));
+                });
+                assert.equal(order[0], PIN_SECOND_NOTE_ID, "second note becomes the top card after pinning");
+
+                const secondPinnedLayout = await page.evaluate((cardSelector) => {
+                    const element = document.querySelector(cardSelector);
+                    if (!(element instanceof HTMLElement)) return null;
+                    const styles = window.getComputedStyle(element);
+                    return {
+                        position: styles.position,
+                        top: styles.top,
+                        offset: element.style.getPropertyValue("--pinned-top-offset")
+                    };
+                }, secondCardSelector);
+                assert.ok(secondPinnedLayout);
+                assert.equal(secondPinnedLayout.position, "sticky", "newly pinned card stays sticky");
+                assert.notEqual(secondPinnedLayout.top, "auto", "sticky top offset applies after retoggle");
+                assert.ok(Number.parseFloat(secondPinnedLayout.offset) > 0, "offset remains positive after retoggle");
+
+                pinnedFromStore = await page.evaluate(async () => {
+                    const { GravityStore } = await import("./js/core/store.js");
+                    return GravityStore.loadAllNotes()
+                        .filter((record) => record.pinned === true)
+                        .map((record) => record.noteId);
+                });
+                assert.deepEqual(pinnedFromStore, [PIN_SECOND_NOTE_ID], "pin transfer persists to storage");
+
+                await page.click(secondPinSelector);
+                await page.waitForFunction((selector) => {
+                    const button = document.querySelector(selector);
+                    return button?.getAttribute("aria-pressed") === "false";
+                }, {}, secondPinSelector);
+
+                const pinnedCount = await page.evaluate(async () => {
+                    const { GravityStore } = await import("./js/core/store.js");
+                    return GravityStore.loadAllNotes().filter((record) => record.pinned === true).length;
+                });
+                assert.equal(pinnedCount, 0, "unpinning clears the persisted pin state");
             } finally {
                 await page.close();
             }
@@ -986,7 +1111,7 @@ if (!puppeteerModule) {
     });
 }
 
-function buildNoteRecord({ noteId, markdownText, attachments }) {
+function buildNoteRecord({ noteId, markdownText, attachments = {}, pinned = false }) {
     const timestamp = new Date().toISOString();
     return {
         noteId,
@@ -994,7 +1119,8 @@ function buildNoteRecord({ noteId, markdownText, attachments }) {
         attachments,
         createdAtIso: timestamp,
         updatedAtIso: timestamp,
-        lastActivityIso: timestamp
+        lastActivityIso: timestamp,
+        pinned
     };
 }
 

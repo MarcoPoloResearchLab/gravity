@@ -67,7 +67,8 @@ test.describe("GravityStore.loadAllNotes", () => {
             createdAtIso: validRecord.createdAtIso,
             updatedAtIso: validRecord.updatedAtIso,
             lastActivityIso: validRecord.lastActivityIso,
-            attachments: { existing: { dataUrl: validRecord.attachments.existing.dataUrl, altText: validRecord.attachments.existing.altText } }
+            attachments: { existing: { dataUrl: validRecord.attachments.existing.dataUrl, altText: validRecord.attachments.existing.altText } },
+            pinned: false
         };
 
         assert.deepStrictEqual(loadedNotes, [expectedSanitizedRecord]);
@@ -96,7 +97,8 @@ test.describe("GravityStore.loadAllNotes", () => {
         const expectedRecord = {
             noteId: validInputRecord.noteId,
             markdownText: validInputRecord.markdownText,
-            attachments: { valid: { dataUrl: validInputRecord.attachments.valid.dataUrl, altText: validInputRecord.attachments.valid.altText } }
+            attachments: { valid: { dataUrl: validInputRecord.attachments.valid.dataUrl, altText: validInputRecord.attachments.valid.altText } },
+            pinned: false
         };
 
         assert.deepStrictEqual(parsedRecords, [expectedRecord]);

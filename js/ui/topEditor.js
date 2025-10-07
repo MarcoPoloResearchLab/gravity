@@ -114,7 +114,8 @@ export function mountTopEditor({ notesContainer, onCreateRecord }) {
             createdAtIso: ts,
             updatedAtIso: ts,
             lastActivityIso: ts,
-            attachments
+            attachments,
+            pinned: false
         };
 
         GravityStore.upsertNonEmpty(record);
