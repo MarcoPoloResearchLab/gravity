@@ -911,6 +911,10 @@ async function finalizeCard(card, notesContainer, options = {}) {
 
     if (shouldSuppressTopEditorAutofocus) {
         suppressTopEditorAutofocus();
+        const activeElement = typeof document !== "undefined" ? document.activeElement : null;
+        if (activeElement instanceof HTMLElement && card.contains(activeElement)) {
+            activeElement.blur();
+        }
     }
 
     const editor  = card.querySelector(".markdown-editor");
