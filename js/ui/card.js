@@ -12,11 +12,14 @@ import {
     ERROR_NOTES_CONTAINER_NOT_FOUND,
     LABEL_COPY_NOTE,
     LABEL_DELETE_NOTE,
+    LABEL_PIN_NOTE,
     LABEL_MERGE_DOWN,
     LABEL_MERGE_UP,
     LABEL_MOVE_DOWN,
     LABEL_MOVE_UP,
-    MESSAGE_NOTE_COPIED
+    MESSAGE_NOTE_COPIED,
+    ARIA_LABEL_PIN_NOTE,
+    ARIA_LABEL_UNPIN_NOTE
 } from "../constants.js";
 import { GravityStore } from "../core/store.js";
 import { ClassifierClient } from "../core/classifier.js";
@@ -38,6 +41,7 @@ import {
 import { createMarkdownEditorHost, MARKDOWN_MODE_EDIT, MARKDOWN_MODE_VIEW } from "./markdownEditorHost.js";
 import { syncStoreFromDom } from "./storeSync.js";
 import { showSaveFeedback } from "./saveFeedback.js";
+import { togglePinnedNote, clearPinnedNoteIfMatches } from "./notesState.js";
 
 const DIRECTION_PREVIOUS = -1;
 const DIRECTION_NEXT = 1;
@@ -55,6 +59,9 @@ const COPY_FEEDBACK_DURATION_MS = 1800;
 const PREVIEW_CHECKBOX_BUBBLE_DELAY_MS_DEFAULT = 900;
 const previewBubbleTimers = new WeakMap();
 const previewFocusTargets = new WeakMap();
+let pinnedLayoutContainer = null;
+let pinnedLayoutResizeListenerAttached = false;
+let topEditorResizeObserver = null;
 /**
  * Render a persisted note card into the provided container.
  * @param {import("../types.d.js").NoteRecord} record
@@ -68,10 +75,21 @@ export function renderCard(record, options = {}) {
     }
     const card = createElement("div", "markdown-block");
     card.setAttribute("data-note-id", record.noteId);
+    const initialPinned = record.pinned === true;
+    card.dataset.pinned = initialPinned ? "true" : "false";
+    if (initialPinned) {
+        card.classList.add("markdown-block--pinned");
+    }
 
     // Actions column
     const actions = createElement("div", "actions");
     let editorHostRef = null;
+
+    const handlePinToggle = () => {
+        if (!notesContainer) return;
+        const { pinnedNoteId, previousPinnedNoteId } = togglePinnedNote(record.noteId);
+        applyPinnedStateForToggle(notesContainer, pinnedNoteId, previousPinnedNoteId);
+    };
 
     const handleCopy = async () => {
         const host = editorHostRef;
@@ -132,6 +150,9 @@ export function renderCard(record, options = {}) {
         }
     };
 
+    const btnPin = button(LABEL_PIN_NOTE, handlePinToggle, { extraClass: "action-button--icon action-button--toggle action-button--pin" });
+    btnPin.dataset.action = "toggle-pin";
+
     const btnCopy = button(LABEL_COPY_NOTE, () => handleCopy(), { extraClass: "action-button--icon" });
     btnCopy.dataset.action = "copy-note";
 
@@ -154,7 +175,7 @@ export function renderCard(record, options = {}) {
     const btnDelete = button(LABEL_DELETE_NOTE, () => deleteCard(card, notesContainer), { extraClass: "action-button--icon" });
     btnDelete.dataset.action = "delete";
 
-    actions.append(btnCopy, btnMergeDown, btnMergeUp, arrowRow, btnDelete);
+    actions.append(btnPin, btnCopy, btnMergeDown, btnMergeUp, arrowRow, btnDelete);
 
     // Chips + content
     const chips = createElement("div", "meta-chips");
@@ -195,6 +216,9 @@ export function renderCard(record, options = {}) {
     enableClipboardImagePaste(editor);
 
     card.append(chips, badges, previewWrapper, editor, actions);
+
+    configurePinnedLayout(notesContainer);
+    applyPinnedState(card, initialPinned, notesContainer);
 
     const handleCardInteraction = (event) => {
         const target = /** @type {HTMLElement} */ (event.target);
@@ -318,9 +342,19 @@ export function updateActionButtons(notesContainer) {
 
         show(mergeDown, !isLast);
         show(mergeUp,   isLast && total > 1);
-        show(up,        !isFirst);
-        show(down,      !isLast);
+        const isPinned = card instanceof HTMLElement && card.dataset.pinned === "true";
+        if (isPinned) {
+            show(up, false);
+            show(down, false);
+        } else {
+            show(up, !isFirst);
+            show(down, !isLast);
+        }
     });
+}
+
+export function insertCardRespectingPinned(card, notesContainer) {
+    placeCardRespectingPinned(card, notesContainer);
 }
 
 /* ----------------- Internals ----------------- */
@@ -416,6 +450,158 @@ function showClipboardFeedback(container, message) {
     copyFeedbackTimers.set(feedback, timer);
 }
 
+function applyPinnedStateForToggle(notesContainer, pinnedNoteId, previousPinnedNoteId) {
+    if (!(notesContainer instanceof HTMLElement)) {
+        return;
+    }
+
+    if (isNonBlankString(previousPinnedNoteId) && previousPinnedNoteId !== pinnedNoteId) {
+        const previousCard = findCardById(notesContainer, previousPinnedNoteId);
+        if (previousCard) {
+            applyPinnedState(previousCard, false, notesContainer);
+        }
+    }
+
+    if (isNonBlankString(pinnedNoteId)) {
+        const pinnedCard = findCardById(notesContainer, pinnedNoteId);
+        if (pinnedCard) {
+            applyPinnedState(pinnedCard, true, notesContainer);
+            placeCardRespectingPinned(pinnedCard, notesContainer, { forcePinnedPosition: true });
+        }
+    }
+
+    enforcePinnedAnchor(notesContainer);
+    syncStoreFromDom(notesContainer);
+    updateActionButtons(notesContainer);
+    handlePinnedLayoutRefresh();
+}
+
+function applyPinnedState(card, pinned, notesContainer) {
+    if (!(card instanceof HTMLElement)) {
+        return;
+    }
+    card.dataset.pinned = pinned ? "true" : "false";
+    card.classList.toggle("markdown-block--pinned", pinned);
+    const pinButton = card.querySelector('[data-action="toggle-pin"]');
+    if (pinButton instanceof HTMLButtonElement) {
+        pinButton.setAttribute("aria-pressed", pinned ? "true" : "false");
+        pinButton.setAttribute("aria-label", pinned ? ARIA_LABEL_UNPIN_NOTE : ARIA_LABEL_PIN_NOTE);
+        pinButton.classList.toggle("action-button--pressed", pinned);
+    }
+    if (pinned) {
+        configurePinnedLayout(notesContainer);
+        handlePinnedLayoutRefresh();
+    } else {
+        card.style.removeProperty("--pinned-top-offset");
+    }
+}
+
+function enforcePinnedAnchor(notesContainer) {
+    if (!(notesContainer instanceof HTMLElement)) {
+        return;
+    }
+    const anchorCard = notesContainer.querySelector('.markdown-block[data-pinned="true"]');
+    if (anchorCard instanceof HTMLElement) {
+        placeCardRespectingPinned(anchorCard, notesContainer, { forcePinnedPosition: true });
+    }
+    handlePinnedLayoutRefresh();
+}
+
+function placeCardRespectingPinned(card, notesContainer, options = {}) {
+    if (!(card instanceof HTMLElement) || !(notesContainer instanceof HTMLElement)) {
+        return;
+    }
+    const { forcePinnedPosition = false } = options;
+    const isPinned = forcePinnedPosition || card.dataset.pinned === "true";
+    const pinnedCard = notesContainer.querySelector('.markdown-block[data-pinned="true"]');
+
+    if (isPinned) {
+        const firstCard = notesContainer.firstElementChild;
+        if (firstCard !== card) {
+            notesContainer.insertBefore(card, firstCard);
+        }
+        handlePinnedLayoutRefresh();
+        return;
+    }
+
+    if (pinnedCard instanceof HTMLElement && pinnedCard !== card) {
+        const reference = pinnedCard.nextElementSibling;
+        if (reference !== card) {
+            notesContainer.insertBefore(card, reference);
+        }
+        handlePinnedLayoutRefresh();
+        return;
+    }
+
+    const firstCard = notesContainer.firstElementChild;
+    if (firstCard !== card) {
+        notesContainer.insertBefore(card, firstCard);
+    }
+    handlePinnedLayoutRefresh();
+}
+
+function findCardById(notesContainer, noteId) {
+    if (!(notesContainer instanceof HTMLElement) || !isNonBlankString(noteId)) {
+        return null;
+    }
+    const selector = `.markdown-block[data-note-id="${escapeNoteIdSelector(noteId)}"]`;
+    const candidate = notesContainer.querySelector(selector);
+    return candidate instanceof HTMLElement ? candidate : null;
+}
+
+function escapeNoteIdSelector(noteId) {
+    if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+        return CSS.escape(noteId);
+    }
+    return noteId.replace(/"/g, '\\"');
+}
+
+function isNonBlankString(value) {
+    return typeof value === "string" && value.trim().length > 0;
+}
+
+function configurePinnedLayout(notesContainer) {
+    if (!(notesContainer instanceof HTMLElement)) {
+        return;
+    }
+    pinnedLayoutContainer = notesContainer;
+    if (typeof window !== "undefined" && !pinnedLayoutResizeListenerAttached) {
+        window.addEventListener("resize", handlePinnedLayoutRefresh, { passive: true });
+        pinnedLayoutResizeListenerAttached = true;
+    }
+    if (typeof ResizeObserver !== "undefined" && !topEditorResizeObserver) {
+        const topEditorBlock = document.querySelector("#top-editor .markdown-block");
+        if (topEditorBlock instanceof HTMLElement) {
+            topEditorResizeObserver = new ResizeObserver(handlePinnedLayoutRefresh);
+            topEditorResizeObserver.observe(topEditorBlock);
+        }
+    }
+}
+
+function handlePinnedLayoutRefresh() {
+    if (!pinnedLayoutContainer) {
+        return;
+    }
+    refreshPinnedLayout(pinnedLayoutContainer);
+}
+
+function refreshPinnedLayout(notesContainer) {
+    if (!(notesContainer instanceof HTMLElement)) {
+        return;
+    }
+    const pinnedCard = notesContainer.querySelector('.markdown-block[data-pinned="true"]');
+    if (!(pinnedCard instanceof HTMLElement)) {
+        return;
+    }
+    const header = document.querySelector(".app-header");
+    const headerHeight = header instanceof HTMLElement ? header.getBoundingClientRect().height : 0;
+    const topEditorBlock = document.querySelector("#top-editor .markdown-block");
+    const topEditorHeight = topEditorBlock instanceof HTMLElement ? topEditorBlock.getBoundingClientRect().height : 0;
+    const spacing = 12;
+    const offset = Math.max(headerHeight + topEditorHeight + spacing, 0);
+    pinnedCard.style.setProperty("--pinned-top-offset", `${offset}px`);
+}
+
 function persistCardState(card, notesContainer, markdownText, options = {}) {
     const { bubbleToTop = true } = options;
     if (!(card instanceof HTMLElement) || typeof markdownText !== "string") {
@@ -441,7 +627,8 @@ function persistCardState(card, notesContainer, markdownText, options = {}) {
         createdAtIso: existing?.createdAtIso ?? timestamp,
         updatedAtIso: timestamp,
         lastActivityIso: timestamp,
-        attachments
+        attachments,
+        pinned: card.dataset.pinned === "true"
     });
 
     card.dataset.initialValue = markdownText;
@@ -495,10 +682,7 @@ function bubbleCardToTop(card, notesContainer, markdownOverride) {
         clearTimeout(pending);
         previewBubbleTimers.delete(card);
     }
-    const firstCard = notesContainer.firstElementChild;
-    if (firstCard && firstCard !== card) {
-        notesContainer.insertBefore(card, firstCard);
-    }
+    placeCardRespectingPinned(card, notesContainer, { forcePinnedPosition: card.dataset.pinned === "true" });
     syncStoreFromDom(notesContainer);
     updateActionButtons(notesContainer);
     refreshCardPreview(card, markdownOverride);
@@ -773,7 +957,11 @@ function deleteCard(card, notesContainer) {
     card.classList.remove("editing-in-place");
     const noteId = card.getAttribute("data-note-id");
     GravityStore.removeById(noteId);
+    if (noteId) {
+        clearPinnedNoteIfMatches(noteId);
+    }
     card.remove();
+    enforcePinnedAnchor(notesContainer);
     syncStoreFromDom(notesContainer);
     updateActionButtons(notesContainer);
 }
@@ -786,6 +974,7 @@ function move(card, direction, notesContainer) {
     const ref = list[target];
     if (direction === -1) notesContainer.insertBefore(card, ref);
     else notesContainer.insertBefore(card, ref.nextSibling);
+    enforcePinnedAnchor(notesContainer);
     syncStoreFromDom(notesContainer);
     updateActionButtons(notesContainer);
 }
@@ -823,6 +1012,12 @@ function mergeDown(card, notesContainer) {
 
     const idHere = card.getAttribute("data-note-id");
     GravityStore.removeById(idHere);
+    if (idHere) {
+        clearPinnedNoteIfMatches(idHere);
+    }
+    if (idHere) {
+        clearPinnedNoteIfMatches(idHere);
+    }
     if (card === currentEditingCard) {
         card.classList.remove("editing-in-place");
         delete card.dataset.initialValue;
@@ -845,6 +1040,8 @@ function mergeDown(card, notesContainer) {
         attachments: collectReferencedAttachments(editorBelow)
     });
 
+    enforcePinnedAnchor(notesContainer);
+    enforcePinnedAnchor(notesContainer);
     syncStoreFromDom(notesContainer);
     updateActionButtons(notesContainer);
 }

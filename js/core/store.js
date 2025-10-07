@@ -105,12 +105,32 @@ export const GravityStore = (() => {
      * @returns {void}
      */
     function upsertNonEmpty(record) {
-        const sanitizedRecord = normalizeRecord(record);
-        if (!isValidNoteRecord(sanitizedRecord)) return;
         const allRecords = loadAllNotes();
-        const existingIndex = allRecords.findIndex(existingRecord => existingRecord.noteId === sanitizedRecord.noteId);
-        if (existingIndex === -1) allRecords.unshift(sanitizedRecord);
-        else allRecords[existingIndex] = sanitizedRecord;
+        const existingIndex = allRecords.findIndex(existingRecord => existingRecord.noteId === record.noteId);
+        const existingRecord = existingIndex === -1 ? null : allRecords[existingIndex];
+        const normalizedPinned = typeof record?.pinned === "boolean"
+            ? record.pinned
+            : existingRecord?.pinned === true;
+
+        const sanitizedRecord = normalizeRecord({ ...record, pinned: normalizedPinned });
+        if (!isValidNoteRecord(sanitizedRecord)) return;
+
+        if (existingIndex === -1) {
+            allRecords.unshift(sanitizedRecord);
+        } else {
+            allRecords[existingIndex] = sanitizedRecord;
+        }
+
+        if (sanitizedRecord.pinned) {
+            for (let index = 0; index < allRecords.length; index += 1) {
+                const candidate = allRecords[index];
+                if (candidate.noteId === sanitizedRecord.noteId) continue;
+                if (candidate.pinned) {
+                    allRecords[index] = { ...candidate, pinned: false };
+                }
+            }
+        }
+
         saveAllNotes(allRecords);
     }
 
@@ -135,7 +155,52 @@ export const GravityStore = (() => {
         return records.find(record => record.noteId === noteId) ?? null;
     }
 
-    return Object.freeze({ loadAllNotes, saveAllNotes, exportNotes, importNotes, upsertNonEmpty, removeById, getById });
+    function setPinned(noteId) {
+        const records = loadAllNotes();
+        const normalizedId = typeof noteId === "string" && noteId.trim().length > 0 ? noteId : null;
+        const targetExists = normalizedId ? records.some(record => record.noteId === normalizedId) : false;
+        const targetId = targetExists ? normalizedId : null;
+        let changed = false;
+
+        const nextRecords = records.map((record) => {
+            const shouldPin = targetId !== null && record.noteId === targetId;
+            const isPinned = record.pinned === true;
+            if (shouldPin === isPinned) {
+                return record;
+            }
+            changed = true;
+            return { ...record, pinned: shouldPin };
+        });
+
+        if (!changed && targetExists) {
+            return targetId;
+        }
+
+        if (!changed && !targetExists) {
+            const anyPinned = records.some(record => record.pinned === true);
+            if (!anyPinned) {
+                return null;
+            }
+        }
+
+        if (!changed) {
+            return targetId;
+        }
+
+        saveAllNotes(nextRecords);
+        return targetId;
+    }
+
+    return Object.freeze({
+        loadAllNotes,
+        saveAllNotes,
+        exportNotes,
+        importNotes,
+        upsertNonEmpty,
+        removeById,
+        getById,
+        setPinned
+    });
 })();
 
 /**
@@ -145,7 +210,8 @@ export const GravityStore = (() => {
 function normalizeRecord(record) {
     const markdownText = typeof record?.markdownText === "string" ? record.markdownText : EMPTY_STRING;
     const attachments = sanitizeAttachmentDictionary(record?.attachments || {});
-    return { ...record, markdownText, attachments };
+    const pinned = record?.pinned === true;
+    return { ...record, markdownText, attachments, pinned };
 }
 
 /**

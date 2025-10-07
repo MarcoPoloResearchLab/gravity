@@ -25,6 +25,7 @@
  * @property {string} createdAtIso
  * @property {string} updatedAtIso
  * @property {string} lastActivityIso
+ * @property {boolean=} pinned
  * @property {NoteClassification=} classification
  * @property {Record<string, AttachmentRecord>=} attachments
  */

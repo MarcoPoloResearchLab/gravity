@@ -8,6 +8,7 @@ export const LABEL_MOVE_UP = "▲";
 export const LABEL_MOVE_DOWN = "▼";
 export const LABEL_DELETE_NOTE = "🗑️";
 export const LABEL_COPY_NOTE = "📋";
+export const LABEL_PIN_NOTE = "";
 export const LABEL_EDIT_MARKDOWN = "Edit (Markdown)";
 export const LABEL_VIEW_RENDERED = "View (Rendered)";
 export const LABEL_NEW_NOTE = "New note";
@@ -28,6 +29,8 @@ export const LABEL_SHORTCUT_OUTDENT = "Outdent selection";
 export const LABEL_SHORTCUT_NAVIGATE_PREVIOUS = "Focus previous note";
 export const LABEL_SHORTCUT_NAVIGATE_NEXT = "Focus next note";
 export const LABEL_SHORTCUT_OPEN_HELP = "Show keyboard shortcuts";
+export const ARIA_LABEL_PIN_NOTE = "Pin note";
+export const ARIA_LABEL_UNPIN_NOTE = "Unpin note";
 
 export const MESSAGE_NOTE_SAVED = "Saved";
 
