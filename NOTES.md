@@ -16,6 +16,5 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
 
 ## BugFixes
 
-- [ ] [GN-04] I have updated a note, then pushed down cursor arrow and the note didn't bubble up after editing. Ensure that the notes always bubble up after being edited -- develop a robust mechanism, maybe through state management
 
 ## Maintenance

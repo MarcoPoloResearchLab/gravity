@@ -829,6 +829,82 @@ if (!puppeteerModule) {
             }
         });
 
+        test("arrow navigation bubbles edited notes to the top", async () => {
+            if (skipIfNoBrowser()) return;
+
+            const RECENT_NOTE_ID = "nav-bubble-recent";
+            const TARGET_NOTE_ID = "nav-bubble-target";
+            const FOLLOW_NOTE_ID = "nav-bubble-follow";
+
+            const recentNote = buildNoteRecord({
+                noteId: RECENT_NOTE_ID,
+                markdownText: "Most recent note",
+                attachments: {}
+            });
+            recentNote.createdAtIso = "2024-05-01T00:00:00.000Z";
+            recentNote.updatedAtIso = "2024-05-01T00:00:00.000Z";
+            recentNote.lastActivityIso = "2024-05-01T00:00:00.000Z";
+
+            const targetNote = buildNoteRecord({
+                noteId: TARGET_NOTE_ID,
+                markdownText: "Target note",
+                attachments: {}
+            });
+            targetNote.createdAtIso = "2024-04-01T00:00:00.000Z";
+            targetNote.updatedAtIso = "2024-04-01T00:00:00.000Z";
+            targetNote.lastActivityIso = "2024-04-01T00:00:00.000Z";
+
+            const followNote = buildNoteRecord({
+                noteId: FOLLOW_NOTE_ID,
+                markdownText: "Trailing note",
+                attachments: {}
+            });
+            followNote.createdAtIso = "2024-03-01T00:00:00.000Z";
+            followNote.updatedAtIso = "2024-03-01T00:00:00.000Z";
+            followNote.lastActivityIso = "2024-03-01T00:00:00.000Z";
+
+            const page = await preparePage(browser, { records: [recentNote, targetNote, followNote] });
+
+            const listIds = async () => page.evaluate(() => (
+                Array.from(document.querySelectorAll('.markdown-block[data-note-id]:not(.top-editor)'))
+                    .map((node) => node.getAttribute('data-note-id'))
+            ));
+
+            const targetSelector = `.markdown-block[data-note-id="${TARGET_NOTE_ID}"]`;
+            const followSelector = `.markdown-block[data-note-id="${FOLLOW_NOTE_ID}"]`;
+            const editorSelector = `${targetSelector} .markdown-editor`;
+
+            try {
+                await page.waitForSelector(targetSelector);
+                const initialOrder = await listIds();
+                assert.deepEqual(initialOrder.slice(0, 3), [RECENT_NOTE_ID, TARGET_NOTE_ID, FOLLOW_NOTE_ID]);
+
+                await page.click(`${targetSelector} .note-preview`);
+                await page.waitForSelector(`${targetSelector}.editing-in-place`);
+                await page.focus(editorSelector);
+                await page.type(editorSelector, "\nUpdated via navigation");
+                await page.keyboard.press("ArrowDown");
+
+                await page.waitForFunction((selector) => {
+                    const node = document.querySelector(selector);
+                    return node && !node.classList.contains('editing-in-place');
+                }, {}, targetSelector);
+
+                await page.waitForSelector(`${followSelector}.editing-in-place`);
+
+                await page.waitForFunction((expectedFirstId) => {
+                    const ids = Array.from(document.querySelectorAll('.markdown-block[data-note-id]:not(.top-editor)'))
+                        .map((node) => node.getAttribute('data-note-id'));
+                    return ids.length > 0 && ids[0] === expectedFirstId;
+                }, {}, TARGET_NOTE_ID);
+
+                const finalOrder = await listIds();
+                assert.equal(finalOrder[0], TARGET_NOTE_ID, "edited note bubbles to top after arrow navigation");
+            } finally {
+                await page.close();
+            }
+        });
+
         test("clicking a long note reveals the full content and caret at end", async () => {
             if (skipIfNoBrowser()) return;
             const seededRecords = [buildNoteRecord({

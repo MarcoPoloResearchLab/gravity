@@ -1123,7 +1123,7 @@ function navigateToAdjacentCard(card, direction, notesContainer) {
         const caretPlacement = direction === DIRECTION_PREVIOUS ? CARET_PLACEMENT_END : CARET_PLACEMENT_START;
         return focusCardEditor(targetCard, notesContainer, {
             caretPlacement,
-            bubblePreviousCardToTop: false
+            bubblePreviousCardToTop: true
         });
     }
 
