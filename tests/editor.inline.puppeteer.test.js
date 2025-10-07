@@ -48,6 +48,8 @@ const LONG_NOTE_PARAGRAPH_COUNT = 18;
 const LONG_NOTE_MARKDOWN = Array.from({ length: LONG_NOTE_PARAGRAPH_COUNT }, (_, index) => `Paragraph ${index + 1} maintains scroll state.`).join("\n\n");
 const BRACKET_NOTE_ID = "inline-bracket-fixture";
 const BRACKET_MARKDOWN = "Bracket baseline";
+const DELETE_LINE_NOTE_ID = "inline-delete-line-fixture";
+const DELETE_LINE_MARKDOWN = "Alpha\nBeta";
 const NESTED_ORDER_NOTE_ID = "inline-nested-ordered-fixture";
 const NESTED_ORDER_MARKDOWN = "1. Alpha\n2. Beta\n3. Gamma";
 const PIN_FIRST_NOTE_ID = "inline-pin-first";
@@ -384,6 +386,57 @@ if (!puppeteerModule) {
                 assert.equal(textareaState.value, "{}");
                 assert.equal(textareaState.selectionStart, 2);
                 assert.equal(textareaState.selectionEnd, 2);
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("delete line shortcut removes the active textarea row", async () => {
+            if (skipIfNoBrowser()) return;
+            const seededRecords = [buildNoteRecord({
+                noteId: DELETE_LINE_NOTE_ID,
+                markdownText: DELETE_LINE_MARKDOWN,
+                attachments: {}
+            })];
+
+            const page = await preparePage(browser, { records: seededRecords });
+            const cardSelector = `.markdown-block[data-note-id="${DELETE_LINE_NOTE_ID}"]`;
+            const editorSelector = `${cardSelector} .markdown-editor`;
+
+            try {
+                await page.waitForSelector(cardSelector);
+                await page.click(`${cardSelector} .note-preview`);
+                await page.waitForSelector(`${cardSelector}.editing-in-place`);
+                await page.focus(editorSelector);
+
+                await page.evaluate((selector) => {
+                    const textarea = document.querySelector(selector);
+                    if (!(textarea instanceof HTMLTextAreaElement)) return;
+                    textarea.selectionStart = 1;
+                    textarea.selectionEnd = 1;
+                }, editorSelector);
+
+                await page.keyboard.down("Control");
+                await page.keyboard.down("Shift");
+                await page.keyboard.press("KeyK");
+                await page.keyboard.up("Shift");
+                await page.keyboard.up("Control");
+
+                const textareaState = await page.$eval(editorSelector, (el) => ({
+                    value: el.value,
+                    selectionStart: el.selectionStart ?? 0,
+                    selectionEnd: el.selectionEnd ?? 0
+                }));
+
+                assert.equal(textareaState.value, "Beta");
+                assert.equal(textareaState.selectionStart, 0);
+                assert.equal(textareaState.selectionEnd, 0);
+
+                const previewText = await page.$eval(
+                    `${cardSelector} .markdown-content`,
+                    (el) => el.textContent?.trim() ?? ""
+                );
+                assert.equal(previewText, "Beta");
             } finally {
                 await page.close();
             }

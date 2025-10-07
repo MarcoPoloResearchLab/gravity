@@ -430,6 +430,17 @@ export function createMarkdownEditorHost(options) {
             }
         };
 
+        const executeDeleteLine = (cm) => {
+            if (!cm) return;
+            if (typeof cm.execCommand === "function") {
+                cm.execCommand("deleteLine");
+                return;
+            }
+            if (typeof cm.removeLine === "function") {
+                cm.removeLine(cm.getCursor().line);
+            }
+        };
+
         codemirror.addKeyMap({
             Enter: (cm) => {
                 handleEnter(cm);
@@ -476,6 +487,18 @@ export function createMarkdownEditorHost(options) {
             },
             "Ctrl-Y": (cm) => {
                 executeRedo(cm);
+            },
+            "Cmd-Shift-K": (cm) => {
+                executeDeleteLine(cm);
+            },
+            "Ctrl-Shift-K": (cm) => {
+                executeDeleteLine(cm);
+            },
+            "Shift-Cmd-K": (cm) => {
+                executeDeleteLine(cm);
+            },
+            "Shift-Ctrl-K": (cm) => {
+                executeDeleteLine(cm);
             }
         });
 
@@ -799,6 +822,14 @@ export function createMarkdownEditorHost(options) {
                     event.preventDefault();
                     return;
                 }
+            }
+
+            if (isModifier && event.shiftKey && (event.key === "k" || event.key === "K")) {
+                event.preventDefault();
+                deleteCurrentLineTextarea(el);
+                normalizeOrderedLists();
+                emitFn("change", { value: el.value });
+                return;
             }
 
             if (!isModifier && !event.altKey && !event.shiftKey && event.key === "Enter") {
@@ -1125,6 +1156,31 @@ function skipExistingClosingBracket(cm, closeChar) {
         }
     });
     return moved;
+}
+
+function deleteCurrentLineTextarea(textarea) {
+    if (!(textarea instanceof HTMLTextAreaElement)) return;
+    const value = textarea.value;
+    const selectionStart = textarea.selectionStart ?? 0;
+    const selectionEnd = textarea.selectionEnd ?? selectionStart;
+    const anchor = Math.min(selectionStart, selectionEnd);
+    const head = Math.max(selectionStart, selectionEnd);
+    let deleteStart = findLineStart(value, anchor);
+    let deleteEnd = findLineEnd(value, head);
+
+    if (deleteEnd < value.length) {
+        deleteEnd += 1;
+    } else if (deleteStart > 0) {
+        deleteStart = findLineStart(value, deleteStart - 1);
+    }
+
+    const before = value.slice(0, deleteStart);
+    const after = value.slice(deleteEnd);
+    textarea.value = `${before}${after}`;
+    const nextCaret = Math.min(deleteStart, textarea.value.length);
+    try {
+        textarea.setSelectionRange(nextCaret, nextCaret);
+    } catch {}
 }
 
 function handleCodeFenceInCodeMirror(cm, cursor, lineText) {

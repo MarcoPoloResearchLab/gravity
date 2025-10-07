@@ -4,7 +4,7 @@
 
 Review the NOTES.md. Make a plan for autonomously fixing every item under Features, BugFixes, Improvements, Maintenance. Ensure no regressions. Ensure adding tests. Lean into integration tests. Fix every issue. Document the changes.
 
-Fix issues one by one. Write a nice comprehensive commit message AFTER EACH issue is fixed and tested and covered with tests. Do not work on all issues at all. Work at one issue at a time sequntially. 
+Fix issues one by one. Write a nice comprehensive commit message AFTER EACH issue is fixed and tested and covered with tests. Do not work on all issues at once. Work at one issue at a time sequntially. 
 
 Remove an issue from the NOTES.md after the issue is fixed (new tests are passing). Commit the changes and push to the remote.
 
@@ -14,7 +14,6 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
 
 ## Improvements
 
-- [ ] [GN-08] Add delete line shortcut. Check if it doesnt exist already in MDE. Document the shortcut
 - [ ] [GN-09] Add duplicate line where the cursor is shortcut. Check if it doesnt exist already in MDE. Document the shortcut
 
 ## BugFixes

@@ -30,6 +30,7 @@ with bounded previews, and every note edits inline—no modal overlays or contex
     * `Enter` inserts a newline (no implicit submission).
     * `Cmd/Ctrl+Enter` or `Cmd/Ctrl+S` commit changes immediately.
     * `Tab` / `Shift+Tab` indent or outdent the current selection, making lists and code blocks easy to adjust.
+    * `Cmd/Ctrl+Shift+K` deletes the current line without leaving edit mode.
 4. **Edit existing notes:** Click anywhere in a rendered note to switch it into Markdown mode inline. The grid stays in
    place while you edit, then re-renders the preview once you finish.
 5. **Skim with previews:** Each card shows a deterministic snippet and fade mask; notes with code call it out with a
