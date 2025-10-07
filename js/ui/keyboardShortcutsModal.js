@@ -10,7 +10,9 @@ import {
     LABEL_SHORTCUT_OUTDENT,
     LABEL_SHORTCUT_NAVIGATE_PREVIOUS,
     LABEL_SHORTCUT_NAVIGATE_NEXT,
-    LABEL_SHORTCUT_OPEN_HELP
+    LABEL_SHORTCUT_OPEN_HELP,
+    LABEL_SHORTCUT_DELETE_LINE,
+    LABEL_SHORTCUT_DUPLICATE_LINE
 } from "../constants.js";
 
 const OVERLAY_CLASS = "keyboard-shortcuts-overlay";
@@ -61,6 +63,7 @@ export function initializeKeyboardShortcutsModal() {
         ArrowUp: "↑",
         ArrowDown: "↓",
         S: "S",
+        D: "D",
         F1: "F1"
     };
 
@@ -69,6 +72,8 @@ export function initializeKeyboardShortcutsModal() {
         { label: LABEL_SHORTCUT_SOFT_BREAK, combos: [ ["Shift", "Enter"] ] },
         { label: LABEL_SHORTCUT_INDENT, combos: [ ["Tab"] ] },
         { label: LABEL_SHORTCUT_OUTDENT, combos: [ ["Shift", "Tab"] ] },
+        { label: LABEL_SHORTCUT_DELETE_LINE, combos: [ ["primary", "Shift", "K"] ] },
+        { label: LABEL_SHORTCUT_DUPLICATE_LINE, combos: [ ["primary", "Shift", "D"] ] },
         { label: LABEL_SHORTCUT_NAVIGATE_PREVIOUS, combos: [ ["ArrowUp"] ] },
         { label: LABEL_SHORTCUT_NAVIGATE_NEXT, combos: [ ["ArrowDown"] ] },
         { label: LABEL_SHORTCUT_OPEN_HELP, combos: [ ["F1"] ] }

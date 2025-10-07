@@ -25,10 +25,12 @@ export const LABEL_CLOSE_KEYBOARD_SHORTCUTS = "Close shortcuts";
 export const LABEL_SHORTCUT_SAVE_NOTE = "Save note and bubble to top";
 export const LABEL_SHORTCUT_SOFT_BREAK = "Insert soft line break";
 export const LABEL_SHORTCUT_INDENT = "Indent selection";
-export const LABEL_SHORTCUT_OUTDENT = "Outdent selection";
+export const LABEL_SHORTCUT_OUTDENT = "Outdent selection (negative indent)";
 export const LABEL_SHORTCUT_NAVIGATE_PREVIOUS = "Focus previous note";
 export const LABEL_SHORTCUT_NAVIGATE_NEXT = "Focus next note";
 export const LABEL_SHORTCUT_OPEN_HELP = "Show keyboard shortcuts";
+export const LABEL_SHORTCUT_DELETE_LINE = "Delete current line";
+export const LABEL_SHORTCUT_DUPLICATE_LINE = "Duplicate current line";
 export const ARIA_LABEL_PIN_NOTE = "Pin note";
 export const ARIA_LABEL_UNPIN_NOTE = "Unpin note";
 

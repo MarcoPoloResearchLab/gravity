@@ -35,6 +35,8 @@ const UNORDERED_NOTE_ID = "inline-unordered-fixture";
 const UNORDERED_MARKDOWN = "* Alpha\n* Beta";
 const ORDERED_NOTE_ID = "inline-ordered-fixture";
 const ORDERED_MARKDOWN = "1. First\n2. Second";
+const ORDERED_RENUMBER_NOTE_ID = "inline-ordered-renumber-fixture";
+const ORDERED_RENUMBER_MARKDOWN = "1. Alpha\n2. Bravo\n3. Charlie";
 const TABLE_NOTE_ID = "inline-table-fixture";
 const TABLE_MARKDOWN = "| Col1 | Col2 |\n| --- | --- |\n| A | B |";
 const FENCE_NOTE_ID = "inline-fence-fixture";
@@ -46,12 +48,16 @@ const LONG_NOTE_PARAGRAPH_COUNT = 18;
 const LONG_NOTE_MARKDOWN = Array.from({ length: LONG_NOTE_PARAGRAPH_COUNT }, (_, index) => `Paragraph ${index + 1} maintains scroll state.`).join("\n\n");
 const BRACKET_NOTE_ID = "inline-bracket-fixture";
 const BRACKET_MARKDOWN = "Bracket baseline";
+const DELETE_LINE_NOTE_ID = "inline-delete-line-fixture";
+const DELETE_LINE_MARKDOWN = "Alpha\nBeta";
 const NESTED_ORDER_NOTE_ID = "inline-nested-ordered-fixture";
 const NESTED_ORDER_MARKDOWN = "1. Alpha\n2. Beta\n3. Gamma";
 const PIN_FIRST_NOTE_ID = "inline-pin-first";
 const PIN_FIRST_MARKDOWN = "First note to pin.";
 const PIN_SECOND_NOTE_ID = "inline-pin-second";
 const PIN_SECOND_MARKDOWN = "Second note to pin.";
+const FOCUS_SUPPRESSION_NOTE_ID = "inline-focus-suppression";
+const FOCUS_SUPPRESSION_MARKDOWN = "Focus suppression baseline.";
 
 if (!puppeteerModule) {
     test("puppeteer unavailable", () => {
@@ -303,8 +309,8 @@ if (!puppeteerModule) {
                 }));
 
                 assert.ok(
-                    textareaState.value.endsWith("[ ]"),
-                    "square bracket expands with interior space"
+                    textareaState.value.endsWith("[ ] "),
+                    "square bracket expands with interior space and trailing space"
                 );
                 assert.equal(
                     textareaState.selectionStart,
@@ -316,6 +322,251 @@ if (!puppeteerModule) {
                     textareaState.selectionStart,
                     "caret remains collapsed after insertion"
                 );
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("closing brackets skip duplicates in inline editor", async () => {
+            if (skipIfNoBrowser()) return;
+            const seededRecords = [buildNoteRecord({
+                noteId: BRACKET_NOTE_ID,
+                markdownText: BRACKET_MARKDOWN,
+                attachments: {}
+            })];
+
+            const page = await preparePage(browser, { records: seededRecords });
+            const cardSelector = `.markdown-block[data-note-id="${BRACKET_NOTE_ID}"]`;
+            const editorSelector = `${cardSelector} .markdown-editor`;
+
+            try {
+                await page.waitForSelector(cardSelector);
+                await page.click(`${cardSelector} .note-preview`);
+                await page.waitForSelector(`${cardSelector}.editing-in-place`);
+                await page.focus(editorSelector);
+
+                await page.evaluate((selector) => {
+                    const textarea = document.querySelector(selector);
+                    if (!(textarea instanceof HTMLTextAreaElement)) return;
+                    textarea.value = "";
+                    textarea.selectionStart = 0;
+                    textarea.selectionEnd = 0;
+                }, editorSelector);
+
+                await page.keyboard.type("(");
+                await page.keyboard.type(")");
+
+                let textareaState = await page.$eval(editorSelector, (el) => ({
+                    value: el.value,
+                    selectionStart: el.selectionStart ?? 0,
+                    selectionEnd: el.selectionEnd ?? 0
+                }));
+
+                assert.equal(textareaState.value, "()");
+                assert.equal(textareaState.selectionStart, 2);
+                assert.equal(textareaState.selectionEnd, 2);
+
+                await page.evaluate((selector) => {
+                    const textarea = document.querySelector(selector);
+                    if (!(textarea instanceof HTMLTextAreaElement)) return;
+                    textarea.value = "";
+                    textarea.selectionStart = 0;
+                    textarea.selectionEnd = 0;
+                }, editorSelector);
+
+                await page.keyboard.type("{");
+                await page.keyboard.type("}");
+
+                textareaState = await page.$eval(editorSelector, (el) => ({
+                    value: el.value,
+                    selectionStart: el.selectionStart ?? 0,
+                    selectionEnd: el.selectionEnd ?? 0
+                }));
+
+                assert.equal(textareaState.value, "{}");
+                assert.equal(textareaState.selectionStart, 2);
+                assert.equal(textareaState.selectionEnd, 2);
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("delete line shortcut removes the active textarea row", async () => {
+            if (skipIfNoBrowser()) return;
+            const seededRecords = [buildNoteRecord({
+                noteId: DELETE_LINE_NOTE_ID,
+                markdownText: DELETE_LINE_MARKDOWN,
+                attachments: {}
+            })];
+
+            const page = await preparePage(browser, { records: seededRecords });
+            const cardSelector = `.markdown-block[data-note-id="${DELETE_LINE_NOTE_ID}"]`;
+            const editorSelector = `${cardSelector} .markdown-editor`;
+
+            try {
+                await page.waitForSelector(cardSelector);
+                await page.click(`${cardSelector} .note-preview`);
+                await page.waitForSelector(`${cardSelector}.editing-in-place`);
+                await page.focus(editorSelector);
+
+                await page.evaluate((selector) => {
+                    const textarea = document.querySelector(selector);
+                    if (!(textarea instanceof HTMLTextAreaElement)) return;
+                    textarea.selectionStart = 1;
+                    textarea.selectionEnd = 1;
+                }, editorSelector);
+
+                await page.keyboard.down("Control");
+                await page.keyboard.down("Shift");
+                await page.keyboard.press("KeyK");
+                await page.keyboard.up("Shift");
+                await page.keyboard.up("Control");
+
+                const textareaState = await page.$eval(editorSelector, (el) => ({
+                    value: el.value,
+                    selectionStart: el.selectionStart ?? 0,
+                    selectionEnd: el.selectionEnd ?? 0
+                }));
+
+                assert.equal(textareaState.value, "Beta");
+                assert.equal(textareaState.selectionStart, textareaState.selectionEnd);
+                assert.ok(textareaState.selectionStart >= 0);
+                assert.ok(textareaState.selectionStart <= textareaState.value.length);
+
+                const previewText = await page.$eval(
+                    `${cardSelector} .markdown-content`,
+                    (el) => el.textContent?.trim() ?? ""
+                );
+                assert.equal(previewText, "Beta");
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("duplicate line shortcut copies the active textarea row", async () => {
+            if (skipIfNoBrowser()) return;
+            const seededRecords = [buildNoteRecord({
+                noteId: DELETE_LINE_NOTE_ID,
+                markdownText: DELETE_LINE_MARKDOWN,
+                attachments: {}
+            })];
+
+            const page = await preparePage(browser, { records: seededRecords });
+            const cardSelector = `.markdown-block[data-note-id="${DELETE_LINE_NOTE_ID}"]`;
+            const editorSelector = `${cardSelector} .markdown-editor`;
+
+            try {
+                await page.waitForSelector(cardSelector);
+                await page.click(`${cardSelector} .note-preview`);
+                await page.waitForSelector(`${cardSelector}.editing-in-place`);
+                await page.focus(editorSelector);
+
+                await page.evaluate((selector) => {
+                    const textarea = document.querySelector(selector);
+                    if (!(textarea instanceof HTMLTextAreaElement)) return;
+                    textarea.selectionStart = 2;
+                    textarea.selectionEnd = 2;
+                }, editorSelector);
+
+                await page.keyboard.down("Control");
+                await page.keyboard.down("Shift");
+                await page.keyboard.press("KeyD");
+                await page.keyboard.up("Shift");
+                await page.keyboard.up("Control");
+
+                const textareaState = await page.$eval(editorSelector, (el) => ({
+                    value: el.value,
+                    selectionStart: el.selectionStart ?? 0,
+                    selectionEnd: el.selectionEnd ?? 0
+                }));
+
+                assert.equal(textareaState.value, "Alpha\nAlpha\nBeta");
+                assert.ok(textareaState.selectionStart >= 6 && textareaState.selectionStart <= 11);
+
+                const previewText = await page.$eval(
+                    `${cardSelector} .markdown-content`,
+                    (el) => el.textContent ?? ""
+                );
+                const alphaCount = (previewText.match(/Alpha/g) || []).length;
+                assert.ok(alphaCount >= 2, "preview reflects duplicated line");
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("ordered lists renumber on submit and navigation", async () => {
+            if (skipIfNoBrowser()) return;
+            const seededRecords = [
+                buildNoteRecord({
+                    noteId: ORDERED_RENUMBER_NOTE_ID,
+                    markdownText: ORDERED_RENUMBER_MARKDOWN,
+                    attachments: {}
+                }),
+                buildNoteRecord({
+                    noteId: UNORDERED_NOTE_ID,
+                    markdownText: UNORDERED_MARKDOWN,
+                    attachments: {}
+                })
+            ];
+
+            const page = await preparePage(browser, { records: seededRecords });
+            const renumberSelector = `.markdown-block[data-note-id="${ORDERED_RENUMBER_NOTE_ID}"]`;
+            const editorSelector = `${renumberSelector} .markdown-editor`;
+
+            try {
+                await page.waitForSelector(renumberSelector);
+                await page.click(`${renumberSelector} .note-preview`);
+                await page.waitForSelector(`${renumberSelector}.editing-in-place`);
+
+                await page.evaluate((selector) => {
+                    const textarea = document.querySelector(selector);
+                    if (!(textarea instanceof HTMLTextAreaElement)) return;
+                    textarea.value = textarea.value.replace(/^.*?\n/, "");
+                    const caret = textarea.value.length;
+                    textarea.selectionStart = caret;
+                    textarea.selectionEnd = caret;
+                }, editorSelector);
+
+                let textareaState = await page.$eval(editorSelector, (el) => ({
+                    value: el.value,
+                    selectionStart: el.selectionStart ?? 0
+                }));
+                assert.equal(textareaState.value, "2. Bravo\n3. Charlie");
+
+                await page.keyboard.down("Control");
+                await page.keyboard.press("Enter");
+                await page.keyboard.up("Control");
+
+                await page.waitForSelector(`${renumberSelector}:not(.editing-in-place)`);
+
+                const storedAfterSubmit = await page.evaluate(async (noteId) => {
+                    const { GravityStore } = await import("./js/core/store.js");
+                    const record = GravityStore.getById(noteId);
+                    return record ? record.markdownText : null;
+                }, ORDERED_RENUMBER_NOTE_ID);
+                assert.equal(storedAfterSubmit, "1. Bravo\n2. Charlie");
+
+                await page.click(`${renumberSelector} .note-preview`);
+                await page.waitForSelector(`${renumberSelector}.editing-in-place`);
+
+                await page.evaluate((selector) => {
+                    const textarea = document.querySelector(selector);
+                    if (!(textarea instanceof HTMLTextAreaElement)) return;
+                    textarea.value = textarea.value.replace(/^.*?\n/, "");
+                    const caret = textarea.value.length;
+                    textarea.selectionStart = caret;
+                    textarea.selectionEnd = caret;
+                }, editorSelector);
+
+                await page.keyboard.press("ArrowDown");
+                await page.waitForSelector(`${renumberSelector}:not(.editing-in-place)`);
+
+                const storedAfterNavigate = await page.evaluate(async (noteId) => {
+                    const { GravityStore } = await import("./js/core/store.js");
+                    const record = GravityStore.getById(noteId);
+                    return record ? record.markdownText : null;
+                }, ORDERED_RENUMBER_NOTE_ID);
+                assert.equal(storedAfterNavigate, "1. Charlie");
             } finally {
                 await page.close();
             }
@@ -377,7 +628,7 @@ if (!puppeteerModule) {
             }
         });
 
-        test("ctrl-enter bubbles notes to the top even without edits", async () => {
+        test("ctrl-enter keeps order when no edits are made", async () => {
             if (skipIfNoBrowser()) return;
 
             const RECENT_NOTE_ID = "bubble-recent";
@@ -425,6 +676,77 @@ if (!puppeteerModule) {
                     return node && !node.classList.contains("editing-in-place");
                 }, {}, TARGET_NOTE_ID);
 
+                await pause(page, 200);
+
+                const finalOrder = await getNoteOrder();
+                assert.deepEqual(
+                    finalOrder.slice(0, 2),
+                    [RECENT_NOTE_ID, TARGET_NOTE_ID],
+                    "target note stays behind the most recent note when no edits occur"
+                );
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("ctrl-enter bubbles notes to the top after edits", async () => {
+            if (skipIfNoBrowser()) return;
+
+            const RECENT_NOTE_ID = "bubble-edited-recent";
+            const TARGET_NOTE_ID = "bubble-edited-target";
+
+            const recentNote = buildNoteRecord({
+                noteId: RECENT_NOTE_ID,
+                markdownText: "Recent entry",
+                attachments: {}
+            });
+            recentNote.createdAtIso = "2024-04-01T00:00:00.000Z";
+            recentNote.updatedAtIso = "2024-04-01T00:00:00.000Z";
+            recentNote.lastActivityIso = "2024-04-01T00:00:00.000Z";
+
+            const targetNote = buildNoteRecord({
+                noteId: TARGET_NOTE_ID,
+                markdownText: "Older entry",
+                attachments: {}
+            });
+            targetNote.createdAtIso = "2024-01-01T00:00:00.000Z";
+            targetNote.updatedAtIso = "2024-01-01T00:00:00.000Z";
+            targetNote.lastActivityIso = "2024-01-01T00:00:00.000Z";
+
+            const page = await preparePage(browser, { records: [recentNote, targetNote] });
+            const getNoteOrder = async () => page.evaluate(() => (
+                Array.from(document.querySelectorAll('.markdown-block[data-note-id]:not(.top-editor)'))
+                    .map((node) => node.getAttribute('data-note-id'))
+            ));
+
+            try {
+                await page.waitForSelector(`.markdown-block[data-note-id="${TARGET_NOTE_ID}"]`);
+                const initialOrder = await getNoteOrder();
+                assert.deepEqual(initialOrder.slice(0, 2), [RECENT_NOTE_ID, TARGET_NOTE_ID]);
+
+                const targetSelector = `.markdown-block[data-note-id="${TARGET_NOTE_ID}"]`;
+                const editorSelector = `${targetSelector} .markdown-editor`;
+                await page.click(`${targetSelector} .note-preview`);
+                await page.waitForSelector(`${targetSelector}.editing-in-place`);
+                await page.focus(editorSelector);
+                await page.evaluate((selector) => {
+                    const textarea = document.querySelector(selector);
+                    if (!(textarea instanceof HTMLTextAreaElement)) return;
+                    const length = textarea.value.length;
+                    textarea.selectionStart = length;
+                    textarea.selectionEnd = length;
+                }, editorSelector);
+                await page.type(editorSelector, " updated");
+
+                await page.keyboard.down("Control");
+                await page.keyboard.press("Enter");
+                await page.keyboard.up("Control");
+
+                await page.waitForFunction((noteId) => {
+                    const node = document.querySelector(`.markdown-block[data-note-id="${noteId}"]`);
+                    return node && !node.classList.contains("editing-in-place");
+                }, {}, TARGET_NOTE_ID);
+
                 await page.waitForFunction((noteId) => {
                     const ids = Array.from(document.querySelectorAll('.markdown-block[data-note-id]:not(.top-editor)'))
                         .map((node) => node.getAttribute('data-note-id'));
@@ -432,7 +754,133 @@ if (!puppeteerModule) {
                 }, {}, TARGET_NOTE_ID);
 
                 const finalOrder = await getNoteOrder();
-                assert.equal(finalOrder[0], TARGET_NOTE_ID, "target note bubbles to the top after ctrl-enter");
+                assert.equal(finalOrder[0], TARGET_NOTE_ID, "target note bubbles to the top after edits");
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("ctrl-enter ignores trailing whitespace changes", async () => {
+            if (skipIfNoBrowser()) return;
+
+            const RECENT_NOTE_ID = "bubble-space-recent";
+            const TARGET_NOTE_ID = "bubble-space-target";
+            const TARGET_MARKDOWN = "Whitespace baseline entry.";
+
+            const recentNote = buildNoteRecord({
+                noteId: RECENT_NOTE_ID,
+                markdownText: "Recent entry",
+                attachments: {}
+            });
+            recentNote.createdAtIso = "2024-04-01T00:00:00.000Z";
+            recentNote.updatedAtIso = "2024-04-01T00:00:00.000Z";
+            recentNote.lastActivityIso = "2024-04-01T00:00:00.000Z";
+
+            const targetNote = buildNoteRecord({
+                noteId: TARGET_NOTE_ID,
+                markdownText: TARGET_MARKDOWN,
+                attachments: {}
+            });
+            targetNote.createdAtIso = "2024-01-01T00:00:00.000Z";
+            targetNote.updatedAtIso = "2024-01-01T00:00:00.000Z";
+            targetNote.lastActivityIso = "2024-01-01T00:00:00.000Z";
+
+            const page = await preparePage(browser, { records: [recentNote, targetNote] });
+            const getNoteOrder = async () => page.evaluate(() => (
+                Array.from(document.querySelectorAll('.markdown-block[data-note-id]:not(.top-editor)'))
+                    .map((node) => node.getAttribute('data-note-id'))
+            ));
+
+            try {
+                await page.waitForSelector(`.markdown-block[data-note-id="${TARGET_NOTE_ID}"]`);
+                const initialOrder = await getNoteOrder();
+                assert.deepEqual(initialOrder.slice(0, 2), [RECENT_NOTE_ID, TARGET_NOTE_ID]);
+
+                const targetSelector = `.markdown-block[data-note-id="${TARGET_NOTE_ID}"]`;
+                const editorSelector = `${targetSelector} .markdown-editor`;
+                await page.click(`${targetSelector} .note-preview`);
+                await page.waitForSelector(`${targetSelector}.editing-in-place`);
+                await page.focus(editorSelector);
+                await page.evaluate((selector) => {
+                    const textarea = document.querySelector(selector);
+                    if (!(textarea instanceof HTMLTextAreaElement)) return;
+                    const length = textarea.value.length;
+                    textarea.selectionStart = length;
+                    textarea.selectionEnd = length;
+                }, editorSelector);
+                await page.type(editorSelector, " ");
+
+                await page.keyboard.down("Control");
+                await page.keyboard.press("Enter");
+                await page.keyboard.up("Control");
+
+                await page.waitForFunction((noteId) => {
+                    const node = document.querySelector(`.markdown-block[data-note-id="${noteId}"]`);
+                    return node && !node.classList.contains("editing-in-place");
+                }, {}, TARGET_NOTE_ID);
+
+                await pause(page, 200);
+
+                const finalOrder = await getNoteOrder();
+                assert.deepEqual(
+                    finalOrder.slice(0, 2),
+                    [RECENT_NOTE_ID, TARGET_NOTE_ID],
+                    "whitespace-only edits do not bubble the note"
+                );
+
+                await page.click(`${targetSelector} .note-preview`);
+                await page.waitForSelector(`${targetSelector}.editing-in-place`);
+                const editorValue = await page.$eval(editorSelector, (el) => el.value);
+                assert.equal(editorValue, TARGET_MARKDOWN, "trailing whitespace is discarded");
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("ctrl-enter leaves focus available for the next choice", async () => {
+            if (skipIfNoBrowser()) return;
+
+            const seededRecords = [buildNoteRecord({
+                noteId: FOCUS_SUPPRESSION_NOTE_ID,
+                markdownText: FOCUS_SUPPRESSION_MARKDOWN,
+                attachments: {}
+            })];
+
+            const page = await preparePage(browser, { records: seededRecords });
+            const cardSelector = `.markdown-block[data-note-id="${FOCUS_SUPPRESSION_NOTE_ID}"]`;
+            const editorSelector = `${cardSelector} .markdown-editor`;
+
+            try {
+                await page.waitForSelector(cardSelector);
+                await page.click(`${cardSelector} .note-preview`);
+                await page.waitForSelector(`${cardSelector}.editing-in-place`);
+                await page.focus(editorSelector);
+
+                await page.keyboard.down("Control");
+                await page.keyboard.press("Enter");
+                await page.keyboard.up("Control");
+
+                await page.waitForFunction(() => !document.querySelector('.markdown-block.editing-in-place'));
+
+                const focusState = await page.evaluate(() => {
+                    const activeElement = document.activeElement;
+                    const activeBlock = typeof activeElement?.closest === "function"
+                        ? activeElement.closest('.markdown-block')
+                        : null;
+                    const isTopEditor = Boolean(activeBlock && activeBlock.classList.contains('top-editor'));
+                    const activeCardId = activeBlock && !isTopEditor
+                        ? activeBlock.getAttribute('data-note-id')
+                        : null;
+                    return {
+                        isBody: activeElement === document.body,
+                        isTopEditor,
+                        activeCardId
+                    };
+                });
+
+                assert.equal(focusState.isTopEditor, false, "top editor does not reclaim focus after submit");
+                assert.equal(focusState.activeCardId, null, "no other note is forced into focus");
+                assert.equal(focusState.isBody, true, "focus returns to the document body so the user can choose next steps");
             } finally {
                 await page.close();
             }
@@ -496,6 +944,69 @@ if (!puppeteerModule) {
 
                 const finalOrder = await getNoteOrder();
                 assert.equal(finalOrder[0], TARGET_NOTE_ID);
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("preview checkbox toggle keeps focus on the toggled card", async () => {
+            if (skipIfNoBrowser()) return;
+
+            const RECENT_NOTE_ID = "recent-focus-note";
+            const TARGET_NOTE_ID = "checkbox-focus-note";
+            const recentNote = buildNoteRecord({
+                noteId: RECENT_NOTE_ID,
+                markdownText: "Recent note",
+                attachments: {}
+            });
+            const targetNote = buildNoteRecord({
+                noteId: TARGET_NOTE_ID,
+                markdownText: "- [ ] First task\n- [x] Second task",
+                attachments: {}
+            });
+
+            const page = await preparePage(browser, {
+                records: [recentNote, targetNote],
+                previewBubbleDelayMs: 80
+            });
+
+            const checkboxSelector = `[data-note-id="${TARGET_NOTE_ID}"] input[type="checkbox"][data-task-index="0"]`;
+
+            try {
+                await page.waitForSelector(checkboxSelector);
+                await page.click(checkboxSelector);
+                await pause(page, 40);
+
+                const initialFocus = await page.evaluate(() => {
+                    const activeElement = document.activeElement;
+                    const activeBlock = activeElement?.closest?.('.markdown-block');
+                    const isTopEditor = Boolean(activeBlock?.classList?.contains('top-editor'));
+                    const cardId = activeBlock?.getAttribute?.('data-note-id') ?? null;
+                    return { isTopEditor, cardId };
+                });
+
+                assert.equal(initialFocus.isTopEditor, false, "top editor does not reclaim focus immediately after toggle");
+                assert.equal(initialFocus.cardId, TARGET_NOTE_ID, "focus stays with the toggled card");
+
+                await page.waitForFunction((targetId) => {
+                    const ids = Array.from(document.querySelectorAll('.markdown-block:not(.top-editor)'))
+                        .map((node) => node.getAttribute('data-note-id'));
+                    return ids.length > 0 && ids[0] === targetId;
+                }, {}, TARGET_NOTE_ID);
+
+                const postBubbleFocus = await page.evaluate(() => {
+                    const activeElement = document.activeElement;
+                    const activeBlock = activeElement?.closest?.('.markdown-block');
+                    const isTopEditor = Boolean(activeBlock?.classList?.contains('top-editor'));
+                    const cardId = activeBlock?.getAttribute?.('data-note-id') ?? null;
+                    return { isTopEditor, cardId };
+                });
+
+                assert.equal(postBubbleFocus.isTopEditor, false, "top editor remains unfocused after bubbling");
+                assert.ok(
+                    postBubbleFocus.cardId === TARGET_NOTE_ID || postBubbleFocus.cardId === null,
+                    "focus stays on the toggled card or gracefully returns to the body"
+                );
             } finally {
                 await page.close();
             }
@@ -778,6 +1289,82 @@ if (!puppeteerModule) {
             }
         });
 
+        test("arrow navigation bubbles edited notes to the top", async () => {
+            if (skipIfNoBrowser()) return;
+
+            const RECENT_NOTE_ID = "nav-bubble-recent";
+            const TARGET_NOTE_ID = "nav-bubble-target";
+            const FOLLOW_NOTE_ID = "nav-bubble-follow";
+
+            const recentNote = buildNoteRecord({
+                noteId: RECENT_NOTE_ID,
+                markdownText: "Most recent note",
+                attachments: {}
+            });
+            recentNote.createdAtIso = "2024-05-01T00:00:00.000Z";
+            recentNote.updatedAtIso = "2024-05-01T00:00:00.000Z";
+            recentNote.lastActivityIso = "2024-05-01T00:00:00.000Z";
+
+            const targetNote = buildNoteRecord({
+                noteId: TARGET_NOTE_ID,
+                markdownText: "Target note",
+                attachments: {}
+            });
+            targetNote.createdAtIso = "2024-04-01T00:00:00.000Z";
+            targetNote.updatedAtIso = "2024-04-01T00:00:00.000Z";
+            targetNote.lastActivityIso = "2024-04-01T00:00:00.000Z";
+
+            const followNote = buildNoteRecord({
+                noteId: FOLLOW_NOTE_ID,
+                markdownText: "Trailing note",
+                attachments: {}
+            });
+            followNote.createdAtIso = "2024-03-01T00:00:00.000Z";
+            followNote.updatedAtIso = "2024-03-01T00:00:00.000Z";
+            followNote.lastActivityIso = "2024-03-01T00:00:00.000Z";
+
+            const page = await preparePage(browser, { records: [recentNote, targetNote, followNote] });
+
+            const listIds = async () => page.evaluate(() => (
+                Array.from(document.querySelectorAll('.markdown-block[data-note-id]:not(.top-editor)'))
+                    .map((node) => node.getAttribute('data-note-id'))
+            ));
+
+            const targetSelector = `.markdown-block[data-note-id="${TARGET_NOTE_ID}"]`;
+            const followSelector = `.markdown-block[data-note-id="${FOLLOW_NOTE_ID}"]`;
+            const editorSelector = `${targetSelector} .markdown-editor`;
+
+            try {
+                await page.waitForSelector(targetSelector);
+                const initialOrder = await listIds();
+                assert.deepEqual(initialOrder.slice(0, 3), [RECENT_NOTE_ID, TARGET_NOTE_ID, FOLLOW_NOTE_ID]);
+
+                await page.click(`${targetSelector} .note-preview`);
+                await page.waitForSelector(`${targetSelector}.editing-in-place`);
+                await page.focus(editorSelector);
+                await page.type(editorSelector, "\nUpdated via navigation");
+                await page.keyboard.press("ArrowDown");
+
+                await page.waitForFunction((selector) => {
+                    const node = document.querySelector(selector);
+                    return node && !node.classList.contains('editing-in-place');
+                }, {}, targetSelector);
+
+                await page.waitForSelector(`${followSelector}.editing-in-place`);
+
+                await page.waitForFunction((expectedFirstId) => {
+                    const ids = Array.from(document.querySelectorAll('.markdown-block[data-note-id]:not(.top-editor)'))
+                        .map((node) => node.getAttribute('data-note-id'));
+                    return ids.length > 0 && ids[0] === expectedFirstId;
+                }, {}, TARGET_NOTE_ID);
+
+                const finalOrder = await listIds();
+                assert.equal(finalOrder[0], TARGET_NOTE_ID, "edited note bubbles to top after arrow navigation");
+            } finally {
+                await page.close();
+            }
+        });
+
         test("clicking a long note reveals the full content and caret at end", async () => {
             if (skipIfNoBrowser()) return;
             const seededRecords = [buildNoteRecord({
@@ -940,6 +1527,17 @@ if (!puppeteerModule) {
                 const titleText = await page.$eval('.keyboard-shortcuts-title', (el) => el.textContent?.trim());
                 assert.equal(typeof titleText, "string");
                 assert.ok(titleText?.length);
+
+                const shortcutDescriptions = await page.$$eval(
+                    '.keyboard-shortcut-description',
+                    (nodes) => nodes
+                        .map((node) => node.textContent?.trim() ?? "")
+                        .filter((text) => text.length > 0)
+                );
+                assert.ok(
+                    shortcutDescriptions.some((text) => text.includes("negative indent")),
+                    "Shift+Tab shortcut description mentions negative indent"
+                );
 
                 await page.keyboard.press("Escape");
 

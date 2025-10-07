@@ -19,6 +19,7 @@ import {
     transformMarkdownWithAttachments
 } from "./imagePaste.js";
 import { createMarkdownEditorHost, MARKDOWN_MODE_EDIT } from "./markdownEditorHost.js";
+import { isTopEditorAutofocusSuppressed, clearTopEditorAutofocusSuppression } from "./focusManager.js";
 
 const TOP_EDITOR_RESIZE_OPTIONS = Object.freeze({ minHeightPx: 20, extraPaddingPx: 0 });
 
@@ -46,6 +47,7 @@ export function mountTopEditor({ notesContainer, onCreateRecord }) {
     editor.setAttribute("rows", "1");
     editor.setAttribute("aria-label", ARIA_LABEL_NEW_NOTE);
     editor.setAttribute("autofocus", "autofocus");
+    editor.addEventListener("focus", clearTopEditorAutofocusSuppression);
 
     registerInitialAttachments(editor, {});
     enableClipboardImagePaste(editor);
@@ -161,6 +163,12 @@ export function mountTopEditor({ notesContainer, onCreateRecord }) {
         };
 
         const kick = () => {
+            if (isTopEditorAutofocusSuppressed()) {
+                tries = 0;
+                setTimeout(kick, 250);
+                return;
+            }
+
             if (shouldDeferFocus()) {
                 tries = 0;
                 setTimeout(kick, 120);

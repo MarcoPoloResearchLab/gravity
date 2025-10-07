@@ -149,6 +149,201 @@ if (!puppeteerModule) {
             }
         });
 
+        test("EasyMDE undo and redo shortcuts restore history", async () => {
+            if (shouldSkip()) return;
+            const page = await prepareEnhancedPage(browser);
+            try {
+                const cmSelector = "#top-editor .CodeMirror";
+                const cmTextarea = `${cmSelector} textarea`;
+                await page.waitForSelector(cmSelector);
+                await page.waitForSelector(cmTextarea);
+
+                await page.focus(cmTextarea);
+                await page.keyboard.type("Alpha");
+
+                let state = await getCodeMirrorState(page);
+                assert.equal(state.value, "Alpha");
+
+                await page.keyboard.down("Control");
+                await page.keyboard.press("KeyZ");
+                await page.keyboard.up("Control");
+
+                state = await getCodeMirrorState(page);
+                assert.equal(state.value, "");
+
+                await page.keyboard.down("Control");
+                await page.keyboard.down("Shift");
+                await page.keyboard.press("KeyZ");
+                await page.keyboard.up("Shift");
+                await page.keyboard.up("Control");
+
+                state = await getCodeMirrorState(page);
+                assert.equal(state.value, "Alpha");
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("EasyMDE skips duplicate closing brackets", async () => {
+            if (shouldSkip()) return;
+            const page = await prepareEnhancedPage(browser);
+            try {
+                const cmSelector = "#top-editor .CodeMirror";
+                const cmTextarea = `${cmSelector} textarea`;
+                await page.waitForSelector(cmSelector);
+                await page.waitForSelector(cmTextarea);
+
+                await page.focus(cmTextarea);
+                await page.keyboard.type("(");
+
+                let state = await getCodeMirrorState(page);
+                assert.equal(state.value, "()");
+                assert.equal(state.cursor.ch, 1);
+
+                await page.keyboard.type(")");
+
+                state = await getCodeMirrorState(page);
+                assert.equal(state.value, "()");
+                assert.equal(state.cursor.ch, 2);
+
+                await page.evaluate(() => {
+                    const wrapper = document.querySelector("#top-editor .CodeMirror");
+                    if (!wrapper) return;
+                    const cm = wrapper.CodeMirror;
+                    cm.setValue("");
+                    cm.setCursor({ line: 0, ch: 0 });
+                });
+
+                await page.focus(cmTextarea);
+                await page.keyboard.type("{");
+                await page.keyboard.type("}");
+
+                state = await getCodeMirrorState(page);
+                assert.equal(state.value, "{}");
+                assert.equal(state.cursor.ch, 2);
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("EasyMDE delete line shortcut removes the active row", async () => {
+            if (shouldSkip()) return;
+            const page = await prepareEnhancedPage(browser);
+            try {
+                const cmSelector = "#top-editor .CodeMirror";
+                const cmTextarea = `${cmSelector} textarea`;
+                await page.waitForSelector(cmSelector);
+                await page.waitForSelector(cmTextarea);
+
+                await page.evaluate(() => {
+                    const wrapper = document.querySelector("#top-editor .CodeMirror");
+                    if (!wrapper) return;
+                    const cm = wrapper.CodeMirror;
+                    cm.setValue("Alpha\nBeta");
+                    cm.setCursor({ line: 0, ch: 1 });
+                });
+
+                await page.focus(cmTextarea);
+                await page.keyboard.down("Control");
+                await page.keyboard.down("Shift");
+                await page.keyboard.press("KeyK");
+                await page.keyboard.up("Shift");
+                await page.keyboard.up("Control");
+
+                const state = await getCodeMirrorState(page);
+                assert.equal(state.value, "Beta");
+                assert.equal(state.cursor.line, 0);
+                assert.equal(state.cursor.ch, 0);
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("EasyMDE duplicate line shortcut copies the active row", async () => {
+            if (shouldSkip()) return;
+            const page = await prepareEnhancedPage(browser);
+            try {
+                const cmSelector = "#top-editor .CodeMirror";
+                const cmTextarea = `${cmSelector} textarea`;
+                await page.waitForSelector(cmSelector);
+                await page.waitForSelector(cmTextarea);
+
+                await page.evaluate(() => {
+                    const wrapper = document.querySelector("#top-editor .CodeMirror");
+                    if (!wrapper) return;
+                    const cm = wrapper.CodeMirror;
+                    cm.setValue("Alpha\nBeta");
+                    cm.setCursor({ line: 0, ch: 2 });
+                });
+
+                await page.focus(cmTextarea);
+                await page.keyboard.down("Control");
+                await page.keyboard.down("Shift");
+                await page.keyboard.press("KeyD");
+                await page.keyboard.up("Shift");
+                await page.keyboard.up("Control");
+
+                const state = await getCodeMirrorState(page);
+                assert.equal(state.value, "Alpha\nAlpha\nBeta");
+                assert.equal(state.cursor.line, 1);
+                assert.equal(state.cursor.ch, 2);
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("EasyMDE renumbers ordered lists before submit", async () => {
+            if (shouldSkip()) return;
+            const page = await prepareEnhancedPage(browser);
+            try {
+                const cmSelector = "#top-editor .CodeMirror";
+                const cmTextarea = `${cmSelector} textarea`;
+                await page.waitForSelector(cmSelector);
+                await page.waitForSelector(cmTextarea);
+
+                await page.evaluate(() => {
+                    const wrapper = document.querySelector("#top-editor .CodeMirror");
+                    if (!wrapper) return;
+                    const cm = wrapper.CodeMirror;
+                    cm.setValue("1. Alpha\n2. Bravo\n3. Charlie");
+                });
+
+                await page.evaluate(() => {
+                    const wrapper = document.querySelector("#top-editor .CodeMirror");
+                    if (!wrapper) return;
+                    const cm = wrapper.CodeMirror;
+                    cm.replaceRange("", { line: 0, ch: 0 }, { line: 1, ch: 0 });
+                });
+
+                let state = await getCodeMirrorState(page);
+                assert.equal(state.value, "2. Bravo\n3. Charlie");
+
+                await page.keyboard.down("Control");
+                await page.keyboard.press("Enter");
+                await page.keyboard.up("Control");
+
+                await page.waitForFunction((storageKey) => {
+                    const raw = window.localStorage.getItem(storageKey);
+                    if (!raw) return false;
+                    try {
+                        const records = JSON.parse(raw);
+                        return Array.isArray(records) && records.length === 1;
+                    } catch {
+                        return false;
+                    }
+                }, {}, appConfig.storageKey);
+
+                const savedRecords = await page.evaluate((storageKey) => {
+                    const raw = window.localStorage.getItem(storageKey);
+                    return raw ? JSON.parse(raw) : [];
+                }, appConfig.storageKey);
+
+                assert.equal(savedRecords[0]?.markdownText, "1. Bravo\n2. Charlie");
+            } finally {
+                await page.close();
+            }
+        });
+
         test("EasyMDE renumbers ordered lists after pasted insertion", async () => {
             if (shouldSkip()) return;
             const page = await prepareEnhancedPage(browser);
