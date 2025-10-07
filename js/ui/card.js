@@ -63,6 +63,8 @@ const previewFocusTargets = new WeakMap();
 let pinnedLayoutContainer = null;
 let pinnedLayoutResizeListenerAttached = false;
 let topEditorResizeObserver = null;
+const LINE_ENDING_NORMALIZE_PATTERN = /\r\n/g;
+const TRAILING_WHITESPACE_PATTERN = /[ \t]+$/;
 /**
  * Render a persisted note card into the provided container.
  * @param {import("../types.d.js").NoteRecord} record
@@ -944,9 +946,17 @@ async function finalizeCard(card, notesContainer, options = {}) {
     await (editorHost ? editorHost.waitForPendingImages() : waitForPendingImagePastes(editor));
     const text    = editorHost ? editorHost.getValue() : editor.value;
     const trimmed = text.trim();
-    const was     = card.dataset.initialValue ?? text;
-    const changed = text !== was; // only reorder/persist if user actually changed something
+    const noteId = card.getAttribute("data-note-id");
+    const existingRecord = typeof noteId === "string" ? GravityStore.getById(noteId) : null;
+    const previousText = typeof card.dataset.initialValue === "string"
+        ? card.dataset.initialValue
+        : (existingRecord?.markdownText ?? text);
+    const previousAttachments = existingRecord?.attachments ?? {};
+    const normalizedPrevious = normalizeMarkdownForComparison(previousText);
+    const normalizedNext = normalizeMarkdownForComparison(text);
     const attachments = collectReferencedAttachments(editor);
+    const attachmentsChanged = !areAttachmentDictionariesEqual(attachments, previousAttachments);
+    const changed = normalizedNext !== normalizedPrevious || attachmentsChanged;
 
     if (card.classList.contains("editing-in-place")) {
         card.classList.remove("editing-in-place");
@@ -973,17 +983,26 @@ async function finalizeCard(card, notesContainer, options = {}) {
         return;
     }
 
-    // Update preview (safe either way)
-    const markdownWithAttachments = transformMarkdownWithAttachments(text, attachments);
-    renderSanitizedMarkdown(preview, markdownWithAttachments);
     const previewWrapper = card.querySelector(".note-preview");
     const expandToggle = card.querySelector(".note-expand-toggle");
-    scheduleOverflowCheck(previewWrapper, preview, expandToggle);
-    if (!changed && !forceBubble) {
+    if (!changed) {
+        const baselineMarkdown = transformMarkdownWithAttachments(previousText, attachments);
+        renderSanitizedMarkdown(preview, baselineMarkdown);
+        scheduleOverflowCheck(previewWrapper, preview, expandToggle);
+        if (editorHost) {
+            editorHost.setValue(previousText);
+        } else if (editor instanceof HTMLTextAreaElement) {
+            editor.value = previousText;
+        }
         return;
     }
 
-    persistCardState(card, notesContainer, text, { bubbleToTop });
+    const markdownWithAttachments = transformMarkdownWithAttachments(text, attachments);
+    renderSanitizedMarkdown(preview, markdownWithAttachments);
+    scheduleOverflowCheck(previewWrapper, preview, expandToggle);
+
+    const shouldBubble = forceBubble || bubbleToTop;
+    persistCardState(card, notesContainer, text, { bubbleToTop: shouldBubble });
 
     if (typeof requestAnimationFrame === "function") {
         await new Promise((resolve) => {
@@ -1229,6 +1248,61 @@ function focusTopEditorFromCard(card, notesContainer) {
         topHost.focus();
         topHost.setCaretPosition("end");
     });
+
+    return true;
+}
+
+/**
+ * Normalize Markdown text so that insignificant whitespace differences do not count as edits.
+ * @param {string} value
+ * @returns {string}
+ */
+function normalizeMarkdownForComparison(value) {
+    if (typeof value !== "string") {
+        return "";
+    }
+    return value
+        .replace(LINE_ENDING_NORMALIZE_PATTERN, "\n")
+        .split("\n")
+        .map((line) => line.replace(TRAILING_WHITESPACE_PATTERN, ""))
+        .join("\n")
+        .trim();
+}
+
+/**
+ * Compare attachment dictionaries for equality.
+ * @param {Record<string, import("../types.d.js").AttachmentRecord>} current
+ * @param {Record<string, import("../types.d.js").AttachmentRecord>} previous
+ * @returns {boolean}
+ */
+function areAttachmentDictionariesEqual(current, previous) {
+    const currentEntries = Object.entries(current || {});
+    const previousEntries = Object.entries(previous || {});
+    if (currentEntries.length !== previousEntries.length) {
+        return false;
+    }
+
+    currentEntries.sort(([a], [b]) => a.localeCompare(b));
+    previousEntries.sort(([a], [b]) => a.localeCompare(b));
+
+    for (let index = 0; index < currentEntries.length; index += 1) {
+        const [currentKey, currentRecord] = currentEntries[index];
+        const [previousKey, previousRecord] = previousEntries[index];
+        if (currentKey !== previousKey) {
+            return false;
+        }
+        if (!currentRecord || !previousRecord) {
+            return false;
+        }
+        if (currentRecord.dataUrl !== previousRecord.dataUrl) {
+            return false;
+        }
+        const currentAlt = typeof currentRecord.altText === "string" ? currentRecord.altText : "";
+        const previousAlt = typeof previousRecord.altText === "string" ? previousRecord.altText : "";
+        if (currentAlt !== previousAlt) {
+            return false;
+        }
+    }
 
     return true;
 }

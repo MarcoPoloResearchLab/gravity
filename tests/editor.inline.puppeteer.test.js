@@ -628,7 +628,7 @@ if (!puppeteerModule) {
             }
         });
 
-        test("ctrl-enter bubbles notes to the top even without edits", async () => {
+        test("ctrl-enter keeps order when no edits are made", async () => {
             if (skipIfNoBrowser()) return;
 
             const RECENT_NOTE_ID = "bubble-recent";
@@ -676,6 +676,77 @@ if (!puppeteerModule) {
                     return node && !node.classList.contains("editing-in-place");
                 }, {}, TARGET_NOTE_ID);
 
+                await page.waitForTimeout(200);
+
+                const finalOrder = await getNoteOrder();
+                assert.deepEqual(
+                    finalOrder.slice(0, 2),
+                    [RECENT_NOTE_ID, TARGET_NOTE_ID],
+                    "target note stays behind the most recent note when no edits occur"
+                );
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("ctrl-enter bubbles notes to the top after edits", async () => {
+            if (skipIfNoBrowser()) return;
+
+            const RECENT_NOTE_ID = "bubble-edited-recent";
+            const TARGET_NOTE_ID = "bubble-edited-target";
+
+            const recentNote = buildNoteRecord({
+                noteId: RECENT_NOTE_ID,
+                markdownText: "Recent entry",
+                attachments: {}
+            });
+            recentNote.createdAtIso = "2024-04-01T00:00:00.000Z";
+            recentNote.updatedAtIso = "2024-04-01T00:00:00.000Z";
+            recentNote.lastActivityIso = "2024-04-01T00:00:00.000Z";
+
+            const targetNote = buildNoteRecord({
+                noteId: TARGET_NOTE_ID,
+                markdownText: "Older entry",
+                attachments: {}
+            });
+            targetNote.createdAtIso = "2024-01-01T00:00:00.000Z";
+            targetNote.updatedAtIso = "2024-01-01T00:00:00.000Z";
+            targetNote.lastActivityIso = "2024-01-01T00:00:00.000Z";
+
+            const page = await preparePage(browser, { records: [recentNote, targetNote] });
+            const getNoteOrder = async () => page.evaluate(() => (
+                Array.from(document.querySelectorAll('.markdown-block[data-note-id]:not(.top-editor)'))
+                    .map((node) => node.getAttribute('data-note-id'))
+            ));
+
+            try {
+                await page.waitForSelector(`.markdown-block[data-note-id="${TARGET_NOTE_ID}"]`);
+                const initialOrder = await getNoteOrder();
+                assert.deepEqual(initialOrder.slice(0, 2), [RECENT_NOTE_ID, TARGET_NOTE_ID]);
+
+                const targetSelector = `.markdown-block[data-note-id="${TARGET_NOTE_ID}"]`;
+                const editorSelector = `${targetSelector} .markdown-editor`;
+                await page.click(`${targetSelector} .note-preview`);
+                await page.waitForSelector(`${targetSelector}.editing-in-place`);
+                await page.focus(editorSelector);
+                await page.evaluate((selector) => {
+                    const textarea = document.querySelector(selector);
+                    if (!(textarea instanceof HTMLTextAreaElement)) return;
+                    const length = textarea.value.length;
+                    textarea.selectionStart = length;
+                    textarea.selectionEnd = length;
+                }, editorSelector);
+                await page.type(editorSelector, " updated");
+
+                await page.keyboard.down("Control");
+                await page.keyboard.press("Enter");
+                await page.keyboard.up("Control");
+
+                await page.waitForFunction((noteId) => {
+                    const node = document.querySelector(`.markdown-block[data-note-id="${noteId}"]`);
+                    return node && !node.classList.contains("editing-in-place");
+                }, {}, TARGET_NOTE_ID);
+
                 await page.waitForFunction((noteId) => {
                     const ids = Array.from(document.querySelectorAll('.markdown-block[data-note-id]:not(.top-editor)'))
                         .map((node) => node.getAttribute('data-note-id'));
@@ -683,7 +754,84 @@ if (!puppeteerModule) {
                 }, {}, TARGET_NOTE_ID);
 
                 const finalOrder = await getNoteOrder();
-                assert.equal(finalOrder[0], TARGET_NOTE_ID, "target note bubbles to the top after ctrl-enter");
+                assert.equal(finalOrder[0], TARGET_NOTE_ID, "target note bubbles to the top after edits");
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("ctrl-enter ignores trailing whitespace changes", async () => {
+            if (skipIfNoBrowser()) return;
+
+            const RECENT_NOTE_ID = "bubble-space-recent";
+            const TARGET_NOTE_ID = "bubble-space-target";
+            const TARGET_MARKDOWN = "Whitespace baseline entry.";
+
+            const recentNote = buildNoteRecord({
+                noteId: RECENT_NOTE_ID,
+                markdownText: "Recent entry",
+                attachments: {}
+            });
+            recentNote.createdAtIso = "2024-04-01T00:00:00.000Z";
+            recentNote.updatedAtIso = "2024-04-01T00:00:00.000Z";
+            recentNote.lastActivityIso = "2024-04-01T00:00:00.000Z";
+
+            const targetNote = buildNoteRecord({
+                noteId: TARGET_NOTE_ID,
+                markdownText: TARGET_MARKDOWN,
+                attachments: {}
+            });
+            targetNote.createdAtIso = "2024-01-01T00:00:00.000Z";
+            targetNote.updatedAtIso = "2024-01-01T00:00:00.000Z";
+            targetNote.lastActivityIso = "2024-01-01T00:00:00.000Z";
+
+            const page = await preparePage(browser, { records: [recentNote, targetNote] });
+            const getNoteOrder = async () => page.evaluate(() => (
+                Array.from(document.querySelectorAll('.markdown-block[data-note-id]:not(.top-editor)'))
+                    .map((node) => node.getAttribute('data-note-id'))
+            ));
+
+            try {
+                await page.waitForSelector(`.markdown-block[data-note-id="${TARGET_NOTE_ID}"]`);
+                const initialOrder = await getNoteOrder();
+                assert.deepEqual(initialOrder.slice(0, 2), [RECENT_NOTE_ID, TARGET_NOTE_ID]);
+
+                const targetSelector = `.markdown-block[data-note-id="${TARGET_NOTE_ID}"]`;
+                const editorSelector = `${targetSelector} .markdown-editor`;
+                await page.click(`${targetSelector} .note-preview`);
+                await page.waitForSelector(`${targetSelector}.editing-in-place`);
+                await page.focus(editorSelector);
+                await page.evaluate((selector) => {
+                    const textarea = document.querySelector(selector);
+                    if (!(textarea instanceof HTMLTextAreaElement)) return;
+                    const length = textarea.value.length;
+                    textarea.selectionStart = length;
+                    textarea.selectionEnd = length;
+                }, editorSelector);
+                await page.type(editorSelector, " ");
+
+                await page.keyboard.down("Control");
+                await page.keyboard.press("Enter");
+                await page.keyboard.up("Control");
+
+                await page.waitForFunction((noteId) => {
+                    const node = document.querySelector(`.markdown-block[data-note-id="${noteId}"]`);
+                    return node && !node.classList.contains("editing-in-place");
+                }, {}, TARGET_NOTE_ID);
+
+                await page.waitForTimeout(200);
+
+                const finalOrder = await getNoteOrder();
+                assert.deepEqual(
+                    finalOrder.slice(0, 2),
+                    [RECENT_NOTE_ID, TARGET_NOTE_ID],
+                    "whitespace-only edits do not bubble the note"
+                );
+
+                await page.click(`${targetSelector} .note-preview`);
+                await page.waitForSelector(`${targetSelector}.editing-in-place`);
+                const editorValue = await page.$eval(editorSelector, (el) => el.value);
+                assert.equal(editorValue, TARGET_MARKDOWN, "trailing whitespace is discarded");
             } finally {
                 await page.close();
             }
