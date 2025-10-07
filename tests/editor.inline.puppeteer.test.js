@@ -696,6 +696,69 @@ if (!puppeteerModule) {
             }
         });
 
+        test("preview checkbox toggle keeps focus on the toggled card", async () => {
+            if (skipIfNoBrowser()) return;
+
+            const RECENT_NOTE_ID = "recent-focus-note";
+            const TARGET_NOTE_ID = "checkbox-focus-note";
+            const recentNote = buildNoteRecord({
+                noteId: RECENT_NOTE_ID,
+                markdownText: "Recent note",
+                attachments: {}
+            });
+            const targetNote = buildNoteRecord({
+                noteId: TARGET_NOTE_ID,
+                markdownText: "- [ ] First task\n- [x] Second task",
+                attachments: {}
+            });
+
+            const page = await preparePage(browser, {
+                records: [recentNote, targetNote],
+                previewBubbleDelayMs: 80
+            });
+
+            const checkboxSelector = `[data-note-id="${TARGET_NOTE_ID}"] input[type="checkbox"][data-task-index="0"]`;
+
+            try {
+                await page.waitForSelector(checkboxSelector);
+                await page.click(checkboxSelector);
+                await pause(page, 40);
+
+                const initialFocus = await page.evaluate(() => {
+                    const activeElement = document.activeElement;
+                    const activeBlock = activeElement?.closest?.('.markdown-block');
+                    const isTopEditor = Boolean(activeBlock?.classList?.contains('top-editor'));
+                    const cardId = activeBlock?.getAttribute?.('data-note-id') ?? null;
+                    return { isTopEditor, cardId };
+                });
+
+                assert.equal(initialFocus.isTopEditor, false, "top editor does not reclaim focus immediately after toggle");
+                assert.equal(initialFocus.cardId, TARGET_NOTE_ID, "focus stays with the toggled card");
+
+                await page.waitForFunction((targetId) => {
+                    const ids = Array.from(document.querySelectorAll('.markdown-block:not(.top-editor)'))
+                        .map((node) => node.getAttribute('data-note-id'));
+                    return ids.length > 0 && ids[0] === targetId;
+                }, {}, TARGET_NOTE_ID);
+
+                const postBubbleFocus = await page.evaluate(() => {
+                    const activeElement = document.activeElement;
+                    const activeBlock = activeElement?.closest?.('.markdown-block');
+                    const isTopEditor = Boolean(activeBlock?.classList?.contains('top-editor'));
+                    const cardId = activeBlock?.getAttribute?.('data-note-id') ?? null;
+                    return { isTopEditor, cardId };
+                });
+
+                assert.equal(postBubbleFocus.isTopEditor, false, "top editor remains unfocused after bubbling");
+                assert.ok(
+                    postBubbleFocus.cardId === TARGET_NOTE_ID || postBubbleFocus.cardId === null,
+                    "focus stays on the toggled card or gracefully returns to the body"
+                );
+            } finally {
+                await page.close();
+            }
+        });
+
         test("pin toggle keeps a single pinned card and persists", async () => {
             if (skipIfNoBrowser()) return;
 

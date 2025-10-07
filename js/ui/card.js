@@ -306,6 +306,8 @@ export function renderCard(record, options = {}) {
         event.preventDefault();
         event.stopPropagation();
 
+        suppressTopEditorAutofocus();
+
         const taskIndex = Number(target.dataset.taskIndex);
         if (!Number.isInteger(taskIndex) || taskIndex < 0) {
             return;

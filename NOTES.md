@@ -19,6 +19,4 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
 
 ## BugFixes
 
-- [ ] [GN-09] I have made a checkmark selected, after which the cursor got back intot he first note. That's a bug as we dont return the cursor to the first note anylonger, leaving the focus where it is (probably just using window)
-
 ## Maintenance
