@@ -16,5 +16,7 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
 
 ## BugFixes
 
+- [ ] [GN-06] Check if a user presses closing brackets and don''t add closing brackets if the user did it already, e.g ()) or {}} shall be sanitzied
+- [ ] [GN-07] I haver deleted the top line of the numbered list and then pressed CMD-Enter. The list hasn't been renumbered after that. leaving the note using down cursor also didnt re-numbered the list. Ensure that the lists stay properly numbered with accurate handling of the nested lists
 
 ## Maintenance

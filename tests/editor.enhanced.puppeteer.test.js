@@ -149,6 +149,41 @@ if (!puppeteerModule) {
             }
         });
 
+        test("EasyMDE undo and redo shortcuts restore history", async () => {
+            if (shouldSkip()) return;
+            const page = await prepareEnhancedPage(browser);
+            try {
+                const cmSelector = "#top-editor .CodeMirror";
+                const cmTextarea = `${cmSelector} textarea`;
+                await page.waitForSelector(cmSelector);
+                await page.waitForSelector(cmTextarea);
+
+                await page.focus(cmTextarea);
+                await page.keyboard.type("Alpha");
+
+                let state = await getCodeMirrorState(page);
+                assert.equal(state.value, "Alpha");
+
+                await page.keyboard.down("Control");
+                await page.keyboard.press("KeyZ");
+                await page.keyboard.up("Control");
+
+                state = await getCodeMirrorState(page);
+                assert.equal(state.value, "");
+
+                await page.keyboard.down("Control");
+                await page.keyboard.down("Shift");
+                await page.keyboard.press("KeyZ");
+                await page.keyboard.up("Shift");
+                await page.keyboard.up("Control");
+
+                state = await getCodeMirrorState(page);
+                assert.equal(state.value, "Alpha");
+            } finally {
+                await page.close();
+            }
+        });
+
         test("EasyMDE renumbers ordered lists after pasted insertion", async () => {
             if (shouldSkip()) return;
             const page = await prepareEnhancedPage(browser);

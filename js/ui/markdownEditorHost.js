@@ -388,6 +388,28 @@ export function createMarkdownEditorHost(options) {
     function configureEasyMde(instance, { syncTextareaValue }) {
         const { codemirror } = instance;
 
+        const executeUndo = (cm) => {
+            if (!cm) return;
+            if (typeof cm.execCommand === "function") {
+                cm.execCommand("undo");
+                return;
+            }
+            if (typeof cm.undo === "function") {
+                cm.undo();
+            }
+        };
+
+        const executeRedo = (cm) => {
+            if (!cm) return;
+            if (typeof cm.execCommand === "function") {
+                cm.execCommand("redo");
+                return;
+            }
+            if (typeof cm.redo === "function") {
+                cm.redo();
+            }
+        };
+
         codemirror.addKeyMap({
             Enter: (cm) => {
                 handleEnter(cm);
@@ -398,7 +420,31 @@ export function createMarkdownEditorHost(options) {
             "Cmd-Enter": () => emit("submit"),
             "Ctrl-Enter": () => emit("submit"),
             "Cmd-S": () => emit("submit"),
-            "Ctrl-S": () => emit("submit")
+            "Ctrl-S": () => emit("submit"),
+            "Cmd-Z": (cm) => {
+                executeUndo(cm);
+            },
+            "Ctrl-Z": (cm) => {
+                executeUndo(cm);
+            },
+            "Cmd-Shift-Z": (cm) => {
+                executeRedo(cm);
+            },
+            "Ctrl-Shift-Z": (cm) => {
+                executeRedo(cm);
+            },
+            "Shift-Cmd-Z": (cm) => {
+                executeRedo(cm);
+            },
+            "Shift-Ctrl-Z": (cm) => {
+                executeRedo(cm);
+            },
+            "Cmd-Y": (cm) => {
+                executeRedo(cm);
+            },
+            "Ctrl-Y": (cm) => {
+                executeRedo(cm);
+            }
         });
 
         codemirror.on("change", (cm, change) => {
