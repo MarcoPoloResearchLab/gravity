@@ -14,9 +14,11 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
 
 ## Improvements
 
+- [ ] [GN-08] Add delete line shortcut. Check if it doesnt exist already in MDE. Document the shortcut
+- [ ] [GN-09] Add duplicate line where the cursor is shortcut. Check if it doesnt exist already in MDE. Document the shortcut
+
 ## BugFixes
 
-- [ ] [GN-06] Check if a user presses closing brackets and don''t add closing brackets if the user did it already, e.g ()) or {}} shall be sanitzied
-- [ ] [GN-07] I haver deleted the top line of the numbered list and then pressed CMD-Enter. The list hasn't been renumbered after that. leaving the note using down cursor also didnt re-numbered the list. Ensure that the lists stay properly numbered with accurate handling of the nested lists
+- [ ] [GN-07] I have deleted the top line of the numbered list and then pressed CMD-Enter. The list hasn't been renumbered after that. leaving the note using down cursor also didnt re-numbered the list. Ensure that the lists stay properly numbered with accurate handling of the nested lists
 
 ## Maintenance

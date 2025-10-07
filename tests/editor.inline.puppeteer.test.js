@@ -323,6 +323,70 @@ if (!puppeteerModule) {
             }
         });
 
+        test("closing brackets skip duplicates in inline editor", async () => {
+            if (skipIfNoBrowser()) return;
+            const seededRecords = [buildNoteRecord({
+                noteId: BRACKET_NOTE_ID,
+                markdownText: BRACKET_MARKDOWN,
+                attachments: {}
+            })];
+
+            const page = await preparePage(browser, { records: seededRecords });
+            const cardSelector = `.markdown-block[data-note-id="${BRACKET_NOTE_ID}"]`;
+            const editorSelector = `${cardSelector} .markdown-editor`;
+
+            try {
+                await page.waitForSelector(cardSelector);
+                await page.click(`${cardSelector} .note-preview`);
+                await page.waitForSelector(`${cardSelector}.editing-in-place`);
+                await page.focus(editorSelector);
+
+                await page.evaluate((selector) => {
+                    const textarea = document.querySelector(selector);
+                    if (!(textarea instanceof HTMLTextAreaElement)) return;
+                    textarea.value = "";
+                    textarea.selectionStart = 0;
+                    textarea.selectionEnd = 0;
+                }, editorSelector);
+
+                await page.keyboard.type("(");
+                await page.keyboard.type(")");
+
+                let textareaState = await page.$eval(editorSelector, (el) => ({
+                    value: el.value,
+                    selectionStart: el.selectionStart ?? 0,
+                    selectionEnd: el.selectionEnd ?? 0
+                }));
+
+                assert.equal(textareaState.value, "()");
+                assert.equal(textareaState.selectionStart, 2);
+                assert.equal(textareaState.selectionEnd, 2);
+
+                await page.evaluate((selector) => {
+                    const textarea = document.querySelector(selector);
+                    if (!(textarea instanceof HTMLTextAreaElement)) return;
+                    textarea.value = "";
+                    textarea.selectionStart = 0;
+                    textarea.selectionEnd = 0;
+                }, editorSelector);
+
+                await page.keyboard.type("{");
+                await page.keyboard.type("}");
+
+                textareaState = await page.$eval(editorSelector, (el) => ({
+                    value: el.value,
+                    selectionStart: el.selectionStart ?? 0,
+                    selectionEnd: el.selectionEnd ?? 0
+                }));
+
+                assert.equal(textareaState.value, "{}");
+                assert.equal(textareaState.selectionStart, 2);
+                assert.equal(textareaState.selectionEnd, 2);
+            } finally {
+                await page.close();
+            }
+        });
+
         test("nested ordered lists restart numbering at each depth", async () => {
             if (skipIfNoBrowser()) return;
             const seededRecords = [buildNoteRecord({

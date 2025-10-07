@@ -184,6 +184,48 @@ if (!puppeteerModule) {
             }
         });
 
+        test("EasyMDE skips duplicate closing brackets", async () => {
+            if (shouldSkip()) return;
+            const page = await prepareEnhancedPage(browser);
+            try {
+                const cmSelector = "#top-editor .CodeMirror";
+                const cmTextarea = `${cmSelector} textarea`;
+                await page.waitForSelector(cmSelector);
+                await page.waitForSelector(cmTextarea);
+
+                await page.focus(cmTextarea);
+                await page.keyboard.type("(");
+
+                let state = await getCodeMirrorState(page);
+                assert.equal(state.value, "()");
+                assert.equal(state.cursor.ch, 1);
+
+                await page.keyboard.type(")");
+
+                state = await getCodeMirrorState(page);
+                assert.equal(state.value, "()");
+                assert.equal(state.cursor.ch, 2);
+
+                await page.evaluate(() => {
+                    const wrapper = document.querySelector("#top-editor .CodeMirror");
+                    if (!wrapper) return;
+                    const cm = wrapper.CodeMirror;
+                    cm.setValue("");
+                    cm.setCursor({ line: 0, ch: 0 });
+                });
+
+                await page.focus(cmTextarea);
+                await page.keyboard.type("{");
+                await page.keyboard.type("}");
+
+                state = await getCodeMirrorState(page);
+                assert.equal(state.value, "{}");
+                assert.equal(state.cursor.ch, 2);
+            } finally {
+                await page.close();
+            }
+        });
+
         test("EasyMDE renumbers ordered lists after pasted insertion", async () => {
             if (shouldSkip()) return;
             const page = await prepareEnhancedPage(browser);

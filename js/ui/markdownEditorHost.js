@@ -34,6 +34,7 @@ const BRACKET_PAIRS = Object.freeze({
     '"': '"',
     "'": "'"
 });
+const CLOSING_BRACKETS = new Set(Object.values(BRACKET_PAIRS));
 
 /**
  * @typedef {"edit" | "view"} MarkdownEditorMode
@@ -487,11 +488,21 @@ export function createMarkdownEditorHost(options) {
         codemirror.on("keypress", (cm, event) => {
             if (event.defaultPrevented) return;
             if (event.metaKey || event.ctrlKey || event.altKey) return;
+
             const closing = BRACKET_PAIRS[event.key];
-            if (!closing) return;
-            const handled = handleBracketAutoClose(cm, event.key, closing);
-            if (handled) {
-                event.preventDefault();
+            if (closing) {
+                const handled = handleBracketAutoClose(cm, event.key, closing);
+                if (handled) {
+                    event.preventDefault();
+                    return;
+                }
+            }
+
+            if (CLOSING_BRACKETS.has(event.key)) {
+                const skipped = skipExistingClosingBracket(cm, event.key);
+                if (skipped) {
+                    event.preventDefault();
+                }
             }
         });
 
@@ -714,6 +725,14 @@ export function createMarkdownEditorHost(options) {
                 applyBracketPair(el, event.key, BRACKET_PAIRS[event.key]);
                 emitFn("change", { value: el.value });
                 return;
+            }
+
+            if (!isModifier && !event.altKey && CLOSING_BRACKETS.has(event.key)) {
+                const skipped = skipExistingClosingBracketTextarea(el, event.key);
+                if (skipped) {
+                    event.preventDefault();
+                    return;
+                }
             }
 
             if (!isModifier && !event.altKey && !event.shiftKey && event.key === "Enter") {
@@ -951,6 +970,21 @@ function applyBracketPair(textarea, openChar, closeChar) {
     }
 }
 
+function skipExistingClosingBracketTextarea(textarea, closeChar) {
+    if (typeof closeChar !== "string") return false;
+    const start = typeof textarea.selectionStart === "number" ? textarea.selectionStart : textarea.value.length;
+    const end = typeof textarea.selectionEnd === "number" ? textarea.selectionEnd : start;
+    if (start !== end) return false;
+    if (textarea.value.charAt(start) !== closeChar) return false;
+    const nextCaret = start + 1;
+    try {
+        textarea.setSelectionRange(nextCaret, nextCaret);
+    } catch {
+        return false;
+    }
+    return true;
+}
+
 function handleBracketAutoClose(cm, openChar, closeChar) {
     if (typeof closeChar !== "string") return false;
     const selections = cm.listSelections();
@@ -996,6 +1030,32 @@ function handleBracketAutoClose(cm, openChar, closeChar) {
         }
     });
     return handled;
+}
+
+function skipExistingClosingBracket(cm, closeChar) {
+    if (typeof closeChar !== "string") return false;
+    let moved = false;
+    cm.operation(() => {
+        const selections = cm.listSelections();
+        for (const selection of selections) {
+            const { anchor, head } = selection;
+            const anchorBeforeHead = anchor.line < head.line
+                || (anchor.line === head.line && anchor.ch <= head.ch);
+            const start = anchorBeforeHead ? anchor : head;
+            const end = anchorBeforeHead ? head : anchor;
+            const isCollapsed = start.line === end.line && start.ch === end.ch;
+            if (!isCollapsed) {
+                continue;
+            }
+            const nextPosition = { line: start.line, ch: start.ch + 1 };
+            const nextChar = cm.getRange(start, nextPosition);
+            if (nextChar === closeChar) {
+                cm.setCursor(nextPosition);
+                moved = true;
+            }
+        }
+    });
+    return moved;
 }
 
 function handleCodeFenceInCodeMirror(cm, cursor, lineText) {
