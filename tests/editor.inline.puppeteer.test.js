@@ -992,6 +992,17 @@ if (!puppeteerModule) {
                 assert.equal(typeof titleText, "string");
                 assert.ok(titleText?.length);
 
+                const shortcutDescriptions = await page.$$eval(
+                    '.keyboard-shortcut-description',
+                    (nodes) => nodes
+                        .map((node) => node.textContent?.trim() ?? "")
+                        .filter((text) => text.length > 0)
+                );
+                assert.ok(
+                    shortcutDescriptions.some((text) => text.includes("negative indent")),
+                    "Shift+Tab shortcut description mentions negative indent"
+                );
+
                 await page.keyboard.press("Escape");
 
                 await page.waitForFunction(() => {
