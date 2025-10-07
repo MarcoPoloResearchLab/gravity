@@ -958,6 +958,14 @@ async function finalizeCard(card, notesContainer, options = {}) {
     }
 
     persistCardState(card, notesContainer, text, { bubbleToTop });
+
+    if (typeof requestAnimationFrame === "function") {
+        await new Promise((resolve) => {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(resolve);
+            });
+        });
+    }
 }
 
 function deleteCard(card, notesContainer) {
