@@ -888,7 +888,7 @@ function applyBracketPair(textarea, openChar, closeChar) {
     const isSquarePair = openChar === "[" && closeChar === "]";
 
     if (isSquarePair && start === end) {
-        const insertion = "[ ]";
+        const insertion = "[ ] ";
         textarea.value = `${before}${insertion}${after}`;
         const caretAfterClose = start + insertion.length;
         textarea.setSelectionRange(caretAfterClose, caretAfterClose);
@@ -939,8 +939,9 @@ function handleBracketAutoClose(cm, openChar, closeChar) {
             }
 
             if (isSquarePair) {
-                cm.replaceRange("[ ]", cursor, cursor, "+autoCloseBracket");
-                cm.setCursor({ line: cursor.line, ch: cursor.ch + 3 });
+                const insertion = "[ ] ";
+                cm.replaceRange(insertion, cursor, cursor, "+autoCloseBracket");
+                cm.setCursor({ line: cursor.line, ch: cursor.ch + insertion.length });
             } else {
                 cm.replaceRange(`${openChar}${closeChar}`, cursor, cursor, "+autoCloseBracket");
                 cm.setCursor({ line: cursor.line, ch: cursor.ch + 1 });

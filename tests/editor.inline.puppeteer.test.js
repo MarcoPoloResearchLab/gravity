@@ -303,8 +303,8 @@ if (!puppeteerModule) {
                 }));
 
                 assert.ok(
-                    textareaState.value.endsWith("[ ]"),
-                    "square bracket expands with interior space"
+                    textareaState.value.endsWith("[ ] "),
+                    "square bracket expands with interior space and trailing space"
                 );
                 assert.equal(
                     textareaState.selectionStart,
