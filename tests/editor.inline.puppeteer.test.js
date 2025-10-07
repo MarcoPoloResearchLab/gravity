@@ -676,7 +676,7 @@ if (!puppeteerModule) {
                     return node && !node.classList.contains("editing-in-place");
                 }, {}, TARGET_NOTE_ID);
 
-                await page.waitForTimeout(200);
+                await pause(page, 200);
 
                 const finalOrder = await getNoteOrder();
                 assert.deepEqual(
@@ -819,7 +819,7 @@ if (!puppeteerModule) {
                     return node && !node.classList.contains("editing-in-place");
                 }, {}, TARGET_NOTE_ID);
 
-                await page.waitForTimeout(200);
+                await pause(page, 200);
 
                 const finalOrder = await getNoteOrder();
                 assert.deepEqual(
