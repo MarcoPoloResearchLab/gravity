@@ -226,6 +226,83 @@ if (!puppeteerModule) {
             }
         });
 
+        test("top editor respects external focus selections", async () => {
+            if (skipIfNoBrowser()) return;
+
+            const page = await preparePage(browser, { records: [] });
+            const editorSelector = "#top-editor .markdown-editor";
+            const exportSelector = "#export-notes-button";
+
+            try {
+                await page.waitForSelector(editorSelector);
+
+                const initialFocus = await page.evaluate((selector) => {
+                    const editor = document.querySelector(selector);
+                    return document.activeElement === editor;
+                }, editorSelector);
+                assert.equal(initialFocus, true, "top editor receives initial focus on load");
+
+                await page.click(exportSelector);
+                await pause(page, 200);
+
+                const focusAfterClick = await page.evaluate(() => {
+                    const active = document.activeElement;
+                    const wrapper = document.querySelector("#top-editor .markdown-block.top-editor");
+                    const withinTopEditor = Boolean(
+                        active
+                        && wrapper instanceof HTMLElement
+                        && wrapper.contains(active)
+                    );
+                    return {
+                        activeId: active?.id ?? null,
+                        withinTopEditor
+                    };
+                });
+                assert.equal(focusAfterClick.activeId, "export-notes-button", "export control retains focus after interaction");
+                assert.equal(focusAfterClick.withinTopEditor, false, "top editor does not reclaim focus from external control");
+
+                await pause(page, 400);
+
+                const focusAfterDelay = await page.evaluate(() => {
+                    const active = document.activeElement;
+                    const wrapper = document.querySelector("#top-editor .markdown-block.top-editor");
+                    const withinTopEditor = Boolean(
+                        active
+                        && wrapper instanceof HTMLElement
+                        && wrapper.contains(active)
+                    );
+                    return {
+                        activeId: active?.id ?? null,
+                        withinTopEditor
+                    };
+                });
+                assert.equal(focusAfterDelay.activeId, "export-notes-button", "export control stays focused over time");
+                assert.equal(focusAfterDelay.withinTopEditor, false, "top editor continues respecting external focus");
+
+                await page.click(editorSelector);
+                await page.type(editorSelector, "Loop follow-up note");
+
+                await page.keyboard.down("Control");
+                await page.keyboard.press("Enter");
+                await page.keyboard.up("Control");
+
+                await page.waitForSelector(".markdown-block[data-note-id]", { timeout: 2000 });
+
+                const focusAfterSubmit = await page.evaluate(() => {
+                    const active = document.activeElement;
+                    const wrapper = document.querySelector("#top-editor .markdown-block.top-editor");
+                    return Boolean(
+                        active
+                        && wrapper instanceof HTMLElement
+                        && wrapper.contains(active)
+                    );
+                });
+                assert.equal(focusAfterSubmit, true, "top editor regains focus after submit when the user returns to it");
+            } finally {
+                await page.close();
+            }
+        });
+
         test("checkbox toggles from preview persist to markdown", async () => {
             if (skipIfNoBrowser()) return;
             const seededRecords = [buildNoteRecord({
