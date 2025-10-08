@@ -55,6 +55,26 @@ export function mountTopEditor({ notesContainer, onCreateRecord }) {
     wrapper.append(preview, editor);
     host.appendChild(wrapper);
 
+    let maintainAutofocus = true;
+
+    if (typeof document !== "undefined") {
+        document.addEventListener("focusin", (event) => {
+            const target = event.target;
+            if (!(target instanceof HTMLElement)) {
+                return;
+            }
+            const isWithinTopEditor = wrapper.contains(target);
+            if (isWithinTopEditor) {
+                maintainAutofocus = true;
+                return;
+            }
+            if (target === document.body) {
+                return;
+            }
+            maintainAutofocus = false;
+        });
+    }
+
     const editorHost = createMarkdownEditorHost({
         container: wrapper,
         textarea: editor,
@@ -92,7 +112,7 @@ export function mountTopEditor({ notesContainer, onCreateRecord }) {
     });
 
     updatePreview();
-    keepFocus();
+    keepFocus({ force: true });
 
     async function finalizeTopEditor() {
         await editorHost.waitForPendingImages();
@@ -144,9 +164,17 @@ export function mountTopEditor({ notesContainer, onCreateRecord }) {
         }
     }
 
-    function keepFocus() {
+    function keepFocus(options = {}) {
+        const { force = false } = options;
         let tries = 0;
         const maxTries = 20;
+
+        const shouldRespectExternalFocus = () => {
+            if (force) {
+                return false;
+            }
+            return !maintainAutofocus;
+        };
 
         const shouldDeferFocus = () => {
             const activeElement = document.activeElement;
@@ -163,6 +191,11 @@ export function mountTopEditor({ notesContainer, onCreateRecord }) {
         };
 
         const kick = () => {
+            if (shouldRespectExternalFocus()) {
+                tries = 0;
+                return;
+            }
+
             if (isTopEditorAutofocusSuppressed()) {
                 tries = 0;
                 setTimeout(kick, 250);
