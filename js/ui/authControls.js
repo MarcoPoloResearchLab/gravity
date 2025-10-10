@@ -1,8 +1,6 @@
 // @ts-check
 
 import {
-    LABEL_AUTH_STATUS_SIGNED_IN,
-    LABEL_AUTH_STATUS_SIGNED_OUT,
     LABEL_SIGN_OUT,
     LABEL_SIGN_IN_WITH_GOOGLE
 } from "../constants.js";
@@ -80,7 +78,9 @@ export function initializeAuthControls(options) {
     }
 
     if (statusElement) {
-        statusElement.textContent = LABEL_AUTH_STATUS_SIGNED_OUT;
+        statusElement.textContent = "";
+        statusElement.hidden = true;
+        delete statusElement.dataset.status;
     }
 
     buttonElement.hidden = false;
@@ -99,13 +99,15 @@ export function initializeAuthControls(options) {
         showSignedIn,
         showError(message) {
             if (statusElement) {
+                statusElement.hidden = false;
                 statusElement.textContent = message;
                 statusElement.dataset.status = "error";
             }
         },
         clearError() {
             if (statusElement) {
-                statusElement.textContent = LABEL_AUTH_STATUS_SIGNED_OUT;
+                statusElement.hidden = true;
+                statusElement.textContent = "";
                 delete statusElement.dataset.status;
             }
         }
@@ -115,8 +117,9 @@ export function initializeAuthControls(options) {
         profileContainer.hidden = true;
         toggleButtonHostVisibility(true);
         if (statusElement) {
-            statusElement.textContent = LABEL_AUTH_STATUS_SIGNED_OUT;
-            statusElement.dataset.status = "signed-out";
+            statusElement.hidden = true;
+            statusElement.textContent = "";
+            delete statusElement.dataset.status;
         }
         if (signOutButton) {
             signOutButton.hidden = true;
@@ -141,8 +144,9 @@ export function initializeAuthControls(options) {
             menuWrapper.hidden = false;
         }
         if (statusElement) {
-            statusElement.textContent = LABEL_AUTH_STATUS_SIGNED_IN;
-            statusElement.dataset.status = "signed-in";
+            statusElement.hidden = true;
+            statusElement.textContent = "";
+            delete statusElement.dataset.status;
         }
         applyProfile(user);
     }

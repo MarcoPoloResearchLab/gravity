@@ -1,9 +1,9 @@
-- [x] index.html — Consolidate header actions under the avatar trigger, add dropdown markup, and align refs with Alpine events.
-- [x] styles.css — Style avatar hover outline, dropdown positioning, and responsive behaviour for stacked menu.
-- [x] js/constants.js — Existing labels reused; no new strings required after review.
-- [x] js/ui/authControls.js — Hide Google button post sign-in, expose avatar dropdown state setters, and emit sign-out events.
-- [x] js/ui/menu/avatarMenu.js — Alpine-friendly utility to manage dropdown toggling, focus trap, and outside-click dismissal.
-- [x] js/app.js — Bridge avatar menu events to export/import/sign-out handlers and dispatch dropdown toggles.
-- [x] tests/auth.avatarMenu.test.js — Puppeteer coverage for hiding the sign-in button and avatar menu actions.
-- [x] README.md & MIGRATION.md — Document avatar menu behaviour, auth button removal, and new menu flow.
-- [x] NOTES.md — Mark GN-13/GN-14 complete after tests and docs are updated.
+- [x] tests/auth.status.puppeteer.test.js — Guard against rendering the signed-out banner (GN-15).
+- [x] index.html — Start the status container hidden to avoid flashing “Not signed in” (GN-15).
+- [x] js/ui/authControls.js — Hide signed-in/out copy while keeping the element available for error messaging (GN-15).
+- [x] js/constants.js — Remove unused signed-in/out labels after refactor (GN-15).
+- [ ] tests/auth.status.puppeteer.test.js — Add coverage for suppressing the signed-in banner (GN-16).
+- [ ] js/ui/authControls.js — Ensure signed-in state keeps status hidden while still surfacing auth errors (GN-16).
+- [ ] tests/auth.avatarMenu.puppeteer.test.js — Extend assertions so the rendered Google button never returns post-login (GN-17).
+- [ ] js/ui/authControls.js — Finalise Google button teardown after successful sign-in (GN-17).
+- [ ] NOTES.md — Check off GN-15–GN-17 after validations.
