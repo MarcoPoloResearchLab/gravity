@@ -82,6 +82,7 @@ function gravityApp() {
             this.initializeAuth();
             this.initializeTopEditor();
             this.initializeImportExport();
+            GravityStore.setUserScope(null);
             this.initializeNotes();
             initializeKeyboardShortcutsModal();
             this.initialized = true;
@@ -317,12 +318,16 @@ function gravityApp() {
                 };
                 this.authControls?.clearError();
                 this.authControls?.showSignedIn(this.authUser);
+                GravityStore.setUserScope(this.authUser.id);
+                this.initializeNotes();
             });
 
             root.addEventListener(EVENT_AUTH_SIGN_OUT, () => {
                 this.authUser = null;
                 this.authControls?.clearError();
                 this.authControls?.showSignedOut();
+                GravityStore.setUserScope(null);
+                this.initializeNotes();
             });
 
             root.addEventListener(EVENT_AUTH_ERROR, (event) => {

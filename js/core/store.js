@@ -5,6 +5,15 @@ import { ERROR_IMPORT_INVALID_PAYLOAD } from "../constants.js";
 import { sanitizeAttachmentDictionary } from "./attachments.js";
 
 const EMPTY_STRING = "";
+const STORAGE_KEY_BASE = appConfig.storageKey;
+const STORAGE_USER_PREFIX = (() => {
+    const configured = typeof appConfig.storageKeyUserPrefix === "string"
+        ? appConfig.storageKeyUserPrefix.trim()
+        : "";
+    const prefix = configured.length > 0 ? configured : `${STORAGE_KEY_BASE}:user`;
+    return prefix.endsWith(":") ? prefix : `${prefix}:`;
+})();
+let activeStorageKey = STORAGE_KEY_BASE;
 
 /** @typedef {import("../types.d.js").NoteRecord} NoteRecord */
 
@@ -13,7 +22,8 @@ export const GravityStore = (() => {
      * @returns {NoteRecord[]}
      */
     function loadAllNotes() {
-        const raw = localStorage.getItem(appConfig.storageKey);
+        const storageKey = getActiveStorageKey();
+        const raw = localStorage.getItem(storageKey);
         if (!raw) return [];
         try {
             const rawRecords = JSON.parse(raw);
@@ -36,7 +46,8 @@ export const GravityStore = (() => {
                 .map(normalizeRecord)
                 .filter(isValidNoteRecord)
             : [];
-        localStorage.setItem(appConfig.storageKey, JSON.stringify(normalized));
+        const storageKey = getActiveStorageKey();
+        localStorage.setItem(storageKey, JSON.stringify(normalized));
     }
 
     /**
@@ -199,7 +210,9 @@ export const GravityStore = (() => {
         upsertNonEmpty,
         removeById,
         getById,
-        setPinned
+        setPinned,
+        setUserScope,
+        getActiveStorageKey
     });
 })();
 
@@ -212,6 +225,42 @@ function normalizeRecord(record) {
     const attachments = sanitizeAttachmentDictionary(record?.attachments || {});
     const pinned = record?.pinned === true;
     return { ...record, markdownText, attachments, pinned };
+}
+
+/**
+ * Set the active storage key according to the provided user identifier.
+ * @param {string|null|undefined} userId
+ * @returns {string}
+ */
+function setUserScope(userId) {
+    if (isNonBlankString(userId)) {
+        activeStorageKey = composeUserStorageKey(String(userId));
+    } else {
+        activeStorageKey = STORAGE_KEY_BASE;
+    }
+    return activeStorageKey;
+}
+
+/**
+ * Return the current storage key used for persistence.
+ * @returns {string}
+ */
+function getActiveStorageKey() {
+    return activeStorageKey;
+}
+
+/**
+ * Compose the storage key for a specific user identifier.
+ * @param {string} userId
+ * @returns {string}
+ */
+function composeUserStorageKey(userId) {
+    const trimmed = typeof userId === "string" ? userId.trim() : "";
+    if (trimmed.length === 0) {
+        return STORAGE_KEY_BASE;
+    }
+    const encoded = encodeURIComponent(trimmed);
+    return `${STORAGE_USER_PREFIX}${encoded}`;
 }
 
 /**

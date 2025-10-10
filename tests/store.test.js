@@ -32,6 +32,7 @@ class LocalStorageStub {
 test.describe("GravityStore.loadAllNotes", () => {
     test.beforeEach(() => {
         global.localStorage = new LocalStorageStub();
+        GravityStore.setUserScope(null);
     });
 
     test.afterEach(() => {
@@ -128,6 +129,7 @@ test.describe("GravityStore.loadAllNotes", () => {
 test.describe("GravityStore export/import", () => {
     test.beforeEach(() => {
         global.localStorage = new LocalStorageStub();
+        GravityStore.setUserScope(null);
     });
 
     test.afterEach(() => {
@@ -284,5 +286,52 @@ test.describe("GravityStore export/import", () => {
                 message: ERROR_IMPORT_INVALID_PAYLOAD
             });
         }
+    });
+});
+
+test.describe("GravityStore user scopes", () => {
+    test.beforeEach(() => {
+        global.localStorage = new LocalStorageStub();
+        GravityStore.setUserScope(null);
+    });
+
+    test.afterEach(() => {
+        delete global.localStorage;
+        GravityStore.setUserScope(null);
+    });
+
+    test("isolates persisted notes per user", () => {
+        const anonymousRecord = { noteId: "anonymous-note", markdownText: "Anon" };
+        GravityStore.saveAllNotes([anonymousRecord]);
+        const anonymousKey = GravityStore.getActiveStorageKey();
+
+        GravityStore.setUserScope(" user-a ");
+        const userARecord = { noteId: "user-a-note", markdownText: "User A" };
+        GravityStore.saveAllNotes([userARecord]);
+        const userAKey = GravityStore.getActiveStorageKey();
+
+        GravityStore.setUserScope("user-b");
+        const userBKey = GravityStore.getActiveStorageKey();
+        const userBRecords = GravityStore.loadAllNotes();
+        assert.deepStrictEqual(userBRecords, []);
+
+        GravityStore.saveAllNotes([{ noteId: "user-b-note", markdownText: "User B" }]);
+
+        GravityStore.setUserScope("user-a");
+        const loadedUserA = GravityStore.loadAllNotes();
+        assert.equal(loadedUserA.length, 1);
+        assert.equal(loadedUserA[0].noteId, userARecord.noteId);
+
+        GravityStore.setUserScope(null);
+        const loadedAnon = GravityStore.loadAllNotes();
+        assert.equal(loadedAnon.length, 1);
+        assert.equal(loadedAnon[0].noteId, anonymousRecord.noteId);
+
+        const storedKeys = Array.from(global.localStorage.storage.keys());
+        assert.ok(storedKeys.includes(anonymousKey));
+        assert.ok(storedKeys.includes(userAKey));
+        assert.ok(storedKeys.includes(userBKey));
+        assert.notEqual(userAKey, userBKey);
+        assert.notEqual(userAKey, anonymousKey);
     });
 });

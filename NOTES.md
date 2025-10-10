@@ -60,7 +60,7 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
 ## Features
 
 - [x] [GN-11] Add logging using Google Login SDK (frontend only). Employ sthe GSI approach you can find in the countodwn folder [text](countdown/app.js). use Google Client ID "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com"
-- [ ] [GN-12] Associate local storage where we store all notes with the user (see [GN-11]). A good test would be to confirm that thwo users logged in in the same browser will not see each other notes.
+- [x] [GN-12] Associate local storage where we store all notes with the user (see [GN-11]). A good test would be to confirm that thwo users logged in in the same browser will not see each other notes.
 
 ## Improvements
 
