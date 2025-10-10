@@ -1,12 +1,9 @@
-- [x] index.html — Add Google Identity script plus auth controls container and ensure Alpine wiring for GN-11 login flow.
-- [x] js/constants.js — Introduce auth-related labels/events referenced by new modules.
-- [x] js/core/config.js — Expose Google client ID and per-user storage key helpers without breaking existing consumers.
-- [x] js/core/store.js — Support dynamic storage key switching and document API used by GN-12 user isolation.
-- [x] js/core/auth.js — Wrap Google Identity Services init, credential decoding, and dispatch of auth events (GN-11).
-- [x] js/ui/authControls.js — Render sign-in/out UI, mirror auth state, and emit events to the composition root.
-- [x] js/app.js — Bridge auth events, sync GravityStore with the active user, and rehydrate notes on context changes.
-- [x] js/ui/card/preview.js — Preserve viewport position when expanding a rendered note to resolve GN-10.
-- [x] tests/store.test.js — Add coverage for per-user storage separation and key switching.
-- [ ] tests/\* (new puppeteer) — Simulate multi-user session to verify isolated notes and auth UI reactions.
-- [x] README.md & MIGRATION.md — Document Google login flow, storage isolation, and viewport behaviour change.
-- [x] NOTES.md — Check off completed GN issues once tests pass.
+- [x] tests/auth.status.puppeteer.test.js — Guard against rendering the signed-out banner (GN-15).
+- [x] index.html — Start the status container hidden to avoid flashing “Not signed in” (GN-15).
+- [x] js/ui/authControls.js — Hide signed-in/out copy while keeping the element available for error messaging (GN-15).
+- [x] js/constants.js — Remove unused signed-in/out labels after refactor (GN-15).
+- [x] tests/auth.status.puppeteer.test.js — Add coverage for suppressing the signed-in banner (GN-16).
+- [x] js/ui/authControls.js — Ensure signed-in state keeps status hidden while still surfacing auth errors (GN-16).
+- [x] tests/auth.avatarMenu.puppeteer.test.js — Extend assertions so the rendered Google button never returns post-login (GN-17).
+- [x] js/ui/authControls.js — Finalise Google button teardown after successful sign-in (GN-17).
+- [x] NOTES.md — Check off GN-15–GN-17 after validations.

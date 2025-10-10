@@ -31,7 +31,10 @@ the DOM.
 * Toast feedback is centralised in `js/app.js` through `showSaveFeedback`, ensuring a single toast element handles all
   notification copy.
 * `js/ui/authControls.js` renders the Google Identity button and profile summary. It dispatches local sign-out requests
-  back to the composition root, which forwards them to `createGoogleIdentityController`.
+  back to the composition root, which forwards them to `createGoogleIdentityController`, and controls visibility of the
+  avatar menu wrapper.
+* `js/ui/menu/avatarMenu.js` encapsulates the avatar-triggered dropdown, handling outside clicks, keyboard dismissal,
+  and focus hand-off for the stacked export / import / sign-out actions.
 
 ## Per-User Storage & Authentication
 
@@ -41,8 +44,8 @@ the DOM.
   `gravity:auth-sign-out` events by rehydrating the card grid via `initializeNotes()`.
 * Google Identity Services loads from `https://accounts.google.com/gsi/client`; the client ID lives in
   `appConfig.googleClientId` and should be reused across environments.
-* The auth controls hide the Google button once a profile is active and expose a deterministic sign-out button, which in
-  turn dispatches `gravity:auth-sign-out`.
+* The auth controls hide the Google button once a profile is active and expose the stacked avatar menu (export, import,
+  sign out). The sign-out item dispatches `gravity:auth-sign-out`.
 
 ## Testing Expectations
 

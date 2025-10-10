@@ -79,5 +79,3 @@ export const EVENT_AUTH_ERROR = "gravity:auth-error";
 
 export const LABEL_SIGN_IN_WITH_GOOGLE = "Sign in with Google";
 export const LABEL_SIGN_OUT = "Sign out";
-export const LABEL_AUTH_STATUS_SIGNED_OUT = "Not signed in";
-export const LABEL_AUTH_STATUS_SIGNED_IN = "Signed in";

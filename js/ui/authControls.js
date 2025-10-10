@@ -1,8 +1,6 @@
 // @ts-check
 
 import {
-    LABEL_AUTH_STATUS_SIGNED_IN,
-    LABEL_AUTH_STATUS_SIGNED_OUT,
     LABEL_SIGN_OUT,
     LABEL_SIGN_IN_WITH_GOOGLE
 } from "../constants.js";
@@ -17,6 +15,7 @@ import {
  *   avatarElement?: HTMLImageElement | null,
  *   statusElement?: HTMLElement | null,
  *   signOutButton?: HTMLButtonElement | null,
+ *   menuWrapper?: HTMLElement | null,
  *   onSignOutRequested?: () => void
  * }} AuthControlsOptions
  */
@@ -26,6 +25,7 @@ import {
  * @param {AuthControlsOptions} options
  * @returns {{
  *   getButtonHost(): HTMLElement,
+ *   setButtonHostVisibility(isVisible: boolean): void,
  *   showSignedOut(): void,
  *   showSignedIn(user: { id: string, email: string|null, name: string|null, pictureUrl: string|null }): void,
  *   showError(message: string): void,
@@ -42,6 +42,7 @@ export function initializeAuthControls(options) {
         avatarElement = null,
         statusElement = null,
         signOutButton = null,
+        menuWrapper = null,
         onSignOutRequested
     } = options;
 
@@ -61,6 +62,12 @@ export function initializeAuthControls(options) {
         throw new Error("Auth controls require an email element.");
     }
 
+    const buttonParent = buttonElement.parentElement instanceof HTMLElement
+        ? buttonElement.parentElement
+        : container;
+    const buttonAnchor = buttonElement.nextSibling;
+    let buttonMounted = true;
+
     const signOutHandler = () => {
         if (typeof onSignOutRequested === "function") {
             onSignOutRequested();
@@ -77,7 +84,10 @@ export function initializeAuthControls(options) {
     }
 
     if (statusElement) {
-        statusElement.textContent = LABEL_AUTH_STATUS_SIGNED_OUT;
+        statusElement.textContent = "";
+        statusElement.hidden = true;
+        statusElement.setAttribute("aria-hidden", "true");
+        delete statusElement.dataset.status;
     }
 
     buttonElement.hidden = false;
@@ -89,17 +99,24 @@ export function initializeAuthControls(options) {
         getButtonHost() {
             return buttonElement;
         },
+        setButtonHostVisibility(isVisible) {
+            toggleButtonHostVisibility(Boolean(isVisible));
+        },
         showSignedOut,
         showSignedIn,
         showError(message) {
             if (statusElement) {
+                statusElement.hidden = false;
+                statusElement.setAttribute("aria-hidden", "false");
                 statusElement.textContent = message;
                 statusElement.dataset.status = "error";
             }
         },
         clearError() {
             if (statusElement) {
-                statusElement.textContent = LABEL_AUTH_STATUS_SIGNED_OUT;
+                statusElement.hidden = true;
+                statusElement.textContent = "";
+                statusElement.setAttribute("aria-hidden", "true");
                 delete statusElement.dataset.status;
             }
         }
@@ -107,13 +124,18 @@ export function initializeAuthControls(options) {
 
     function showSignedOut() {
         profileContainer.hidden = true;
-        buttonElement.hidden = false;
+        toggleButtonHostVisibility(true);
         if (statusElement) {
-            statusElement.textContent = LABEL_AUTH_STATUS_SIGNED_OUT;
-            statusElement.dataset.status = "signed-out";
+            statusElement.hidden = true;
+            statusElement.textContent = "";
+            statusElement.setAttribute("aria-hidden", "true");
+            delete statusElement.dataset.status;
         }
         if (signOutButton) {
             signOutButton.hidden = true;
+        }
+        if (menuWrapper) {
+            menuWrapper.hidden = true;
         }
         clearProfile();
     }
@@ -124,15 +146,48 @@ export function initializeAuthControls(options) {
      */
     function showSignedIn(user) {
         profileContainer.hidden = false;
-        buttonElement.hidden = true;
+        toggleButtonHostVisibility(false);
         if (signOutButton) {
             signOutButton.hidden = false;
         }
+        if (menuWrapper) {
+            menuWrapper.hidden = false;
+        }
         if (statusElement) {
-            statusElement.textContent = LABEL_AUTH_STATUS_SIGNED_IN;
-            statusElement.dataset.status = "signed-in";
+            statusElement.hidden = true;
+            statusElement.textContent = "";
+            statusElement.setAttribute("aria-hidden", "true");
+            delete statusElement.dataset.status;
         }
         applyProfile(user);
+    }
+
+    /**
+     * @param {boolean} isVisible
+     * @returns {void}
+     */
+    function toggleButtonHostVisibility(isVisible) {
+        if (isVisible) {
+            if (!buttonMounted && buttonParent) {
+                if (buttonAnchor && buttonAnchor.parentNode === buttonParent) {
+                    buttonParent.insertBefore(buttonElement, buttonAnchor);
+                } else {
+                    buttonParent.appendChild(buttonElement);
+                }
+                buttonMounted = true;
+            }
+            buttonElement.hidden = false;
+            buttonElement.removeAttribute("aria-hidden");
+            buttonElement.dataset.visibility = "visible";
+        } else {
+            buttonElement.hidden = true;
+            buttonElement.setAttribute("aria-hidden", "true");
+            buttonElement.dataset.visibility = "hidden";
+            if (buttonMounted) {
+                buttonElement.remove();
+                buttonMounted = false;
+            }
+        }
     }
 
     function clearProfile() {
