@@ -96,7 +96,8 @@ function gravityApp() {
         initializeNotes() {
             const initialRecords = GravityStore.loadAllNotes();
             initializeNotesState(initialRecords);
-            this.renderNotes(initialRecords);
+            const normalizedRecords = GravityStore.loadAllNotes();
+            this.renderNotes(normalizedRecords);
         },
 
         /**
