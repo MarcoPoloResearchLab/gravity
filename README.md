@@ -19,6 +19,9 @@ with bounded previews, and every note edits inline—no modal overlays or contex
   [DOMPurify](https://github.com/cure53/DOMPurify). Inline image pasting is preserved through attachment placeholders.
 * **Organise & share:** Notes retain the existing move, merge, copy, and classification behaviours, and you can import
   or export notebooks as JSON snapshots without introducing duplicates.
+* **Account-aware storage:** Sign in with Google (or continue anonymously) from the header controls. Each authenticated
+  Google account receives an isolated notebook persisted in `localStorage`, so coworkers sharing a browser never see one
+  another's notes.
 
 ## How to Use
 
@@ -37,8 +40,21 @@ with bounded previews, and every note edits inline—no modal overlays or contex
    `code` badge, and overflowing notes expose a rotated double-chevron toggle to expand the full preview in place.
 6. **Organise:** Reorder, merge, or delete notes with the familiar toolbar actions along the right edge. The copy button
    still mirrors either Markdown or sanitized HTML (including attachment metadata) depending on the current mode.
-7. **Import / Export:** Use the header buttons to move notebooks between browsers. Imports skip records that match on
-   identifier and content, preserving the single source of truth.
+7. **Import / Export:** Click the profile avatar to open the stacked account menu—export and import live alongside the
+   identity actions and still skip duplicates, preserving the single source of truth.
+8. **Toggle identity:** Use the header profile controls to sign in with Google Identity Services. Once signed in,
+   Gravity swaps to a user-specific storage namespace and hides the Google button behind the avatar menu. Signing out
+   returns to the anonymous notebook without blending data between identities.
+
+## Authentication Flow
+
+- Gravity Notes loads Google Identity Services directly from the official CDN (`https://accounts.google.com/gsi/client`).
+- `js/app.js` wires the sign-in button through `createGoogleIdentityController` and listens for `gravity:auth-sign-in`
+  / `gravity:auth-sign-out` events to refresh the notebook in-place.
+- `GravityStore.setUserScope(userId)` switches the `localStorage` key to `gravityNotesData:user:<encodedUserId>`, keeping
+  the anonymous notebook (`gravityNotesData`) intact.
+- The UI surfaces the active user's avatar, name, and a dropdown menu for export, import, and sign-out actions while
+  hiding the Google button host—no manual page reload is required to change accounts.
 
 ## Architecture
 
@@ -46,8 +62,8 @@ with bounded previews, and every note edits inline—no modal overlays or contex
   bridges, and static copy in one place.
 * **Event pipeline:** UI modules dispatch DOM-scoped custom events
   (`gravity:note-create`, `gravity:note-update`, `gravity:note-delete`, `gravity:note-pin-toggle`,
-  `gravity:notes-imported`, `gravity:notify`) so the root component can persist through `GravityStore` and schedule
-  re-renders.
+  `gravity:notes-imported`, `gravity:notify`, `gravity:auth-sign-in`, `gravity:auth-sign-out`, `gravity:auth-error`) so
+  the root component can persist through `GravityStore`, update the auth controls, and schedule re-renders.
 * **Module boundaries:** `ui/` focuses on DOM work, `core/` wraps domain services, and `utils/` exposes shared
   helpers. All user-facing strings live in `js/constants.js` to keep copy consistent.
 * **Toast notifications:** Non-blocking feedback flows through `gravity:notify` instead of `alert()`, keeping the UI
@@ -87,6 +103,8 @@ python3 -m http.server 8000
 
 - `npm test` drives the Node test suite, including Puppeteer coverage for the inline editor, bounded previews, and
   the notification flow.
+- `tests/preview.bounded.puppeteer.test.js` now guards the viewport anchoring behaviour—expanding a rendered note keeps
+  the card in place even if the browser attempts to scroll to the bottom of the preview.
 - Run `npx puppeteer browsers install chrome` once to download the Chromium binary that Puppeteer uses during the
   end-to-end tests.
 - GitHub Actions executes the same test command on every push and pull request, validating the inline editing workflow and
@@ -97,6 +115,8 @@ python3 -m http.server 8000
 * **marked.js** — rendered via `https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js`.
 * **DOMPurify** — sanitiser loaded from `https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js`.
 * **EasyMDE** — Markdown editor UI delivered through `https://cdn.jsdelivr.net/npm/easymde@2.19.1/dist/easymde.min.js` and its companion stylesheet.
+* **Google Identity Services** — the sign-in client loads from `https://accounts.google.com/gsi/client` and uses the
+  `156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com` client ID baked into `appConfig`.
 
 ## Markdown Editor
 

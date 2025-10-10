@@ -40,16 +40,42 @@ You are a senior front-end engineer. Your task is to **re-evaluate and refactor 
 
 Review the NOTES.md. Make a plan for autonomously fixing every item under Features, BugFixes, Improvements, Maintenance. Ensure no regressions. Ensure adding tests. Lean into integration tests. Fix every issue. Document the changes.
 
-Fix issues one by one. Write a nice comprehensive commit message AFTER EACH issue is fixed and tested and covered with tests. Do not work on all issues at once. Work at one issue at a time sequntially. 
+Fix issues one by one. 
+1. Create a new git branch with descriptive name
+2. Describe an issue through tests. Ensure that the tests are comprehensive and failing to begin with.
+3. Fix the issue
+4. Rerun the tests
+5. Repeat 2-4 untill the issue is fixed and comprehensive tests are passing
+6. Write a nice comprehensive commit message AFTER EACH issue is fixed and tested and covered with tests.
+7. Optional: update the README in case the changes warrant updated documentation
+8. Optional: ipdate the PRD in case the changes warrant updated product requirements
+9. Optional: update the code examples in case the changes warrant updated code examples
+10. Mark an issue as done ([X])in the NOTES.md after the issue is fixed: New and existing tests are passing without regressions
+11. Commit the changes and push to the remote.
 
-Remove an issue from the NOTES.md after the issue is fixed: new and existing tests are passing without regressions. Commit the changes and push to the remote.
+Do not work on all issues at once. Work at one issue at a time sequntially.
 
 Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixes are implemented but don't delete the sections themselves.
 
 ## Features
 
+- [x] [GN-11] Add logging using Google Login SDK (frontend only). Employ sthe GSI approach you can find in the countodwn folder [text](countdown/app.js). use Google Client ID "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com"
+- [x] [GN-12] Associate local storage where we store all notes with the user (see [GN-11]). A good test would be to confirm that thwo users logged in in the same browser will not see each other notes.
+
 ## Improvements
 
+- [x] [GN-10] When the note is expanded in rendering mode do not move the viewpoint to its end. Leave the note staying as is and just exand it to full rendering
+- [x] [GN-14] Organize header bar buttons into a stackable menu. The stackable menu shall be under the user avatar. The user avatar is shown in a circle, which gains white outline on hover. On a click it displays the stacked dropdown:
+    - Export Notes
+    - Import Notes
+    - Sign Out
+
 ## BugFixes
+
+- [x] [GN-13] Remove the button "Sign In with Google" after successfull login
+- [x] [GN-15] Remove "Not Signed In" sign when the user is not signed in, and leave only the Sign in with Google button
+- [x] [GN-16] Remove "Signed In" sign when the user is signed in
+- [x] [GN-17] Remove the button "Sign In with Google" after successfull login
+
 
 ## Maintenance

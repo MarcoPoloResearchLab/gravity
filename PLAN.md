@@ -1,12 +1,9 @@
-- [x] index.html — Load Alpine.js from CDN, annotate root containers with Alpine factories, provide fallback text for header controls, and prep DOM for toast + modal components driven by `x-show`.
-- [x] js/app.js — Rebuild as Alpine composition root: register stores/factories, replace immediate DOM mutation with event-driven note lifecycle, and consolidate marked configuration inside Alpine init.
-- [x] js/constants.js — Add missing user-facing copy (pin labels, toast text, modal glyphs), define event name constants, and freeze new enums referenced by Alpine components.
-- [x] js/ui/card.js — Split into Alpine-oriented modules (factory, actions, preview helpers), remove shared mutable globals, and emit DOM-scoped events for edit/save/delete/pin instead of direct store calls.
-- [x] js/ui/topEditor.js — Convert to an Alpine factory with isolated state, dispatch `note:create` events, and drop direct imports of card helpers to eliminate circular dependencies.
-- [x] js/ui/importExport.js & js/ui/saveFeedback.js — Replace `window.alert` with toast events, expose Alpine listeners, and ensure file input workflows dispatch success/error notifications.
-- [x] js/ui/markdownEditorHost.js & js/ui/imagePaste.js — Decompose into focused utilities under `js/utils/`, keep files under 400 lines, document public APIs, and expose hooks for Alpine components instead of implicit globals.
-- [x] js/ui/notesState.js & js/ui/storeSync.js — Promote shared note metadata into an Alpine store, ensure mutations happen via dispatched events, and remove tight coupling to DOM queries.
-- [x] js/utils/index.js — Split clipboard, DOM, and enum helpers into dedicated modules to avoid a grab-bag utility file; update imports across the codebase.
-- [x] styles.css — Align selectors with new Alpine-driven markup (e.g., `x-show` states, toast visibility classes) and preserve accessibility cues.
-- [x] tests/\* — Update Puppeteer flows to cover Alpine-driven events (note creation, pinning, import errors) with table-driven cases; ensure utilities receive unit coverage after the module splits.
-- [x] docs — Update README.md and add MIGRATION.md plus per-module docs summarizing new event contracts, Alpine stores, and testing approach.
+- [x] tests/auth.status.puppeteer.test.js — Guard against rendering the signed-out banner (GN-15).
+- [x] index.html — Start the status container hidden to avoid flashing “Not signed in” (GN-15).
+- [x] js/ui/authControls.js — Hide signed-in/out copy while keeping the element available for error messaging (GN-15).
+- [x] js/constants.js — Remove unused signed-in/out labels after refactor (GN-15).
+- [x] tests/auth.status.puppeteer.test.js — Add coverage for suppressing the signed-in banner (GN-16).
+- [x] js/ui/authControls.js — Ensure signed-in state keeps status hidden while still surfacing auth errors (GN-16).
+- [x] tests/auth.avatarMenu.puppeteer.test.js — Extend assertions so the rendered Google button never returns post-login (GN-17).
+- [x] js/ui/authControls.js — Finalise Google button teardown after successful sign-in (GN-17).
+- [x] NOTES.md — Check off GN-15–GN-17 after validations.

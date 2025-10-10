@@ -7,5 +7,7 @@ export const appConfig = Object.freeze({
     classificationTimeoutMs: 5000,
     defaultPrivacy: "private",
     storageKey: "gravityNotesData", // single, current key
-    useMarkdownEditor: false // feature flag for EasyMDE-based editor
+    storageKeyUserPrefix: "gravityNotesData:user",
+    useMarkdownEditor: false, // feature flag for EasyMDE-based editor
+    googleClientId: "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com"
 });

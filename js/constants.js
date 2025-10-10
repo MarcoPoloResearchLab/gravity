@@ -48,6 +48,7 @@ export const ERROR_NOTES_CONTAINER_NOT_FOUND = "Notes container not found";
 export const ERROR_CLIPBOARD_COPY_FAILED = "Clipboard copy failed";
 export const ERROR_IMAGE_READ_FAILED = "Failed to read pasted image";
 export const ERROR_TOP_EDITOR_NOT_FOUND = "Top editor host not found";
+export const ERROR_AUTHENTICATION_GENERIC = "Authentication error";
 
 export const CLIPBOARD_MIME_NOTE = "application/x-gravity-note+json";
 export const CLIPBOARD_DATA_ATTRIBUTE = "data-gravity-note-payload";
@@ -72,3 +73,9 @@ export const EVENT_NOTE_DELETE = "gravity:note-delete";
 export const EVENT_NOTE_PIN_TOGGLE = "gravity:note-pin-toggle";
 export const EVENT_NOTES_IMPORTED = "gravity:notes-imported";
 export const EVENT_NOTIFICATION_REQUEST = "gravity:notify";
+export const EVENT_AUTH_SIGN_IN = "gravity:auth-sign-in";
+export const EVENT_AUTH_SIGN_OUT = "gravity:auth-sign-out";
+export const EVENT_AUTH_ERROR = "gravity:auth-error";
+
+export const LABEL_SIGN_IN_WITH_GOOGLE = "Sign in with Google";
+export const LABEL_SIGN_OUT = "Sign out";

@@ -6,6 +6,8 @@ import Alpine from "https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/module.esm
 import { renderCard, updateActionButtons, insertCardRespectingPinned } from "./ui/card.js";
 import { initializeImportExport } from "./ui/importExport.js";
 import { GravityStore } from "./core/store.js";
+import { appConfig } from "./core/config.js";
+import { createGoogleIdentityController } from "./core/auth.js";
 import { mountTopEditor } from "./ui/topEditor.js";
 import {
     LABEL_APP_SUBTITLE,
@@ -13,12 +15,16 @@ import {
     LABEL_EXPORT_NOTES,
     LABEL_IMPORT_NOTES,
     ERROR_NOTES_CONTAINER_NOT_FOUND,
+    ERROR_AUTHENTICATION_GENERIC,
     EVENT_NOTE_CREATE,
     EVENT_NOTE_UPDATE,
     EVENT_NOTE_DELETE,
     EVENT_NOTE_PIN_TOGGLE,
     EVENT_NOTES_IMPORTED,
     EVENT_NOTIFICATION_REQUEST,
+    EVENT_AUTH_SIGN_IN,
+    EVENT_AUTH_SIGN_OUT,
+    EVENT_AUTH_ERROR,
     MESSAGE_NOTES_IMPORTED,
     MESSAGE_NOTES_SKIPPED,
     MESSAGE_NOTES_IMPORT_FAILED
@@ -26,6 +32,8 @@ import {
 import { initializeKeyboardShortcutsModal } from "./ui/keyboardShortcutsModal.js";
 import { initializeNotesState } from "./ui/notesState.js";
 import { showSaveFeedback } from "./ui/saveFeedback.js";
+import { initializeAuthControls } from "./ui/authControls.js";
+import { createAvatarMenu } from "./ui/menu/avatarMenu.js";
 
 const CONSTANTS_VIEW_MODEL = Object.freeze({
     LABEL_APP_SUBTITLE,
@@ -54,6 +62,11 @@ function gravityApp() {
         exportButton: /** @type {HTMLButtonElement|null} */ (null),
         importButton: /** @type {HTMLButtonElement|null} */ (null),
         importInput: /** @type {HTMLInputElement|null} */ (null),
+        authControls: /** @type {ReturnType<typeof initializeAuthControls>|null} */ (null),
+        avatarMenu: /** @type {ReturnType<typeof createAvatarMenu>|null} */ (null),
+        authController: /** @type {{ signOut(reason?: string): void, dispose(): void }|null} */ (null),
+        authUser: /** @type {{ id: string, email: string|null, name: string|null, pictureUrl: string|null }|null} */ (null),
+        authPollHandle: /** @type {number|null} */ (null),
         initialized: false,
 
         init() {
@@ -68,8 +81,10 @@ function gravityApp() {
 
             this.configureMarked();
             this.registerEventBridges();
+            this.initializeAuth();
             this.initializeTopEditor();
             this.initializeImportExport();
+            GravityStore.setUserScope(null);
             this.initializeNotes();
             initializeKeyboardShortcutsModal();
             this.initialized = true;
@@ -87,6 +102,141 @@ function gravityApp() {
                 mangle: false,
                 smartLists: true
             });
+        },
+
+        /**
+         * Initialize Google Identity auth controls and controller.
+         * @returns {void}
+         */
+        initializeAuth() {
+            const container = /** @type {HTMLElement|null} */ (this.$refs.authContainer ?? null);
+            const buttonHost = /** @type {HTMLElement|null} */ (this.$refs.authButtonHost ?? null);
+            const profile = /** @type {HTMLElement|null} */ (this.$refs.authProfile ?? null);
+            const displayName = /** @type {HTMLElement|null} */ (this.$refs.authDisplayName ?? null);
+            const email = /** @type {HTMLElement|null} */ (this.$refs.authEmail ?? null);
+            const avatar = /** @type {HTMLImageElement|null} */ (this.$refs.authAvatar ?? null);
+            const status = /** @type {HTMLElement|null} */ (this.$refs.authStatus ?? null);
+            const signOutButton = /** @type {HTMLButtonElement|null} */ (this.$refs.authSignOutButton ?? null);
+            const menuWrapper = /** @type {HTMLElement|null} */ (this.$refs.authMenuWrapper ?? null);
+            const menuPanel = /** @type {HTMLElement|null} */ (this.$refs.authMenu ?? null);
+            const avatarTrigger = /** @type {HTMLButtonElement|null} */ (this.$refs.authAvatarTrigger ?? null);
+
+            if (!container || !buttonHost || !profile || !displayName || !email) {
+                return;
+            }
+
+            if (this.avatarMenu) {
+                this.avatarMenu.dispose();
+                this.avatarMenu = null;
+            }
+
+            this.authControls = initializeAuthControls({
+                container,
+                buttonElement: buttonHost,
+                profileContainer: profile,
+                displayNameElement: displayName,
+                emailElement: email,
+                avatarElement: avatar ?? null,
+                statusElement: status ?? null,
+                signOutButton: signOutButton ?? null,
+                menuWrapper: menuWrapper ?? null,
+                onSignOutRequested: () => {
+                    this.handleAuthSignOutRequest();
+                }
+            });
+
+            if (avatarTrigger && menuPanel) {
+                this.avatarMenu = createAvatarMenu({
+                    triggerElement: avatarTrigger,
+                    menuElement: menuPanel
+                });
+                this.avatarMenu.setEnabled(false);
+            }
+
+            this.authControls.showSignedOut();
+            this.ensureGoogleIdentityController();
+        },
+
+        /**
+         * Ensure the Google Identity controller is instantiated once the API is available.
+         * @returns {void}
+         */
+        ensureGoogleIdentityController() {
+            if (this.authController) {
+                return;
+            }
+            if (typeof window === "undefined") {
+                return;
+            }
+            const google = /** @type {any} */ (window.google);
+            const hasIdentity = Boolean(google?.accounts?.id);
+            if (!hasIdentity) {
+                this.startGoogleIdentityPolling();
+                return;
+            }
+
+            const buttonHost = this.authControls?.getButtonHost() ?? null;
+            this.authController = createGoogleIdentityController({
+                clientId: appConfig.googleClientId,
+                google,
+                buttonElement: buttonHost ?? undefined,
+                eventTarget: this.$el,
+                autoPrompt: true
+            });
+            this.stopGoogleIdentityPolling();
+        },
+
+        /**
+         * Begin polling for the Google Identity script to become available.
+         * @returns {void}
+         */
+        startGoogleIdentityPolling() {
+            if (this.authPollHandle !== null) {
+                return;
+            }
+            if (typeof window === "undefined") {
+                return;
+            }
+            const poll = () => {
+                if (window.google && window.google.accounts && window.google.accounts.id) {
+                    this.stopGoogleIdentityPolling();
+                    this.ensureGoogleIdentityController();
+                }
+            };
+            poll();
+            if (!this.authController) {
+                this.authPollHandle = window.setInterval(poll, 350);
+            }
+        },
+
+        /**
+         * Stop any outstanding polling interval for Google Identity availability.
+         * @returns {void}
+         */
+        stopGoogleIdentityPolling() {
+            if (this.authPollHandle === null) {
+                return;
+            }
+            if (typeof window !== "undefined") {
+                window.clearInterval(this.authPollHandle);
+            }
+            this.authPollHandle = null;
+        },
+
+        /**
+         * Handle a local sign-out request from the UI.
+         * @returns {void}
+         */
+        handleAuthSignOutRequest() {
+            this.avatarMenu?.close({ focusTrigger: false });
+            if (this.authController) {
+                this.authController.signOut("manual");
+            } else {
+                this.authControls?.showSignedOut();
+                this.avatarMenu?.setEnabled(false);
+                GravityStore.setUserScope(null);
+                this.initializeNotes();
+            }
         },
 
         /**
@@ -175,6 +325,46 @@ function gravityApp() {
                     ? MESSAGE_NOTES_IMPORTED
                     : MESSAGE_NOTES_SKIPPED;
                 this.emitNotification(message);
+            });
+
+            root.addEventListener(EVENT_AUTH_SIGN_IN, (event) => {
+                const detail = /** @type {{ user?: { id?: string, email?: string|null, name?: string|null, pictureUrl?: string|null } }} */ (event?.detail ?? {});
+                const user = detail?.user;
+                if (!user || !user.id) {
+                    return;
+                }
+                this.authUser = {
+                    id: user.id,
+                    email: typeof user.email === "string" ? user.email : null,
+                    name: typeof user.name === "string" ? user.name : null,
+                    pictureUrl: typeof user.pictureUrl === "string" ? user.pictureUrl : null
+                };
+                this.authControls?.clearError();
+                this.authControls?.showSignedIn(this.authUser);
+                this.avatarMenu?.setEnabled(true);
+                this.avatarMenu?.close({ focusTrigger: false });
+                GravityStore.setUserScope(this.authUser.id);
+                this.initializeNotes();
+            });
+
+            root.addEventListener(EVENT_AUTH_SIGN_OUT, () => {
+                this.authUser = null;
+                this.authControls?.clearError();
+                this.authControls?.showSignedOut();
+                this.avatarMenu?.setEnabled(false);
+                this.avatarMenu?.close({ focusTrigger: false });
+                GravityStore.setUserScope(null);
+                this.initializeNotes();
+            });
+
+            root.addEventListener(EVENT_AUTH_ERROR, (event) => {
+                const detail = /** @type {{ error?: unknown, reason?: unknown }} */ (event?.detail ?? {});
+                const errorMessage = typeof detail.error === "string"
+                    ? detail.error
+                    : typeof detail.reason === "string"
+                        ? String(detail.reason)
+                        : ERROR_AUTHENTICATION_GENERIC;
+                this.authControls?.showError(errorMessage);
             });
 
             root.addEventListener(EVENT_NOTIFICATION_REQUEST, (event) => {
