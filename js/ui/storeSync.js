@@ -1,15 +1,16 @@
 // @ts-check
 
 import { GravityStore } from "../core/store.js";
-import { nowIso } from "../utils/index.js";
+import { nowIso } from "../utils/datetime.js";
 import { collectReferencedAttachments } from "./imagePaste.js";
 
 /**
  * Synchronize the DOM order of cards back into storage.
  * @param {HTMLElement} container
+ * @param {Record<string, Partial<import("../types.d.js").NoteRecord>>} [overrides]
  * @returns {void}
  */
-export function syncStoreFromDom(container) {
+export function syncStoreFromDom(container, overrides = {}) {
     if (!(container instanceof HTMLElement)) return;
     const cards = Array.from(container.querySelectorAll(".markdown-block:not(.top-editor)"));
     const existingRecords = GravityStore.loadAllNotes();
@@ -26,16 +27,27 @@ export function syncStoreFromDom(container) {
             noteId,
             createdAtIso: timestamp,
             updatedAtIso: timestamp,
-            lastActivityIso: timestamp
+            lastActivityIso: timestamp,
+            pinned: false
         };
         const attachments = editor ? collectReferencedAttachments(editor) : {};
+        const override = overrides[noteId] ?? null;
         const candidate = {
             ...base,
             markdownText: text,
             attachments,
-            pinned: existing?.pinned === true
+            pinned: override?.pinned ?? base.pinned === true
         };
-        nextRecords.push(candidate);
+        const mergedRecord = override
+            ? { ...candidate, ...override, attachments: override.attachments ?? attachments }
+            : candidate;
+        if (!mergedRecord.updatedAtIso) {
+            mergedRecord.updatedAtIso = timestamp;
+        }
+        if (!mergedRecord.lastActivityIso) {
+            mergedRecord.lastActivityIso = timestamp;
+        }
+        nextRecords.push(mergedRecord);
     }
     GravityStore.saveAllNotes(nextRecords);
 }

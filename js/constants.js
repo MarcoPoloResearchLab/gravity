@@ -35,6 +35,9 @@ export const ARIA_LABEL_PIN_NOTE = "Pin note";
 export const ARIA_LABEL_UNPIN_NOTE = "Unpin note";
 
 export const MESSAGE_NOTE_SAVED = "Saved";
+export const MESSAGE_NOTES_IMPORTED = "Notes imported";
+export const MESSAGE_NOTES_SKIPPED = "No new notes found";
+export const MESSAGE_NOTES_IMPORT_FAILED = "Import failed";
 
 export const FILENAME_EXPORT_NOTES_JSON = "gravity-notes.json";
 export const ACCEPT_IMPORT_NOTES_JSON = "application/json";
@@ -62,3 +65,10 @@ export const CLASSIFIER_PRIVACY = Object.freeze(["private", "shareable", "public
 
 export const DATA_ATTRIBUTE_RENDERED_HTML = "renderedHtml";
 export const DATA_URL_PREFIX = "data:";
+
+export const EVENT_NOTE_CREATE = "gravity:note-create";
+export const EVENT_NOTE_UPDATE = "gravity:note-update";
+export const EVENT_NOTE_DELETE = "gravity:note-delete";
+export const EVENT_NOTE_PIN_TOGGLE = "gravity:note-pin-toggle";
+export const EVENT_NOTES_IMPORTED = "gravity:notes-imported";
+export const EVENT_NOTIFICATION_REQUEST = "gravity:notify";

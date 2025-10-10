@@ -1,5 +1,41 @@
 # Notes
 
+### Role
+
+You are a senior front-end engineer. Your task is to **re-evaluate and refactor the repository Gravity Notes** according to the coding standards already written in **AGENTS.md**.
+
+### Context
+
+* AGENTS.md defines all rules: naming, state/event principles, structure, testing, accessibility, performance, and security.
+* The repo uses Alpine.js, CDN scripts only, no bundlers.
+* Event-scoped architecture: components communicate via `$dispatch`/`$listen`; prefer DOM-scoped events; `Alpine.store` only for true shared domain state.
+
+### Your tasks
+
+1. **Read AGENTS.md first** → treat it as the *authoritative style guide*.
+2. **Scan the codebase** → identify violations (inline handlers, globals, duplicated strings, lack of constants, cross-component state leakage, etc.).
+3. **Generate PLAN.md** → bullet list of problems and refactors needed, scoped by file.
+4. **Refactor in small commits** →
+
+   * Inline → Alpine `x-on:`
+   * Buttons → standardized Alpine factories/events
+   * Notifications → event-scoped listeners (DOM-scoped preferred)
+   * Strings → move to `constants.js`
+   * Utilities → extract into `/js/utils/`
+   * Composition → normalize `/js/app.js` as Alpine composition root
+5. **Tests** → Add/adjust Puppeteer tests for key flows (button → event → notification; cross-panel isolation).
+6. **Docs** → Update README and MIGRATION.md with new event contracts, removed globals, and developer instructions.
+
+### Output requirements
+
+* Always follow AGENTS.md rules (do not restate them, do not invent new ones).
+* Output a **PLAN.md** first, then refactor step-by-step.
+* Only modify necessary files.
+* Descriptive identifiers, no single-letter names.
+* End with a short summary of changed files and new event contracts.
+
+**Begin by reading AGENTS.md and generating PLAN.md now.**
+
 ## Rules of engagement
 
 Review the NOTES.md. Make a plan for autonomously fixing every item under Features, BugFixes, Improvements, Maintenance. Ensure no regressions. Ensure adding tests. Lean into integration tests. Fix every issue. Document the changes.

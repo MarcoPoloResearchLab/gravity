@@ -1,6 +1,6 @@
 // @ts-check
 
-import { createElement } from "../utils/index.js";
+import { createElement } from "../utils/dom.js";
 import {
     LABEL_KEYBOARD_SHORTCUTS,
     LABEL_CLOSE_KEYBOARD_SHORTCUTS,
