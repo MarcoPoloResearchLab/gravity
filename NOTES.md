@@ -74,7 +74,7 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
 
 - [x] [GN-13] Remove the button "Sign In with Google" after successfull login
 - [x] [GN-15] Remove "Not Signed In" sign when the user is not signed in, and leave only the Sign in with Google button
-- [ ] [GN-16] Remove "Signed In" sign when the user is signed in
+- [x] [GN-16] Remove "Signed In" sign when the user is signed in
 - [ ] [GN-17] Remove the button "Sign In with Google" after successfull login
 
 

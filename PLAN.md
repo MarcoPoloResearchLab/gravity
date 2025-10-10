@@ -2,8 +2,8 @@
 - [x] index.html — Start the status container hidden to avoid flashing “Not signed in” (GN-15).
 - [x] js/ui/authControls.js — Hide signed-in/out copy while keeping the element available for error messaging (GN-15).
 - [x] js/constants.js — Remove unused signed-in/out labels after refactor (GN-15).
-- [ ] tests/auth.status.puppeteer.test.js — Add coverage for suppressing the signed-in banner (GN-16).
-- [ ] js/ui/authControls.js — Ensure signed-in state keeps status hidden while still surfacing auth errors (GN-16).
+- [x] tests/auth.status.puppeteer.test.js — Add coverage for suppressing the signed-in banner (GN-16).
+- [x] js/ui/authControls.js — Ensure signed-in state keeps status hidden while still surfacing auth errors (GN-16).
 - [ ] tests/auth.avatarMenu.puppeteer.test.js — Extend assertions so the rendered Google button never returns post-login (GN-17).
 - [ ] js/ui/authControls.js — Finalise Google button teardown after successful sign-in (GN-17).
 - [ ] NOTES.md — Check off GN-15–GN-17 after validations.

@@ -80,6 +80,7 @@ export function initializeAuthControls(options) {
     if (statusElement) {
         statusElement.textContent = "";
         statusElement.hidden = true;
+        statusElement.setAttribute("aria-hidden", "true");
         delete statusElement.dataset.status;
     }
 
@@ -100,6 +101,7 @@ export function initializeAuthControls(options) {
         showError(message) {
             if (statusElement) {
                 statusElement.hidden = false;
+                statusElement.setAttribute("aria-hidden", "false");
                 statusElement.textContent = message;
                 statusElement.dataset.status = "error";
             }
@@ -108,6 +110,7 @@ export function initializeAuthControls(options) {
             if (statusElement) {
                 statusElement.hidden = true;
                 statusElement.textContent = "";
+                statusElement.setAttribute("aria-hidden", "true");
                 delete statusElement.dataset.status;
             }
         }
@@ -119,6 +122,7 @@ export function initializeAuthControls(options) {
         if (statusElement) {
             statusElement.hidden = true;
             statusElement.textContent = "";
+            statusElement.setAttribute("aria-hidden", "true");
             delete statusElement.dataset.status;
         }
         if (signOutButton) {
@@ -146,6 +150,7 @@ export function initializeAuthControls(options) {
         if (statusElement) {
             statusElement.hidden = true;
             statusElement.textContent = "";
+            statusElement.setAttribute("aria-hidden", "true");
             delete statusElement.dataset.status;
         }
         applyProfile(user);

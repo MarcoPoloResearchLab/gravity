@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
+import { EVENT_AUTH_SIGN_IN } from "../js/constants.js";
 import { ensurePuppeteerSandbox, cleanupPuppeteerSandbox } from "./helpers/puppeteerEnvironment.js";
 
 const SANDBOX = await ensurePuppeteerSandbox();
@@ -99,6 +100,42 @@ if (!puppeteerModule) {
 
                 const statusContent = await page.$eval(".auth-status", (element) => element.textContent?.trim() ?? "");
                 assert.equal(statusContent.length, 0);
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("signed-in view keeps status hidden", async () => {
+            if (skipIfNoBrowser()) return;
+
+            const page = await browser.newPage();
+            try {
+                await page.goto(PAGE_URL, { waitUntil: "load" });
+
+                await page.evaluate((eventName) => {
+                    const root = document.querySelector("body");
+                    if (!root) return;
+                    const userDetail = {
+                        id: "status-user",
+                        email: "status.user@example.com",
+                        name: "Status User",
+                        pictureUrl: "https://example.com/avatar.png"
+                    };
+                    root.dispatchEvent(new CustomEvent(eventName, {
+                        detail: { user: userDetail },
+                        bubbles: true
+                    }));
+                }, EVENT_AUTH_SIGN_IN);
+
+                await page.waitForSelector(".auth-status");
+                const statusMetrics = await page.$eval(".auth-status", (element) => ({
+                    hidden: element.hidden,
+                    ariaHidden: element.getAttribute("aria-hidden"),
+                    text: element.textContent?.trim() ?? ""
+                }));
+                assert.equal(statusMetrics.hidden, true);
+                assert.equal(statusMetrics.ariaHidden, "true");
+                assert.equal(statusMetrics.text.length, 0);
             } finally {
                 await page.close();
             }
