@@ -61,7 +61,7 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
 
 - [x] [GN-11] Add logging using Google Login SDK (frontend only). Employ the GSI approach you can find in the countodwn folder [text](countdown/app.js). use Google Client ID "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com"
 - [x] [GN-12] Associate local storage where we store all notes with the user (see [GN-11]). A good test would be to confirm that thwo users logged in in the same browser will not see each other notes.
-- [ ] [GN-18] Scaffold backend in Go. 
+- [x] [GN-18] Scaffold backend in Go. 
     1. I want to keep a monorepo for both the frontend and the backend, backend being written in Go and frontend staying as it is now, with Alpine and GSI SDK. we can place the backend under /backend folder for now
     2. The backend will need to be accepting the JWT from the front end to verify user's identity. The main function of the backend is to store the notes. We can use a simple data store for now, sqlite. 
     3. Have a flexible payload schema for now, effectively key value with a value being the whole payload of the message (maybe large givwn image embeddings) . 

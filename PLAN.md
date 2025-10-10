@@ -1,9 +1,12 @@
-- [x] tests/auth.status.puppeteer.test.js — Guard against rendering the signed-out banner (GN-15).
-- [x] index.html — Start the status container hidden to avoid flashing “Not signed in” (GN-15).
-- [x] js/ui/authControls.js — Hide signed-in/out copy while keeping the element available for error messaging (GN-15).
-- [x] js/constants.js — Remove unused signed-in/out labels after refactor (GN-15).
-- [x] tests/auth.status.puppeteer.test.js — Add coverage for suppressing the signed-in banner (GN-16).
-- [x] js/ui/authControls.js — Ensure signed-in state keeps status hidden while still surfacing auth errors (GN-16).
-- [x] tests/auth.avatarMenu.puppeteer.test.js — Extend assertions so the rendered Google button never returns post-login (GN-17).
-- [x] js/ui/authControls.js — Finalise Google button teardown after successful sign-in (GN-17).
-- [x] NOTES.md — Check off GN-15–GN-17 after validations.
+- [x] backend/go.mod — Initialize Go module, declare dependencies, wire gofmt/go vet tooling (GN-18).
+- [x] backend/cmd/gravity-api/main.go — Cobra entrypoint to bootstrap configuration, logging, database, and HTTP server (GN-18).
+- [x] backend/internal/config/config.go — Centralized Viper-backed configuration with validation for secrets and DB path (GN-18).
+- [x] backend/internal/logging/logger.go — Construct structured zap logger injected across services (GN-18).
+- [x] backend/internal/auth/google_verifier.go — Offline Google ID token verification with JWKS caching and tests (GN-18).
+- [x] backend/internal/auth/token_issuer.go — Backend JWT issuance and validation helpers with table-driven tests (GN-18).
+- [x] backend/internal/database/sqlite.go — GORM SQLite connector with migrations for notes and note_changes (GN-18).
+- [x] backend/internal/notes/model.go — GORM models reflecting required schema constants (GN-18).
+- [x] backend/internal/notes/service.go — Conflict-resolution aware upsert/delete operations, emitting audit records; fully tested (GN-18).
+- [x] backend/internal/server/router.go — Gin router with auth middleware, `/auth/google`, `/notes/sync` endpoints, and CORS (GN-18).
+- [x] backend/tests/integration/auth_and_sync_test.go — Integration test covering token exchange and note synchronization happy path (GN-18).
+- [x] docs updates (`MIGRATION.md`, `README.md`, `NOTES.md`) — Document backend boot, API contracts, mark GN-18 complete (GN-18).
