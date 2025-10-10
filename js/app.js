@@ -33,6 +33,7 @@ import { initializeKeyboardShortcutsModal } from "./ui/keyboardShortcutsModal.js
 import { initializeNotesState } from "./ui/notesState.js";
 import { showSaveFeedback } from "./ui/saveFeedback.js";
 import { initializeAuthControls } from "./ui/authControls.js";
+import { createAvatarMenu } from "./ui/menu/avatarMenu.js";
 
 const CONSTANTS_VIEW_MODEL = Object.freeze({
     LABEL_APP_SUBTITLE,
@@ -62,6 +63,7 @@ function gravityApp() {
         importButton: /** @type {HTMLButtonElement|null} */ (null),
         importInput: /** @type {HTMLInputElement|null} */ (null),
         authControls: /** @type {ReturnType<typeof initializeAuthControls>|null} */ (null),
+        avatarMenu: /** @type {ReturnType<typeof createAvatarMenu>|null} */ (null),
         authController: /** @type {{ signOut(reason?: string): void, dispose(): void }|null} */ (null),
         authUser: /** @type {{ id: string, email: string|null, name: string|null, pictureUrl: string|null }|null} */ (null),
         authPollHandle: /** @type {number|null} */ (null),
@@ -115,9 +117,17 @@ function gravityApp() {
             const avatar = /** @type {HTMLImageElement|null} */ (this.$refs.authAvatar ?? null);
             const status = /** @type {HTMLElement|null} */ (this.$refs.authStatus ?? null);
             const signOutButton = /** @type {HTMLButtonElement|null} */ (this.$refs.authSignOutButton ?? null);
+            const menuWrapper = /** @type {HTMLElement|null} */ (this.$refs.authMenuWrapper ?? null);
+            const menuPanel = /** @type {HTMLElement|null} */ (this.$refs.authMenu ?? null);
+            const avatarTrigger = /** @type {HTMLButtonElement|null} */ (this.$refs.authAvatarTrigger ?? null);
 
             if (!container || !buttonHost || !profile || !displayName || !email) {
                 return;
+            }
+
+            if (this.avatarMenu) {
+                this.avatarMenu.dispose();
+                this.avatarMenu = null;
             }
 
             this.authControls = initializeAuthControls({
@@ -129,10 +139,19 @@ function gravityApp() {
                 avatarElement: avatar ?? null,
                 statusElement: status ?? null,
                 signOutButton: signOutButton ?? null,
+                menuWrapper: menuWrapper ?? null,
                 onSignOutRequested: () => {
                     this.handleAuthSignOutRequest();
                 }
             });
+
+            if (avatarTrigger && menuPanel) {
+                this.avatarMenu = createAvatarMenu({
+                    triggerElement: avatarTrigger,
+                    menuElement: menuPanel
+                });
+                this.avatarMenu.setEnabled(false);
+            }
 
             this.authControls.showSignedOut();
             this.ensureGoogleIdentityController();
@@ -209,10 +228,14 @@ function gravityApp() {
          * @returns {void}
          */
         handleAuthSignOutRequest() {
+            this.avatarMenu?.close({ focusTrigger: false });
             if (this.authController) {
                 this.authController.signOut("manual");
             } else {
                 this.authControls?.showSignedOut();
+                this.avatarMenu?.setEnabled(false);
+                GravityStore.setUserScope(null);
+                this.initializeNotes();
             }
         },
 
@@ -318,6 +341,8 @@ function gravityApp() {
                 };
                 this.authControls?.clearError();
                 this.authControls?.showSignedIn(this.authUser);
+                this.avatarMenu?.setEnabled(true);
+                this.avatarMenu?.close({ focusTrigger: false });
                 GravityStore.setUserScope(this.authUser.id);
                 this.initializeNotes();
             });
@@ -326,6 +351,8 @@ function gravityApp() {
                 this.authUser = null;
                 this.authControls?.clearError();
                 this.authControls?.showSignedOut();
+                this.avatarMenu?.setEnabled(false);
+                this.avatarMenu?.close({ focusTrigger: false });
                 GravityStore.setUserScope(null);
                 this.initializeNotes();
             });

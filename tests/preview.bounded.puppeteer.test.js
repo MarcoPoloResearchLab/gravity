@@ -208,10 +208,12 @@ if (!puppeteerModule) {
                 const trailingToggleSelector = `[data-note-id="${TRAILING_IMAGE_NOTE_ID}"] .note-expand-toggle`;
                 await page.waitForSelector(trailingToggleSelector);
                 await page.click(trailingToggleSelector);
-                await page.waitForFunction((selector) => {
-                    const node = document.querySelector(selector);
-                    return node?.classList.contains("note-preview--expanded") ?? false;
-                }, {}, `[data-note-id="${TRAILING_IMAGE_NOTE_ID}"] .note-preview`);
+                await new Promise((resolve) => setTimeout(resolve, 150));
+                const trailingExpandedPreview = await page.$eval(
+                    `[data-note-id="${TRAILING_IMAGE_NOTE_ID}"] .note-preview`,
+                    (node) => node.classList.contains("note-preview--expanded")
+                );
+                assert.equal(trailingExpandedPreview, true, "trailing preview expands after toggle");
 
                 const longExpanded = await page.$eval(previewSelector, (node) => node.classList.contains("note-preview--expanded"));
                 assert.equal(longExpanded, false, "expanding a different note collapses the first preview");

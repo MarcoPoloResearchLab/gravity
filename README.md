@@ -40,11 +40,11 @@ with bounded previews, and every note edits inline—no modal overlays or contex
    `code` badge, and overflowing notes expose a rotated double-chevron toggle to expand the full preview in place.
 6. **Organise:** Reorder, merge, or delete notes with the familiar toolbar actions along the right edge. The copy button
    still mirrors either Markdown or sanitized HTML (including attachment metadata) depending on the current mode.
-7. **Import / Export:** Use the header buttons to move notebooks between browsers. Imports skip records that match on
-   identifier and content, preserving the single source of truth.
-8. **Toggle identity:** Use the profile controls in the header to sign in with Google Identity Services. Once signed in,
-   Gravity swaps to a user-specific storage namespace. Signing out returns to the anonymous notebook without blending
-   data between identities.
+7. **Import / Export:** Click the profile avatar to open the stacked account menu—export and import live alongside the
+   identity actions and still skip duplicates, preserving the single source of truth.
+8. **Toggle identity:** Use the header profile controls to sign in with Google Identity Services. Once signed in,
+   Gravity swaps to a user-specific storage namespace and hides the Google button behind the avatar menu. Signing out
+   returns to the anonymous notebook without blending data between identities.
 
 ## Authentication Flow
 
@@ -53,8 +53,8 @@ with bounded previews, and every note edits inline—no modal overlays or contex
   / `gravity:auth-sign-out` events to refresh the notebook in-place.
 - `GravityStore.setUserScope(userId)` switches the `localStorage` key to `gravityNotesData:user:<encodedUserId>`, keeping
   the anonymous notebook (`gravityNotesData`) intact.
-- The UI surfaces the active user's avatar, name, and a sign-out affordance while hiding the Google button—no manual
-  page reload is required to change accounts.
+- The UI surfaces the active user's avatar, name, and a dropdown menu for export, import, and sign-out actions while
+  hiding the Google button host—no manual page reload is required to change accounts.
 
 ## Architecture
 

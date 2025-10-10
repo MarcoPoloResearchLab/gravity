@@ -1,12 +1,9 @@
-- [x] index.html — Add Google Identity script plus auth controls container and ensure Alpine wiring for GN-11 login flow.
-- [x] js/constants.js — Introduce auth-related labels/events referenced by new modules.
-- [x] js/core/config.js — Expose Google client ID and per-user storage key helpers without breaking existing consumers.
-- [x] js/core/store.js — Support dynamic storage key switching and document API used by GN-12 user isolation.
-- [x] js/core/auth.js — Wrap Google Identity Services init, credential decoding, and dispatch of auth events (GN-11).
-- [x] js/ui/authControls.js — Render sign-in/out UI, mirror auth state, and emit events to the composition root.
-- [x] js/app.js — Bridge auth events, sync GravityStore with the active user, and rehydrate notes on context changes.
-- [x] js/ui/card/preview.js — Preserve viewport position when expanding a rendered note to resolve GN-10.
-- [x] tests/store.test.js — Add coverage for per-user storage separation and key switching.
-- [ ] tests/\* (new puppeteer) — Simulate multi-user session to verify isolated notes and auth UI reactions.
-- [x] README.md & MIGRATION.md — Document Google login flow, storage isolation, and viewport behaviour change.
-- [x] NOTES.md — Check off completed GN issues once tests pass.
+- [x] index.html — Consolidate header actions under the avatar trigger, add dropdown markup, and align refs with Alpine events.
+- [x] styles.css — Style avatar hover outline, dropdown positioning, and responsive behaviour for stacked menu.
+- [x] js/constants.js — Existing labels reused; no new strings required after review.
+- [x] js/ui/authControls.js — Hide Google button post sign-in, expose avatar dropdown state setters, and emit sign-out events.
+- [x] js/ui/menu/avatarMenu.js — Alpine-friendly utility to manage dropdown toggling, focus trap, and outside-click dismissal.
+- [x] js/app.js — Bridge avatar menu events to export/import/sign-out handlers and dispatch dropdown toggles.
+- [x] tests/auth.avatarMenu.test.js — Puppeteer coverage for hiding the sign-in button and avatar menu actions.
+- [x] README.md & MIGRATION.md — Document avatar menu behaviour, auth button removal, and new menu flow.
+- [x] NOTES.md — Mark GN-13/GN-14 complete after tests and docs are updated.

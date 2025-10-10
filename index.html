@@ -48,22 +48,26 @@
         <h1 class="app-title" x-text="constants.LABEL_APP_TITLE">Gravity Notes</h1>
         <div class="app-subtitle" x-text="constants.LABEL_APP_SUBTITLE">Append anywhere · Bubble to top · Auto-organize</div>
     </div>
-    <div class="app-controls">
-        <button id="export-notes-button" x-ref="exportButton" class="app-control-button" type="button" x-text="constants.LABEL_EXPORT_NOTES">Export</button>
-        <button id="import-notes-button" x-ref="importButton" class="app-control-button" type="button" x-text="constants.LABEL_IMPORT_NOTES">Import</button>
-        <input id="import-notes-input" x-ref="importInput" type="file" hidden />
-    </div>
     <div class="app-auth" x-ref="authContainer">
         <div class="auth-profile" x-ref="authProfile" hidden>
-            <img class="auth-avatar" x-ref="authAvatar" alt="" hidden />
+            <button id="auth-menu-trigger" class="auth-avatar-trigger" type="button" x-ref="authAvatarTrigger" aria-haspopup="menu" aria-expanded="false">
+                <img class="auth-avatar" x-ref="authAvatar" alt="" hidden />
+            </button>
             <div class="auth-profile-text">
                 <span class="auth-display-name" x-ref="authDisplayName"></span>
                 <span class="auth-email" x-ref="authEmail" hidden></span>
             </div>
         </div>
+        <div class="auth-menu-wrapper" x-ref="authMenuWrapper" hidden>
+            <div class="auth-menu" x-ref="authMenu" role="menu" aria-labelledby="auth-menu-trigger" data-test="auth-menu" data-open="false" hidden>
+                <button id="export-notes-button" x-ref="exportButton" class="auth-menu-item" type="button" role="menuitem" data-test="auth-menu-item" x-text="constants.LABEL_EXPORT_NOTES">Export</button>
+                <button id="import-notes-button" x-ref="importButton" class="auth-menu-item" type="button" role="menuitem" data-test="auth-menu-item" x-text="constants.LABEL_IMPORT_NOTES">Import</button>
+                <button class="auth-menu-item auth-menu-sign-out" type="button" role="menuitem" x-ref="authSignOutButton" data-test="auth-menu-item" hidden></button>
+            </div>
+        </div>
         <div class="auth-status" x-ref="authStatus"></div>
         <div class="auth-button-host" x-ref="authButtonHost" aria-live="polite"></div>
-        <button class="app-control-button auth-sign-out" type="button" x-ref="authSignOutButton" hidden></button>
+        <input id="import-notes-input" x-ref="importInput" type="file" hidden />
     </div>
 </header>
 
