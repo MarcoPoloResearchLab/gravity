@@ -28,6 +28,52 @@ html, body {
     align-items: center;
     margin-left: auto;
 }
+.app-auth {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    flex-wrap: wrap;
+}
+.auth-profile {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.auth-avatar {
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid #28314a;
+    box-shadow: 0 0 0 1px rgba(10, 12, 18, 0.5);
+}
+.auth-profile-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.1;
+}
+.auth-display-name {
+    font-size: 0.82rem;
+    font-weight: 600;
+}
+.auth-email {
+    font-size: 0.72rem;
+    opacity: 0.75;
+}
+.auth-status {
+    font-size: 0.72rem;
+    color: #8ea2d8;
+    min-width: 6rem;
+}
+.auth-button-host {
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.auth-sign-out {
+    align-self: center;
+}
 .app-control-button {
     background: transparent;
     border: 1px solid #28314a;
