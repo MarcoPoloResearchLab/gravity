@@ -64,7 +64,7 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
 
 ## Improvements
 
-- [GN-10] When the note is exapnded in rendering mode do not move the viewpoint to its end. Leave the note staying as is and just exand it to full rendering
+- [x] [GN-10] When the note is exapnded in rendering mode do not move the viewpoint to its end. Leave the note staying as is and just exand it to full rendering
 
 ## BugFixes
 

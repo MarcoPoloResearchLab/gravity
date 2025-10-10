@@ -164,7 +164,8 @@ if (!puppeteerModule) {
                 const mediumToggleHidden = await page.$eval(`[data-note-id="${MEDIUM_NOTE_ID}"] .note-expand-toggle`, (button) => button.hidden);
                 assert.equal(mediumToggleHidden, true, "chevron toggle should stay hidden on medium previews that fit");
 
-                await page.click(toggleSelector);
+                await page.focus(toggleSelector);
+                await page.keyboard.press("Enter");
                 await page.waitForFunction((selector) => {
                     const node = document.querySelector(selector);
                     return node?.classList.contains("note-preview--expanded") ?? false;
@@ -250,6 +251,100 @@ if (!puppeteerModule) {
 
                 const longFade = await getPreviewFadeOpacity(page, LONG_NOTE_ID);
                 assert.ok(longFade > 0, "long note should display fading overlay");
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("expanding preview preserves viewport position", async () => {
+            if (skipIfNoBrowser()) return;
+            const fillerRecords = Array.from({ length: 6 }, (_, index) =>
+                buildNoteRecord({ noteId: `filler-${index}`, markdownText: buildMediumMarkdown(), attachments: {} })
+            );
+            const records = [
+                ...fillerRecords,
+                buildNoteRecord({ noteId: LONG_NOTE_ID, markdownText: buildLongMarkdown(), attachments: {} })
+            ];
+            const page = await preparePage(browser, { records });
+            try {
+                const cardSelector = `[data-note-id="${LONG_NOTE_ID}"]`;
+                const toggleSelector = `${cardSelector} .note-expand-toggle`;
+                await page.waitForSelector(toggleSelector);
+
+                await page.$eval(cardSelector, (element) => {
+                    const rect = element.getBoundingClientRect();
+                    window.scrollBy({ top: rect.top - 140, behavior: "instant" });
+                });
+
+                const beforeMetrics = await page.evaluate((selector) => {
+                    const card = document.querySelector(selector);
+                    const preview = card?.querySelector(".note-preview");
+                    const cardRect = card?.getBoundingClientRect();
+                    return {
+                        cardTop: cardRect ? cardRect.top : null,
+                        scrollY: window.scrollY,
+                        previewScrollTop: preview instanceof HTMLElement ? preview.scrollTop : null
+                    };
+                }, cardSelector);
+
+                await page.$eval(`${cardSelector} .note-preview`, (element) => {
+                    element.scrollTop = element.scrollHeight;
+                });
+
+                await page.$eval(cardSelector, (card) => {
+                    const toggle = card.querySelector(".note-expand-toggle");
+                    if (!(toggle instanceof HTMLElement)) {
+                        return;
+                    }
+                    // Simulate the regression where expanding forces the window to jump
+                    // toward the note's end so the fix can be validated deterministically.
+                    const simulateScrollJump = () => {
+                        requestAnimationFrame(() => {
+                            window.scrollTo(0, document.body.scrollHeight);
+                        });
+                    };
+                    const handleClick = () => simulateScrollJump();
+                    const handleKeyDown = (event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                            simulateScrollJump();
+                        }
+                    };
+                    toggle.addEventListener("click", handleClick, { once: true });
+                    toggle.addEventListener("keydown", handleKeyDown, { once: true });
+                });
+
+                await page.click(toggleSelector);
+
+                await page.waitForFunction((selector) => {
+                    const preview = document.querySelector(`${selector} .note-preview`);
+                    return preview?.classList.contains("note-preview--expanded") ?? false;
+                }, {}, cardSelector);
+
+                await new Promise((resolve) => setTimeout(resolve, 250));
+
+                const afterMetrics = await page.evaluate((selector) => {
+                    const card = document.querySelector(selector);
+                    const preview = card?.querySelector(".note-preview");
+                    const cardRect = card?.getBoundingClientRect();
+                    return {
+                        cardTop: cardRect ? cardRect.top : null,
+                        scrollY: window.scrollY,
+                        previewScrollTop: preview instanceof HTMLElement ? preview.scrollTop : null
+                    };
+                }, cardSelector);
+
+                assert.ok(beforeMetrics.cardTop !== null && afterMetrics.cardTop !== null, "card metrics should be measurable");
+                if (beforeMetrics.cardTop !== null && afterMetrics.cardTop !== null) {
+                    const deltaTop = Math.abs(afterMetrics.cardTop - beforeMetrics.cardTop);
+                    assert.ok(deltaTop <= 2, `card should remain anchored in place (delta ${deltaTop})`);
+                }
+
+                const deltaScroll = Math.abs(afterMetrics.scrollY - beforeMetrics.scrollY);
+                assert.ok(deltaScroll <= 6, `window scroll should not jump to note end (delta ${deltaScroll})`);
+
+                if (typeof beforeMetrics.previewScrollTop === "number" && typeof afterMetrics.previewScrollTop === "number") {
+                    assert.ok(afterMetrics.previewScrollTop <= 1, "expanded preview should maintain top scroll position");
+                }
             } finally {
                 await page.close();
             }

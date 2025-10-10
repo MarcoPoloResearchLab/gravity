@@ -162,6 +162,10 @@ export function setCardExpanded(card, shouldExpand) {
         return;
     }
 
+    const initialScrollY = shouldExpand === true && typeof window !== "undefined" && typeof window.scrollY === "number"
+        ? window.scrollY
+        : null;
+
     if (shouldExpand) {
         if (expandedPreviewCard && expandedPreviewCard !== card) {
             setCardExpanded(expandedPreviewCard, false);
@@ -183,6 +187,14 @@ export function setCardExpanded(card, shouldExpand) {
         }
     }
     scheduleOverflowCheck(preview, content, toggle);
+
+    if (initialScrollY !== null && typeof window !== "undefined" && typeof window.scrollTo === "function") {
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                window.scrollTo({ top: initialScrollY, behavior: "auto" });
+            });
+        });
+    }
 }
 
 /**

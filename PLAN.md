@@ -5,7 +5,7 @@
 - [x] js/core/auth.js — Wrap Google Identity Services init, credential decoding, and dispatch of auth events (GN-11).
 - [x] js/ui/authControls.js — Render sign-in/out UI, mirror auth state, and emit events to the composition root.
 - [x] js/app.js — Bridge auth events, sync GravityStore with the active user, and rehydrate notes on context changes.
-- [ ] js/ui/card/preview.js — Preserve viewport position when expanding a rendered note to resolve GN-10.
+- [x] js/ui/card/preview.js — Preserve viewport position when expanding a rendered note to resolve GN-10.
 - [x] tests/store.test.js — Add coverage for per-user storage separation and key switching.
 - [ ] tests/\* (new puppeteer) — Simulate multi-user session to verify isolated notes and auth UI reactions.
 - [ ] README.md & MIGRATION.md — Document Google login flow, storage isolation, and viewport behaviour change.
