@@ -5,6 +5,7 @@ import test from "node:test";
 
 import {
     EVENT_AUTH_SIGN_IN,
+    EVENT_AUTH_SIGN_OUT,
     LABEL_EXPORT_NOTES,
     LABEL_IMPORT_NOTES,
     LABEL_SIGN_OUT
@@ -103,6 +104,9 @@ if (!puppeteerModule) {
 
                 await page.waitForSelector(".auth-button-host", { timeout: 2000 });
 
+                const hostBeforeSignIn = await page.$(".auth-button-host");
+                assert.ok(hostBeforeSignIn, "auth button host should render while signed out");
+
                 await page.evaluate((eventName) => {
                     const root = document.querySelector("body");
                     if (!root) return;
@@ -118,13 +122,10 @@ if (!puppeteerModule) {
                     }));
                 }, EVENT_AUTH_SIGN_IN);
 
-                await page.waitForFunction(() => {
-                    const host = document.querySelector(".auth-button-host");
-                    return Boolean(host && host.hasAttribute("hidden"));
-                }, { timeout: 2000 });
+                await page.waitForFunction(() => !document.querySelector(".auth-button-host"), { timeout: 2000 });
 
-                const ariaHidden = await page.$eval(".auth-button-host", (element) => element.getAttribute("aria-hidden"));
-                assert.equal(ariaHidden, "true");
+                const hostAfterSignIn = await page.$(".auth-button-host");
+                assert.equal(hostAfterSignIn, null);
 
                 await page.waitForSelector(".auth-avatar:not([hidden])", { timeout: 2000 });
 
@@ -141,6 +142,17 @@ if (!puppeteerModule) {
                     LABEL_IMPORT_NOTES,
                     LABEL_SIGN_OUT
                 ]);
+
+                await page.evaluate((eventName) => {
+                    const root = document.querySelector("body");
+                    if (!root) return;
+                    root.dispatchEvent(new CustomEvent(eventName, {
+                        detail: { reason: "test" },
+                        bubbles: true
+                    }));
+                }, EVENT_AUTH_SIGN_OUT);
+
+                await page.waitForSelector(".auth-button-host", { timeout: 2000 });
             } finally {
                 await page.close();
             }

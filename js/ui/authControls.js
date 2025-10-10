@@ -62,6 +62,12 @@ export function initializeAuthControls(options) {
         throw new Error("Auth controls require an email element.");
     }
 
+    const buttonParent = buttonElement.parentElement instanceof HTMLElement
+        ? buttonElement.parentElement
+        : container;
+    const buttonAnchor = buttonElement.nextSibling;
+    let buttonMounted = true;
+
     const signOutHandler = () => {
         if (typeof onSignOutRequested === "function") {
             onSignOutRequested();
@@ -162,6 +168,14 @@ export function initializeAuthControls(options) {
      */
     function toggleButtonHostVisibility(isVisible) {
         if (isVisible) {
+            if (!buttonMounted && buttonParent) {
+                if (buttonAnchor && buttonAnchor.parentNode === buttonParent) {
+                    buttonParent.insertBefore(buttonElement, buttonAnchor);
+                } else {
+                    buttonParent.appendChild(buttonElement);
+                }
+                buttonMounted = true;
+            }
             buttonElement.hidden = false;
             buttonElement.removeAttribute("aria-hidden");
             buttonElement.dataset.visibility = "visible";
@@ -169,6 +183,10 @@ export function initializeAuthControls(options) {
             buttonElement.hidden = true;
             buttonElement.setAttribute("aria-hidden", "true");
             buttonElement.dataset.visibility = "hidden";
+            if (buttonMounted) {
+                buttonElement.remove();
+                buttonMounted = false;
+            }
         }
     }
 
