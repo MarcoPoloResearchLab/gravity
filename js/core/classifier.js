@@ -2,7 +2,8 @@
 // @ts-check
 
 import { appConfig } from "./config.js";
-import { clampEnum, titleCase, toTagToken } from "../utils/index.js";
+import { clampEnum } from "../utils/enum.js";
+import { titleCase, toTagToken } from "../utils/string.js";
 import {
     CLASSIFIER_ALLOWED_HANDLES,
     CLASSIFIER_CATEGORIES,

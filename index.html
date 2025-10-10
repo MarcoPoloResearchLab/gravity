@@ -41,16 +41,16 @@
     <!-- Styles -->
     <link rel="stylesheet" href="./styles.css"/>
 </head>
-<body>
+<body x-data="gravityApp()">
 <header class="app-header">
     <div class="app-branding">
-        <h1 class="app-title">Gravity Notes</h1>
-        <div class="app-subtitle">Append anywhere · Bubble to top · Auto-organize</div>
+        <h1 class="app-title" x-text="constants.LABEL_APP_TITLE">Gravity Notes</h1>
+        <div class="app-subtitle" x-text="constants.LABEL_APP_SUBTITLE">Append anywhere · Bubble to top · Auto-organize</div>
     </div>
     <div class="app-controls">
-        <button id="export-notes-button" class="app-control-button" type="button"></button>
-        <button id="import-notes-button" class="app-control-button" type="button"></button>
-        <input id="import-notes-input" type="file" hidden />
+        <button id="export-notes-button" x-ref="exportButton" class="app-control-button" type="button" x-text="constants.LABEL_EXPORT_NOTES">Export</button>
+        <button id="import-notes-button" x-ref="importButton" class="app-control-button" type="button" x-text="constants.LABEL_IMPORT_NOTES">Import</button>
+        <input id="import-notes-input" x-ref="importInput" type="file" hidden />
     </div>
 </header>
 
@@ -58,7 +58,7 @@
 <section id="top-editor"></section>
 
 <!-- Persisted notes list -->
-<main id="notes-container" class="block-container"></main>
+<main id="notes-container" x-ref="notesContainer" class="block-container"></main>
 
 <div id="editor-toast" class="toast" aria-live="polite" hidden></div>
 <div id="editor-save-status" class="sr-only" aria-live="polite"></div>

@@ -1,7 +1,7 @@
 // @ts-check
 
 import { appConfig } from "../core/config.js";
-import { createElement } from "../utils/index.js";
+import { createElement } from "../utils/dom.js";
 import {
     LABEL_EDIT_MARKDOWN,
     LABEL_VIEW_RENDERED

@@ -1,15 +1,16 @@
 // @ts-check
 
-import { nowIso, generateNoteId, createElement, autoResize } from "../utils/index.js";
-import { GravityStore } from "../core/store.js";
+import { nowIso } from "../utils/datetime.js";
+import { generateNoteId } from "../utils/id.js";
+import { createElement, autoResize } from "../utils/dom.js";
 import {
     ARIA_LABEL_NEW_NOTE,
     ERROR_NOTES_CONTAINER_NOT_FOUND,
-    ERROR_TOP_EDITOR_NOT_FOUND
+    ERROR_TOP_EDITOR_NOT_FOUND,
+    EVENT_NOTE_CREATE
 } from "../constants.js";
 import { triggerClassificationForCard, focusCardEditor } from "./card.js";
 import { renderSanitizedMarkdown } from "./markdownPreview.js";
-import { showSaveFeedback } from "./saveFeedback.js";
 import {
     enableClipboardImagePaste,
     registerInitialAttachments,
@@ -26,10 +27,10 @@ const TOP_EDITOR_RESIZE_OPTIONS = Object.freeze({ minHeightPx: 20, extraPaddingP
 /**
  * Mount the always-empty top editor. It never persists empties; on finalize
  * it creates a record and passes it to onCreateRecord so a card can be inserted.
- * @param {{ notesContainer: HTMLElement, onCreateRecord?: (record: import("../types.d.js").NoteRecord) => void }} params
+ * @param {{ notesContainer: HTMLElement }} params
  * @returns {void}
  */
-export function mountTopEditor({ notesContainer, onCreateRecord }) {
+export function mountTopEditor({ notesContainer }) {
     if (!(notesContainer instanceof HTMLElement)) {
         throw new Error(ERROR_NOTES_CONTAINER_NOT_FOUND);
     }
@@ -140,8 +141,7 @@ export function mountTopEditor({ notesContainer, onCreateRecord }) {
             pinned: false
         };
 
-        GravityStore.upsertNonEmpty(record);
-        if (typeof onCreateRecord === "function") onCreateRecord(record);
+        dispatchNoteCreated(wrapper, record);
 
         editorHost.setValue("");
         editorHost.setMode(MARKDOWN_MODE_EDIT);
@@ -151,7 +151,6 @@ export function mountTopEditor({ notesContainer, onCreateRecord }) {
         keepFocus();
 
         triggerClassificationForCard(record.noteId, text, notesContainer);
-        showSaveFeedback();
     }
 
     // Ensure the caret is visible even when empty (fallback textarea only)
@@ -235,4 +234,25 @@ export function mountTopEditor({ notesContainer, onCreateRecord }) {
         if (!firstCard) return false;
         return focusCardEditor(firstCard, container, { bubblePreviousCardToTop: false });
     }
+}
+
+/**
+ * Dispatch a DOM-scoped creation event so the composition root can persist the note.
+ * @param {HTMLElement} dispatchTarget
+ * @param {import("../types.d.js").NoteRecord} record
+ * @returns {void}
+ */
+function dispatchNoteCreated(dispatchTarget, record) {
+    if (!(dispatchTarget instanceof HTMLElement)) {
+        return;
+    }
+    const event = new CustomEvent(EVENT_NOTE_CREATE, {
+        bubbles: true,
+        detail: {
+            record,
+            storeUpdated: false,
+            shouldRender: true
+        }
+    });
+    dispatchTarget.dispatchEvent(event);
 }
