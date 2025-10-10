@@ -40,6 +40,19 @@ with bounded previews, and every note edits inline—no modal overlays or contex
 7. **Import / Export:** Use the header buttons to move notebooks between browsers. Imports skip records that match on
    identifier and content, preserving the single source of truth.
 
+## Architecture
+
+* **Alpine composition root:** `index.html` boots `gravityApp()` from `js/app.js`, wiring the shared stores, event
+  bridges, and static copy in one place.
+* **Event pipeline:** UI modules dispatch DOM-scoped custom events
+  (`gravity:note-create`, `gravity:note-update`, `gravity:note-delete`, `gravity:note-pin-toggle`,
+  `gravity:notes-imported`, `gravity:notify`) so the root component can persist through `GravityStore` and schedule
+  re-renders.
+* **Module boundaries:** `ui/` focuses on DOM work, `core/` wraps domain services, and `utils/` exposes shared
+  helpers. All user-facing strings live in `js/constants.js` to keep copy consistent.
+* **Toast notifications:** Non-blocking feedback flows through `gravity:notify` instead of `alert()`, keeping the UI
+  accessible and aligned with the design system.
+
 ## Editor & Preview
 
 - **Deterministic preview:** Cards render the full sanitized Markdown and clamp at roughly `18vh`. Shorter notes shrink
@@ -72,7 +85,8 @@ python3 -m http.server 8000
 
 ## Testing
 
-- `npm test` drives the Node test suite, including Puppeteer coverage for the inline editor and bounded preview rules.
+- `npm test` drives the Node test suite, including Puppeteer coverage for the inline editor, bounded previews, and
+  the notification flow.
 - Run `npx puppeteer browsers install chrome` once to download the Chromium binary that Puppeteer uses during the
   end-to-end tests.
 - GitHub Actions executes the same test command on every push and pull request, validating the inline editing workflow and
