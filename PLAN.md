@@ -8,5 +8,5 @@
 - [x] js/ui/card/preview.js — Preserve viewport position when expanding a rendered note to resolve GN-10.
 - [x] tests/store.test.js — Add coverage for per-user storage separation and key switching.
 - [ ] tests/\* (new puppeteer) — Simulate multi-user session to verify isolated notes and auth UI reactions.
-- [ ] README.md & MIGRATION.md — Document Google login flow, storage isolation, and viewport behaviour change.
-- [ ] NOTES.md — Check off completed GN issues once tests pass.
+- [x] README.md & MIGRATION.md — Document Google login flow, storage isolation, and viewport behaviour change.
+- [x] NOTES.md — Check off completed GN issues once tests pass.
