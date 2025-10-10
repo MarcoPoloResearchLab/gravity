@@ -1,12 +1,12 @@
 package auth
 
 import (
-    "context"
-    "errors"
-    "fmt"
-    "time"
+	"context"
+	"errors"
+	"fmt"
+	"time"
 
-    "github.com/golang-jwt/jwt/v5"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 const (
@@ -86,29 +86,29 @@ func (i *TokenIssuer) IssueBackendToken(_ context.Context, claims GoogleClaims) 
 
 // ValidateToken ensures the backend JWT is well formed and returns the subject.
 func (i *TokenIssuer) ValidateToken(tokenString string) (string, error) {
-    if len(i.config.SigningSecret) == 0 {
-        return "", errMissingSigningSecret
-    }
+	if len(i.config.SigningSecret) == 0 {
+		return "", errMissingSigningSecret
+	}
 
-    claims := &jwt.RegisteredClaims{}
-    _, err := jwt.ParseWithClaims(
-        tokenString,
-        claims,
-        func(token *jwt.Token) (interface{}, error) {
-            if token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
-                return nil, fmt.Errorf("unexpected signing algorithm: %s", token.Method.Alg())
-            }
-            return i.config.SigningSecret, nil
-        },
-        jwt.WithAudience(i.config.Audience),
-        jwt.WithIssuer(i.config.Issuer),
-        jwt.WithTimeFunc(i.clock),
-    )
-    if err != nil {
-        return "", err
-    }
-    if claims.Subject == "" {
-        return "", errMissingSubjectClaim
-    }
-    return claims.Subject, nil
+	claims := &jwt.RegisteredClaims{}
+	_, err := jwt.ParseWithClaims(
+		tokenString,
+		claims,
+		func(token *jwt.Token) (interface{}, error) {
+			if token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
+				return nil, fmt.Errorf("unexpected signing algorithm: %s", token.Method.Alg())
+			}
+			return i.config.SigningSecret, nil
+		},
+		jwt.WithAudience(i.config.Audience),
+		jwt.WithIssuer(i.config.Issuer),
+		jwt.WithTimeFunc(i.clock),
+	)
+	if err != nil {
+		return "", err
+	}
+	if claims.Subject == "" {
+		return "", errMissingSubjectClaim
+	}
+	return claims.Subject, nil
 }

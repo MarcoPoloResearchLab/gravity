@@ -30,18 +30,18 @@ func (Note) TableName() string {
 
 // NoteChange captures an append-only audit trail for note modifications.
 type NoteChange struct {
-	ChangeID           string        `gorm:"column:change_id;primaryKey;size:190;not null"`
-	UserID             string        `gorm:"column:user_id;not null;index:idx_changes_user_time,priority:1"`
-	NoteID             string        `gorm:"column:note_id;not null"`
-	AppliedAtSeconds   int64         `gorm:"column:applied_at_s;not null;index:idx_changes_user_time,priority:2"`
-	ClientDevice       string        `gorm:"column:client_device;size:190;not null"`
-	ClientTimeSeconds  int64         `gorm:"column:client_time_s;not null"`
-	Operation          OperationType `gorm:"column:op;not null"`
-	PayloadJSON        string        `gorm:"column:payload_json;type:text;not null"`
-	PreviousVersion    *int64        `gorm:"column:prev_version"`
-	NewVersion         *int64        `gorm:"column:new_version"`
-	ClientEditSeq      int64         `gorm:"column:client_edit_seq;not null;default:0"`
-	ServerEditSeqSeen  int64         `gorm:"column:server_edit_seq_seen;not null;default:0"`
+	ChangeID          string        `gorm:"column:change_id;primaryKey;size:190;not null"`
+	UserID            string        `gorm:"column:user_id;not null;index:idx_changes_user_time,priority:1"`
+	NoteID            string        `gorm:"column:note_id;not null"`
+	AppliedAtSeconds  int64         `gorm:"column:applied_at_s;not null;index:idx_changes_user_time,priority:2"`
+	ClientDevice      string        `gorm:"column:client_device;size:190;not null"`
+	ClientTimeSeconds int64         `gorm:"column:client_time_s;not null"`
+	Operation         OperationType `gorm:"column:op;not null"`
+	PayloadJSON       string        `gorm:"column:payload_json;type:text;not null"`
+	PreviousVersion   *int64        `gorm:"column:prev_version"`
+	NewVersion        *int64        `gorm:"column:new_version"`
+	ClientEditSeq     int64         `gorm:"column:client_edit_seq;not null;default:0"`
+	ServerEditSeqSeen int64         `gorm:"column:server_edit_seq_seen;not null;default:0"`
 }
 
 // TableName provides the explicit table binding for GORM.

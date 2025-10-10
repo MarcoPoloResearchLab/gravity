@@ -19,7 +19,7 @@ const (
 
 // AppConfig captures runtime configuration for the API server.
 type AppConfig struct {
-	HTTPAddress   string
+	HTTPAddress    string
 	GoogleClientID string
 	GoogleJWKSURL  string
 	SigningSecret  string

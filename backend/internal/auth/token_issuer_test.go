@@ -49,39 +49,39 @@ func TestTokenIssuerIssuesBackendTokens(t *testing.T) {
 }
 
 func TestTokenIssuerRejectsMissingSecret(t *testing.T) {
-    issuer := NewTokenIssuer(TokenIssuerConfig{
-        SigningSecret: nil,
-    })
+	issuer := NewTokenIssuer(TokenIssuerConfig{
+		SigningSecret: nil,
+	})
 
-    _, _, err := issuer.IssueBackendToken(context.Background(), GoogleClaims{Subject: "user-123"})
-    if err == nil {
-        t.Fatalf("expected error when signing secret missing")
-    }
+	_, _, err := issuer.IssueBackendToken(context.Background(), GoogleClaims{Subject: "user-123"})
+	if err == nil {
+		t.Fatalf("expected error when signing secret missing")
+	}
 }
 
 func TestTokenIssuerValidatesIssuedTokens(t *testing.T) {
-    issuer := NewTokenIssuer(TokenIssuerConfig{
-        SigningSecret: []byte("another-secret"),
-        Issuer:        "gravity-auth",
-        Audience:      "gravity-api",
-        TokenTTL:      15 * time.Minute,
-    })
+	issuer := NewTokenIssuer(TokenIssuerConfig{
+		SigningSecret: []byte("another-secret"),
+		Issuer:        "gravity-auth",
+		Audience:      "gravity-api",
+		TokenTTL:      15 * time.Minute,
+	})
 
-    tokenString, _, err := issuer.IssueBackendToken(context.Background(), GoogleClaims{Subject: "user-321"})
-    if err != nil {
-        t.Fatalf("unexpected error issuing token: %v", err)
-    }
+	tokenString, _, err := issuer.IssueBackendToken(context.Background(), GoogleClaims{Subject: "user-321"})
+	if err != nil {
+		t.Fatalf("unexpected error issuing token: %v", err)
+	}
 
-    subject, err := issuer.ValidateToken(tokenString)
-    if err != nil {
-        t.Fatalf("expected validation success: %v", err)
-    }
-    if subject != "user-321" {
-        t.Fatalf("unexpected subject %s", subject)
-    }
+	subject, err := issuer.ValidateToken(tokenString)
+	if err != nil {
+		t.Fatalf("expected validation success: %v", err)
+	}
+	if subject != "user-321" {
+		t.Fatalf("unexpected subject %s", subject)
+	}
 
-    _, err = issuer.ValidateToken("invalid.token")
-    if err == nil {
-        t.Fatalf("expected validation to fail for malformed token")
-    }
+	_, err = issuer.ValidateToken("invalid.token")
+	if err == nil {
+		t.Fatalf("expected validation to fail for malformed token")
+	}
 }

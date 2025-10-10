@@ -61,10 +61,10 @@ func TestGoogleVerifierValidatesTokenUsingJWKS(t *testing.T) {
 	}
 
 	verifier := NewGoogleVerifier(GoogleVerifierConfig{
-		Audience:      "test-client",
-		JWKSURL:       jwksServer.URL + "/oauth2/v3/certs",
+		Audience:       "test-client",
+		JWKSURL:        jwksServer.URL + "/oauth2/v3/certs",
 		AllowedIssuers: []string{"https://accounts.google.com", "accounts.google.com"},
-		HTTPClient:    jwksServer.Client(),
+		HTTPClient:     jwksServer.Client(),
 	})
 
 	verified, err := verifier.Verify(context.Background(), signedToken)
@@ -121,10 +121,10 @@ func TestGoogleVerifierRejectsInvalidAudience(t *testing.T) {
 	}
 
 	verifier := NewGoogleVerifier(GoogleVerifierConfig{
-		Audience:      "test-client",
-		JWKSURL:       jwksServer.URL,
+		Audience:       "test-client",
+		JWKSURL:        jwksServer.URL,
 		AllowedIssuers: []string{"https://accounts.google.com"},
-		HTTPClient:    jwksServer.Client(),
+		HTTPClient:     jwksServer.Client(),
 	})
 
 	_, err = verifier.Verify(context.Background(), signedToken)

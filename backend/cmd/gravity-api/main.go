@@ -44,8 +44,8 @@ func main() {
 }
 
 func setupFlags(cmd *cobra.Command) {
-    config.ApplyDefaults(viper.GetViper())
-    defaults := config.NewViper()
+	config.ApplyDefaults(viper.GetViper())
+	defaults := config.NewViper()
 	cmd.PersistentFlags().StringVar(&cfgFile, "config", "", "Path to configuration file")
 	cmd.PersistentFlags().String("http-address", defaults.GetString("http.address"), "HTTP listen address")
 	cmd.PersistentFlags().String("google-client-id", defaults.GetString("google.client_id"), "Google OAuth client ID")
