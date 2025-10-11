@@ -1,32 +1,37 @@
 # Notes
 
-### Role
+## Role
 
-You are a senior front-end engineer. Your task is to **re-evaluate and refactor the repository Gravity Notes** according to the coding standards already written in **AGENTS.md**.
+You are a staff level full stack engineer. Your task is to **re-evaluate and refactor the Prompt Bubbles repository** according to the coding standards already written in **AGENTS.md**.
 
-### Context
+## Context
 
 * AGENTS.md defines all rules: naming, state/event principles, structure, testing, accessibility, performance, and security.
 * The repo uses Alpine.js, CDN scripts only, no bundlers.
 * Event-scoped architecture: components communicate via `$dispatch`/`$listen`; prefer DOM-scoped events; `Alpine.store` only for true shared domain state.
+* The backend uses Go language ecosystem
 
-### Your tasks
+## Your tasks
 
 1. **Read AGENTS.md first** → treat it as the *authoritative style guide*.
 2. **Scan the codebase** → identify violations (inline handlers, globals, duplicated strings, lack of constants, cross-component state leakage, etc.).
-3. **Generate PLAN.md** → bullet list of problems and refactors needed, scoped by file.
+3. **Generate PLAN.md** → bullet list of problems and refactors needed, scoped by file. PLAN.md is a part of PR metadata. It's a transient document outlining the work on a given issue.
 4. **Refactor in small commits** →
-
-   * Inline → Alpine `x-on:`
-   * Buttons → standardized Alpine factories/events
-   * Notifications → event-scoped listeners (DOM-scoped preferred)
-   * Strings → move to `constants.js`
-   * Utilities → extract into `/js/utils/`
-   * Composition → normalize `/js/app.js` as Alpine composition root
-5. **Tests** → Add/adjust Puppeteer tests for key flows (button → event → notification; cross-panel isolation).
+    Front-end:
+    * Inline → Alpine `x-on:`
+    * Buttons → standardized Alpine factories/events
+    * Notifications → event-scoped listeners (DOM-scoped preferred)
+    * Strings → move to `constants.js`
+    * Utilities → extract into `/js/utils/`
+    * Composition → normalize `/js/app.js` as Alpine composition root
+    Backend:
+    * Use "object-oreinted" stye of functions attached to structs
+    * Prioritize data-driven solutions over imperative approach
+    * Design and use shared components
+5. **Tests** → Add/adjust Puppeteer tests for key flows (button → event → notification; cross-panel isolation). Prioritize end-2-end and integration tests.
 6. **Docs** → Update README and MIGRATION.md with new event contracts, removed globals, and developer instructions.
 
-### Output requirements
+## Output requirements
 
 * Always follow AGENTS.md rules (do not restate them, do not invent new ones).
 * Output a **PLAN.md** first, then refactor step-by-step.
@@ -40,24 +45,36 @@ You are a senior front-end engineer. Your task is to **re-evaluate and refactor 
 
 Review the NOTES.md. Make a plan for autonomously fixing every item under Features, BugFixes, Improvements, Maintenance. Ensure no regressions. Ensure adding tests. Lean into integration tests. Fix every issue. Document the changes.
 
-Fix issues one by one. 
-1. Create a new git branch with descriptive name
-2. Describe an issue through tests. Ensure that the tests are comprehensive and failing to begin with.
+Fix issues one by one, working sequentially. 
+1. Create a new git commit with descriptive name
+2. Describe an issue through tests. 
+2a. Ensure that the tests are comprehensive and failing to begin with. 
+2b. Ensure AGENTS.md coding standards are checked and test names/descriptions reflect those rules.
 3. Fix the issue
 4. Rerun the tests
-5. Repeat 2-4 untill the issue is fixed and comprehensive tests are passing
+5. Repeat pp 2-4 untill the issue is fixed: 
+5a. old and new comprehensive tests are passing
+5b. Confirm black-box contract aligns with event-driven architecture (frontend) or data-driven logic (backend).
+5c. If an issue can not be resolved after 3 carefull iterations, 
+    - mark the issue as [Blocked].
+    - document the reason for the bockage.
+    - commit the changes into a separate branch called "blocked/<issue-id>".
+    - work on the next issue from the divergence point of the previous issue.
 6. Write a nice comprehensive commit message AFTER EACH issue is fixed and tested and covered with tests.
-7. Optional: update the README in case the changes warrant updated documentation
-8. Optional: ipdate the PRD in case the changes warrant updated product requirements
+7. Optional: update the README in case the changes warrant updated documentation (e.g. have user-facing consequences)
+8. Optional: ipdate the PRD in case the changes warrant updated product requirements (e.g. change product undestanding)
 9. Optional: update the code examples in case the changes warrant updated code examples
 10. Mark an issue as done ([X])in the NOTES.md after the issue is fixed: New and existing tests are passing without regressions
-11. Commit the changes and push to the remote.
+11. Commit and push the changes to the remote branch.
+12. Repeat till all issues are fixed, and commits are stacked up (one starts from another).
 
 Do not work on all issues at once. Work at one issue at a time sequntially.
 
 Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixes are implemented but don't delete the sections themselves.
 
-## Features
+## Issues
+
+### Features
 
 - [x] [GN-11] Add logging using Google Login SDK (frontend only). Employ the GSI approach you can find in the countodwn folder [text](countdown/app.js). use Google Client ID "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com"
 - [x] [GN-12] Associate local storage where we store all notes with the user (see [GN-11]). A good test would be to confirm that thwo users logged in in the same browser will not see each other notes.
@@ -163,7 +180,7 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
 
 - [x] [GN-19] Prepare frontend integration with the Go backend to allow Notes to be saved and restored based on the logged in user across mutliple clients. Review [GN-18] for backecnd details. have intgeration tests that allow verification of the end-2-end flow
 
-## Improvements
+### Improvements
 
 - [x] [GN-10] When the note is expanded in rendering mode do not move the viewpoint to its end. Leave the note staying as is and just exand it to full rendering
 - [x] [GN-14] Organize header bar buttons into a stackable menu. The stackable menu shall be under the user avatar. The user avatar is shown in a circle, which gains white outline on hover. On a click it displays the stacked dropdown:
@@ -218,10 +235,9 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
                 ghcr.io/${{ github.repository_owner }}/loopaware:latest
                 ghcr.io/${{ github.repository_owner }}/loopaware:${{ github.sha }}
   ```
-- [ ] [GN-27] Define a mechanism to allow for local development integration testing between front end and backend. we currently have backendBaseUrl: "http://localhost:8080" in the config.js file but we will need to be able to plug in the url there dynamically depending on the environment we are in
+- [x] [GN-27] Define a mechanism to allow for local development integration testing between front end and backend. we currently have backendBaseUrl: "http://localhost:8080" in the config.js file but we will need to be able to plug in the url there dynamically depending on the environment we are in
 
-
-## BugFixes
+### BugFixes
 
 - [x] [GN-13] Remove the button "Sign In with Google" after successfull login
 - [x] [GN-15] Remove "Not Signed In" sign when the user is not signed in, and leave only the Sign in with Google button
@@ -250,7 +266,7 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
         gorm.io/gorm v1.31.0
     )
     ```
-- [ ] [GN-25] I have started docker compose with the backend on localhost:8000. I have then started and logged into Gravity Notes running on localhost:800. I was ablle to login on both Firefox and Safari successfully.
+- [x] [GN-25] I have started docker compose with the backend on localhost:8000. I have then started and logged into Gravity Notes running on localhost:800. I was ablle to login on both Firefox and Safari successfully.
  1. I do not see the notes I see on Firefox in Safari after I have logged in as the same user. The synchronization does not work.
  2. I do see errors in JS console of both browsers
   Safari JS Console errors:
@@ -308,7 +324,34 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
     backend-1  | 2025/10/11 05:14:10 /src/internal/notes/service.go:99 record not found
     backend-1  | [0.136ms] [rows:0] SELECT * FROM `notes` WHERE user_id = "111357980452034959148" AND note_id = "1aca4bed-4bd6-42b3-ad9b-1b58859a9241" LIMIT 1 
     ```
-- [ ] [GN-26] When we open markdown for editing we shall place the cursor in the same place as the place it was clicked on in the rendering mode. See [GN-22]
+- [x] [GN-26] When we open markdown for editing we shall place the cursor in the same place as the place it was clicked on in the rendering mode. See [GN-22]
+- [ ] [GN-27] Notes randomly duplicate when clicked on rendered checkmarks
+- [ ] [GN-28] When we open markdown for editing we shall place the cursor in the same place as the place it was clicked on in the rendering mode. See [GN-22], [GN-26]. Write tests to demonstarte that a cursor in markdown will be placed in the same place as where the click landed in the rendered preview
+- [ ] [GN-29] Make a url of llm-proxy environment-dependent (configurable) for development. Current url gives errros about CORS https://llm-proxy.mprlab.com/v1/gravity/classify
+`Cross-Origin Request Blocked: The Same Origin Policy disallows reading the remote resource at https://llm-proxy.mprlab.com/v1/gravity/classify. (Reason: CORS header ‘Access-Control-Allow-Origin’ missing). Status code: 403.`
+- [ ] [GN-30] The backend receive no events from the client. Prepare an end-2-end test that
+    1. Starts the backend
+    2. Starts the frontend pointing to the backend
+    3. Verifies syncronization between the front-end and the backend
+        Current backend logs:
+        ```
+        Attaching to backend-1
+        backend-1  | [GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+        backend-1  |  - using env:      export GIN_MODE=release
+        backend-1  |  - using code:     gin.SetMode(gin.ReleaseMode)
+        backend-1  | 
+        backend-1  | [GIN-debug] POST   /auth/google              --> github.com/MarcoPoloResearchLab/gravity/backend/internal/server.(*httpHandler).handleGoogleAuth-fm (3 handlers)
+        backend-1  | [GIN-debug] POST   /notes/sync               --> github.com/MarcoPoloResearchLab/gravity/backend/internal/server.(*httpHandler).handleNotesSync-fm (4 handlers)
+        backend-1  | [GIN-debug] GET    /notes                    --> github.com/MarcoPoloResearchLab/gravity/backend/internal/server.(*httpHandler).handleListNotes-fm (4 handlers)
+        backend-1  | {"level":"info","ts":1760200071.233145,"caller":"database/sqlite.go:34","msg":"database initialized","path":"/data/gravity.db"}
+        backend-1  | {"level":"info","ts":1760200071.2389312,"caller":"gravity-api/main.go:148","msg":"server starting","address":"0.0.0.0:8080"}
+        ```
+        Frontend configuration:     `<meta name="gravity-backend-base-url" content="http://localhost:8080">`
+- [ ] [GN-31] The page refresh logs out a logged in user. Have an integration test that verifies that tghe page refresh does not log off the user. I see messages in the JS console that maybe relevant: 
+```
+The value of the attribute “expires” for the cookie “_ga_WYL7PDVTHN” has been overwritten. localhost:8000
 
+[GSI_LOGGER]: The given origin is not allowed for the given client ID. client:74:89
+```
 
-## Maintenance
+### Maintenance
