@@ -248,5 +248,65 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
         gorm.io/gorm v1.31.0
     )
     ```
+- [ ] [GN-25] I have started docker compose with the backend on localhost:8000. I have then started and logged into Gravity Notes running on localhost:800. I was ablle to login on both Firefox and Safari successfully.
+ 1. I do not see the notes I see on Firefox in Safari after I have logged in as the same user. The synchronization does not work.
+ 2. I do see errors in JS console of both browsers
+  Safari JS Console errors:
+  ```js
+    [Error] Failed to load resource: the server responded with a status of 403 () (status, line 0)
+    [Error] [GSI_LOGGER]: The given origin is not allowed for the given client ID.
+        (anonymous function) (client:74:95)
+        (anonymous function) (client:213:299)
+        (anonymous function) (client:312:232)
+        (anonymous function) (client:330:265)
+        (anonymous function) (client:257:399)
+        zf (client:115:465)
+        (anonymous function) (client:114:345)
+        lk (client:161:444)
+        pk (client:164)
+        (anonymous function) (client:169:99)
+        (anonymous function) (client:169)
+    [Error] Failed to load resource: the server responded with a status of 403 () (button, line 0)
+    [Error] [GSI_LOGGER]: The given origin is not allowed for the given client ID.
+        (anonymous function)
+        (anonymous function)
+        (anonymous function)
+        Global Code
+    [Error] Failed to load resource: the server responded with a status of 429 () (ACg8ocKhysgZSyFQITrmy5XeXGNmTvMXNoyQzVdb1U7L1AGd8wurJmNYIw=s96-c, line 0)
+    ```
+   Firefox JS Console messages
+    ```js
+    Cookie warnings 2
+    Feature Policy: Skipping unsupported feature name “identity-credentials-get”. client:269:37
+    Feature Policy: Skipping unsupported feature name “identity-credentials-get”. client:270:336
+    [GSI_LOGGER]: The given origin is not allowed for the given client ID. client:74:89
+    Opening multiple popups was blocked due to lack of user activation. client:80:240
+    Storage access automatically granted for origin “https://accounts.google.com” on “http://localhost:8000”.
+    Cross-Origin Request Blocked: The Same Origin Policy disallows reading the remote resource at https://llm-proxy.mprlab.com/v1/gravity/classify. (Reason: CORS header ‘Access-Control-Allow-Origin’ missing). Status code: 403.
+    Cross-Origin Request Blocked: The Same Origin Policy disallows reading the remote resource at https://llm-proxy.mprlab.com/v1/gravity/classify. (Reason: CORS request did not succeed). Status code: (null).
+    ```
+    I do see the following log on the backend side
+    ```
+    backend-1  | [GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+    backend-1  |  - using env:      export GIN_MODE=release
+    backend-1  |  - using code:     gin.SetMode(gin.ReleaseMode)
+    backend-1  | 
+    backend-1  | [GIN-debug] POST   /auth/google              --> github.com/MarcoPoloResearchLab/gravity/backend/internal/server.(*httpHandler).handleGoogleAuth-fm (3 handlers)
+    backend-1  | [GIN-debug] POST   /notes/sync               --> github.com/MarcoPoloResearchLab/gravity/backend/internal/server.(*httpHandler).handleNotesSync-fm (4 handlers)
+    backend-1  | [GIN-debug] GET    /notes                    --> github.com/MarcoPoloResearchLab/gravity/backend/internal/server.(*httpHandler).handleListNotes-fm (4 handlers)
+    backend-1  | {"level":"info","ts":1760159017.0436192,"caller":"database/sqlite.go:34","msg":"database initialized","path":"/data/gravity.db"}
+    backend-1  | {"level":"info","ts":1760159017.0450127,"caller":"gravity-api/main.go:148","msg":"server starting","address":"0.0.0.0:8080"}
+    backend-1  | 
+    backend-1  | 2025/10/11 05:12:55 /src/internal/notes/service.go:99 record not found
+    backend-1  | [4.194ms] [rows:0] SELECT * FROM `notes` WHERE user_id = "111357980452034959148" AND note_id = "f8d0af07-5827-44ae-8576-e5ac183617ec" LIMIT 1 
+    backend-1  | 
+    backend-1  | 2025/10/11 05:12:55 /src/internal/notes/service.go:99 record not found
+    backend-1  | [0.769ms] [rows:0] SELECT * FROM `notes` WHERE user_id = "111357980452034959148" AND note_id = "39506c3f-aa21-440e-9e57-6cd23f8d98d7" LIMIT 1 
+    backend-1  | 
+    backend-1  | 2025/10/11 05:14:10 /src/internal/notes/service.go:99 record not found
+    backend-1  | [0.136ms] [rows:0] SELECT * FROM `notes` WHERE user_id = "111357980452034959148" AND note_id = "1aca4bed-4bd6-42b3-ad9b-1b58859a9241" LIMIT 1 
+    ```
+- [ ] [GN-26] When we open markdown for editing we shall place the cursor in the same place as the place it was clicked on in the rendering mode. See [GN-22]
+
 
 ## Maintenance
