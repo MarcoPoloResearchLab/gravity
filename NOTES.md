@@ -161,6 +161,7 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
         * Indices:
             * `idx_changes_user_time` on `(user_id, applied_at_s)`.
 
+- [ ] [GN-19] Prepare frontend integration with the backend to allow Notes to be saved and restored based on the logged in user across mutliple clients. Review [GN-18] for backecnd details. have intgeration tests that allow verification of the end-2-end flow
 
 ## Improvements
 
@@ -169,6 +170,8 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
     - Export Notes
     - Import Notes
     - Sign Out
+- [ ] [GN-20] Allow for Export only of the notes for un-authenticated user. Have an Export button available that downlaods json containing all the notes. Reuse existing functionality.
+- [ ] [GN-22] Open the note in the place a user clicked on when swithcing from rendered view to editing. That way if a user clicked in the middle of the sentence in the rendered view, the cursor goes to that middle of the sentence in the markdown editing view
 
 ## BugFixes
 
@@ -176,6 +179,9 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
 - [x] [GN-15] Remove "Not Signed In" sign when the user is not signed in, and leave only the Sign in with Google button
 - [x] [GN-16] Remove "Signed In" sign when the user is signed in
 - [x] [GN-17] Remove the button "Sign In with Google" after successfull login
+- [ ] [GN-21] Rename items in the stacked dropdown after login to:
+    - Export -> "Export Notes"
+    - Import -> "Import Notes"
 
 
 ## Maintenance
