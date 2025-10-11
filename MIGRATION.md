@@ -16,6 +16,7 @@ DOM-scoped events and persists note data via `GravityStore`:
 | `gravity:auth-sign-in` | `{ user: { id, email, name, pictureUrl }, credential }` | Namespace `GravityStore` to the authenticated user and refresh the notebook. |
 | `gravity:auth-sign-out` | `{ reason }` | Return to the anonymous notebook and hide the profile controls. |
 | `gravity:auth-error` | `{ reason, error }` | Surface authentication failures via the toast pipeline without crashing the app. |
+| `gravity:sync-snapshot-applied` | `{ records, source }` | Rehydrate the grid after backend reconciliation updates the persisted notes. |
 
 `storeUpdated` identifies whether the origin component already synchronised storage (e.g., card merges call
 `syncStoreFromDom`). `shouldRender` lets card-level flows opt-out of full list re-renders when they already reconciled
@@ -44,6 +45,12 @@ the DOM.
   `gravity:auth-sign-out` events by rehydrating the card grid via `initializeNotes()`.
 * Google Identity Services loads from `https://accounts.google.com/gsi/client`; the client ID lives in
   `appConfig.googleClientId` and should be reused across environments.
+* `appConfig.backendBaseUrl` reads overrides from `window.GRAVITY_CONFIG.backendBaseUrl` or the
+  `<meta name="gravity-backend-base-url">` tag. Absent overrides it falls back to the current origin (or
+  `http://localhost:8080` when served from `file://`).
+* `appConfig.llmProxyBaseUrl` follows the same override rules via `window.GRAVITY_CONFIG.llmProxyBaseUrl` or
+  `<meta name="gravity-llm-proxy-base-url">`, defaulting to the current origin or the hosted proxy at
+  `https://llm-proxy.mprlab.com` when unspecified.
 * The auth controls hide the Google button once a profile is active and expose the stacked avatar menu (export, import,
   sign out). The sign-out item dispatches `gravity:auth-sign-out`.
 

@@ -136,10 +136,32 @@ Conflict resolution follows the documented `(client_edit_seq, updated_at)` prece
 
 ### Frontend Sync
 
-- `appConfig.backendBaseUrl` points the browser client at the API origin (default `""` uses the current host).
+- `appConfig.backendBaseUrl` resolves at runtime from `window.GRAVITY_CONFIG.backendBaseUrl` or a `<meta name="gravity-backend-base-url">` tag. When neither is provided it falls back to the current origin (or `http://localhost:8080` when served from `file://`).
+- `appConfig.llmProxyBaseUrl` resolves from `window.GRAVITY_CONFIG.llmProxyBaseUrl` or a `<meta name="gravity-llm-proxy-base-url">` tag. When unset it falls back to the current origin or the default hosted proxy at `https://llm-proxy.mprlab.com`.
 - The UI keeps persisting to `localStorage` for offline usage while enqueuing operations for the backend.
 - On sign-in the client exchanges the Google credential for a backend token, flushes the queue, and reconciles a fresh snapshot so additional tabs/devices pick up the latest state.
 - Pin toggles, imports, and deletions immediately enqueue operations; failed sync attempts remain queued until connectivity returns.
+- `gravity:sync-snapshot-applied` fires after reconciliation so the Alpine composition root can re-render using the latest server snapshot.
+
+#### Runtime configuration
+
+Configure development endpoints before loading `index.html`:
+
+```html
+<script>
+    window.GRAVITY_CONFIG = {
+        backendBaseUrl: "http://localhost:8000",
+        llmProxyBaseUrl: "http://localhost:8081"
+    };
+</script>
+```
+
+Or embed a meta tag when templating the page:
+
+```html
+<meta name="gravity-backend-base-url" content="https://gravity-notes.example.com/api">
+<meta name="gravity-llm-proxy-base-url" content="https://proxy.example.com">
+```
 
 ## Testing
 
