@@ -33,6 +33,12 @@ const CARET_NOTE_ID = "inline-caret-fixture";
 const CARET_MARKDOWN = `First paragraph line one.\nSecond paragraph line two.\nThird line to ensure scrolling.`;
 const PREVIEW_CARET_NOTE_ID = "inline-preview-caret-fixture";
 const PREVIEW_CARET_MARKDOWN = "Alpha **bold** bravo [link](https://example.com) charlie delta.";
+const PREVIEW_COMPLEX_NOTE_ID = "inline-preview-complex-fixture";
+const PREVIEW_COMPLEX_MARKDOWN = [
+    "Alpha anchor paragraph lines the preview.",
+    "Second pass mixes **bold**, `inline code`, and [link targets](https://example.com) for caret mapping.",
+    "Third stanza finishes the markdown sample."
+].join("\n");
 const UNORDERED_NOTE_ID = "inline-unordered-fixture";
 const UNORDERED_MARKDOWN = "* Alpha\n* Beta";
 const ORDERED_NOTE_ID = "inline-ordered-fixture";
@@ -1598,6 +1604,164 @@ if (!puppeteerModule) {
                 assert.equal(caretState.end, expectedIndex, "caret selection collapses at clicked position");
             } finally {
                 await page.close();
+            }
+        });
+
+        test("preview click sets caret when caretRangeFromPoint returns element nodes", async () => {
+            if (skipIfNoBrowser()) return;
+            const seededRecords = [buildNoteRecord({
+                noteId: PREVIEW_CARET_NOTE_ID,
+                markdownText: PREVIEW_CARET_MARKDOWN,
+                attachments: {}
+            })];
+            const expectedIndex = PREVIEW_CARET_MARKDOWN.indexOf("bold");
+
+            const page = await preparePage(browser, { records: seededRecords });
+            const cardSelector = `.markdown-block[data-note-id="${PREVIEW_CARET_NOTE_ID}"]`;
+            const previewSelector = `${cardSelector} .markdown-content`;
+            const editorSelector = `${cardSelector} .markdown-editor`;
+            const boldSelector = `${previewSelector} strong`;
+
+            try {
+                await page.waitForSelector(previewSelector);
+                await page.waitForSelector(boldSelector);
+
+                await page.evaluate(({ previewSelector: selector }) => {
+                    const preview = document.querySelector(selector);
+                    const bold = preview?.querySelector("strong");
+                    if (!(preview instanceof HTMLElement) || !(bold instanceof HTMLElement)) {
+                        return;
+                    }
+                    const original = typeof document.caretRangeFromPoint === "function"
+                        ? document.caretRangeFromPoint.bind(document)
+                        : null;
+                    document.__gravityOriginalCaretRangeFromPoint = original;
+                    document.caretRangeFromPoint = function () {
+                        const range = document.createRange();
+                        range.setStart(bold, 0);
+                        range.collapse(true);
+                        return range;
+                    };
+                }, { previewSelector });
+
+                const clickPoint = await page.$eval(boldSelector, (element) => {
+                    const rect = element.getBoundingClientRect();
+                    return {
+                        x: rect.x + rect.width / 2,
+                        y: rect.y + rect.height / 2
+                    };
+                });
+
+                await page.mouse.click(clickPoint.x, clickPoint.y);
+
+                await page.waitForSelector(`${cardSelector}.editing-in-place`, { timeout: 2000 });
+                await page.waitForSelector(editorSelector, { timeout: 2000 });
+
+                const caretState = await page.$eval(editorSelector, (el) => ({
+                    start: el.selectionStart ?? 0,
+                    end: el.selectionEnd ?? 0
+                }));
+
+                assert.equal(caretState.start, expectedIndex, "caret respects mapped markdown index");
+                assert.equal(caretState.end, expectedIndex, "caret collapses at mapped index");
+            } finally {
+                await page.evaluate(() => {
+                    if (typeof document.__gravityOriginalCaretRangeFromPoint === "function") {
+                        document.caretRangeFromPoint = document.__gravityOriginalCaretRangeFromPoint;
+                    }
+                    delete document.__gravityOriginalCaretRangeFromPoint;
+                });
+                await page.close();
+            }
+        });
+
+        test("preview click maps caret across inline formatting cases", async () => {
+            if (skipIfNoBrowser()) return;
+            const seededRecords = [buildNoteRecord({
+                noteId: PREVIEW_COMPLEX_NOTE_ID,
+                markdownText: PREVIEW_COMPLEX_MARKDOWN,
+                attachments: {}
+            })];
+            const cardSelector = `.markdown-block[data-note-id="${PREVIEW_COMPLEX_NOTE_ID}"]`;
+            const previewSelector = `${cardSelector} .markdown-content`;
+            const editorSelector = `${cardSelector} .markdown-editor`;
+
+            const scenarios = [
+                {
+                    description: "bold text segment",
+                    rangeStart: PREVIEW_COMPLEX_MARKDOWN.indexOf("**bold**") + 2,
+                    rangeEnd: PREVIEW_COMPLEX_MARKDOWN.indexOf("**bold**") + 2 + "bold".length,
+                    resolvePoint: async (page) => page.$eval(`${previewSelector} strong`, (element) => {
+                        const rect = element.getBoundingClientRect();
+                        return {
+                            x: rect.x + rect.width / 2,
+                            y: rect.y + rect.height / 2
+                        };
+                    })
+                },
+                {
+                    description: "inline code segment",
+                    rangeStart: PREVIEW_COMPLEX_MARKDOWN.indexOf("`inline code`") + 1,
+                    rangeEnd: PREVIEW_COMPLEX_MARKDOWN.indexOf("`inline code`") + 1 + "inline code".length,
+                    resolvePoint: async (page) => page.$eval(`${previewSelector} code`, (element) => {
+                        const rect = element.getBoundingClientRect();
+                        return {
+                            x: rect.x + rect.width / 2,
+                            y: rect.y + rect.height / 2
+                        };
+                    })
+                },
+                {
+                    description: "link text segment",
+                    rangeStart: PREVIEW_COMPLEX_MARKDOWN.indexOf("[link targets]") + 1,
+                    rangeEnd: PREVIEW_COMPLEX_MARKDOWN.indexOf("[link targets]") + 1 + "link targets".length,
+                    beforeClick: async (page) => page.evaluate((selector) => {
+                        const anchor = document.querySelector(selector);
+                        if (anchor instanceof HTMLElement) {
+                            anchor.addEventListener("click", (event) => event.preventDefault(), {
+                                capture: true,
+                                once: true
+                            });
+                        }
+                    }, `${previewSelector} a`),
+                    resolvePoint: async (page) => page.$eval(`${previewSelector} a`, (element) => {
+                        const rect = element.getBoundingClientRect();
+                        return {
+                            x: rect.x + rect.width / 2,
+                            y: rect.y + rect.height / 2
+                        };
+                    })
+                }
+            ];
+
+            for (const scenario of scenarios) {
+                const page = await preparePage(browser, { records: seededRecords });
+                try {
+                    await page.waitForSelector(previewSelector);
+
+                    if (typeof scenario.beforeClick === "function") {
+                        await scenario.beforeClick(page);
+                    }
+
+                    const clickPoint = await scenario.resolvePoint(page);
+                    assert.ok(clickPoint, `${scenario.description} click point resolved`);
+                    await page.mouse.click(clickPoint.x, clickPoint.y);
+
+                    await page.waitForSelector(`${cardSelector}.editing-in-place`, { timeout: 2000 });
+                    await page.waitForSelector(editorSelector, { timeout: 2000 });
+
+                    const caretRange = await page.$eval(editorSelector, (el) => ({
+                        start: el.selectionStart ?? 0,
+                        end: el.selectionEnd ?? 0
+                    }));
+                    assert.ok(
+                        caretRange.start >= scenario.rangeStart && caretRange.start < scenario.rangeEnd,
+                        `${scenario.description} caret positions within markdown range`
+                    );
+                    assert.equal(caretRange.start, caretRange.end, `${scenario.description} caret collapses to a single point`);
+                } finally {
+                    await page.close();
+                }
             }
         });
 
