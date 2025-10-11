@@ -8,6 +8,7 @@ import { initializeImportExport } from "./ui/importExport.js";
 import { GravityStore } from "./core/store.js";
 import { appConfig } from "./core/config.js";
 import { createGoogleIdentityController } from "./core/auth.js";
+import { createSyncManager } from "./core/syncManager.js";
 import { mountTopEditor } from "./ui/topEditor.js";
 import {
     LABEL_APP_SUBTITLE,
@@ -34,6 +35,7 @@ import { initializeNotesState } from "./ui/notesState.js";
 import { showSaveFeedback } from "./ui/saveFeedback.js";
 import { initializeAuthControls } from "./ui/authControls.js";
 import { createAvatarMenu } from "./ui/menu/avatarMenu.js";
+import { logging } from "./utils/logging.js";
 
 const CONSTANTS_VIEW_MODEL = Object.freeze({
     LABEL_APP_SUBTITLE,
@@ -67,6 +69,7 @@ function gravityApp() {
         authController: /** @type {{ signOut(reason?: string): void, dispose(): void }|null} */ (null),
         authUser: /** @type {{ id: string, email: string|null, name: string|null, pictureUrl: string|null }|null} */ (null),
         authPollHandle: /** @type {number|null} */ (null),
+        syncManager: /** @type {ReturnType<typeof createSyncManager>|null} */ (null),
         initialized: false,
 
         init() {
@@ -84,6 +87,7 @@ function gravityApp() {
             this.initializeAuth();
             this.initializeTopEditor();
             this.initializeImportExport();
+            this.syncManager = createSyncManager();
             GravityStore.setUserScope(null);
             this.initializeNotes();
             initializeKeyboardShortcutsModal();
@@ -262,6 +266,8 @@ function gravityApp() {
                 if (!storeUpdated) {
                     GravityStore.upsertNonEmpty(record);
                 }
+                const persisted = GravityStore.getById(record.noteId) ?? record;
+                this.syncManager?.recordLocalUpsert(persisted);
                 if (shouldRender !== false) {
                     const cards = GravityStore.loadAllNotes();
                     initializeNotesState(cards);
@@ -278,6 +284,8 @@ function gravityApp() {
                 if (!storeUpdated) {
                     GravityStore.upsertNonEmpty(record);
                 }
+                const persisted = GravityStore.getById(record.noteId) ?? record;
+                this.syncManager?.recordLocalUpsert(persisted);
                 if (shouldRender) {
                     const cards = GravityStore.loadAllNotes();
                     initializeNotesState(cards);
@@ -289,11 +297,13 @@ function gravityApp() {
             });
 
             root.addEventListener(EVENT_NOTE_DELETE, (event) => {
-                const { noteId, storeUpdated, shouldRender } = extractNoteDetail(event);
+                const { noteId, record, storeUpdated, shouldRender } = extractNoteDetail(event);
                 if (!noteId) return;
+                const existing = record ?? GravityStore.getById(noteId);
                 if (!storeUpdated) {
                     GravityStore.removeById(noteId);
                 }
+                this.syncManager?.recordLocalDelete(noteId, existing ?? null);
                 if (shouldRender !== false) {
                     const cards = GravityStore.loadAllNotes();
                     initializeNotesState(cards);
@@ -306,6 +316,10 @@ function gravityApp() {
                 if (!noteId) return;
                 if (!storeUpdated) {
                     GravityStore.setPinned(noteId);
+                }
+                const queuedRecords = GravityStore.loadAllNotes();
+                for (const record of queuedRecords) {
+                    this.syncManager?.recordLocalUpsert(record);
                 }
                 if (shouldRender !== false) {
                     const cards = GravityStore.loadAllNotes();
@@ -320,6 +334,10 @@ function gravityApp() {
                     const nextRecords = GravityStore.loadAllNotes();
                     initializeNotesState(nextRecords);
                     this.renderNotes(nextRecords);
+                }
+                for (const record of records) {
+                    const persisted = GravityStore.getById(record.noteId) ?? record;
+                    this.syncManager?.recordLocalUpsert(persisted);
                 }
                 const message = records.length > 0
                     ? MESSAGE_NOTES_IMPORTED
@@ -345,6 +363,13 @@ function gravityApp() {
                 this.avatarMenu?.close({ focusTrigger: false });
                 GravityStore.setUserScope(this.authUser.id);
                 this.initializeNotes();
+                const credential = typeof detail?.credential === "string" ? detail.credential : "";
+                this.syncManager?.handleSignIn({
+                    userId: this.authUser.id,
+                    credential
+                }).catch((error) => {
+                    logging.error(error);
+                });
             });
 
             root.addEventListener(EVENT_AUTH_SIGN_OUT, () => {
@@ -355,6 +380,7 @@ function gravityApp() {
                 this.avatarMenu?.close({ focusTrigger: false });
                 GravityStore.setUserScope(null);
                 this.initializeNotes();
+                this.syncManager?.handleSignOut();
             });
 
             root.addEventListener(EVENT_AUTH_ERROR, (event) => {

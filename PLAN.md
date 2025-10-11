@@ -1,12 +1,11 @@
-- [x] backend/go.mod — Initialize Go module, declare dependencies, wire gofmt/go vet tooling (GN-18).
-- [x] backend/cmd/gravity-api/main.go — Cobra entrypoint to bootstrap configuration, logging, database, and HTTP server (GN-18).
-- [x] backend/internal/config/config.go — Centralized Viper-backed configuration with validation for secrets and DB path (GN-18).
-- [x] backend/internal/logging/logger.go — Construct structured zap logger injected across services (GN-18).
-- [x] backend/internal/auth/google_verifier.go — Offline Google ID token verification with JWKS caching and tests (GN-18).
-- [x] backend/internal/auth/token_issuer.go — Backend JWT issuance and validation helpers with table-driven tests (GN-18).
-- [x] backend/internal/database/sqlite.go — GORM SQLite connector with migrations for notes and note_changes (GN-18).
-- [x] backend/internal/notes/model.go — GORM models reflecting required schema constants (GN-18).
-- [x] backend/internal/notes/service.go — Conflict-resolution aware upsert/delete operations, emitting audit records; fully tested (GN-18).
-- [x] backend/internal/server/router.go — Gin router with auth middleware, `/auth/google`, `/notes/sync` endpoints, and CORS (GN-18).
-- [x] backend/tests/integration/auth_and_sync_test.go — Integration test covering token exchange and note synchronization happy path (GN-18).
-- [x] docs updates (`MIGRATION.md`, `README.md`, `NOTES.md`) — Document backend boot, API contracts, mark GN-18 complete (GN-18).
+- [x] backend/internal/notes/service.go — Add listing API to surface canonical note snapshots and cover with tests (GN-19).
+- [x] backend/internal/server/router.go — Expose authenticated `GET /notes` endpoint and extend integration coverage (GN-19).
+- [x] js/core/backendClient.js — Introduce typed client for auth exchange and sync requests (GN-19).
+- [x] js/core/syncMetadataStore.js — Persist per-note edit counters and server reconciliation state (GN-19).
+- [x] js/core/syncQueue.js — Durable queue for pending operations across offline sessions (GN-19).
+- [x] js/core/syncManager.js — Orchestrate sign-in token exchange, queue flushing, and note reconciliation (GN-19).
+- [x] js/core/store.js & js/types.d.js — Keep note persistence intact while leveraging dedicated sync metadata stores (GN-19).
+- [x] js/app.js & related UI bridges — Wire sync manager into auth and note lifecycle events (GN-19).
+- [x] tests/sync.manager.test.js — Exercise queueing, token exchange, and reconciliation flows (GN-19).
+- [x] tests/persistence.sync.puppeteer.test.js — Validate end-to-end login, cross-tab sync, and backend reconciliation (GN-19).
+- [x] Documentation (`README.md`, `MIGRATION.md`, `NOTES.md`) — Capture integration workflow and close GN-19 (GN-19).

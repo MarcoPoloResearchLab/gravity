@@ -77,6 +77,7 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 	protected := router.Group("/")
 	protected.Use(handler.authorizeRequest)
 	protected.POST("/notes/sync", handler.handleNotesSync)
+	protected.GET("/notes", handler.handleListNotes)
 
 	return router, nil
 }
@@ -156,6 +157,20 @@ type syncResultPayload struct {
 	Payload           json.RawMessage `json:"payload"`
 }
 
+type snapshotResponsePayload struct {
+	Notes []snapshotResultPayload `json:"notes"`
+}
+
+type snapshotResultPayload struct {
+	NoteID            string          `json:"note_id"`
+	Version           int64           `json:"version"`
+	LastWriterEditSeq int64           `json:"last_writer_edit_seq"`
+	IsDeleted         bool            `json:"is_deleted"`
+	CreatedAtSeconds  int64           `json:"created_at_s"`
+	UpdatedAtSeconds  int64           `json:"updated_at_s"`
+	Payload           json.RawMessage `json:"payload"`
+}
+
 func (h *httpHandler) handleNotesSync(c *gin.Context) {
 	userID := c.GetString(userIDContextKey)
 	if userID == "" {
@@ -203,10 +218,7 @@ func (h *httpHandler) handleNotesSync(c *gin.Context) {
 	response := syncResponsePayload{Results: make([]syncResultPayload, 0, len(result.ChangeOutcomes))}
 	for _, outcome := range result.ChangeOutcomes {
 		note := outcome.Outcome.UpdatedNote
-		payload := json.RawMessage(nil)
-		if note.PayloadJSON != "" {
-			payload = json.RawMessage(note.PayloadJSON)
-		}
+		payload := encodePayload(note.PayloadJSON)
 		response.Results = append(response.Results, syncResultPayload{
 			NoteID:            note.NoteID,
 			Accepted:          outcome.Outcome.Accepted,
@@ -219,6 +231,45 @@ func (h *httpHandler) handleNotesSync(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, response)
+}
+
+func (h *httpHandler) handleListNotes(c *gin.Context) {
+	userID := c.GetString(userIDContextKey)
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	notes, err := h.notesService.ListNotes(c.Request.Context(), userID)
+	if err != nil {
+		h.logger.Error("failed to list notes", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "list_failed"})
+		return
+	}
+
+	response := snapshotResponsePayload{
+		Notes: make([]snapshotResultPayload, 0, len(notes)),
+	}
+	for _, note := range notes {
+		response.Notes = append(response.Notes, snapshotResultPayload{
+			NoteID:            note.NoteID,
+			Version:           note.Version,
+			LastWriterEditSeq: note.LastWriterEditSeq,
+			IsDeleted:         note.IsDeleted,
+			CreatedAtSeconds:  note.CreatedAtSeconds,
+			UpdatedAtSeconds:  note.UpdatedAtSeconds,
+			Payload:           encodePayload(note.PayloadJSON),
+		})
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+func encodePayload(raw string) json.RawMessage {
+	if strings.TrimSpace(raw) == "" {
+		return json.RawMessage("null")
+	}
+	return json.RawMessage(raw)
 }
 
 func (h *httpHandler) authorizeRequest(c *gin.Context) {

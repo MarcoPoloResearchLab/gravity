@@ -134,6 +134,13 @@ go run ./cmd/gravity-api --http-address :8080
 Conflict resolution follows the documented `(client_edit_seq, updated_at)` precedence while writing an append-only
 `note_changes` audit log.
 
+### Frontend Sync
+
+- `appConfig.backendBaseUrl` points the browser client at the API origin (default `""` uses the current host).
+- The UI keeps persisting to `localStorage` for offline usage while enqueuing operations for the backend.
+- On sign-in the client exchanges the Google credential for a backend token, flushes the queue, and reconciles a fresh snapshot so additional tabs/devices pick up the latest state.
+- Pin toggles, imports, and deletions immediately enqueue operations; failed sync attempts remain queued until connectivity returns.
+
 ## Testing
 
 - `npm test` drives the Node test suite, including Puppeteer coverage for the inline editor, bounded previews, and
