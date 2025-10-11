@@ -1,7 +1,7 @@
 // @ts-check
 
-export const LABEL_EXPORT_NOTES = "Export";
-export const LABEL_IMPORT_NOTES = "Import";
+export const LABEL_EXPORT_NOTES = "Export Notes";
+export const LABEL_IMPORT_NOTES = "Import Notes";
 export const LABEL_MERGE_DOWN = "Merge ↓";
 export const LABEL_MERGE_UP = "Merge ↑";
 export const LABEL_MOVE_UP = "▲";

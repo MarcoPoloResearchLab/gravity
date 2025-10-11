@@ -52,3 +52,25 @@ the DOM.
 Puppeteer coverage now includes `tests/app.notifications.puppeteer.test.js` to confirm the import error path emits a
 `gravity:notify` toast and `tests/preview.bounded.puppeteer.test.js` to keep the viewport anchored when expanding long
 previews. Run `npm test` after modifying any event contract to maintain parity with the automation suite.
+
+## Backend Scaffold
+
+* The monorepo now ships a Go backend under `/backend` to sync notes across devices while preserving local-first storage.
+* `cmd/gravity-api/main.go` hosts a Cobra CLI; configuration flows through Viper with the `GRAVITY_` prefix and validates
+  the Google client ID, signing secret, and SQLite path in `PreRunE`.
+* SQLite persistence is initialised via `internal/database.OpenSQLite` and runs migrations for both `notes` and
+  `note_changes` tables. Schema aligns with the conflict-resolution spec (composite primary key, version tracking,
+  append-only audit log).
+* `internal/auth/google_verifier.go` verifies Google ID tokens offline by caching JWKS responses; tests cover valid and
+  invalid flows. `internal/auth/token_issuer.go` handles backend JWT issuance (HS256) and validation.
+* `internal/notes/service.go` implements the edit-sequence conflict algorithm: higher `client_edit_seq` wins, ties break
+  on `updated_at_s`, and equal timestamps favour the client. Accepted changes bump the `version`, update
+  `last_writer_edit_seq`, and record `note_changes` entries with deterministic UUID v7 identifiers.
+* `internal/server/router.go` wires Gin, CORS, the auth middleware, and two endpoints:
+  - `POST /auth/google` → verifies the Google token and issues a backend JWT.
+  - `POST /notes/sync` → accepts batched operations, applies conflict resolution, and returns server state (including the
+    definitive payload when rejecting stale updates).
+* The integration test `tests/integration/auth_and_sync_test.go` exercises the full flow: token exchange, successful
+  upsert, and rejection of a stale edit sequence.
+* The browser client now instantiates `js/core/syncManager.js`, intercepting create/update/delete/pin/import events to
+  enqueue operations, flush them after `EVENT_AUTH_SIGN_IN`, and reconcile server snapshots for cross-tab persistence.

@@ -1,9 +1,4 @@
-- [x] tests/auth.status.puppeteer.test.js — Guard against rendering the signed-out banner (GN-15).
-- [x] index.html — Start the status container hidden to avoid flashing “Not signed in” (GN-15).
-- [x] js/ui/authControls.js — Hide signed-in/out copy while keeping the element available for error messaging (GN-15).
-- [x] js/constants.js — Remove unused signed-in/out labels after refactor (GN-15).
-- [x] tests/auth.status.puppeteer.test.js — Add coverage for suppressing the signed-in banner (GN-16).
-- [x] js/ui/authControls.js — Ensure signed-in state keeps status hidden while still surfacing auth errors (GN-16).
-- [x] tests/auth.avatarMenu.puppeteer.test.js — Extend assertions so the rendered Google button never returns post-login (GN-17).
-- [x] js/ui/authControls.js — Finalise Google button teardown after successful sign-in (GN-17).
-- [x] NOTES.md — Check off GN-15–GN-17 after validations.
+- [x] js/ui/markdownEditorHost.js — Skip duplicate closing square bracket when spaced pair already exists (GN-23).
+- [x] tests/editor.inline.puppeteer.test.js — Cover spaced square bracket skip behavior in fallback textarea (GN-23).
+- [x] tests/editor.enhanced.puppeteer.test.js — Ensure CodeMirror swallows duplicate `]` for spaced pairs (GN-23).
+- [x] Docs (`NOTES.md`) — Mark GN-23 complete and describe bracket behavior (GN-23).

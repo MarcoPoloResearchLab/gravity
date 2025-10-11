@@ -88,6 +88,351 @@ const COPY_FEEDBACK_DURATION_MS = 1800;
 const LINE_ENDING_NORMALIZE_PATTERN = /\r\n/g;
 const TRAILING_WHITESPACE_PATTERN = /[ \t]+$/;
 
+function calculatePreviewTextOffset(previewElement, event) {
+    if (!(previewElement instanceof HTMLElement)) {
+        return null;
+    }
+    const doc = previewElement.ownerDocument;
+    if (!doc) {
+        return null;
+    }
+
+    let range = null;
+    if (typeof doc.caretRangeFromPoint === "function") {
+        range = doc.caretRangeFromPoint(event.clientX, event.clientY);
+    } else if (typeof doc.caretPositionFromPoint === "function") {
+        const position = doc.caretPositionFromPoint(event.clientX, event.clientY);
+        if (position && position.offsetNode) {
+            range = doc.createRange();
+            range.setStart(position.offsetNode, position.offset);
+            range.collapse(true);
+        }
+    }
+
+    if (!range || !previewElement.contains(range.startContainer)) {
+        return null;
+    }
+
+    if (range.startContainer?.nodeType !== Node.TEXT_NODE) {
+        return null;
+    }
+
+    const preRange = range.cloneRange();
+    preRange.selectNodeContents(previewElement);
+    preRange.setEnd(range.startContainer, range.startOffset);
+    return preRange.toString().length;
+}
+
+function mapPlainTextOffsetToMarkdown(source, plainOffset) {
+    if (typeof source !== "string" || source.length === 0) {
+        return 0;
+    }
+    const mapping = buildMarkdownPlainMapping(source);
+    if (mapping.map.length === 0) {
+        return 0;
+    }
+    const clamped = Math.max(0, Math.min(Math.floor(plainOffset), mapping.map.length));
+    if (clamped === mapping.map.length) {
+        return source.length;
+    }
+    const resolved = mapping.map[clamped];
+    if (typeof resolved === "number" && !Number.isNaN(resolved)) {
+        return resolved;
+    }
+    for (let index = clamped - 1; index >= 0; index -= 1) {
+        const candidate = mapping.map[index];
+        if (typeof candidate === "number" && !Number.isNaN(candidate)) {
+            return candidate;
+        }
+    }
+    return 0;
+}
+
+function buildMarkdownPlainMapping(source) {
+    const plainChars = [];
+    const map = [];
+    const closingRuns = new Map();
+
+    const appendChar = (char, index) => {
+        plainChars.push(char);
+        map.push(index);
+    };
+
+    const processSegment = (start, end) => {
+        let pointer = start;
+        while (pointer < end) {
+            if (closingRuns.has(pointer)) {
+                pointer += closingRuns.get(pointer);
+                continue;
+            }
+
+            const char = source[pointer];
+
+            if (char === "\r") {
+                pointer += 1;
+                continue;
+            }
+
+            if (char === "\n") {
+                appendChar("\n", pointer);
+                pointer += 1;
+                continue;
+            }
+
+            if (char === "\\" && pointer + 1 < end) {
+                appendChar(source[pointer + 1], pointer + 1);
+                pointer += 2;
+                continue;
+            }
+
+            if (char === "`") {
+                const fenceLength = countRunOfChar(source, pointer, "`");
+                const closing = findClosingBackticks(source, pointer + fenceLength, fenceLength, end);
+                if (closing === -1) {
+                    appendChar(char, pointer);
+                    pointer += 1;
+                    continue;
+                }
+                pointer += fenceLength;
+                while (pointer < closing) {
+                    appendChar(source[pointer], pointer);
+                    pointer += 1;
+                }
+                pointer = closing + fenceLength;
+                continue;
+            }
+
+            if (char === "!" && pointer + 1 < end && source[pointer + 1] === "[") {
+                const closing = findClosingBracket(source, pointer + 2, end, "[", "]");
+                if (closing === -1) {
+                    pointer += 1;
+                    continue;
+                }
+                processSegment(pointer + 2, closing);
+                pointer = closing + 1;
+                if (source[pointer] === "(") {
+                    const closingParen = findClosingBracket(source, pointer + 1, end, "(", ")");
+                    pointer = closingParen === -1 ? end : closingParen + 1;
+                }
+                continue;
+            }
+
+            if (char === "[" && !isEscaped(source, pointer)) {
+                const closing = findClosingBracket(source, pointer + 1, end, "[", "]");
+                if (closing === -1) {
+                    appendChar(char, pointer);
+                    pointer += 1;
+                    continue;
+                }
+                processSegment(pointer + 1, closing);
+                pointer = closing + 1;
+                if (source[pointer] === "(") {
+                    const closingParen = findClosingBracket(source, pointer + 1, end, "(", ")");
+                    pointer = closingParen === -1 ? end : closingParen + 1;
+                } else if (source[pointer] === "[") {
+                    const closingRef = findClosingBracket(source, pointer + 1, end, "[", "]");
+                    pointer = closingRef === -1 ? end : closingRef + 1;
+                }
+                continue;
+            }
+
+            if ((char === "*" || char === "_" || char === "~") && !isEscaped(source, pointer)) {
+                const runLength = countRunOfChar(source, pointer, char);
+                const closing = findMatchingFormatting(source, pointer + runLength, char, runLength, end);
+                if (closing !== -1) {
+                    closingRuns.set(closing, runLength);
+                    pointer += runLength;
+                    continue;
+                }
+            }
+
+            if (isListMarker(source, pointer, start)) {
+                pointer = skipListMarker(source, pointer, end);
+                continue;
+            }
+
+            if (isHeadingMarker(source, pointer, start)) {
+                pointer = skipHeadingMarker(source, pointer, end);
+                continue;
+            }
+
+            if (isBlockquoteMarker(source, pointer, start)) {
+                pointer = skipBlockquoteMarker(source, pointer, end);
+                continue;
+            }
+
+            if (isTableDelimiter(source, pointer, start, end)) {
+                pointer += 1;
+                continue;
+            }
+
+            appendChar(char, pointer);
+            pointer += 1;
+        }
+    };
+
+    processSegment(0, source.length);
+    return { plain: plainChars.join(""), map };
+}
+
+function countRunOfChar(value, start, char) {
+    let index = start;
+    while (index < value.length && value[index] === char) {
+        index += 1;
+    }
+    return index - start;
+}
+
+function findClosingBackticks(value, start, runLength, limit) {
+    let index = start;
+    while (index < limit) {
+        if (value[index] === "`" && !isEscaped(value, index)) {
+            const span = countRunOfChar(value, index, "`");
+            if (span === runLength) {
+                return index;
+            }
+            index += span;
+            continue;
+        }
+        index += 1;
+    }
+    return -1;
+}
+
+function findClosingBracket(value, start, limit, openChar, closeChar) {
+    let depth = 0;
+    for (let index = start; index < limit; index += 1) {
+        const current = value[index];
+        if (current === "\\") {
+            index += 1;
+            continue;
+        }
+        if (current === openChar) {
+            depth += 1;
+            continue;
+        }
+        if (current === closeChar) {
+            if (depth === 0) {
+                return index;
+            }
+            depth -= 1;
+        }
+    }
+    return -1;
+}
+
+function findMatchingFormatting(value, start, char, runLength, limit) {
+    let index = start;
+    while (index < limit) {
+        if (value[index] === char && !isEscaped(value, index)) {
+            const span = countRunOfChar(value, index, char);
+            if (span === runLength) {
+                return index;
+            }
+            index += span;
+            continue;
+        }
+        index += 1;
+    }
+    return -1;
+}
+
+function isEscaped(value, index) {
+    let preceding = index - 1;
+    let count = 0;
+    while (preceding >= 0 && value[preceding] === "\\") {
+        count += 1;
+        preceding -= 1;
+    }
+    return count % 2 === 1;
+}
+
+function isListMarker(value, index, segmentStart) {
+    const atLineStart = index === segmentStart || value[index - 1] === "\n";
+    if (!atLineStart) {
+        return false;
+    }
+    const char = value[index];
+    if (char === "-" || char === "+" || char === "*") {
+        const next = value[index + 1];
+        return next === " " || next === "\t";
+    }
+    if (char >= "0" && char <= "9") {
+        let pointer = index;
+        while (pointer < value.length && value[pointer] >= "0" && value[pointer] <= "9") {
+            pointer += 1;
+        }
+        return value[pointer] === "." && (value[pointer + 1] === " " || value[pointer + 1] === "\t");
+    }
+    return false;
+}
+
+function skipListMarker(value, index, limit) {
+    if (value[index] === "-" || value[index] === "+" || value[index] === "*") {
+        index += 1;
+        while (index < limit && (value[index] === " " || value[index] === "\t")) {
+            index += 1;
+        }
+        return index;
+    }
+    if (value[index] >= "0" && value[index] <= "9") {
+        while (index < limit && value[index] >= "0" && value[index] <= "9") {
+            index += 1;
+        }
+        if (value[index] === ".") {
+            index += 1;
+        }
+        while (index < limit && (value[index] === " " || value[index] === "\t")) {
+            index += 1;
+        }
+        return index;
+    }
+    return index;
+}
+
+function isHeadingMarker(value, index, segmentStart) {
+    const atLineStart = index === segmentStart || value[index - 1] === "\n";
+    if (!atLineStart || value[index] !== "#") {
+        return false;
+    }
+    return true;
+}
+
+function skipHeadingMarker(value, index, limit) {
+    while (index < limit && value[index] === "#") {
+        index += 1;
+    }
+    while (index < limit && value[index] === " ") {
+        index += 1;
+    }
+    return index;
+}
+
+function isBlockquoteMarker(value, index, segmentStart) {
+    const atLineStart = index === segmentStart || value[index - 1] === "\n";
+    return atLineStart && value[index] === ">";
+}
+
+function skipBlockquoteMarker(value, index, limit) {
+    index += 1;
+    if (value[index] === " ") {
+        index += 1;
+    }
+    return index;
+}
+
+function isTableDelimiter(value, index, segmentStart, segmentEnd) {
+    if (value[index] !== "|") {
+        return false;
+    }
+    let start = segmentStart;
+    let end = segmentEnd;
+    while (start > 0 && value[start - 1] !== "\n") start -= 1;
+    while (end < value.length && value[end] !== "\n") end += 1;
+    const row = value.slice(start, end);
+    return row.includes("|");
+}
+
 /**
  * Update the pin button affordance for a specific card.
  * @param {HTMLElement} card
@@ -346,8 +691,20 @@ export function renderCard(record, options = {}) {
             return;
         }
 
+        let caretPlacement = CARET_PLACEMENT_END;
+        const previewElement = card.querySelector(".markdown-content");
+        const host = editorHosts.get(card);
+
+        if (previewElement instanceof HTMLElement && host && previewElement.contains(target)) {
+            const offset = calculatePreviewTextOffset(previewElement, event);
+            if (offset !== null) {
+                const markdownValue = host.getValue();
+                caretPlacement = mapPlainTextOffsetToMarkdown(markdownValue, offset);
+            }
+        }
+
         focusCardEditor(card, notesContainer, {
-            caretPlacement: CARET_PLACEMENT_END,
+            caretPlacement,
             bubblePreviousCardToTop: true
         });
     };
@@ -1028,7 +1385,7 @@ function navigateToAdjacentCard(card, direction, notesContainer) {
  * Focus the editor for a specific card.
  * @param {HTMLElement} card
  * @param {HTMLElement} notesContainer
- * @param {{ caretPlacement?: typeof CARET_PLACEMENT_START | typeof CARET_PLACEMENT_END, bubblePreviousCardToTop?: boolean }} [options]
+ * @param {{ caretPlacement?: typeof CARET_PLACEMENT_START | typeof CARET_PLACEMENT_END | number, bubblePreviousCardToTop?: boolean }} [options]
  * @returns {boolean}
  */
 export function focusCardEditor(card, notesContainer, options = {}) {
@@ -1046,27 +1403,40 @@ export function focusCardEditor(card, notesContainer, options = {}) {
         if (!host) return;
 
         const textarea = typeof host.getTextarea === "function" ? host.getTextarea() : null;
+        const isNumericPlacement = typeof caretPlacement === "number" && Number.isFinite(caretPlacement);
+        const currentValue = typeof textarea?.value === "string" ? textarea.value : host.getValue();
+        const valueLength = typeof currentValue === "string" ? currentValue.length : 0;
+        const desiredIndex = isNumericPlacement
+            ? Math.max(0, Math.min(Math.floor(caretPlacement), valueLength))
+            : caretPlacement === CARET_PLACEMENT_END
+                ? valueLength
+                : 0;
         const selectionStart = textarea && typeof textarea.selectionStart === "number"
             ? textarea.selectionStart
             : null;
         const selectionEnd = textarea && typeof textarea.selectionEnd === "number"
             ? textarea.selectionEnd
             : null;
-        const targetPosition = caretPlacement === CARET_PLACEMENT_END ? "end" : "start";
-        const expectedDefaultIndex = caretPlacement === CARET_PLACEMENT_END
-            ? 0
-            : (textarea?.value.length ?? 0);
         const selectionDefined = selectionStart !== null && selectionEnd !== null;
+        const expectedDefaultIndex = isNumericPlacement
+            ? desiredIndex
+            : caretPlacement === CARET_PLACEMENT_END
+                ? 0
+                : valueLength;
         const selectionAtDefault = selectionDefined
             && selectionStart === selectionEnd
             && selectionStart === expectedDefaultIndex;
-        const shouldRespectExistingCaret = selectionDefined && !selectionAtDefault;
+        const shouldRespectExistingCaret = !isNumericPlacement && selectionDefined && !selectionAtDefault;
 
         host.setMode(MARKDOWN_MODE_EDIT);
         host.focus();
         // Respect caret adjustments made before this frame (e.g. user repositioning the cursor)
         if (!shouldRespectExistingCaret) {
-            host.setCaretPosition(targetPosition);
+            if (isNumericPlacement) {
+                host.setCaretPosition(desiredIndex);
+            } else {
+                host.setCaretPosition(caretPlacement === CARET_PLACEMENT_END ? "end" : "start");
+            }
         }
     });
 

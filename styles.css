@@ -130,6 +130,24 @@ html, body {
     justify-content: center;
 }
 
+.auth-inline-button {
+    background: transparent;
+    border: 1px solid #28314a;
+    border-radius: 999px;
+    color: #d5deff;
+    cursor: pointer;
+    font-size: 0.82rem;
+    padding: 0.4rem 0.85rem;
+    transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.auth-inline-button:hover,
+.auth-inline-button:focus-visible {
+    background: rgba(66, 94, 165, 0.22);
+    color: #ffffff;
+    border-color: rgba(118, 146, 220, 0.7);
+}
+
 /* Containers */
 .block-container { display: flex; flex-direction: column; }
 

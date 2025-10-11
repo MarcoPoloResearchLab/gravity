@@ -60,12 +60,13 @@
         </div>
         <div class="auth-menu-wrapper" x-ref="authMenuWrapper" hidden>
             <div class="auth-menu" x-ref="authMenu" role="menu" aria-labelledby="auth-menu-trigger" data-test="auth-menu" data-open="false" hidden>
-                <button id="export-notes-button" x-ref="exportButton" class="auth-menu-item" type="button" role="menuitem" data-test="auth-menu-item" x-text="constants.LABEL_EXPORT_NOTES">Export</button>
-                <button id="import-notes-button" x-ref="importButton" class="auth-menu-item" type="button" role="menuitem" data-test="auth-menu-item" x-text="constants.LABEL_IMPORT_NOTES">Import</button>
+                <button id="export-notes-button" x-ref="exportButton" class="auth-menu-item" type="button" role="menuitem" data-test="auth-menu-item" x-text="constants.LABEL_EXPORT_NOTES">Export Notes</button>
+                <button id="import-notes-button" x-ref="importButton" class="auth-menu-item" type="button" role="menuitem" data-test="auth-menu-item" x-text="constants.LABEL_IMPORT_NOTES">Import Notes</button>
                 <button class="auth-menu-item auth-menu-sign-out" type="button" role="menuitem" x-ref="authSignOutButton" data-test="auth-menu-item" hidden></button>
             </div>
         </div>
         <div class="auth-status" x-ref="authStatus" hidden></div>
+        <button id="guest-export-button" x-ref="guestExportButton" class="auth-inline-button" type="button" x-text="constants.LABEL_EXPORT_NOTES" hidden>Export Notes</button>
         <div class="auth-button-host" x-ref="authButtonHost" aria-live="polite"></div>
         <input id="import-notes-input" x-ref="importInput" type="file" hidden />
     </div>

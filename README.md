@@ -99,6 +99,48 @@ npm install
 python3 -m http.server 8000
 ```
 
+## Backend Service
+
+Gravity Notes now ships with a Go API that persists and reconciles notes across devices while keeping the local-first
+experience intact.
+
+### Prerequisites
+
+- Go 1.21+
+- Environment variables for the backend:
+  - `GRAVITY_GOOGLE_CLIENT_ID` — the OAuth client ID used by Google Identity Services.
+  - `GRAVITY_AUTH_SIGNING_SECRET` — random HS256 secret used to mint backend JWTs.
+  - Optional overrides: `GRAVITY_HTTP_ADDRESS` (`0.0.0.0:8080`), `GRAVITY_GOOGLE_JWKS_URL`,
+    `GRAVITY_DATABASE_PATH` (`gravity.db`), `GRAVITY_TOKEN_TTL_MINUTES` (30), `GRAVITY_LOG_LEVEL` (`info`).
+
+### Running Locally
+
+```shell
+cd backend
+go run ./cmd/gravity-api --http-address :8080
+```
+
+### API Overview
+
+- `POST /auth/google`
+  - Body: `{ "id_token": "<GSI ID token>" }`
+  - Verifies the Google token offline via JWKS, then returns `{ "access_token": "<jwt>", "expires_in": 1800 }`.
+- `POST /notes/sync`
+  - Requires `Authorization: Bearer <jwt>` header (the JWT from `/auth/google`).
+  - Body: `{ "operations": [{ "note_id": "uuid", "operation": "upsert" | "delete", "client_edit_seq": 1, "client_device": "web", "client_time_s": 1700000000, "created_at_s": 1700000000, "updated_at_s": 1700000000, "payload": { … } }] }`
+  - Responds with `{ "results": [{ "note_id": "uuid", "accepted": true, "version": 1, "updated_at_s": 1700000000, "last_writer_edit_seq": 1, "is_deleted": false, "payload": { … } }] }` where rejected changes include the
+    authoritative server copy for reconciliation.
+
+Conflict resolution follows the documented `(client_edit_seq, updated_at)` precedence while writing an append-only
+`note_changes` audit log.
+
+### Frontend Sync
+
+- `appConfig.backendBaseUrl` points the browser client at the API origin (default `""` uses the current host).
+- The UI keeps persisting to `localStorage` for offline usage while enqueuing operations for the backend.
+- On sign-in the client exchanges the Google credential for a backend token, flushes the queue, and reconciles a fresh snapshot so additional tabs/devices pick up the latest state.
+- Pin toggles, imports, and deletions immediately enqueue operations; failed sync attempts remain queued until connectivity returns.
+
 ## Testing
 
 - `npm test` drives the Node test suite, including Puppeteer coverage for the inline editor, bounded previews, and
