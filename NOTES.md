@@ -2,7 +2,7 @@
 
 ## Role
 
-You are a staff level full stack engineer. Your task is to **re-evaluate and refactor the Prompt Bubbles repository** according to the coding standards already written in **AGENTS.md**.
+You are a staff level full stack engineer. Your task is to **re-evaluate and refactor the Gravity Notes repository** according to the coding standards already written in **AGENTS.md**.
 
 ## Context
 
