@@ -1,4 +1,4 @@
-- [x] js/constants.js — Update dropdown labels to "Export Notes" / "Import Notes" (GN-21).
-- [x] templates & bindings — ensure the guest export button reflects updated labels (GN-21).
-- [x] tests/auth.avatarMenu.puppeteer.test.js — assert renamed labels render in the stacked menu (GN-21).
-- [x] Docs (`NOTES.md`) — Mark GN-21 complete (GN-21).
+- [x] js/ui/card.js — Map preview click locations to markdown caret offsets (GN-22).
+- [x] js/ui/markdownEditorHost.js — Allow numeric caret placement for precise positioning (GN-22).
+- [x] tests/editor.inline.puppeteer.test.js — Cover preview click caret placement and adjust existing flows (GN-22).
+- [x] Docs (`NOTES.md`) — Mark GN-22 complete (GN-22).

@@ -241,6 +241,20 @@ export function createMarkdownEditorHost(options) {
     }
 
     function setCaretPosition(position) {
+        if (typeof position === "number" && Number.isFinite(position)) {
+            const safeIndex = Math.max(0, Math.min(Math.floor(position), getValue().length));
+            if (easyMdeInstance) {
+                const doc = easyMdeInstance.codemirror.getDoc();
+                const cursor = doc.posFromIndex(safeIndex);
+                doc.setCursor(cursor);
+                return;
+            }
+            try {
+                textarea.setSelectionRange(safeIndex, safeIndex);
+            } catch {}
+            return;
+        }
+
         const target = position === "end" ? "end" : "start";
         if (easyMdeInstance) {
             const doc = easyMdeInstance.codemirror.getDoc();

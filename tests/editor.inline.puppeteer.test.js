@@ -31,6 +31,8 @@ const NOTE_ID = "inline-fixture";
 const INITIAL_MARKDOWN = `# Inline Fixture\n\nThis note verifies inline editing.`;
 const CARET_NOTE_ID = "inline-caret-fixture";
 const CARET_MARKDOWN = `First paragraph line one.\nSecond paragraph line two.\nThird line to ensure scrolling.`;
+const PREVIEW_CARET_NOTE_ID = "inline-preview-caret-fixture";
+const PREVIEW_CARET_MARKDOWN = "Alpha **bold** bravo [link](https://example.com) charlie delta.";
 const UNORDERED_NOTE_ID = "inline-unordered-fixture";
 const UNORDERED_MARKDOWN = "* Alpha\n* Beta";
 const ORDERED_NOTE_ID = "inline-ordered-fixture";
@@ -149,6 +151,13 @@ if (!puppeteerModule) {
 
                 const editorSelector = `${cardSelector} .markdown-editor`;
                 await page.focus(editorSelector);
+                await page.$eval(editorSelector, (el) => {
+                    if (el instanceof HTMLTextAreaElement) {
+                        const length = el.value.length;
+                        el.selectionStart = length;
+                        el.selectionEnd = length;
+                    }
+                });
                 await page.type(editorSelector, "\nAdditional line one.\nAdditional line two.\nAdditional line three.");
 
                 const grownTextareaHeight = await page.$eval(editorSelector, (el) => el.clientHeight);
@@ -1463,6 +1472,13 @@ if (!puppeteerModule) {
                 await page.click(`${cardSelector} .note-preview`);
                 await page.waitForSelector(`${cardSelector}.editing-in-place`);
                 await page.waitForSelector(editorSelector);
+                await page.$eval(editorSelector, (el) => {
+                    if (el instanceof HTMLTextAreaElement) {
+                        const length = el.value.length;
+                        el.selectionStart = length;
+                        el.selectionEnd = length;
+                    }
+                });
 
                 await page.waitForFunction((selector) => {
                     const textarea = document.querySelector(selector);
@@ -1495,6 +1511,70 @@ if (!puppeteerModule) {
                     editorState.valueLength,
                     "Caret selection collapses at the note end"
                 );
+            } finally {
+                await page.close();
+            }
+        });
+
+        test("preview click positions caret at clicked text", async () => {
+            if (skipIfNoBrowser()) return;
+            const seededRecords = [buildNoteRecord({
+                noteId: PREVIEW_CARET_NOTE_ID,
+                markdownText: PREVIEW_CARET_MARKDOWN,
+                attachments: {}
+            })];
+            const expectedIndex = PREVIEW_CARET_MARKDOWN.indexOf("bravo") + 2;
+
+            const page = await preparePage(browser, { records: seededRecords });
+            const cardSelector = `.markdown-block[data-note-id="${PREVIEW_CARET_NOTE_ID}"]`;
+            const previewSelector = `${cardSelector} .markdown-content`;
+            const editorSelector = `${cardSelector} .markdown-editor`;
+
+            try {
+                await page.waitForSelector(previewSelector);
+                const clickPoint = await page.evaluate(({ noteId, word, offset }) => {
+                    const preview = document.querySelector(`.markdown-block[data-note-id="${noteId}"] .markdown-content`);
+                    if (!(preview instanceof HTMLElement)) {
+                        return null;
+                    }
+                    const walker = document.createTreeWalker(preview, NodeFilter.SHOW_TEXT);
+                    let target = null;
+                    while (walker.nextNode()) {
+                        const node = walker.currentNode;
+                        const content = node?.textContent ?? "";
+                        const index = content.indexOf(word);
+                        if (index !== -1) {
+                            target = { node, index };
+                            break;
+                        }
+                    }
+                    if (!target) {
+                        return null;
+                    }
+                    const range = document.createRange();
+                    const startOffset = Math.min(target.index + offset, target.node.textContent.length);
+                    range.setStart(target.node, startOffset);
+                    range.setEnd(target.node, Math.min(startOffset + 1, target.node.textContent.length));
+                    const rect = range.getBoundingClientRect();
+                    return {
+                        x: rect.x + rect.width / 2,
+                        y: rect.y + rect.height / 2
+                    };
+                }, { noteId: PREVIEW_CARET_NOTE_ID, word: "bravo", offset: 2 });
+
+                assert.ok(clickPoint, "calculated click point within preview");
+                await page.mouse.click(clickPoint.x, clickPoint.y);
+
+                await page.waitForSelector(`${cardSelector}.editing-in-place`, { timeout: 2000 });
+                await page.waitForSelector(editorSelector, { timeout: 2000 });
+
+                const caretState = await page.$eval(editorSelector, (el) => ({
+                    start: el.selectionStart ?? 0,
+                    end: el.selectionEnd ?? 0
+                }));
+
+                assert.equal(caretState.start, expectedIndex, "caret starts at clicked text position");
+                assert.equal(caretState.end, expectedIndex, "caret selection collapses at clicked position");
             } finally {
                 await page.close();
             }
