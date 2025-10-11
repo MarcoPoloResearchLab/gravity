@@ -1,4 +1,5 @@
-- [x] js/ui/markdownEditorHost.js — Skip duplicate closing square bracket when spaced pair already exists (GN-23).
-- [x] tests/editor.inline.puppeteer.test.js — Cover spaced square bracket skip behavior in fallback textarea (GN-23).
-- [x] tests/editor.enhanced.puppeteer.test.js — Ensure CodeMirror swallows duplicate `]` for spaced pairs (GN-23).
-- [x] Docs (`NOTES.md`) — Mark GN-23 complete and describe bracket behavior (GN-23).
+- [x] tests/docker.packaging.test.js — Guard backend container assets via regression test (GN-24).
+- [x] backend/Dockerfile — Package the Gravity API for container deployment (GN-24).
+- [x] docker-compose.yml — Provide local orchestration for the backend container (GN-24).
+- [x] .github/workflows/backend-docker.yml — Build and publish backend image to GHCR (GN-24).
+- [x] Docs (`NOTES.md`) — Mark GN-24 complete and outline container workflow (GN-24).

@@ -1,0 +1,19 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: gravity-backend:local
+    env_file:
+      - backend/.env
+    environment:
+      GRAVITY_DATABASE_PATH: /data/gravity.db
+      GRAVITY_HTTP_ADDRESS: 0.0.0.0:8080
+    ports:
+      - "8080:8080"
+    volumes:
+      - gravity_data:/data
+    restart: unless-stopped
+
+volumes:
+  gravity_data:

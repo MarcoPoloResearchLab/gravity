@@ -172,6 +172,52 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
     - Sign Out
 - [x] [GN-20] Allow for Export only of the notes for un-authenticated user. Have an Export button available that downlaods json containing all the notes. Reuse existing functionality.
 - [x] [GN-22] Open the note in the place a user clicked on when swithcing from rendered view to editing. That way if a user clicked in the middle of the sentence in the rendered view, the cursor goes to that middle of the sentence in the markdown editing view
+- [x] [GN-24] Add Github workflow to package the backend as a Docker file. Add Dockerfile to create an image. add docker-compose.yml to faciliate local development (backend/Dockerfile, docker-compose.yml, and GHCR workflow added).
+  Example:
+  ```yaml
+    name: Build and Publish Docker Image
+
+    on:
+    push:
+        branches:
+        - master
+        paths:
+        - 'Dockerfile'
+        - '**/*.go'
+        - 'go.mod'
+        - 'go.sum'
+    workflow_dispatch:
+
+    jobs:
+    build-and-push:
+        name: Build and Push Image
+        runs-on: ubuntu-latest
+
+        permissions:
+        contents: read
+        packages: write
+
+        steps:
+        - name: Check out repository
+            uses: actions/checkout@v4
+
+        - name: Log in to GitHub Container Registry
+            uses: docker/login-action@v3
+            with:
+            registry: ghcr.io
+            username: ${{ github.repository_owner }}
+            password: ${{ secrets.GITHUB_TOKEN }}
+
+        - name: Build and push Docker image
+            uses: docker/build-push-action@v5
+            with:
+            context: .
+            file: Dockerfile
+            push: true
+            tags: |
+                ghcr.io/${{ github.repository_owner }}/loopaware:latest
+                ghcr.io/${{ github.repository_owner }}/loopaware:${{ github.sha }}
+  ```
 
 ## BugFixes
 
