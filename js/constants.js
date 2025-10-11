@@ -76,6 +76,7 @@ export const EVENT_NOTIFICATION_REQUEST = "gravity:notify";
 export const EVENT_AUTH_SIGN_IN = "gravity:auth-sign-in";
 export const EVENT_AUTH_SIGN_OUT = "gravity:auth-sign-out";
 export const EVENT_AUTH_ERROR = "gravity:auth-error";
+export const EVENT_SYNC_SNAPSHOT_APPLIED = "gravity:sync-snapshot-applied";
 
 export const LABEL_SIGN_IN_WITH_GOOGLE = "Sign in with Google";
 export const LABEL_SIGN_OUT = "Sign out";

@@ -328,7 +328,8 @@ if (!puppeteerModule) {
 
             await expectServerNote("sync-user", "sync-note");
 
-            const pageB = await browser.newPage();
+            const contextB = await browser.createBrowserContext();
+            const pageB = await contextB.newPage();
             await exposeBackend(pageB);
             await pageB.goto(PAGE_URL, { waitUntil: "load" });
             await dispatchSignIn(pageB);
@@ -339,7 +340,7 @@ if (!puppeteerModule) {
             assert.match(renderedMarkdown, /Backend persisted note/);
 
             await pageA.close();
-            await pageB.close();
+            await contextB.close();
         });
     });
 }

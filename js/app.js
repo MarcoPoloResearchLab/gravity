@@ -26,6 +26,7 @@ import {
     EVENT_AUTH_SIGN_IN,
     EVENT_AUTH_SIGN_OUT,
     EVENT_AUTH_ERROR,
+    EVENT_SYNC_SNAPSHOT_APPLIED,
     MESSAGE_NOTES_IMPORTED,
     MESSAGE_NOTES_SKIPPED,
     MESSAGE_NOTES_IMPORT_FAILED
@@ -89,7 +90,7 @@ function gravityApp() {
             this.initializeAuth();
             this.initializeTopEditor();
             this.initializeImportExport();
-            this.syncManager = createSyncManager();
+            this.syncManager = createSyncManager({ eventTarget: this.$el ?? null });
             GravityStore.setUserScope(null);
             this.initializeNotes();
             initializeKeyboardShortcutsModal();
@@ -407,6 +408,12 @@ function gravityApp() {
                     ? detail.durationMs
                     : NOTIFICATION_DEFAULT_DURATION_MS;
                 this.emitNotification(detail.message, duration);
+            });
+
+            root.addEventListener(EVENT_SYNC_SNAPSHOT_APPLIED, () => {
+                const refreshedRecords = GravityStore.loadAllNotes();
+                initializeNotesState(refreshedRecords);
+                this.renderNotes(refreshedRecords);
             });
         },
 
