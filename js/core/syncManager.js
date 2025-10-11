@@ -237,7 +237,8 @@ export function createSyncManager(options = {}) {
 
         state.flushing = true;
         try {
-            const operations = state.queue.map(convertToSyncOperation);
+            const pendingOperations = state.queue.slice();
+            const operations = pendingOperations.map(convertToSyncOperation);
             if (operations.length === 0) {
                 return;
             }
@@ -246,7 +247,8 @@ export function createSyncManager(options = {}) {
                 operations
             });
             applySyncResults(response?.results ?? [], operations);
-            state.queue = [];
+            const sentOperationIds = new Set(pendingOperations.map((operation) => operation.operationId));
+            state.queue = state.queue.filter((operation) => !sentOperationIds.has(operation.operationId));
             persistState();
         } catch (error) {
             logging.error(error);
