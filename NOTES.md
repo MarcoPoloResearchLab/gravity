@@ -236,6 +236,13 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
                 ghcr.io/${{ github.repository_owner }}/loopaware:${{ github.sha }}
   ```
 - [x] [GN-27] Define a mechanism to allow for local development integration testing between front end and backend. we currently have backendBaseUrl: "http://localhost:8080" in the config.js file but we will need to be able to plug in the url there dynamically depending on the environment we are in
+- [x] [GN-32] Develop a mechanism for end2end tests, allowing to verify the behavior of both front-end and back-end working toghether. Prioritize the correctness of the solution.
+    We can consider driving everythign from Go for simplicity and consistency.
+    - chromedp (Go) — real-browser E2E without Node
+        Drive Chromium headless from Go.
+        On CI, run tests inside the deterministic chromedp/headless-shell image (no flaky system deps).
+    - httpexpect (Go) — fast API assertions
+        For API-level flows that don’t need a browser; keeps failures precise.
 
 ### BugFixes
 

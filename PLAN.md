@@ -1,9 +1,12 @@
-- [x] tests/docker.packaging.test.js — Guard backend container assets via regression test (GN-24).
-- [x] backend/Dockerfile — Package the Gravity API for container deployment (GN-24).
-- [x] docker-compose.yml — Provide local orchestration for the backend container (GN-24).
-- [x] .github/workflows/backend-docker.yml — Build and publish backend image to GHCR (GN-24).
-- [x] Docs (`NOTES.md`) — Mark GN-24 complete and outline container workflow (GN-24).
-- [x] tests/backend.sqlite.driver.test.js — Enforce CGO-free SQLite driver dependency (GN-24 follow-up).
-- [x] backend/internal/database/sqlite.go — Switch to github.com/glebarez/sqlite driver (GN-24 follow-up).
-- [x] backend/go.mod — Remove go-sqlite3 dependency and align module with CGO-free stack (GN-24 follow-up).
-- [x] backend/tests integration suites — Update imports to pure-Go SQLite driver (GN-24 follow-up).
+- [x] tests/helpers/backendHarness.js — Add lifecycle-managed Go backend launcher for shared end-to-end automation (GN-32).
+- [x] tests/fullstack.endtoend.puppeteer.test.js — Run the real backend with Puppeteer and verify cross-layer auth + sync flow (GN-32).
+- [ ] js/ui/card.js — Guard checklist preview toggles so a single click updates existing notes without duplicating records (GN-27).
+- [ ] tests/preview.checkmark.puppeteer.test.js — Reproduce the checklist duplication scenario and assert only one note remains after toggling (GN-27).
+- [ ] js/ui/markdownPreview.js — Translate rendered click offsets into editor caret positions when switching modes (GN-28).
+- [ ] tests/editor.inline.puppeteer.test.js — Add preview-click caret coverage to guarantee rendered interactions align with editor positions (GN-28).
+- [ ] js/core/config.js / js/constants.js — Support environment-driven LLM proxy URL overrides while preserving secure defaults (GN-29).
+- [ ] tests/config.runtime.test.js — Verify meta/config/env overrides correctly update the LLM proxy endpoint (GN-29).
+- [ ] tests/sync.endtoend.puppeteer.test.js — Spin up the Go backend with the UI and validate bidirectional synchronization events (GN-30).
+- [ ] tests/auth.sessionPersistence.puppeteer.test.js — Ensure Google login state survives a full page refresh (GN-31).
+- [ ] README.md / MIGRATION.md — Document the proxy configuration, sync workflow, and session persistence guarantees.
+- [ ] NOTES.md — Mark GN-27 through GN-32 complete once fixes and tests pass.
