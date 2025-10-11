@@ -46,7 +46,7 @@ You are a staff level full stack engineer. Your task is to **re-evaluate and ref
 Review the NOTES.md. Make a plan for autonomously fixing every item under Features, BugFixes, Improvements, Maintenance. Ensure no regressions. Ensure adding tests. Lean into integration tests. Fix every issue. Document the changes.
 
 Fix issues one by one, working sequentially. 
-1. Create a new git commit with descriptive name
+1. Create a new git bracnh with descriptive name, for example `feature/LA-56-widget-defer` or `bugfix/LA-11-alpine-rehydration`. Use the taxonomy of issues as prefixes: improvement/, feature/, bugfix/, maintenace/, issue ID and a short descriptive. Respect the name limits.
 2. Describe an issue through tests. 
 2a. Ensure that the tests are comprehensive and failing to begin with. 
 2b. Ensure AGENTS.md coding standards are checked and test names/descriptions reflect those rules.
@@ -66,7 +66,7 @@ Fix issues one by one, working sequentially.
 9. Optional: update the code examples in case the changes warrant updated code examples
 10. Mark an issue as done ([X])in the NOTES.md after the issue is fixed: New and existing tests are passing without regressions
 11. Commit and push the changes to the remote branch.
-12. Repeat till all issues are fixed, and commits are stacked up (one starts from another).
+12. Repeat till all issues are fixed, and commits abd branches are stacked up (one starts from another).
 
 Do not work on all issues at once. Work at one issue at a time sequntially.
 
