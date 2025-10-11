@@ -218,6 +218,8 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
                 ghcr.io/${{ github.repository_owner }}/loopaware:latest
                 ghcr.io/${{ github.repository_owner }}/loopaware:${{ github.sha }}
   ```
+- [ ] [GN-27] Define a mechanism to allow for local development integration testing between front end and backend. we currently have backendBaseUrl: "http://localhost:8080" in the config.js file but we will need to be able to plug in the url there dynamically depending on the environment we are in
+
 
 ## BugFixes
 
