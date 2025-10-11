@@ -1,5 +1,4 @@
-- [x] index.html / styles.css — Add a signed-out export control styled for the header (GN-20).
-- [x] js/app.js / ui auth wiring — Toggle guest export visibility with auth state and connect to existing export flow (GN-20).
-- [x] js/ui/importExport.js — Ensure multiple export buttons reuse the same downloader (GN-20).
-- [x] Tests — Cover signed-out export visibility and download trigger (GN-20).
-- [x] Docs (`NOTES.md`) — Mark GN-20 complete (GN-20).
+- [x] js/constants.js — Update dropdown labels to "Export Notes" / "Import Notes" (GN-21).
+- [x] templates & bindings — ensure the guest export button reflects updated labels (GN-21).
+- [x] tests/auth.avatarMenu.puppeteer.test.js — assert renamed labels render in the stacked menu (GN-21).
+- [x] Docs (`NOTES.md`) — Mark GN-21 complete (GN-21).

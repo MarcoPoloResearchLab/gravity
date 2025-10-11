@@ -98,6 +98,9 @@ if (!puppeteerModule) {
         test("hides Google button after sign-in and reveals stacked avatar menu", async () => {
             if (skipIfNoBrowser()) return;
 
+            assert.equal(LABEL_EXPORT_NOTES, "Export Notes");
+            assert.equal(LABEL_IMPORT_NOTES, "Import Notes");
+
             const page = await browser.newPage();
             try {
                 await page.goto(PAGE_URL, { waitUntil: "load" });

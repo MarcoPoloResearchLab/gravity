@@ -179,7 +179,7 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
 - [x] [GN-15] Remove "Not Signed In" sign when the user is not signed in, and leave only the Sign in with Google button
 - [x] [GN-16] Remove "Signed In" sign when the user is signed in
 - [x] [GN-17] Remove the button "Sign In with Google" after successfull login
-- [ ] [GN-21] Rename items in the stacked dropdown after login to:
+- [x] [GN-21] Rename items in the stacked dropdown after login to:
     - Export -> "Export Notes"
     - Import -> "Import Notes"
 - [ ] [GN-23] Check if a user presses closing square bracket after [ and avoid duplication. We already do it for other nrackets, bu [ is a special case when we add space closing sqaure bracket space. we shall still verify that thge user doesnt close the brackets and swallow an extra ] if the user does it
