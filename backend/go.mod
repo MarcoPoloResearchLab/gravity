@@ -1,6 +1,6 @@
 module github.com/MarcoPoloResearchLab/gravity/backend
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/gin-contrib/cors v1.7.6
@@ -23,7 +23,7 @@ require (
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.10 // indirect
 	github.com/gin-contrib/sse v1.1.0 // indirect
-	github.com/glebarez/go-sqlite v1.21.2 // indirect
+	github.com/glebarez/go-sqlite v1.22.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.28.0 // indirect
@@ -39,6 +39,7 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
+	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/quic-go/qpack v0.5.1 // indirect
 	github.com/quic-go/quic-go v0.55.0 // indirect
@@ -55,6 +56,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/arch v0.22.0 // indirect
 	golang.org/x/crypto v0.43.0 // indirect
+	golang.org/x/exp v0.0.0-20251009144603-d2f985daa21b // indirect
 	golang.org/x/mod v0.29.0 // indirect
 	golang.org/x/net v0.46.0 // indirect
 	golang.org/x/sync v0.17.0 // indirect
@@ -62,8 +64,8 @@ require (
 	golang.org/x/text v0.30.0 // indirect
 	golang.org/x/tools v0.38.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
-	modernc.org/libc v1.22.5 // indirect
-	modernc.org/mathutil v1.5.0 // indirect
-	modernc.org/memory v1.5.0 // indirect
-	modernc.org/sqlite v1.23.1 // indirect
+	modernc.org/libc v1.66.10 // indirect
+	modernc.org/mathutil v1.7.1 // indirect
+	modernc.org/memory v1.11.0 // indirect
+	modernc.org/sqlite v1.39.0 // indirect
 )
