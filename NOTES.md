@@ -229,6 +229,24 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
     - Export -> "Export Notes"
     - Import -> "Import Notes"
 - [x] [GN-23] Check if a user presses closing square bracket after [ and avoid duplication. We already do it for other nrackets, bu [ is a special case when we add space closing sqaure bracket space. we shall still verify that thge user doesnt close the brackets and swallow an extra ] if the user does it (covered by inline/enhanced bracket skip tests)
-
+- [x] [GN-24] Refactor go persistant storage implementation to rely on GORM. It looks like we are dependent on go-sqlite3, which requires CGO_ENABLED=0. I have a similar codebase that uses go and sqlite and doesnt require cgo. It's dependencies list reads
+    ```go
+    require (
+        github.com/chromedp/chromedp v0.14.2
+        github.com/gin-contrib/cors v1.7.6
+        github.com/gin-gonic/gin v1.11.0
+        github.com/glebarez/sqlite v1.11.0
+        github.com/google/uuid v1.6.0
+        github.com/gorilla/sessions v1.4.0
+        github.com/spf13/cobra v1.10.1
+        github.com/spf13/pflag v1.0.10
+        github.com/spf13/viper v1.21.0
+        github.com/stretchr/testify v1.11.1
+        github.com/temirov/GAuss v0.0.12
+        go.uber.org/zap v1.27.0
+        golang.org/x/net v0.46.0
+        gorm.io/gorm v1.31.0
+    )
+    ```
 
 ## Maintenance

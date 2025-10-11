@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/MarcoPoloResearchLab/gravity/backend/internal/notes"
+	sqlite "github.com/glebarez/sqlite"
 	"go.uber.org/zap"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 

@@ -3,3 +3,7 @@
 - [x] docker-compose.yml — Provide local orchestration for the backend container (GN-24).
 - [x] .github/workflows/backend-docker.yml — Build and publish backend image to GHCR (GN-24).
 - [x] Docs (`NOTES.md`) — Mark GN-24 complete and outline container workflow (GN-24).
+- [x] tests/backend.sqlite.driver.test.js — Enforce CGO-free SQLite driver dependency (GN-24 follow-up).
+- [x] backend/internal/database/sqlite.go — Switch to github.com/glebarez/sqlite driver (GN-24 follow-up).
+- [x] backend/go.mod — Remove go-sqlite3 dependency and align module with CGO-free stack (GN-24 follow-up).
+- [x] backend/tests integration suites — Update imports to pure-Go SQLite driver (GN-24 follow-up).
