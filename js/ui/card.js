@@ -113,14 +113,139 @@ function calculatePreviewTextOffset(previewElement, event) {
         return null;
     }
 
-    if (range.startContainer?.nodeType !== Node.TEXT_NODE) {
+    const resolved = resolveRangeEndpoint(range.startContainer, range.startOffset, previewElement);
+    if (!resolved) {
         return null;
     }
 
-    const preRange = range.cloneRange();
+    const preRange = doc.createRange();
     preRange.selectNodeContents(previewElement);
-    preRange.setEnd(range.startContainer, range.startOffset);
+    try {
+        preRange.setEnd(resolved.container, resolved.offset);
+    } catch {
+        return null;
+    }
     return preRange.toString().length;
+}
+
+/**
+ * Normalize a DOM range endpoint to a concrete text position.
+ * @param {Node} node
+ * @param {number} offset
+ * @param {HTMLElement} root
+ * @returns {{ container: Node, offset: number }|null}
+ */
+function resolveRangeEndpoint(node, offset, root) {
+    if (!node) {
+        return null;
+    }
+    if (node.nodeType === Node.TEXT_NODE) {
+        const content = node.textContent ?? "";
+        return {
+            container: node,
+            offset: clamp(offset, 0, content.length)
+        };
+    }
+    if (node.nodeType === Node.ELEMENT_NODE) {
+        const element = /** @type {Element} */ (node);
+        const childNodes = element.childNodes;
+        const safeIndex = clamp(offset, 0, childNodes.length);
+        const forwardNode = findFirstTextNode(childNodes[safeIndex] ?? null);
+        if (forwardNode) {
+            return {
+                container: forwardNode,
+                offset: 0
+            };
+        }
+        for (let index = Math.min(childNodes.length - 1, safeIndex - 1); index >= 0; index -= 1) {
+            const backwardNode = findLastTextNode(childNodes[index]);
+            if (backwardNode) {
+                const content = backwardNode.textContent ?? "";
+                return {
+                    container: backwardNode,
+                    offset: content.length
+                };
+            }
+        }
+        if (element === root) {
+            return {
+                container: element,
+                offset: safeIndex
+            };
+        }
+    }
+    const parent = node.parentNode;
+    if (!parent || !(parent instanceof Node) || parent === node) {
+        return null;
+    }
+    const parentChildren = parent.childNodes;
+    const indexInParent = Array.prototype.indexOf.call(parentChildren, node);
+    return resolveRangeEndpoint(parent, indexInParent >= 0 ? indexInParent : 0, root);
+}
+
+/**
+ * Find the first descendant text node of the provided node.
+ * @param {Node|null} node
+ * @returns {Node|null}
+ */
+function findFirstTextNode(node) {
+    if (!node) {
+        return null;
+    }
+    if (node.nodeType === Node.TEXT_NODE) {
+        return node;
+    }
+    const doc = node.ownerDocument;
+    if (!doc) {
+        return null;
+    }
+    const walker = doc.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    const next = walker.nextNode();
+    return next ?? null;
+}
+
+/**
+ * Find the last descendant text node of the provided node.
+ * @param {Node|null} node
+ * @returns {Node|null}
+ */
+function findLastTextNode(node) {
+    if (!node) {
+        return null;
+    }
+    if (node.nodeType === Node.TEXT_NODE) {
+        return node;
+    }
+    const doc = node.ownerDocument;
+    if (!doc) {
+        return null;
+    }
+    const walker = doc.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    let last = null;
+    while (walker.nextNode()) {
+        last = walker.currentNode;
+    }
+    return last;
+}
+
+/**
+ * Clamp a numeric value into the provided range.
+ * @param {number} value
+ * @param {number} min
+ * @param {number} max
+ * @returns {number}
+ */
+function clamp(value, min, max) {
+    if (Number.isNaN(value)) {
+        return min;
+    }
+    if (value < min) {
+        return min;
+    }
+    if (value > max) {
+        return max;
+    }
+    return value;
 }
 
 function mapPlainTextOffsetToMarkdown(source, plainOffset) {
@@ -131,21 +256,12 @@ function mapPlainTextOffsetToMarkdown(source, plainOffset) {
     if (mapping.map.length === 0) {
         return 0;
     }
-    const clamped = Math.max(0, Math.min(Math.floor(plainOffset), mapping.map.length));
-    if (clamped === mapping.map.length) {
-        return source.length;
+    const initialIndex = resolveMarkdownIndex(mapping, plainOffset);
+    const adjustedPlainOffset = adjustPlainOffsetForListMarkers(source, initialIndex, plainOffset);
+    if (adjustedPlainOffset !== plainOffset) {
+        return resolveMarkdownIndex(mapping, adjustedPlainOffset);
     }
-    const resolved = mapping.map[clamped];
-    if (typeof resolved === "number" && !Number.isNaN(resolved)) {
-        return resolved;
-    }
-    for (let index = clamped - 1; index >= 0; index -= 1) {
-        const candidate = mapping.map[index];
-        if (typeof candidate === "number" && !Number.isNaN(candidate)) {
-            return candidate;
-        }
-    }
-    return 0;
+    return initialIndex;
 }
 
 function buildMarkdownPlainMapping(source) {
@@ -272,7 +388,58 @@ function buildMarkdownPlainMapping(source) {
     };
 
     processSegment(0, source.length);
-    return { plain: plainChars.join(""), map };
+    return {
+        plain: plainChars.join(""),
+        map,
+        sourceLength: source.length
+    };
+}
+
+function resolveMarkdownIndex(mapping, plainOffset) {
+    const clamped = Math.max(0, Math.min(Math.floor(plainOffset), mapping.map.length));
+    if (clamped === mapping.map.length) {
+        return mapping.sourceLength;
+    }
+    const resolved = mapping.map[clamped];
+    if (typeof resolved === "number" && !Number.isNaN(resolved)) {
+        return resolved;
+    }
+    for (let index = clamped - 1; index >= 0; index -= 1) {
+        const candidate = mapping.map[index];
+        if (typeof candidate === "number" && !Number.isNaN(candidate)) {
+            return candidate;
+        }
+    }
+    return 0;
+}
+
+function adjustPlainOffsetForListMarkers(source, approxIndex, plainOffset) {
+    if (!Number.isFinite(plainOffset) || plainOffset <= 0 || approxIndex <= 0) {
+        return plainOffset;
+    }
+    const lineBreakIndex = source.lastIndexOf("\n", approxIndex - 1);
+    const lineStart = lineBreakIndex === -1 ? 0 : lineBreakIndex + 1;
+    const lineSlice = source.slice(lineStart);
+    const match = lineSlice.match(/^(\s*)([*+-]|\d+[.)])(\s+)/);
+    if (!match) {
+        return plainOffset;
+    }
+    const markerSpan = match[0].length;
+    if (approxIndex < lineStart + markerSpan) {
+        return plainOffset;
+    }
+    const trailingSpaces = match[3].length;
+    if (!trailingSpaces) {
+        return plainOffset;
+    }
+    const adjustment = lineStart === 0
+        ? Math.max(0, trailingSpaces - 1)
+        : trailingSpaces;
+    if (adjustment === 0) {
+        return plainOffset;
+    }
+    const adjusted = plainOffset + adjustment;
+    return adjusted > Number.MAX_SAFE_INTEGER ? plainOffset : adjusted;
 }
 
 function countRunOfChar(value, start, char) {

@@ -2,8 +2,8 @@
 - [x] tests/fullstack.endtoend.puppeteer.test.js — Run the real backend with Puppeteer and verify cross-layer auth + sync flow (GN-32).
 - [ ] js/ui/card.js — Guard checklist preview toggles so a single click updates existing notes without duplicating records (GN-27).
 - [ ] tests/preview.checkmark.puppeteer.test.js — Reproduce the checklist duplication scenario and assert only one note remains after toggling (GN-27).
-- [ ] js/ui/markdownPreview.js — Translate rendered click offsets into editor caret positions when switching modes (GN-28).
-- [ ] tests/editor.inline.puppeteer.test.js — Add preview-click caret coverage to guarantee rendered interactions align with editor positions (GN-28).
+- [x] js/ui/card.js — Translate rendered click offsets into editor caret positions when switching modes (GN-28).
+- [x] tests/editor.inline.puppeteer.test.js — Add preview-click caret coverage to guarantee rendered interactions align with editor positions (GN-28).
 - [ ] js/core/config.js / js/constants.js — Support environment-driven LLM proxy URL overrides while preserving secure defaults (GN-29).
 - [ ] tests/config.runtime.test.js — Verify meta/config/env overrides correctly update the LLM proxy endpoint (GN-29).
 - [ ] tests/sync.endtoend.puppeteer.test.js — Spin up the Go backend with the UI and validate bidirectional synchronization events (GN-30).

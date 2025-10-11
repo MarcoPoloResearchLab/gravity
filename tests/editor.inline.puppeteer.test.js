@@ -39,6 +39,12 @@ const PREVIEW_COMPLEX_MARKDOWN = [
     "Second pass mixes **bold**, `inline code`, and [link targets](https://example.com) for caret mapping.",
     "Third stanza finishes the markdown sample."
 ].join("\n");
+const PREVIEW_LIST_NOTE_ID = "inline-preview-list-fixture";
+const PREVIEW_LIST_MARKDOWN = [
+    "* Alpha baseline list item",
+    "* Beta caret mapping check",
+    "* Gamma trailing control"
+].join("\n");
 const UNORDERED_NOTE_ID = "inline-unordered-fixture";
 const UNORDERED_MARKDOWN = "* Alpha\n* Beta";
 const ORDERED_NOTE_ID = "inline-ordered-fixture";
@@ -1762,6 +1768,71 @@ if (!puppeteerModule) {
                 } finally {
                     await page.close();
                 }
+            }
+        });
+
+        test("preview click preserves caret offsets inside list items", async () => {
+            if (skipIfNoBrowser()) return;
+            const seededRecords = [buildNoteRecord({
+                noteId: PREVIEW_LIST_NOTE_ID,
+                markdownText: PREVIEW_LIST_MARKDOWN,
+                attachments: {}
+            })];
+            const cardSelector = `.markdown-block[data-note-id="${PREVIEW_LIST_NOTE_ID}"]`;
+            const previewSelector = `${cardSelector} .markdown-content`;
+            const editorSelector = `${cardSelector} .markdown-editor`;
+            const expectedIndex = PREVIEW_LIST_MARKDOWN.indexOf("Beta caret mapping check") + 1;
+
+            const page = await preparePage(browser, { records: seededRecords });
+            try {
+                await page.waitForSelector(previewSelector);
+                const clickPoint = await page.evaluate(({ noteId, targetWord, offset }) => {
+                    const preview = document.querySelector(`.markdown-block[data-note-id="${noteId}"] .markdown-content`);
+                    if (!(preview instanceof HTMLElement)) {
+                        return null;
+                    }
+                    const walker = document.createTreeWalker(preview, NodeFilter.SHOW_TEXT);
+                    let locatedNode = null;
+                    while (walker.nextNode()) {
+                        const node = walker.currentNode;
+                        if (typeof node?.textContent !== "string") {
+                            continue;
+                        }
+                        const index = node.textContent.indexOf(targetWord);
+                        if (index !== -1) {
+                            locatedNode = { node, index };
+                            break;
+                        }
+                    }
+                    if (!locatedNode) {
+                        return null;
+                    }
+                    const range = document.createRange();
+                    const startOffset = Math.min(locatedNode.index + offset, locatedNode.node.textContent.length);
+                    range.setStart(locatedNode.node, startOffset);
+                    range.setEnd(locatedNode.node, Math.min(startOffset + 1, locatedNode.node.textContent.length));
+                    const rect = range.getBoundingClientRect();
+                    return {
+                        x: rect.x + rect.width / 2,
+                        y: rect.y + rect.height / 2
+                    };
+                }, { noteId: PREVIEW_LIST_NOTE_ID, targetWord: "Beta caret mapping check", offset: 1 });
+
+                assert.ok(clickPoint, "resolved click point within list item text");
+                await page.mouse.click(clickPoint.x, clickPoint.y);
+
+                await page.waitForSelector(`${cardSelector}.editing-in-place`, { timeout: 2000 });
+                await page.waitForSelector(editorSelector, { timeout: 2000 });
+
+                const caretState = await page.$eval(editorSelector, (el) => ({
+                    start: el.selectionStart ?? 0,
+                    end: el.selectionEnd ?? 0
+                }));
+
+                assert.equal(caretState.start, expectedIndex, "caret start aligns with clicked list text offset");
+                assert.equal(caretState.end, expectedIndex, "caret selection collapses to clicked offset");
+            } finally {
+                await page.close();
             }
         });
 
