@@ -131,6 +131,39 @@ func TestAuthAndSyncFlow(t *testing.T) {
 		t.Fatalf("expected accepted result, got %#v", syncResult.Results)
 	}
 
+	snapshotReq, _ := http.NewRequest(http.MethodGet, testServer.URL+"/notes", nil)
+	snapshotReq.Header.Set("Authorization", "Bearer "+authResponse.AccessToken)
+	snapshotResp, err := http.DefaultClient.Do(snapshotReq)
+	if err != nil {
+		t.Fatalf("snapshot request failed: %v", err)
+	}
+	defer snapshotResp.Body.Close()
+	if snapshotResp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected snapshot status: %d", snapshotResp.StatusCode)
+	}
+	var snapshotPayload struct {
+		Notes []struct {
+			NoteID    string         `json:"note_id"`
+			IsDeleted bool           `json:"is_deleted"`
+			Payload   map[string]any `json:"payload"`
+		} `json:"notes"`
+	}
+	if err := json.NewDecoder(snapshotResp.Body).Decode(&snapshotPayload); err != nil {
+		t.Fatalf("failed to decode snapshot response: %v", err)
+	}
+	if len(snapshotPayload.Notes) != 1 {
+		t.Fatalf("expected single note in snapshot, got %d", len(snapshotPayload.Notes))
+	}
+	if snapshotPayload.Notes[0].NoteID != "note-1" {
+		t.Fatalf("unexpected note id in snapshot: %s", snapshotPayload.Notes[0].NoteID)
+	}
+	if snapshotPayload.Notes[0].IsDeleted {
+		t.Fatalf("unexpected deleted flag in snapshot")
+	}
+	if snapshotPayload.Notes[0].Payload["content"] != "hello" {
+		t.Fatalf("unexpected payload content: %#v", snapshotPayload.Notes[0].Payload)
+	}
+
 	staleRequest := map[string]any{
 		"operations": []any{
 			map[string]any{

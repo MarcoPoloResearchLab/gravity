@@ -147,3 +147,23 @@ func (s *Service) ApplyChanges(ctx context.Context, userID string, changes []Cha
 
 	return result, nil
 }
+
+// ListNotes returns all persisted notes for the provided user identifier.
+func (s *Service) ListNotes(ctx context.Context, userID string) ([]Note, error) {
+	if s.db == nil {
+		return nil, errMissingDatabase
+	}
+	if userID == "" {
+		return nil, errMissingUserID
+	}
+
+	var notes []Note
+	if err := s.db.WithContext(ctx).
+		Where("user_id = ?", userID).
+		Order("updated_at_s DESC").
+		Find(&notes).Error; err != nil {
+		return nil, err
+	}
+
+	return notes, nil
+}

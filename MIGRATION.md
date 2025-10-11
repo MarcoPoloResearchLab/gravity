@@ -72,3 +72,5 @@ previews. Run `npm test` after modifying any event contract to maintain parity w
     definitive payload when rejecting stale updates).
 * The integration test `tests/integration/auth_and_sync_test.go` exercises the full flow: token exchange, successful
   upsert, and rejection of a stale edit sequence.
+* The browser client now instantiates `js/core/syncManager.js`, intercepting create/update/delete/pin/import events to
+  enqueue operations, flush them after `EVENT_AUTH_SIGN_IN`, and reconcile server snapshots for cross-tab persistence.

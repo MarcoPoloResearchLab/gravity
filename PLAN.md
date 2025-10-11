@@ -1,12 +1,4 @@
-- [x] backend/go.mod — Initialize Go module, declare dependencies, wire gofmt/go vet tooling (GN-18).
-- [x] backend/cmd/gravity-api/main.go — Cobra entrypoint to bootstrap configuration, logging, database, and HTTP server (GN-18).
-- [x] backend/internal/config/config.go — Centralized Viper-backed configuration with validation for secrets and DB path (GN-18).
-- [x] backend/internal/logging/logger.go — Construct structured zap logger injected across services (GN-18).
-- [x] backend/internal/auth/google_verifier.go — Offline Google ID token verification with JWKS caching and tests (GN-18).
-- [x] backend/internal/auth/token_issuer.go — Backend JWT issuance and validation helpers with table-driven tests (GN-18).
-- [x] backend/internal/database/sqlite.go — GORM SQLite connector with migrations for notes and note_changes (GN-18).
-- [x] backend/internal/notes/model.go — GORM models reflecting required schema constants (GN-18).
-- [x] backend/internal/notes/service.go — Conflict-resolution aware upsert/delete operations, emitting audit records; fully tested (GN-18).
-- [x] backend/internal/server/router.go — Gin router with auth middleware, `/auth/google`, `/notes/sync` endpoints, and CORS (GN-18).
-- [x] backend/tests/integration/auth_and_sync_test.go — Integration test covering token exchange and note synchronization happy path (GN-18).
-- [x] docs updates (`MIGRATION.md`, `README.md`, `NOTES.md`) — Document backend boot, API contracts, mark GN-18 complete (GN-18).
+- [x] js/ui/markdownEditorHost.js — Skip duplicate closing square bracket when spaced pair already exists (GN-23).
+- [x] tests/editor.inline.puppeteer.test.js — Cover spaced square bracket skip behavior in fallback textarea (GN-23).
+- [x] tests/editor.enhanced.puppeteer.test.js — Ensure CodeMirror swallows duplicate `]` for spaced pairs (GN-23).
+- [x] Docs (`NOTES.md`) — Mark GN-23 complete and describe bracket behavior (GN-23).
