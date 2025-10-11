@@ -69,6 +69,7 @@ function gravityApp() {
         authController: /** @type {{ signOut(reason?: string): void, dispose(): void }|null} */ (null),
         authUser: /** @type {{ id: string, email: string|null, name: string|null, pictureUrl: string|null }|null} */ (null),
         authPollHandle: /** @type {number|null} */ (null),
+        guestExportButton: /** @type {HTMLButtonElement|null} */ (null),
         syncManager: /** @type {ReturnType<typeof createSyncManager>|null} */ (null),
         initialized: false,
 
@@ -81,6 +82,7 @@ function gravityApp() {
             this.exportButton = /** @type {HTMLButtonElement|null} */ (this.$refs.exportButton ?? document.getElementById("export-notes-button"));
             this.importButton = /** @type {HTMLButtonElement|null} */ (this.$refs.importButton ?? document.getElementById("import-notes-button"));
             this.importInput = /** @type {HTMLInputElement|null} */ (this.$refs.importInput ?? document.getElementById("import-notes-input"));
+            this.guestExportButton = /** @type {HTMLButtonElement|null} */ (this.$refs.guestExportButton ?? document.getElementById("guest-export-button"));
 
             this.configureMarked();
             this.registerEventBridges();
@@ -91,6 +93,7 @@ function gravityApp() {
             GravityStore.setUserScope(null);
             this.initializeNotes();
             initializeKeyboardShortcutsModal();
+            this.setGuestExportVisibility(true);
             this.initialized = true;
         },
 
@@ -346,7 +349,7 @@ function gravityApp() {
             });
 
             root.addEventListener(EVENT_AUTH_SIGN_IN, (event) => {
-                const detail = /** @type {{ user?: { id?: string, email?: string|null, name?: string|null, pictureUrl?: string|null } }} */ (event?.detail ?? {});
+                const detail = /** @type {{ user?: { id?: string, email?: string|null, name?: string|null, pictureUrl?: string|null }, credential?: string }} */ (event?.detail ?? {});
                 const user = detail?.user;
                 if (!user || !user.id) {
                     return;
@@ -370,6 +373,7 @@ function gravityApp() {
                 }).catch((error) => {
                     logging.error(error);
                 });
+                this.setGuestExportVisibility(false);
             });
 
             root.addEventListener(EVENT_AUTH_SIGN_OUT, () => {
@@ -381,6 +385,7 @@ function gravityApp() {
                 GravityStore.setUserScope(null);
                 this.initializeNotes();
                 this.syncManager?.handleSignOut();
+                this.setGuestExportVisibility(true);
             });
 
             root.addEventListener(EVENT_AUTH_ERROR, (event) => {
@@ -446,19 +451,44 @@ function gravityApp() {
         /**
          * Wire up import/export controls and emit notifications on outcomes.
          * @returns {void}
-         */
+        */
         initializeImportExport() {
+            const notify = (message) => {
+                const finalMessage = typeof message === "string" && message.length > 0
+                    ? message
+                    : MESSAGE_NOTES_IMPORT_FAILED;
+                this.emitNotification(finalMessage);
+            };
+
             initializeImportExport({
                 exportButton: this.exportButton ?? null,
                 importButton: this.importButton ?? null,
                 fileInput: this.importInput ?? null,
-                notify: (message) => {
-                    const finalMessage = typeof message === "string" && message.length > 0
-                        ? message
-                        : MESSAGE_NOTES_IMPORT_FAILED;
-                    this.emitNotification(finalMessage);
-                }
+                notify
             });
+
+            if (this.guestExportButton) {
+                initializeImportExport({
+                    exportButton: this.guestExportButton,
+                    importButton: null,
+                    fileInput: null,
+                    notify
+                });
+            }
+        },
+
+        setGuestExportVisibility(isVisible) {
+            const button = this.guestExportButton;
+            if (!button) {
+                return;
+            }
+            if (isVisible) {
+                button.hidden = false;
+                button.removeAttribute("aria-hidden");
+            } else {
+                button.hidden = true;
+                button.setAttribute("aria-hidden", "true");
+            }
         },
 
         /**

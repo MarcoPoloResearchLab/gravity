@@ -1,11 +1,5 @@
-- [x] backend/internal/notes/service.go — Add listing API to surface canonical note snapshots and cover with tests (GN-19).
-- [x] backend/internal/server/router.go — Expose authenticated `GET /notes` endpoint and extend integration coverage (GN-19).
-- [x] js/core/backendClient.js — Introduce typed client for auth exchange and sync requests (GN-19).
-- [x] js/core/syncMetadataStore.js — Persist per-note edit counters and server reconciliation state (GN-19).
-- [x] js/core/syncQueue.js — Durable queue for pending operations across offline sessions (GN-19).
-- [x] js/core/syncManager.js — Orchestrate sign-in token exchange, queue flushing, and note reconciliation (GN-19).
-- [x] js/core/store.js & js/types.d.js — Keep note persistence intact while leveraging dedicated sync metadata stores (GN-19).
-- [x] js/app.js & related UI bridges — Wire sync manager into auth and note lifecycle events (GN-19).
-- [x] tests/sync.manager.test.js — Exercise queueing, token exchange, and reconciliation flows (GN-19).
-- [x] tests/persistence.sync.puppeteer.test.js — Validate end-to-end login, cross-tab sync, and backend reconciliation (GN-19).
-- [x] Documentation (`README.md`, `MIGRATION.md`, `NOTES.md`) — Capture integration workflow and close GN-19 (GN-19).
+- [x] index.html / styles.css — Add a signed-out export control styled for the header (GN-20).
+- [x] js/app.js / ui auth wiring — Toggle guest export visibility with auth state and connect to existing export flow (GN-20).
+- [x] js/ui/importExport.js — Ensure multiple export buttons reuse the same downloader (GN-20).
+- [x] Tests — Cover signed-out export visibility and download trigger (GN-20).
+- [x] Docs (`NOTES.md`) — Mark GN-20 complete (GN-20).

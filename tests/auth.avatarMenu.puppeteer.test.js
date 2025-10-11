@@ -104,6 +104,40 @@ if (!puppeteerModule) {
 
                 await page.waitForSelector(".auth-button-host", { timeout: 2000 });
 
+                await page.waitForSelector("#guest-export-button:not([hidden])", { timeout: 2000 });
+
+                await page.evaluate(() => {
+                    window.__guestExports = [];
+                    window.__guestExportOriginalCreate = URL.createObjectURL;
+                    window.__guestExportOriginalRevoke = URL.revokeObjectURL;
+                    URL.createObjectURL = (blob) => {
+                        if (blob && typeof blob.text === "function") {
+                            blob.text().then((text) => {
+                                window.__guestExports.push(text);
+                            });
+                        }
+                        return "blob:mock";
+                    };
+                    URL.revokeObjectURL = () => {};
+                });
+
+                await page.click("#guest-export-button");
+                await page.waitForFunction(() => Array.isArray(window.__guestExports) && window.__guestExports.length > 0, { timeout: 2000 });
+                const exportedPayload = await page.evaluate(() => window.__guestExports[0]);
+                assert.equal(exportedPayload, "[]");
+
+                await page.evaluate(() => {
+                    if (window.__guestExportOriginalCreate) {
+                        URL.createObjectURL = window.__guestExportOriginalCreate;
+                        delete window.__guestExportOriginalCreate;
+                    }
+                    if (window.__guestExportOriginalRevoke) {
+                        URL.revokeObjectURL = window.__guestExportOriginalRevoke;
+                        delete window.__guestExportOriginalRevoke;
+                    }
+                    delete window.__guestExports;
+                });
+
                 const hostBeforeSignIn = await page.$(".auth-button-host");
                 assert.ok(hostBeforeSignIn, "auth button host should render while signed out");
 
@@ -129,6 +163,12 @@ if (!puppeteerModule) {
 
                 await page.waitForSelector(".auth-avatar:not([hidden])", { timeout: 2000 });
 
+                const guestHiddenAfterSignIn = await page.evaluate(() => {
+                    const button = document.querySelector("#guest-export-button");
+                    return button ? button.hasAttribute("hidden") : false;
+                });
+                assert.equal(guestHiddenAfterSignIn, true);
+
                 await page.click(".auth-avatar-trigger");
 
                 await page.waitForSelector("[data-test='auth-menu'][data-open='true']", { timeout: 2000 });
@@ -153,6 +193,7 @@ if (!puppeteerModule) {
                 }, EVENT_AUTH_SIGN_OUT);
 
                 await page.waitForSelector(".auth-button-host", { timeout: 2000 });
+                await page.waitForSelector("#guest-export-button:not([hidden])", { timeout: 2000 });
             } finally {
                 await page.close();
             }

@@ -170,7 +170,7 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
     - Export Notes
     - Import Notes
     - Sign Out
-- [ ] [GN-20] Allow for Export only of the notes for un-authenticated user. Have an Export button available that downlaods json containing all the notes. Reuse existing functionality.
+- [x] [GN-20] Allow for Export only of the notes for un-authenticated user. Have an Export button available that downlaods json containing all the notes. Reuse existing functionality.
 - [ ] [GN-22] Open the note in the place a user clicked on when swithcing from rendered view to editing. That way if a user clicked in the middle of the sentence in the rendered view, the cursor goes to that middle of the sentence in the markdown editing view
 
 ## BugFixes
@@ -182,6 +182,7 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
 - [ ] [GN-21] Rename items in the stacked dropdown after login to:
     - Export -> "Export Notes"
     - Import -> "Import Notes"
+- [ ] [GN-23] Check if a user presses closing square bracket after [ and avoid duplication. We already do it for other nrackets, bu [ is a special case when we add space closing sqaure bracket space. we shall still verify that thge user doesnt close the brackets and swallow an extra ] if the user does it
 
 
 ## Maintenance
