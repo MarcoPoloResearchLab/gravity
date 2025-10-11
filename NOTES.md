@@ -182,7 +182,7 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
 - [x] [GN-21] Rename items in the stacked dropdown after login to:
     - Export -> "Export Notes"
     - Import -> "Import Notes"
-- [ ] [GN-23] Check if a user presses closing square bracket after [ and avoid duplication. We already do it for other nrackets, bu [ is a special case when we add space closing sqaure bracket space. we shall still verify that thge user doesnt close the brackets and swallow an extra ] if the user does it
+- [x] [GN-23] Check if a user presses closing square bracket after [ and avoid duplication. We already do it for other nrackets, bu [ is a special case when we add space closing sqaure bracket space. we shall still verify that thge user doesnt close the brackets and swallow an extra ] if the user does it (covered by inline/enhanced bracket skip tests)
 
 
 ## Maintenance

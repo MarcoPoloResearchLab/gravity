@@ -1,4 +1,4 @@
-- [x] js/ui/card.js — Map preview click locations to markdown caret offsets (GN-22).
-- [x] js/ui/markdownEditorHost.js — Allow numeric caret placement for precise positioning (GN-22).
-- [x] tests/editor.inline.puppeteer.test.js — Cover preview click caret placement and adjust existing flows (GN-22).
-- [x] Docs (`NOTES.md`) — Mark GN-22 complete (GN-22).
+- [x] js/ui/markdownEditorHost.js — Skip duplicate closing square bracket when spaced pair already exists (GN-23).
+- [x] tests/editor.inline.puppeteer.test.js — Cover spaced square bracket skip behavior in fallback textarea (GN-23).
+- [x] tests/editor.enhanced.puppeteer.test.js — Ensure CodeMirror swallows duplicate `]` for spaced pairs (GN-23).
+- [x] Docs (`NOTES.md`) — Mark GN-23 complete and describe bracket behavior (GN-23).

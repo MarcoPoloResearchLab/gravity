@@ -476,6 +476,27 @@ if (!puppeteerModule) {
                 assert.equal(textareaState.value, "{}");
                 assert.equal(textareaState.selectionStart, 2);
                 assert.equal(textareaState.selectionEnd, 2);
+
+                await page.evaluate((selector) => {
+                    const textarea = document.querySelector(selector);
+                    if (!(textarea instanceof HTMLTextAreaElement)) return;
+                    textarea.value = "";
+                    textarea.selectionStart = 0;
+                    textarea.selectionEnd = 0;
+                }, editorSelector);
+
+                await page.keyboard.type("[");
+                await page.keyboard.type("]");
+
+                textareaState = await page.$eval(editorSelector, (el) => ({
+                    value: el.value,
+                    selectionStart: el.selectionStart ?? 0,
+                    selectionEnd: el.selectionEnd ?? 0
+                }));
+
+                assert.equal(textareaState.value, "[ ] ");
+                assert.equal(textareaState.selectionStart, textareaState.value.length);
+                assert.equal(textareaState.selectionEnd, textareaState.selectionStart);
             } finally {
                 await page.close();
             }
