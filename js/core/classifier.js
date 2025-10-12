@@ -35,11 +35,17 @@ export const ClassifierClient = (() => {
             body: bodyText ?? ""
         };
 
+        const classifyEndpointRaw = appConfig.llmProxyClassifyUrl;
+        const classifyEndpoint = typeof classifyEndpointRaw === "string" ? classifyEndpointRaw.trim() : "";
+        if (classifyEndpoint.length === 0) {
+            return buildFallbackClassification(requestBody.now);
+        }
+
         const aborter = new AbortController();
         const timeoutId = setTimeout(() => aborter.abort(), appConfig.classificationTimeoutMs);
 
         try {
-            const res = await fetch(`${appConfig.llmProxyBaseUrl}${appConfig.classifyPath}`, {
+            const res = await fetch(classifyEndpoint, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(requestBody),
@@ -68,19 +74,30 @@ export const ClassifierClient = (() => {
             };
         } catch {
             clearTimeout(timeoutId);
-            // Conservative fallback; user can reclassify later if needed.
-            return {
-                category: "Journal",
-                project_name: null,
-                areas: [],
-                people_handles: [],
-                status: "idea",
-                privacy: appConfig.defaultPrivacy,
-                tags: [],
-                occurred_at: new Date().toISOString()
-            };
+            return buildFallbackClassification(requestBody.now);
         }
     }
 
     return Object.freeze({ classifyOrFallback });
 })();
+
+/**
+ * Provide a conservative local classification when the proxy is unavailable.
+ * @param {string} referenceIso
+ * @returns {import("../types.d.js").NoteClassification}
+ */
+function buildFallbackClassification(referenceIso) {
+    const occurredAt = typeof referenceIso === "string" && referenceIso.length > 0
+        ? referenceIso
+        : new Date().toISOString();
+    return {
+        category: "Journal",
+        project_name: null,
+        areas: [],
+        people_handles: [],
+        status: "idea",
+        privacy: appConfig.defaultPrivacy,
+        tags: [],
+        occurred_at: occurredAt
+    };
+}

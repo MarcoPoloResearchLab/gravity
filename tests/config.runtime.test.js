@@ -3,7 +3,8 @@ import test from "node:test";
 
 import {
     resolveBackendBaseUrl,
-    resolveLlmProxyBaseUrl
+    resolveLlmProxyBaseUrl,
+    resolveLlmProxyClassifyUrl
 } from "../js/core/config.js";
 
 test("resolveBackendBaseUrl falls back to default without environment", () => {
@@ -100,4 +101,59 @@ test("resolveLlmProxyBaseUrl falls back to origin when overrides blank", () => {
         }
     });
     assert.equal(resolved, "https://notes.dev.local");
+});
+
+test("resolveLlmProxyClassifyUrl composes default endpoint", () => {
+    const resolved = resolveLlmProxyClassifyUrl();
+    assert.equal(resolved, "https://llm-proxy.mprlab.com/v1/gravity/classify");
+});
+
+test("resolveLlmProxyClassifyUrl respects global override", () => {
+    const resolved = resolveLlmProxyClassifyUrl({
+        window: {
+            GRAVITY_CONFIG: {
+                llmProxyClassifyUrl: "http://localhost:5001/api/classify"
+            }
+        }
+    });
+    assert.equal(resolved, "http://localhost:5001/api/classify");
+});
+
+test("resolveLlmProxyClassifyUrl defers to meta override", () => {
+    const fakeMeta = {
+        getAttribute(name) {
+            return name === "content" ? "https://meta.llm.example.com/api" : null;
+        }
+    };
+    const fakeDocument = {
+        querySelector(selector) {
+            return selector === 'meta[name="gravity-llm-proxy-classify-url"]' ? fakeMeta : null;
+        }
+    };
+    const resolved = resolveLlmProxyClassifyUrl({
+        document: fakeDocument
+    });
+    assert.equal(resolved, "https://meta.llm.example.com/api");
+});
+
+test("resolveLlmProxyClassifyUrl disables requests when override blank", () => {
+    const resolved = resolveLlmProxyClassifyUrl({
+        window: {
+            GRAVITY_CONFIG: {
+                llmProxyClassifyUrl: "   "
+            }
+        }
+    });
+    assert.equal(resolved, "");
+});
+
+test("resolveLlmProxyClassifyUrl composes base overrides", () => {
+    const resolved = resolveLlmProxyClassifyUrl({
+        window: {
+            GRAVITY_CONFIG: {
+                llmProxyBaseUrl: "http://localhost:5001/"
+            }
+        }
+    });
+    assert.equal(resolved, "http://localhost:5001/v1/gravity/classify");
 });
