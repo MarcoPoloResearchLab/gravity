@@ -21,7 +21,8 @@ with bounded previews, and every note edits inline—no modal overlays or contex
   or export notebooks as JSON snapshots without introducing duplicates.
 * **Account-aware storage:** Sign in with Google (or continue anonymously) from the header controls. Each authenticated
   Google account receives an isolated notebook persisted in `localStorage`, so coworkers sharing a browser never see one
-  another's notes.
+  another's notes. Sessions survive page refreshes, keeping the last active account signed in until you explicitly sign
+  out.
 
 ## How to Use
 
@@ -55,6 +56,9 @@ with bounded previews, and every note edits inline—no modal overlays or contex
   the anonymous notebook (`gravityNotesData`) intact.
 - The UI surfaces the active user's avatar, name, and a dropdown menu for export, import, and sign-out actions while
   hiding the Google button host—no manual page reload is required to change accounts.
+- Successful sign-in persists a minimal `{ user, credential }` payload in `localStorage` (`gravityAuthState`). On page
+  reload the app replays `gravity:auth-sign-in` automatically; signing out clears the persisted state so shared devices
+  return to the anonymous notebook.
 
 ## Architecture
 
@@ -137,7 +141,7 @@ Conflict resolution follows the documented `(client_edit_seq, updated_at)` prece
 ### Frontend Sync
 
 - `appConfig.backendBaseUrl` resolves at runtime from `window.GRAVITY_CONFIG.backendBaseUrl` or a `<meta name="gravity-backend-base-url">` tag. When neither is provided it falls back to the current origin (or `http://localhost:8080` when served from `file://`).
-- `appConfig.llmProxyBaseUrl` resolves from `window.GRAVITY_CONFIG.llmProxyBaseUrl` or a `<meta name="gravity-llm-proxy-base-url">` tag. When unset it falls back to the current origin or the default hosted proxy at `https://llm-proxy.mprlab.com`.
+- `appConfig.llmProxyBaseUrl` resolves from `window.GRAVITY_CONFIG.llmProxyBaseUrl` or a `<meta name="gravity-llm-proxy-base-url">` tag. When unset it falls back to the current origin or the default hosted proxy at `https://llm-proxy.mprlab.com`.  The full classify endpoint lives in `appConfig.llmProxyClassifyUrl`, which accepts overrides via `window.GRAVITY_CONFIG.llmProxyClassifyUrl` or `<meta name="gravity-llm-proxy-classify-url">`; providing an empty string disables remote classification during local development.
 - The UI keeps persisting to `localStorage` for offline usage while enqueuing operations for the backend.
 - On sign-in the client exchanges the Google credential for a backend token, flushes the queue, and reconciles a fresh snapshot so additional tabs/devices pick up the latest state.
 - Pin toggles, imports, and deletions immediately enqueue operations; failed sync attempts remain queued until connectivity returns.
@@ -151,7 +155,8 @@ Configure development endpoints before loading `index.html`:
 <script>
     window.GRAVITY_CONFIG = {
         backendBaseUrl: "http://localhost:8000",
-        llmProxyBaseUrl: "http://localhost:8081"
+        llmProxyBaseUrl: "http://localhost:8081",
+        llmProxyClassifyUrl: "http://localhost:8081/v1/gravity/classify"
     };
 </script>
 ```
@@ -161,6 +166,7 @@ Or embed a meta tag when templating the page:
 ```html
 <meta name="gravity-backend-base-url" content="https://gravity-notes.example.com/api">
 <meta name="gravity-llm-proxy-base-url" content="https://proxy.example.com">
+<meta name="gravity-llm-proxy-classify-url" content="https://proxy.example.com/v1/gravity/classify">
 ```
 
 ## Testing
@@ -169,6 +175,10 @@ Or embed a meta tag when templating the page:
   the notification flow.
 - `tests/preview.bounded.puppeteer.test.js` now guards the viewport anchoring behaviour—expanding a rendered note keeps
   the card in place even if the browser attempts to scroll to the bottom of the preview.
+- `tests/sync.endtoend.puppeteer.test.js` starts the Go backend harness and uses the real UI to create notes, asserting
+  that operations propagate through `createSyncManager` to the server snapshot.
+- `tests/auth.sessionPersistence.puppeteer.test.js` signs in via the event bridge, reloads the page, and verifies the
+  persisted auth state restores the user scope without a second Google prompt.
 - Run `npx puppeteer browsers install chrome` once to download the Chromium binary that Puppeteer uses during the
   end-to-end tests.
 - GitHub Actions executes the same test command on every push and pull request, validating the inline editing workflow and

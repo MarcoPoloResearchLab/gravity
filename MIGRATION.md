@@ -50,15 +50,23 @@ the DOM.
   `http://localhost:8080` when served from `file://`).
 * `appConfig.llmProxyBaseUrl` follows the same override rules via `window.GRAVITY_CONFIG.llmProxyBaseUrl` or
   `<meta name="gravity-llm-proxy-base-url">`, defaulting to the current origin or the hosted proxy at
-  `https://llm-proxy.mprlab.com` when unspecified.
+  `https://llm-proxy.mprlab.com` when unspecified. The full classify endpoint lives in
+  `appConfig.llmProxyClassifyUrl`, resovable via `window.GRAVITY_CONFIG.llmProxyClassifyUrl` or
+  `<meta name="gravity-llm-proxy-classify-url">`; providing an empty string disables remote classification during
+  development.
 * The auth controls hide the Google button once a profile is active and expose the stacked avatar menu (export, import,
   sign out). The sign-out item dispatches `gravity:auth-sign-out`.
+* Successful `gravity:auth-sign-in` handlers now persist `{ user, credential }` in `localStorage` so reloads replay the
+  sign-in event automatically. `gravity:auth-sign-out` clears the stored state to return to the anonymous notebook.
 
 ## Testing Expectations
 
 Puppeteer coverage now includes `tests/app.notifications.puppeteer.test.js` to confirm the import error path emits a
 `gravity:notify` toast and `tests/preview.bounded.puppeteer.test.js` to keep the viewport anchored when expanding long
-previews. Run `npm test` after modifying any event contract to maintain parity with the automation suite.
+previews. `tests/fullstack.endtoend.puppeteer.test.js` and `tests/sync.endtoend.puppeteer.test.js` start the Go backend
+harness to assert note creation flows enqueue real sync operations, while
+`tests/auth.sessionPersistence.puppeteer.test.js` guards the persisted Google session behaviour. Run `npm test` after
+modifying any event contract to maintain parity with the automation suite.
 
 ## Backend Scaffold
 
