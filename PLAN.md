@@ -7,6 +7,6 @@
 - [x] js/core/config.js / js/constants.js — Support environment-driven LLM proxy URL overrides while preserving secure defaults (GN-29).
 - [x] tests/config.runtime.test.js — Verify meta/config/env overrides correctly update the LLM proxy endpoint (GN-29).
 - [x] tests/sync.endtoend.puppeteer.test.js — Spin up the Go backend with the UI and validate bidirectional synchronization events (GN-30).
-- [ ] tests/auth.sessionPersistence.puppeteer.test.js — Ensure Google login state survives a full page refresh (GN-31).
+- [x] tests/auth.sessionPersistence.puppeteer.test.js — Ensure Google login state survives a full page refresh (GN-31).
 - [ ] README.md / MIGRATION.md — Document the proxy configuration, sync workflow, and session persistence guarantees.
 - [ ] NOTES.md — Mark GN-27 through GN-32 complete once fixes and tests pass.

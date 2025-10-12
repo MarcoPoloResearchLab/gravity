@@ -355,7 +355,7 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
         backend-1  | {"level":"info","ts":1760200071.2389312,"caller":"gravity-api/main.go:148","msg":"server starting","address":"0.0.0.0:8080"}
         ```
         Frontend configuration:     `<meta name="gravity-backend-base-url" content="http://localhost:8080">`
-- [ ] [GN-31] The page refresh logs out a logged in user. Have an integration test that verifies that the page refresh does not log off the user. I see messages in the JS console that maybe relevant: 
+- [x] [GN-31] The page refresh logs out a logged in user. Have an integration test that verifies that the page refresh does not log off the user. I see messages in the JS console that maybe relevant: 
 ```
 The value of the attribute “expires” for the cookie “_ga_WYL7PDVTHN” has been overwritten. localhost:8000
 

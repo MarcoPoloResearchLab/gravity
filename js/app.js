@@ -9,6 +9,7 @@ import { GravityStore } from "./core/store.js";
 import { appConfig } from "./core/config.js";
 import { createGoogleIdentityController } from "./core/auth.js";
 import { createSyncManager } from "./core/syncManager.js";
+import { loadAuthState, saveAuthState, clearAuthState } from "./core/authState.js";
 import { mountTopEditor } from "./ui/topEditor.js";
 import {
     LABEL_APP_SUBTITLE,
@@ -91,10 +92,13 @@ function gravityApp() {
             this.initializeTopEditor();
             this.initializeImportExport();
             this.syncManager = createSyncManager({ eventTarget: this.$el ?? null });
-            GravityStore.setUserScope(null);
-            this.initializeNotes();
+            const restored = this.restoreAuthFromStorage();
+            if (!restored) {
+                GravityStore.setUserScope(null);
+                this.initializeNotes();
+                this.setGuestExportVisibility(true);
+            }
             initializeKeyboardShortcutsModal();
-            this.setGuestExportVisibility(true);
             this.initialized = true;
         },
 
@@ -163,6 +167,37 @@ function gravityApp() {
 
             this.authControls.showSignedOut();
             this.ensureGoogleIdentityController();
+        },
+
+        /**
+         * Attempt to rehydrate authentication from storage.
+         * @returns {boolean}
+         */
+        restoreAuthFromStorage() {
+            const persisted = loadAuthState();
+            if (!persisted || !persisted.user || typeof persisted.user.id !== "string" || persisted.user.id.length === 0) {
+                if (persisted) {
+                    clearAuthState();
+                }
+                return false;
+            }
+            const target = this.$el instanceof HTMLElement ? this.$el : document.body;
+            if (!target) {
+                return false;
+            }
+            try {
+                target.dispatchEvent(new CustomEvent(EVENT_AUTH_SIGN_IN, {
+                    detail: {
+                        user: persisted.user,
+                        credential: persisted.credential,
+                        restored: true
+                    }
+                }));
+                return true;
+            } catch (error) {
+                logging.error(error);
+                return false;
+            }
         },
 
         /**
@@ -375,6 +410,15 @@ function gravityApp() {
                     logging.error(error);
                 });
                 this.setGuestExportVisibility(false);
+                saveAuthState({
+                    user: {
+                        id: this.authUser.id,
+                        email: this.authUser.email,
+                        name: this.authUser.name,
+                        pictureUrl: this.authUser.pictureUrl
+                    },
+                    credential
+                });
             });
 
             root.addEventListener(EVENT_AUTH_SIGN_OUT, () => {
@@ -387,6 +431,7 @@ function gravityApp() {
                 this.initializeNotes();
                 this.syncManager?.handleSignOut();
                 this.setGuestExportVisibility(true);
+                clearAuthState();
             });
 
             root.addEventListener(EVENT_AUTH_ERROR, (event) => {

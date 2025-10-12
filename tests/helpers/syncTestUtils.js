@@ -11,8 +11,14 @@ import { EVENT_AUTH_SIGN_IN } from "../../js/constants.js";
 export async function prepareFrontendPage(browser, pageUrl, options) {
     const page = await browser.newPage();
     await page.evaluateOnNewDocument((storageKey) => {
-        window.localStorage.clear();
-        window.localStorage.setItem(storageKey, "[]");
+        const initialized = window.sessionStorage.getItem("__gravityTestInitialized") === "true";
+        if (!initialized) {
+            window.localStorage.clear();
+            window.sessionStorage.setItem("__gravityTestInitialized", "true");
+        }
+        if (!window.localStorage.getItem(storageKey)) {
+            window.localStorage.setItem(storageKey, "[]");
+        }
     }, appConfig.storageKey);
     await page.evaluateOnNewDocument((config) => {
         window.GRAVITY_CONFIG = config;
