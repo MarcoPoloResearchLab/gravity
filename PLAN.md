@@ -1,7 +1,7 @@
 - [x] tests/helpers/backendHarness.js — Add lifecycle-managed Go backend launcher for shared end-to-end automation (GN-32).
 - [x] tests/fullstack.endtoend.puppeteer.test.js — Run the real backend with Puppeteer and verify cross-layer auth + sync flow (GN-32).
-- [ ] js/ui/card.js — Guard checklist preview toggles so a single click updates existing notes without duplicating records (GN-27).
-- [ ] tests/preview.checkmark.puppeteer.test.js — Reproduce the checklist duplication scenario and assert only one note remains after toggling (GN-27).
+- [x] js/ui/card.js — Guard checklist preview toggles so a single click updates existing notes without duplicating records (GN-27).
+- [x] tests/preview.checkmark.puppeteer.test.js — Reproduce the checklist duplication scenario and assert only one note remains after toggling (GN-27).
 - [x] js/ui/card.js — Translate rendered click offsets into editor caret positions when switching modes (GN-28).
 - [x] tests/editor.inline.puppeteer.test.js — Add preview-click caret coverage to guarantee rendered interactions align with editor positions (GN-28).
 - [ ] js/core/config.js / js/constants.js — Support environment-driven LLM proxy URL overrides while preserving secure defaults (GN-29).

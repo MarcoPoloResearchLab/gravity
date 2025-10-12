@@ -891,6 +891,7 @@ export function renderCard(record, options = {}) {
     editorHosts.set(card, editorHost);
     card.__markdownHost = editorHost;
     card.dataset.initialValue = record.markdownText;
+    card.dataset.attachmentsSignature = createAttachmentSignature(initialAttachments);
     if (isNonBlankString(record.createdAtIso)) {
         card.dataset.createdAtIso = record.createdAtIso;
     }
@@ -973,8 +974,10 @@ export function renderCard(record, options = {}) {
         queuePreviewFocus(card, { type: "checkbox", taskIndex, remaining: 2 });
         host.setValue(nextMarkdown);
         refreshPreview();
-        persistCardState(card, notesContainer, nextMarkdown, { bubbleToTop: false });
-        schedulePreviewBubble(card, notesContainer);
+        const persisted = persistCardState(card, notesContainer, nextMarkdown, { bubbleToTop: false });
+        if (persisted) {
+            schedulePreviewBubble(card, notesContainer);
+        }
     }
 }
 
@@ -1073,19 +1076,31 @@ function showClipboardFeedback(container, message) {
 function persistCardState(card, notesContainer, markdownText, options = {}) {
     const { bubbleToTop = true } = options;
     if (!(card instanceof HTMLElement) || typeof markdownText !== "string") {
-        return;
+        return false;
     }
     const noteId = card.getAttribute("data-note-id");
-    if (!noteId) {
-        return;
+    if (!isNonBlankString(noteId)) {
+        return false;
     }
     const editor = /** @type {HTMLTextAreaElement|null} */ (card.querySelector(".markdown-editor"));
     if (!(editor instanceof HTMLTextAreaElement)) {
-        return;
+        return false;
+    }
+
+    const attachments = collectReferencedAttachments(editor);
+    const normalizedNext = normalizeMarkdownForComparison(markdownText);
+    const previousValue = typeof card.dataset.initialValue === "string" ? card.dataset.initialValue : "";
+    const normalizedPrevious = normalizeMarkdownForComparison(previousValue);
+    const nextAttachmentsSignature = createAttachmentSignature(attachments);
+    const previousAttachmentsSignature = typeof card.dataset.attachmentsSignature === "string"
+        ? card.dataset.attachmentsSignature
+        : "";
+
+    if (normalizedNext === normalizedPrevious && nextAttachmentsSignature === previousAttachmentsSignature) {
+        return false;
     }
 
     const timestamp = nowIso();
-    const attachments = collectReferencedAttachments(editor);
 
     const createdAtIso = isNonBlankString(card.dataset.createdAtIso)
         ? card.dataset.createdAtIso
@@ -1104,6 +1119,7 @@ function persistCardState(card, notesContainer, markdownText, options = {}) {
     card.dataset.createdAtIso = createdAtIso;
     card.dataset.updatedAtIso = timestamp;
     card.dataset.lastActivityIso = timestamp;
+    card.dataset.attachmentsSignature = nextAttachmentsSignature;
 
     if (notesContainer instanceof HTMLElement) {
         if (bubbleToTop) {
@@ -1124,6 +1140,7 @@ function persistCardState(card, notesContainer, markdownText, options = {}) {
     const toggle = card.querySelector(".note-expand-toggle");
     scheduleOverflowCheck(previewWrapper, preview, toggle);
     dispatchNoteUpdate(card, record, { storeUpdated: true, shouldRender: false });
+    return true;
 }
 
 function toggleTaskAtIndex(markdown, targetIndex) {
@@ -1679,6 +1696,26 @@ function areAttachmentDictionariesEqual(current, previous) {
     }
 
     return true;
+}
+
+/**
+ * Create a stable signature for attachments to detect content changes.
+ * @param {Record<string, import("../types.d.js").AttachmentRecord>} attachments
+ * @returns {string}
+ */
+function createAttachmentSignature(attachments) {
+    const entries = Object.entries(attachments || {});
+    if (entries.length === 0) {
+        return "";
+    }
+    entries.sort(([a], [b]) => a.localeCompare(b));
+    return entries
+        .map(([key, record]) => {
+            const dataLength = record && typeof record.dataUrl === "string" ? record.dataUrl.length : 0;
+            const altText = record && typeof record.altText === "string" ? record.altText : "";
+            return `${key}:${dataLength}:${altText}`;
+        })
+        .join("|");
 }
 
 /* ---------- Chips & classification ---------- */

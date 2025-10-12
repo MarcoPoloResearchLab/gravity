@@ -26,13 +26,20 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
 
-const CHECKLIST_NOTE_ID = "preview-checklist-dup";
+const CHECKLIST_NOTE_ID = "preview-checklist-primary";
 const CHECKLIST_MARKDOWN = [
-    "# Checklist duplication regression",
+    "# Checklist regression guard",
     "",
     "- [ ] Track first task",
     "- [x] Track second task"
 ].join("\n");
+const SECOND_NOTE_ID = "preview-checklist-secondary";
+const SECOND_MARKDOWN = [
+    "# Secondary checklist",
+    "",
+    "- [ ] Mirror task"
+].join("\n");
+const RAPID_TOGGLE_ITERATIONS = 4;
 
 if (!puppeteerModule) {
     test("puppeteer unavailable", () => {
@@ -95,7 +102,7 @@ if (!puppeteerModule) {
             await cleanupPuppeteerSandbox(SANDBOX);
         });
 
-        test("toggling preview checkboxes does not persist duplicate cards", async () => {
+        test("preview checkbox toggle keeps a single persisted note", async () => {
             if (skipIfNoBrowser()) return;
 
             const initialRecords = [
@@ -106,11 +113,7 @@ if (!puppeteerModule) {
                 })
             ];
 
-            const page = await preparePage(browser, {
-                records: initialRecords,
-                duplicateOnSave: true
-            });
-
+            const page = await preparePage(browser, { records: initialRecords });
             try {
                 const cardSelector = `.markdown-block[data-note-id="${CHECKLIST_NOTE_ID}"]`;
                 await page.waitForSelector(cardSelector);
@@ -118,46 +121,69 @@ if (!puppeteerModule) {
                 const checkboxSelector = `${cardSelector} .note-preview input[data-task-index="0"]`;
                 await page.click(checkboxSelector);
 
-                await page.waitForFunction((storageKey, noteId) => {
-                    try {
-                        const raw = window.localStorage.getItem(storageKey);
-                        if (!raw) return false;
-                        const parsed = JSON.parse(raw);
-                        if (!Array.isArray(parsed)) return false;
-                        const copies = parsed.filter((record) => record?.noteId === noteId);
-                        return copies.length >= 2;
-                    } catch {
-                        return false;
-                    }
-                }, {}, appConfig.storageKey, CHECKLIST_NOTE_ID);
+                await waitForTaskState(page, appConfig.storageKey, CHECKLIST_NOTE_ID, "- [x] Track first task");
+
+                const summary = await snapshotStorage(page, appConfig.storageKey);
+                assert.equal(summary.totalRecords, 1, "exactly one record persists after toggling");
+                assert.equal(summary.noteOccurrences[CHECKLIST_NOTE_ID], 1, "note identifier remains unique");
 
                 await page.reload({ waitUntil: "networkidle0" });
                 await page.waitForSelector(cardSelector);
-
                 const renderedCount = await page.$$eval(cardSelector, (nodes) => nodes.length);
-                assert.equal(renderedCount, 1, "only one checklist card should render after duplicating persistence writes");
+                assert.equal(renderedCount, 1, "only one card renders after reload");
+            } finally {
+                await page.close();
+            }
+        });
 
-                await page.evaluate(async () => {
-                    const { GravityStore } = await import("./js/core/store.js");
-                    const current = GravityStore.loadAllNotes();
-                    GravityStore.saveAllNotes(current);
+        test("rapid preview toggles keep records unique across notes", async () => {
+            if (skipIfNoBrowser()) return;
+
+            const seededRecords = [
+                buildNoteRecord({
+                    noteId: CHECKLIST_NOTE_ID,
+                    markdownText: CHECKLIST_MARKDOWN,
+                    attachments: {}
+                }),
+                buildNoteRecord({
+                    noteId: SECOND_NOTE_ID,
+                    markdownText: SECOND_MARKDOWN,
+                    attachments: {}
+                })
+            ];
+
+            const page = await preparePage(browser, { records: seededRecords });
+            try {
+                const firstSelector = `.markdown-block[data-note-id="${CHECKLIST_NOTE_ID}"] .note-preview input[data-task-index="0"]`;
+                const secondSelector = `.markdown-block[data-note-id="${SECOND_NOTE_ID}"] .note-preview input[data-task-index="0"]`;
+
+                await Promise.all([
+                    page.waitForSelector(`.markdown-block[data-note-id="${CHECKLIST_NOTE_ID}"]`),
+                    page.waitForSelector(`.markdown-block[data-note-id="${SECOND_NOTE_ID}"]`)
+                ]);
+
+                for (let iteration = 0; iteration < RAPID_TOGGLE_ITERATIONS; iteration += 1) {
+                    await page.click(firstSelector);
+                    await page.click(secondSelector);
+                }
+
+                await waitForUniqueNotes(page, appConfig.storageKey, [CHECKLIST_NOTE_ID, SECOND_NOTE_ID]);
+
+                const summary = await snapshotStorage(page, appConfig.storageKey);
+                assert.equal(summary.totalRecords, 2, "two records remain after rapid toggles");
+                assert.equal(summary.noteOccurrences[CHECKLIST_NOTE_ID], 1, "primary note stays unique");
+                assert.equal(summary.noteOccurrences[SECOND_NOTE_ID], 1, "secondary note stays unique");
+
+                const renderedOrder = await page.evaluate(() => {
+                    return Array.from(document.querySelectorAll(".markdown-block[data-note-id]"))
+                        .map((node) => node.getAttribute("data-note-id"))
+                        .filter((value) => typeof value === "string");
                 });
-
-                const storedRecords = await page.evaluate((storageKey, noteId) => {
-                    try {
-                        const raw = window.localStorage.getItem(storageKey);
-                        if (!raw) return null;
-                        const parsed = JSON.parse(raw);
-                        if (!Array.isArray(parsed)) return null;
-                        const matches = parsed.filter((record) => record?.noteId === noteId);
-                        return { total: parsed.length, duplicates: matches.length };
-                    } catch {
-                        return null;
-                    }
-                }, appConfig.storageKey, CHECKLIST_NOTE_ID);
-
-                assert.ok(storedRecords, "storage snapshot should be available");
-                assert.equal(storedRecords.duplicates, 1, "only one checklist record should persist after reload");
+                assert.deepEqual(
+                    renderedOrder,
+                    [CHECKLIST_NOTE_ID, SECOND_NOTE_ID],
+                    "DOM order preserves unique cards"
+                );
             } finally {
                 await page.close();
             }
@@ -178,37 +204,16 @@ function buildNoteRecord({ noteId, markdownText, attachments }) {
     };
 }
 
-async function preparePage(browser, { records, duplicateOnSave }) {
+async function preparePage(browser, { records }) {
     const page = await browser.newPage();
     const serialized = JSON.stringify(Array.isArray(records) ? records : []);
-    await page.evaluateOnNewDocument((storageKey, payload, shouldDuplicate) => {
-        const originalSetItem = window.localStorage.setItem.bind(window.localStorage);
-        const hasSeeded = window.sessionStorage.getItem("__gravityChecklistSeeded") === "true";
-        if (!hasSeeded) {
-            window.localStorage.clear();
+    await page.evaluateOnNewDocument((storageKey, payload) => {
+        window.sessionStorage.clear();
+        window.localStorage.clear();
+        if (typeof payload === "string" && payload.length > 0) {
             window.localStorage.setItem(storageKey, payload);
-            window.sessionStorage.setItem("__gravityChecklistSeeded", "true");
         }
-        if (shouldDuplicate) {
-            let hasDuplicated = window.sessionStorage.getItem("__gravityChecklistDuplicated") === "true";
-            window.localStorage.setItem = (key, value) => {
-                if (!hasDuplicated && key === storageKey) {
-                    try {
-                        const parsed = JSON.parse(value);
-                        if (Array.isArray(parsed) && parsed.length > 0) {
-                            const duplicate = [...parsed, { ...parsed[0], updatedAtIso: new Date().toISOString() }];
-                            hasDuplicated = true;
-                            window.sessionStorage.setItem("__gravityChecklistDuplicated", "true");
-                            return originalSetItem(key, JSON.stringify(duplicate));
-                        }
-                    } catch {
-                        return originalSetItem(key, value);
-                    }
-                }
-                return originalSetItem(key, value);
-            };
-        }
-    }, appConfig.storageKey, serialized, Boolean(duplicateOnSave));
+    }, appConfig.storageKey, serialized);
 
     await page.goto(PAGE_URL, { waitUntil: "networkidle0" });
     await page.waitForSelector("#top-editor .markdown-editor");
@@ -216,4 +221,69 @@ async function preparePage(browser, { records, duplicateOnSave }) {
         await page.waitForSelector(".markdown-block[data-note-id]");
     }
     return page;
+}
+
+async function waitForTaskState(page, storageKey, noteId, expectedLine) {
+    await page.waitForFunction((storageKeyKey, targetNoteId, line) => {
+        const raw = window.localStorage.getItem(storageKeyKey);
+        if (!raw) return false;
+        try {
+            const parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed)) return false;
+            const matches = parsed.filter((record) => record?.noteId === targetNoteId);
+            if (matches.length !== 1) return false;
+            return typeof matches[0]?.markdownText === "string" && matches[0].markdownText.includes(line);
+        } catch {
+            return false;
+        }
+    }, {}, storageKey, noteId, expectedLine);
+}
+
+async function waitForUniqueNotes(page, storageKey, noteIds) {
+    await page.waitForFunction((storageKeyKey, ids) => {
+        const raw = window.localStorage.getItem(storageKeyKey);
+        if (!raw) return false;
+        try {
+            const parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed)) return false;
+            for (const id of ids) {
+                const occurrences = parsed.filter((record) => record?.noteId === id);
+                if (occurrences.length !== 1) {
+                    return false;
+                }
+            }
+            return true;
+        } catch {
+            return false;
+        }
+    }, {}, storageKey, noteIds);
+}
+
+async function snapshotStorage(page, storageKey) {
+    return page.evaluate((storageKeyKey) => {
+        const raw = window.localStorage.getItem(storageKeyKey);
+        if (!raw) {
+            return { totalRecords: 0, noteOccurrences: {} };
+        }
+        try {
+            const parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed)) {
+                return { totalRecords: 0, noteOccurrences: {} };
+            }
+            const occurrences = {};
+            for (const record of parsed) {
+                const noteId = record?.noteId;
+                if (typeof noteId !== "string" || noteId.length === 0) {
+                    continue;
+                }
+                occurrences[noteId] = (occurrences[noteId] || 0) + 1;
+            }
+            return {
+                totalRecords: parsed.length,
+                noteOccurrences: occurrences
+            };
+        } catch {
+            return { totalRecords: 0, noteOccurrences: {} };
+        }
+    }, storageKey);
 }

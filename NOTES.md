@@ -30,6 +30,7 @@ You are a staff level full stack engineer. Your task is to **re-evaluate and ref
     * Design and use shared components
 5. **Tests** → Add/adjust Puppeteer tests for key flows (button → event → notification; cross-panel isolation). Prioritize end-2-end and integration tests.
 6. **Docs** → Update README and MIGRATION.md with new event contracts, removed globals, and developer instructions.
+7. **Timeouts**  Set a timer before running any CLI command, tests, build, git etc. If an operation takes unreasonably long without producing an output, abort it and consider a diffeernt approach. Prepend all CLI invocations with `timeout <N>s` command.
 
 ## Output requirements
 
@@ -332,7 +333,7 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
     backend-1  | [0.136ms] [rows:0] SELECT * FROM `notes` WHERE user_id = "111357980452034959148" AND note_id = "1aca4bed-4bd6-42b3-ad9b-1b58859a9241" LIMIT 1 
     ```
 - [x] [GN-26] When we open markdown for editing we shall place the cursor in the same place as the place it was clicked on in the rendering mode. See [GN-22]
-- [ ] [GN-27] Notes randomly duplicate when clicked on rendered checkmarks
+- [x] [GN-27] Notes randomly duplicate when clicked on rendered checkmarks
 - [x] [GN-28] When we open markdown for editing we shall place the cursor in the same place as the place it was clicked on in the rendering mode. See [GN-22], [GN-26]. Write tests to demonstarte that a cursor in markdown will be placed in the same place as where the click landed in the rendered preview
 - [ ] [GN-29] Make a url of llm-proxy environment-dependent (configurable) for development. Current url gives errros about CORS https://llm-proxy.mprlab.com/v1/gravity/classify
 `Cross-Origin Request Blocked: The Same Origin Policy disallows reading the remote resource at https://llm-proxy.mprlab.com/v1/gravity/classify. (Reason: CORS header ‘Access-Control-Allow-Origin’ missing). Status code: 403.`
@@ -354,7 +355,7 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
         backend-1  | {"level":"info","ts":1760200071.2389312,"caller":"gravity-api/main.go:148","msg":"server starting","address":"0.0.0.0:8080"}
         ```
         Frontend configuration:     `<meta name="gravity-backend-base-url" content="http://localhost:8080">`
-- [ ] [GN-31] The page refresh logs out a logged in user. Have an integration test that verifies that tghe page refresh does not log off the user. I see messages in the JS console that maybe relevant: 
+- [ ] [GN-31] The page refresh logs out a logged in user. Have an integration test that verifies that the page refresh does not log off the user. I see messages in the JS console that maybe relevant: 
 ```
 The value of the attribute “expires” for the cookie “_ga_WYL7PDVTHN” has been overwritten. localhost:8000
 
