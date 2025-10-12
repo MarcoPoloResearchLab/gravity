@@ -3,9 +3,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import {
-    EVENT_NOTE_CREATE
-} from "../js/constants.js";
 import { createBackendHarness } from "./helpers/backendHarness.js";
 import { ensurePuppeteerSandbox, cleanupPuppeteerSandbox } from "./helpers/puppeteerEnvironment.js";
 import {
@@ -48,7 +45,7 @@ if (!puppeteerModule) {
         process.env.PUPPETEER_EXECUTABLE_PATH = executablePath;
     }
 
-    test.describe("Full stack integration", () => {
+    test.describe("UI sync integration", () => {
         /** @type {import('puppeteer').Browser | null} */
         let browser = null;
         /** @type {{ baseUrl: string, createCredential: (userId: string) => string, close: () => Promise<void> } | null} */
@@ -100,7 +97,7 @@ if (!puppeteerModule) {
             await cleanupPuppeteerSandbox(SANDBOX);
         });
 
-        test("persists notes through the real backend", { timeout: 60000 }, async (t) => {
+        test("user-created notes synchronize to the backend", { timeout: 60000 }, async () => {
             if (initializationError) {
                 if (/** @type {{ code?: string }} */ (initializationError).code === "ENOENT") {
                     test.skip("Go toolchain is not available for backend integration test.");
@@ -111,7 +108,7 @@ if (!puppeteerModule) {
             assert.ok(browser, "browser must be initialised");
             assert.ok(backendHarness, "backend harness must be initialised");
 
-            const userId = "fullstack-sync-user";
+            const userId = "ui-sync-user";
             const credential = backendHarness.createCredential(userId);
 
             const page = await prepareFrontendPage(browser, PAGE_URL, {
@@ -122,13 +119,38 @@ if (!puppeteerModule) {
                 await dispatchSignIn(page, credential, userId);
                 await waitForSyncManagerUser(page, userId);
 
-                const noteId = "fullstack-sync-note";
-                const timestampIso = new Date().toISOString();
-                await dispatchNoteCreate(page, {
-                    noteId,
-                    markdownText: "Persisted via backend harness",
-                    timestampIso
+                const editorSelector = "#top-editor .markdown-editor";
+                const noteContent = "End-to-end synced note";
+                await page.focus(editorSelector);
+                await page.type(editorSelector, noteContent);
+                await page.keyboard.down("Control");
+                await page.keyboard.press("Enter");
+                await page.keyboard.up("Control");
+                await page.keyboard.down("Meta");
+                await page.keyboard.press("Enter");
+                await page.keyboard.up("Meta");
+                await page.keyboard.press("Tab");
+                await new Promise((resolve) => {
+                    setTimeout(resolve, 250);
                 });
+
+                await page.waitForSelector(".markdown-block:not(.top-editor)[data-note-id]", { timeout: 5000 });
+
+                const noteId = await page.$eval(
+                    ".markdown-block:not(.top-editor)[data-note-id]",
+                    (node) => node.getAttribute("data-note-id")
+                );
+
+                const createdNote = await page.evaluate(async (id) => {
+                    if (typeof id !== "string" || id.length === 0) {
+                        return null;
+                    }
+                    const module = await import("./js/core/store.js");
+                    return module.GravityStore.getById(id);
+                }, noteId);
+
+                assert.ok(createdNote, "expected newly created note in local storage");
+                assert.ok(typeof createdNote.noteId === "string" && createdNote.noteId.length > 0, "note id should be set");
 
                 await waitForPendingOperations(page);
                 const debugState = await extractSyncDebugState(page);
@@ -141,44 +163,14 @@ if (!puppeteerModule) {
                 });
                 assert.equal(verifyResponse.status, 200, "backend snapshot request should succeed");
                 const payload = await verifyResponse.json();
-                const noteIds = Array.isArray(payload?.notes) ? payload.notes.map((entry) => entry?.payload?.noteId) : [];
-                assert.ok(noteIds.includes(noteId), "backend snapshot should include newly persisted note");
+                const matchingEntries = Array.isArray(payload?.notes)
+                    ? payload.notes.filter((entry) => entry?.payload?.noteId === createdNote.noteId)
+                    : [];
+                assert.equal(matchingEntries.length, 1, "backend should store exactly one matching note");
+                assert.equal(matchingEntries[0]?.payload?.markdownText, noteContent, "backend note content should match");
             } finally {
                 await page.close();
             }
         });
-    });
-}
-
-/**
- * @param {import('puppeteer').Browser} browser
- * @param {string} backendBaseUrl
- * @returns {Promise<import('puppeteer').Page>}
- */
-/**
- * @param {import('puppeteer').Page} page
- * @param {{ noteId: string, markdownText: string, timestampIso: string }} params
- * @returns {Promise<void>}
- */
-async function dispatchNoteCreate(page, params) {
-    await page.evaluate((eventName, detail) => {
-        const root = document.querySelector("body");
-        if (!root) {
-            return;
-        }
-        root.dispatchEvent(new CustomEvent(eventName, {
-            detail,
-            bubbles: true
-        }));
-    }, EVENT_NOTE_CREATE, {
-        record: {
-            noteId: params.noteId,
-            markdownText: params.markdownText,
-            createdAtIso: params.timestampIso,
-            updatedAtIso: params.timestampIso,
-            lastActivityIso: params.timestampIso
-        },
-        storeUpdated: false,
-        shouldRender: false
     });
 }

@@ -1,0 +1,178 @@
+import { appConfig } from "../../js/core/config.js";
+import { EVENT_AUTH_SIGN_IN } from "../../js/constants.js";
+
+/**
+ * Prepare a new browser page configured for backend synchronization tests.
+ * @param {import('puppeteer').Browser} browser
+ * @param {string} pageUrl
+ * @param {{ backendBaseUrl: string, llmProxyClassifyUrl?: string }} options
+ * @returns {Promise<import('puppeteer').Page>}
+ */
+export async function prepareFrontendPage(browser, pageUrl, options) {
+    const page = await browser.newPage();
+    await page.evaluateOnNewDocument((storageKey) => {
+        window.localStorage.clear();
+        window.localStorage.setItem(storageKey, "[]");
+    }, appConfig.storageKey);
+    await page.evaluateOnNewDocument((config) => {
+        window.GRAVITY_CONFIG = config;
+    }, {
+        backendBaseUrl: options.backendBaseUrl,
+        llmProxyClassifyUrl: options.llmProxyClassifyUrl ?? ""
+    });
+
+    await page.goto(pageUrl, { waitUntil: "networkidle0" });
+    await page.waitForSelector("#top-editor .markdown-editor", { timeout: 5000 });
+    return page;
+}
+
+/**
+ * Dispatch a synthetic sign-in event to Alpine's composition root.
+ * @param {import('puppeteer').Page} page
+ * @param {string} credential
+ * @param {string} userId
+ * @returns {Promise<void>}
+ */
+export async function dispatchSignIn(page, credential, userId) {
+    await page.evaluate((eventName, token, id) => {
+        const root = document.querySelector("body");
+        if (!root) {
+            return;
+        }
+        root.dispatchEvent(new CustomEvent(eventName, {
+            detail: {
+                user: {
+                    id,
+                    email: `${id}@example.com`,
+                    name: "Fullstack Integration User",
+                    pictureUrl: "https://example.com/avatar.png"
+                },
+                credential: token
+            },
+            bubbles: true
+        }));
+    }, EVENT_AUTH_SIGN_IN, credential, userId);
+}
+
+/**
+ * Wait until the sync manager reports the specified active user.
+ * @param {import('puppeteer').Page} page
+ * @param {string} expectedUserId
+ * @returns {Promise<void>}
+ */
+export async function waitForSyncManagerUser(page, expectedUserId) {
+    await page.waitForFunction((userId) => {
+        const root = document.querySelector("[x-data]");
+        if (!root) {
+            return false;
+        }
+        const alpineComponent = (() => {
+            const legacy = /** @type {{ $data?: Record<string, any> }} */ (/** @type {any} */ (root).__x ?? null);
+            if (legacy && typeof legacy.$data === "object") {
+                return legacy.$data;
+            }
+            const alpine = typeof window !== "undefined" ? /** @type {{ $data?: (el: Element) => any }} */ (window.Alpine ?? null) : null;
+            if (alpine && typeof alpine.$data === "function") {
+                const scoped = alpine.$data(root);
+                if (scoped && typeof scoped === "object") {
+                    return scoped;
+                }
+            }
+            const stack = /** @type {Array<Record<string, any>>|undefined} */ (/** @type {any} */ (root)._x_dataStack);
+            if (Array.isArray(stack) && stack.length > 0) {
+                const candidate = stack[stack.length - 1];
+                if (candidate && typeof candidate === "object") {
+                    return candidate;
+                }
+            }
+            return null;
+        })();
+        const syncManager = alpineComponent?.syncManager;
+        if (!syncManager || typeof syncManager.getDebugState !== "function") {
+            return false;
+        }
+        const debugState = syncManager.getDebugState();
+        return debugState?.activeUserId === userId;
+    }, {}, expectedUserId);
+}
+
+/**
+ * Wait until the sync queue has no pending operations.
+ * @param {import('puppeteer').Page} page
+ * @returns {Promise<void>}
+ */
+export async function waitForPendingOperations(page) {
+    await page.waitForFunction(() => {
+        const root = document.querySelector("[x-data]");
+        if (!root) {
+            return false;
+        }
+        const alpineComponent = (() => {
+            const legacy = /** @type {{ $data?: Record<string, any> }} */ (/** @type {any} */ (root).__x ?? null);
+            if (legacy && typeof legacy.$data === "object") {
+                return legacy.$data;
+            }
+            const alpine = typeof window !== "undefined" ? /** @type {{ $data?: (el: Element) => any }} */ (window.Alpine ?? null) : null;
+            if (alpine && typeof alpine.$data === "function") {
+                const scoped = alpine.$data(root);
+                if (scoped && typeof scoped === "object") {
+                    return scoped;
+                }
+            }
+            const stack = /** @type {Array<Record<string, any>>|undefined} */ (/** @type {any} */ (root)._x_dataStack);
+            if (Array.isArray(stack) && stack.length > 0) {
+                const candidate = stack[stack.length - 1];
+                if (candidate && typeof candidate === "object") {
+                    return candidate;
+                }
+            }
+            return null;
+        })();
+        const syncManager = alpineComponent?.syncManager;
+        if (!syncManager || typeof syncManager.getDebugState !== "function") {
+            return false;
+        }
+        const debugState = syncManager.getDebugState();
+        return Array.isArray(debugState?.pendingOperations) && debugState.pendingOperations.length === 0;
+    }, { timeout: 5000 });
+}
+
+/**
+ * Extract the sync manager debug state from the page.
+ * @param {import('puppeteer').Page} page
+ * @returns {Promise<any>}
+ */
+export async function extractSyncDebugState(page) {
+    return page.evaluate(() => {
+        const root = document.querySelector("[x-data]");
+        if (!root) {
+            return null;
+        }
+        const alpineComponent = (() => {
+            const legacy = /** @type {{ $data?: Record<string, any> }} */ (/** @type {any} */ (root).__x ?? null);
+            if (legacy && typeof legacy.$data === "object") {
+                return legacy.$data;
+            }
+            const alpine = typeof window !== "undefined" ? /** @type {{ $data?: (el: Element) => any }} */ (window.Alpine ?? null) : null;
+            if (alpine && typeof alpine.$data === "function") {
+                const scoped = alpine.$data(root);
+                if (scoped && typeof scoped === "object") {
+                    return scoped;
+                }
+            }
+            const stack = /** @type {Array<Record<string, any>>|undefined} */ (/** @type {any} */ (root)._x_dataStack);
+            if (Array.isArray(stack) && stack.length > 0) {
+                const candidate = stack[stack.length - 1];
+                if (candidate && typeof candidate === "object") {
+                    return candidate;
+                }
+            }
+            return null;
+        })();
+        const syncManager = alpineComponent?.syncManager;
+        if (!syncManager || typeof syncManager.getDebugState !== "function") {
+            return null;
+        }
+        return syncManager.getDebugState();
+    });
+}

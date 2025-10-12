@@ -337,7 +337,7 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
 - [x] [GN-28] When we open markdown for editing we shall place the cursor in the same place as the place it was clicked on in the rendering mode. See [GN-22], [GN-26]. Write tests to demonstarte that a cursor in markdown will be placed in the same place as where the click landed in the rendered preview
 - [x] [GN-29] Make a url of llm-proxy environment-dependent (configurable) for development. Current url gives errros about CORS https://llm-proxy.mprlab.com/v1/gravity/classify
 `Cross-Origin Request Blocked: The Same Origin Policy disallows reading the remote resource at https://llm-proxy.mprlab.com/v1/gravity/classify. (Reason: CORS header ‘Access-Control-Allow-Origin’ missing). Status code: 403.`
-- [ ] [GN-30] The backend receive no events from the client. Prepare an end-2-end test that
+- [x] [GN-30] The backend receive no events from the client. Prepare an end-2-end test that
     1. Starts the backend
     2. Starts the frontend pointing to the backend
     3. Verifies syncronization between the front-end and the backend
