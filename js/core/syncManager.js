@@ -145,8 +145,10 @@ export function createSyncManager(options = {}) {
             seedInitialOperations();
             persistState();
 
-            await flushQueue();
-            await refreshSnapshot();
+            const queueFlushed = await flushQueue();
+            if (queueFlushed) {
+                await refreshSnapshot();
+            }
         },
 
         /**
@@ -231,15 +233,18 @@ export function createSyncManager(options = {}) {
 
     async function flushQueue() {
         if (!state.userId || !state.backendToken) {
-            return;
+            return false;
         }
-        if (state.flushing || state.queue.length === 0) {
-            return;
+        if (state.flushing) {
+            return false;
+        }
+        if (state.queue.length === 0) {
+            return true;
         }
         if (state.backendToken.expiresAtMs <= clock().getTime()) {
             state.backendToken = null;
             persistState();
-            return;
+            return false;
         }
 
         state.flushing = true;
@@ -247,7 +252,7 @@ export function createSyncManager(options = {}) {
             const pendingOperations = state.queue.slice();
             const operations = pendingOperations.map(convertToSyncOperation);
             if (operations.length === 0) {
-                return;
+                return true;
             }
             const response = await backendClient.syncOperations({
                 accessToken: state.backendToken.accessToken,
@@ -257,8 +262,10 @@ export function createSyncManager(options = {}) {
             const sentOperationIds = new Set(pendingOperations.map((operation) => operation.operationId));
             state.queue = state.queue.filter((operation) => !sentOperationIds.has(operation.operationId));
             persistState();
+            return state.queue.length === 0;
         } catch (error) {
             logging.error(error);
+            return false;
         } finally {
             state.flushing = false;
         }
