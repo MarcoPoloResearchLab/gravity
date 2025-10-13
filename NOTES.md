@@ -362,8 +362,8 @@ The value of the attribute “expires” for the cookie “_ga_WYL7PDVTHN” has
 
 [GSI_LOGGER]: The given origin is not allowed for the given client ID. client:74:89
 ```
-- [ ] [GN-32] tests are failing: `  ✖ lists and tables auto-continue in fallback editor (3382.860931ms)`
-- [ ] [GN-33] tests are hanging indefinetely: nothing happens after that:
+- [x] [GN-32] tests are failing: `  ✖ lists and tables auto-continue in fallback editor (3382.860931ms)`
+- [ ] [GN-33] tests are hanging indefinetely. Do not run all the tests -- run each test and use a background teask to kill the testing process after 30 seconds. No individual test shall run longer than 30 seconds. Find the slow tests and refactor them into faster tests. Currently the test suit just hangs: nothing happens after that:
 ```
 18:50:30 tyemirov@Vadyms-MacBook-Pro:~/Development/MarcoPoloResearchLab/gravity - [bugfix/GN-31-session-persistence] $ npm test
 
@@ -449,6 +449,38 @@ The value of the attribute “expires” for the cookie “_ga_WYL7PDVTHN” has
 ✔ buildDeterministicPreview leaves long text untouched (0.206095ms)
 ✔ buildDeterministicPreview flags code without tracking words or images (0.242075ms)
 ```
+When interrupted I git the followiong output
 
+test at tests/editor.inline.puppeteer.test.js:1970:9
+✖ lists and tables auto-continue in fallback editor (3382.860931ms)
+  AssertionError [ERR_ASSERTION]: Ordered list renumbering
+  actual expected
+  
+  '1. First\n2. Se\n3. Second'
+  
+      at TestContext.<anonymous> (file:///Users/tyemirov/Development/MarcoPoloResearchLab/gravity/tests/editor.inline.puppeteer.test.js:2063:28)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: '1. First\n2. Se\n3. cond',
+    expected: '1. First\n2. \n3. Second',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/persistence.backend.puppeteer.test.js:127:9
+✖ flushes notes to the backend over HTTP (20.156436ms)
+  TypeError: t.timeout is not a function
+      at TestContext.<anonymous> (file:///Users/tyemirov/Development/MarcoPoloResearchLab/gravity/tests/persistence.backend.puppeteer.test.js:133:15)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1106:25)
+      at async Promise.all (index 0)
+      at async Suite.run (node:internal/test_runner/test:1516:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3)
+
+test at tests/persistence.backend.puppeteer.test.js:1:1
+✖ tests/persistence.backend.puppeteer.test.js (10493979.087332ms)
+  'Promise resolution is still pending but the event loop has already resolved'
 
 ### Maintenance

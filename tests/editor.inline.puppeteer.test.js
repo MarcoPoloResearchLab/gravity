@@ -1972,6 +1972,7 @@ if (!puppeteerModule) {
             const seededRecords = [
                 buildNoteRecord({ noteId: UNORDERED_NOTE_ID, markdownText: UNORDERED_MARKDOWN, attachments: {} }),
                 buildNoteRecord({ noteId: ORDERED_NOTE_ID, markdownText: ORDERED_MARKDOWN, attachments: {} }),
+                buildNoteRecord({ noteId: ORDERED_RENUMBER_NOTE_ID, markdownText: ORDERED_RENUMBER_MARKDOWN, attachments: {} }),
                 buildNoteRecord({ noteId: TABLE_NOTE_ID, markdownText: TABLE_MARKDOWN, attachments: {} }),
                 buildNoteRecord({ noteId: FENCE_NOTE_ID, markdownText: FENCE_MARKDOWN, attachments: {} })
             ];
@@ -2052,6 +2053,13 @@ if (!puppeteerModule) {
                     }
                 }, orderedEditor);
                 await page.$eval(orderedEditor, (el) => el.selectionStart);
+                const orderedCaretBeforeEnter = await page.$eval(orderedEditor, (el) => el.selectionStart ?? -1);
+                const expectedOrderedCaret = ORDERED_MARKDOWN.indexOf("\n");
+                assert.equal(
+                    orderedCaretBeforeEnter,
+                    expectedOrderedCaret,
+                    "Ordered caret seeded at the newline between list items"
+                );
                 await page.keyboard.press("Enter");
                 try {
                     await page.waitForFunction((selector, expected) => {
@@ -2064,6 +2072,54 @@ if (!puppeteerModule) {
                 }
                 const orderedLines = await page.$eval(orderedEditor, (el) => el.value.split("\n"));
                 assert.deepEqual(orderedLines, ["1. First", "2. ", "3. Second"]);
+                const orderedCaretState = await page.$eval(orderedEditor, (el) => ({
+                    start: el.selectionStart ?? 0,
+                    end: el.selectionEnd ?? 0
+                }));
+                const orderedBlankPrefixLength = "1. First\n2. ".length;
+                assert.equal(orderedCaretState.start, orderedBlankPrefixLength, "Caret stays at the new ordered list item body");
+                assert.equal(orderedCaretState.end, orderedCaretState.start, "Caret remains collapsed after ordered list split");
+
+                await page.keyboard.down("Control");
+                await page.keyboard.press("Enter");
+                await page.keyboard.up("Control");
+
+                const renumberSelector = `.markdown-block[data-note-id="${ORDERED_RENUMBER_NOTE_ID}"]`;
+                const renumberEditor = `${renumberSelector} .markdown-editor`;
+                await page.click(`${renumberSelector} .note-preview`);
+                await page.waitForSelector(`${renumberSelector}.editing-in-place`);
+                await page.waitForSelector(renumberEditor);
+
+                await page.evaluate((selector) => {
+                    const textarea = document.querySelector(selector);
+                    if (!(textarea instanceof HTMLTextAreaElement)) return;
+                    const bravoLineIndex = textarea.value.indexOf("Bravo");
+                    const caretOffset = bravoLineIndex >= 0 ? bravoLineIndex + 2 : textarea.value.length;
+                    textarea.focus();
+                    textarea.setSelectionRange(caretOffset, caretOffset);
+                }, renumberEditor);
+                await page.keyboard.press("Enter");
+                const orderedRenumberExpectation = ["1. Alpha", "2. Br", "3. avo", "4. Charlie"];
+                try {
+                    await page.waitForFunction((selector, expectedLines) => {
+                        const textarea = document.querySelector(selector);
+                        if (!(textarea instanceof HTMLTextAreaElement)) return false;
+                        const lines = textarea.value.split("\n");
+                        if (lines.length !== expectedLines.length) return false;
+                        return lines.every((line, index) => line === expectedLines[index]);
+                    }, { timeout: 2000 }, renumberEditor, orderedRenumberExpectation);
+                } catch (error) {
+                    const renumberValue = await page.$eval(renumberEditor, (el) => el.value.split("\n"));
+                    assert.deepEqual(renumberValue, orderedRenumberExpectation, "Ordered list renumbering splits mid-word correctly");
+                }
+                const renumberCaretState = await page.$eval(renumberEditor, (el) => ({
+                    start: el.selectionStart ?? 0,
+                    end: el.selectionEnd ?? 0,
+                    value: el.value
+                }));
+                const expectedRenumberCaret = "1. Alpha\n2. Br\n3. ".length;
+                assert.equal(renumberCaretState.start, expectedRenumberCaret, "Caret moves to the start of the newly created ordered item");
+                assert.equal(renumberCaretState.end, renumberCaretState.start, "Caret for renumbered split stays collapsed");
 
                 await page.keyboard.down("Control");
                 await page.keyboard.press("Enter");

@@ -1,12 +1,5 @@
-- [x] tests/helpers/backendHarness.js — Add lifecycle-managed Go backend launcher for shared end-to-end automation (GN-32).
-- [x] tests/fullstack.endtoend.puppeteer.test.js — Run the real backend with Puppeteer and verify cross-layer auth + sync flow (GN-32).
-- [x] js/ui/card.js — Guard checklist preview toggles so a single click updates existing notes without duplicating records (GN-27).
-- [x] tests/preview.checkmark.puppeteer.test.js — Reproduce the checklist duplication scenario and assert only one note remains after toggling (GN-27).
-- [x] js/ui/card.js — Translate rendered click offsets into editor caret positions when switching modes (GN-28).
-- [x] tests/editor.inline.puppeteer.test.js — Add preview-click caret coverage to guarantee rendered interactions align with editor positions (GN-28).
-- [x] js/core/config.js / js/constants.js — Support environment-driven LLM proxy URL overrides while preserving secure defaults (GN-29).
-- [x] tests/config.runtime.test.js — Verify meta/config/env overrides correctly update the LLM proxy endpoint (GN-29).
-- [x] tests/sync.endtoend.puppeteer.test.js — Spin up the Go backend with the UI and validate bidirectional synchronization events (GN-30).
-- [x] tests/auth.sessionPersistence.puppeteer.test.js — Ensure Google login state survives a full page refresh (GN-31).
-- [x] README.md / MIGRATION.md — Document the proxy configuration, sync workflow, and session persistence guarantees.
-- [x] NOTES.md — Mark GN-27 through GN-32 complete once fixes and tests pass.
+- [x] tests/editor.inline.puppeteer.test.js — Strengthen fallback inline editor coverage so GN-32’s mid-word ordered-list split reproduces reliably and verifies caret/text outcomes.
+- [x] js/ui/markdownEditorHost.js — Refine fallback Enter handling to preserve trailing text, insert blank bullets when appropriate, and renumber ordered items correctly for GN-32.
+- [ ] tests/persistence.backend.puppeteer.test.js — Replace unsupported timeout hooks with explicit abort controllers and deterministic cleanup to unblock GN-33 backend sync coverage.
+- [ ] tests/helpers/puppeteerEnvironment.js — Reuse sandbox directories where safe and collapse redundant filesystem churn to lower Puppeteer startup cost (GN-33).
+- [ ] tests/run-tests.js — Add per-file test runner with 30 s watchdogs and fallback kill signals, updating package.json so GN-33 enforces execution caps.

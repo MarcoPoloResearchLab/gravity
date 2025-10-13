@@ -1493,11 +1493,11 @@ function handleListEnter(textarea, context) {
         ? `${listInfo.leading}${listInfo.number + 1}${listInfo.separator}`
         : `${listInfo.leading}${listInfo.marker} `;
 
-    const selectionStart = textarea.selectionStart ?? caret;
-    const selectionEnd = textarea.selectionEnd ?? selectionStart;
+    const selectionStart = typeof textarea.selectionStart === "number" ? textarea.selectionStart : caret;
+    const selectionEnd = typeof textarea.selectionEnd === "number" ? textarea.selectionEnd : selectionStart;
 
     if (selectionStart === selectionEnd) {
-        const collapsedCaret = selectionStart;
+        const collapsedCaret = Math.max(lineStart, Math.min(selectionStart, lineEnd));
         let caretInLine = collapsedCaret - lineStart;
         if (caretInLine < 0) caretInLine = 0;
         if (caretInLine > lineText.length) caretInLine = lineText.length;
@@ -1531,8 +1531,10 @@ function handleListEnter(textarea, context) {
         return;
     }
 
-    textarea.setRangeText(`\n${nextPrefix}`, selectionStart, selectionEnd, "end");
-    let caretIndex = textarea.selectionStart ?? (selectionStart + nextPrefix.length + 1);
+    const boundedSelectionStart = Math.max(lineStart, Math.min(selectionStart, lineEnd));
+    const boundedSelectionEnd = Math.max(lineStart, Math.min(selectionEnd, lineEnd));
+    textarea.setRangeText(`\n${nextPrefix}`, boundedSelectionStart, boundedSelectionEnd, "end");
+    let caretIndex = textarea.selectionStart ?? (boundedSelectionStart + nextPrefix.length + 1);
 
     if (listInfo.type === "ordered") {
         caretIndex = renumberOrderedListTextarea(textarea, caretIndex);
