@@ -244,6 +244,7 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
         On CI, run tests inside the deterministic chromedp/headless-shell image (no flaky system deps).
     - httpexpect (Go) — fast API assertions
         For API-level flows that don’t need a browser; keeps failures precise.
+- [ ] [GN-33] The tests take too long to complete -- GitHub allows maximum 360 seconds. Take a look at all of thests , measure their time of the execution, consider the techniques of decreasing the time.
 
 ### BugFixes
 
@@ -361,5 +362,93 @@ The value of the attribute “expires” for the cookie “_ga_WYL7PDVTHN” has
 
 [GSI_LOGGER]: The given origin is not allowed for the given client ID. client:74:89
 ```
+- [ ] [GN-32] tests are failing: `  ✖ lists and tables auto-continue in fallback editor (3382.860931ms)`
+- [ ] [GN-33] tests are hanging indefinetely: nothing happens after that:
+```
+18:50:30 tyemirov@Vadyms-MacBook-Pro:~/Development/MarcoPoloResearchLab/gravity - [bugfix/GN-31-session-persistence] $ npm test
+
+> test
+> node --test
+
+▶ App notifications
+  ✔ import failure surfaces toast notification (4421.345531ms)
+✔ App notifications (9659.739847ms)
+▶ Auth avatar menu
+  ✔ hides Google button after sign-in and reveals stacked avatar menu (4838.078242ms)
+✔ Auth avatar menu (9618.511449ms)
+✔ createGoogleIdentityController initializes GSI and dispatches auth events (2.479104ms)
+▶ Auth session persistence
+  ✔ session survives refresh (9025.933276ms)
+✔ Auth session persistence (13676.841375ms)
+▶ Auth status messaging
+  ✔ signed-out view omits status banner (4340.028626ms)
+  ✔ signed-in view keeps status hidden (1213.086394ms)
+✔ Auth status messaging (9619.552318ms)
+✔ backend uses CGO-free sqlite driver (16.34869ms)
+✔ resolveBackendBaseUrl falls back to default without environment (1.447279ms)
+✔ resolveBackendBaseUrl respects window.GRAVITY_CONFIG override (0.220591ms)
+✔ resolveBackendBaseUrl defers to meta tag when global override absent (0.214999ms)
+✔ resolveBackendBaseUrl infers from location when override empty (0.156234ms)
+✔ resolveLlmProxyBaseUrl falls back to default proxy host (0.291679ms)
+✔ resolveLlmProxyBaseUrl respects window.GRAVITY_CONFIG override (0.174074ms)
+✔ resolveLlmProxyBaseUrl defers to meta tag when global override absent (0.2269ms)
+✔ resolveLlmProxyBaseUrl falls back to origin when overrides blank (0.1578ms)
+✔ resolveLlmProxyClassifyUrl composes default endpoint (0.332282ms)
+✔ resolveLlmProxyClassifyUrl respects global override (0.231197ms)
+✔ resolveLlmProxyClassifyUrl defers to meta override (0.200596ms)
+✔ resolveLlmProxyClassifyUrl disables requests when override blank (0.125911ms)
+✔ resolveLlmProxyClassifyUrl composes base overrides (0.1589ms)
+✔ clipboard plain text scenarios (1.330712ms)
+✔ backend Docker packaging artifacts exist (8.586726ms)
+▶ Enhanced Markdown editor
+  ✔ EasyMDE auto-continues lists, fences, and brackets (4912.771905ms)
+  ✔ EasyMDE undo and redo shortcuts restore history (1893.786269ms)
+  ✔ EasyMDE skips duplicate closing brackets (1448.874346ms)
+  ✔ EasyMDE delete line shortcut removes the active row (1514.142143ms)
+  ✔ EasyMDE duplicate line shortcut copies the active row (1798.92773ms)
+  ✔ EasyMDE renumbers ordered lists before submit (1366.25618ms)
+  ✔ EasyMDE renumbers ordered lists after pasted insertion (1335.76732ms)
+✔ Enhanced Markdown editor (17983.613515ms)
+▶ Markdown inline editor
+  ✔ click-to-edit auto-grows and saves inline (5661.607731ms)
+  ✔ top editor collapses height after submitting long note (3778.337152ms)
+  ✔ top editor respects external focus selections (2127.556505ms)
+  ✔ checkbox toggles from preview persist to markdown (1826.492284ms)
+  ✔ typing [ inserts spaced brackets and advances the caret (1352.32849ms)
+  ✔ closing brackets skip duplicates in inline editor (1906.259247ms)
+  ✔ delete line shortcut removes the active textarea row (1421.225603ms)
+  ✔ duplicate line shortcut copies the active textarea row (1357.035299ms)
+  ✔ ordered lists renumber on submit and navigation (1403.430927ms)
+  ✔ nested ordered lists restart numbering at each depth (1357.754283ms)
+  ✔ ctrl-enter keeps order when no edits are made (1579.169188ms)
+  ✔ ctrl-enter bubbles notes to the top after edits (1446.743905ms)
+  ✔ ctrl-enter ignores trailing whitespace changes (1950.487048ms)
+  ✔ ctrl-enter leaves focus available for the next choice (1354.317006ms)
+  ✔ preview checkbox bubbling waits before reordering (1776.595539ms)
+  ✔ preview checkbox toggle keeps focus on the toggled card (1381.878465ms)
+  ✔ pin toggle keeps a single pinned card and persists (1768.325608ms)
+  ✔ activating a second note exits the first from edit mode (1367.88495ms)
+  ✔ editing re-renders preview after bubbling (1733.383399ms)
+  ✔ arrow navigation bubbles edited notes to the top (1418.534303ms)
+  ✔ clicking a long note reveals the full content and caret at end (1326.260675ms)
+  ✔ preview click positions caret at clicked text (1313.382186ms)
+  ✔ preview click sets caret when caretRangeFromPoint returns element nodes (1652.277626ms)
+  ✔ preview click maps caret across inline formatting cases (4297.291436ms)
+  ✔ preview click preserves caret offsets inside list items (1315.569548ms)
+  ✔ second click keeps caret position and prevents clipping (1342.58597ms)
+  ✔ tables render without forcing full card width (1305.407442ms)
+  ✔ pressing F1 shows the keyboard shortcuts modal (1359.409812ms)
+  ✖ lists and tables auto-continue in fallback editor (3382.860931ms)
+✖ Markdown inline editor (58430.893542ms)
+▶ Full stack integration
+  ✔ persists notes through the real backend (1954.107686ms)
+✔ Full stack integration (21598.451274ms)
+✔ buildDeterministicPreview handles image-only markdown (1.752838ms)
+✔ buildDeterministicPreview retains full image markdown when base64 exceeds preview cap (1.020446ms)
+✔ buildDeterministicPreview preserves multiple images without statistics (27.877898ms)
+✔ buildDeterministicPreview leaves long text untouched (0.206095ms)
+✔ buildDeterministicPreview flags code without tracking words or images (0.242075ms)
+```
+
 
 ### Maintenance
