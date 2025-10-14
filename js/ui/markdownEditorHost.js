@@ -1,6 +1,5 @@
 // @ts-check
 
-import { appConfig } from "../core/config.js";
 import { createElement } from "../utils/dom.js";
 import {
     LABEL_EDIT_MARKDOWN,
@@ -22,6 +21,7 @@ const BULLET_NORMALIZATION_REGEX = /^\s*[•–—−∙·]\s+/;
 const MALFORMED_BULLET_REGEX = /^\s*-\.\s+/;
 const ORDERED_LIST_REGEX = /^\s*(\d+)\.\s+/;
 const UNORDERED_LIST_REGEX = /^\s*[-*+]\s+/;
+const TASK_LIST_REGEX = /^\[(?: |x|X)\]\s+/;
 const TABLE_ROW_REGEX = /^\s*\|.*\|\s*$/;
 const TABLE_SEPARATOR_REGEX = /^\s*\|?(?:-+:?\s*\|)+-*:?\s*\|?\s*$/;
 const CODE_FENCE_REGEX = /^(\s*)(`{3,}|~{3,})([^`~]*)$/;
@@ -152,23 +152,18 @@ export function createMarkdownEditorHost(options) {
         container.insertBefore(toolbar, container.firstChild);
     }
 
-    const wantsEnhanced = determineEnhancedPreference();
     const easyMdeAvailable = typeof window !== "undefined" && typeof window.EasyMDE === "function";
-    const enhanceWithEasyMde = wantsEnhanced && easyMdeAvailable;
+    if (!easyMdeAvailable) {
+        throw new Error("EasyMDE is required but was not found on window.");
+    }
 
     let currentMode = sanitizeMode(initialMode);
-    let easyMdeInstance = null;
+    const easyMdeInstance = createEasyMdeInstance(textarea);
     let isProgrammaticUpdate = false;
     let isDestroyed = false;
     let isApplyingListAutoRenumber = false;
     let renumberEnhancedOrderedLists = null;
-
-    if (enhanceWithEasyMde) {
-        easyMdeInstance = createEasyMdeInstance(textarea);
-        configureEasyMde(easyMdeInstance, { syncTextareaValue });
-    } else {
-        setupFallbackTextarea(textarea, emit);
-    }
+    configureEasyMde(easyMdeInstance, { syncTextareaValue });
 
     applyMode(currentMode);
 
@@ -188,13 +183,6 @@ export function createMarkdownEditorHost(options) {
         }
     }
 
-    function determineEnhancedPreference() {
-        if (typeof globalThis !== "undefined" && typeof globalThis.__gravityForceMarkdownEditor === "boolean") {
-            return globalThis.__gravityForceMarkdownEditor;
-        }
-        return Boolean(appConfig.useMarkdownEditor);
-    }
-
     function setMode(nextMode) {
         const safeMode = sanitizeMode(nextMode);
         if (currentMode === safeMode) return;
@@ -209,33 +197,23 @@ export function createMarkdownEditorHost(options) {
     }
 
     function focusEditPane() {
-        if (easyMdeInstance) {
-            easyMdeInstance.codemirror.focus();
-            easyMdeInstance.codemirror.refresh();
-        } else {
-            textarea.focus();
-        }
+        easyMdeInstance.codemirror.focus();
+        easyMdeInstance.codemirror.refresh();
     }
 
     function getValue() {
-        if (easyMdeInstance) return easyMdeInstance.value();
-        return textarea.value;
+        return easyMdeInstance.value();
     }
 
     function setValue(nextValue) {
         const safeValue = typeof nextValue === "string" ? nextValue : "";
-        if (easyMdeInstance) {
-            isProgrammaticUpdate = true;
-            easyMdeInstance.value(safeValue);
-            isProgrammaticUpdate = false;
-            syncTextareaValue();
-        } else {
-            textarea.value = safeValue;
-        }
+        isProgrammaticUpdate = true;
+        easyMdeInstance.value(safeValue);
+        isProgrammaticUpdate = false;
+        syncTextareaValue();
     }
 
     function syncTextareaValue() {
-        if (!easyMdeInstance) return;
         const current = easyMdeInstance.value();
         if (textarea.value !== current) textarea.value = current;
     }
@@ -243,30 +221,25 @@ export function createMarkdownEditorHost(options) {
     function setCaretPosition(position) {
         if (typeof position === "number" && Number.isFinite(position)) {
             const safeIndex = Math.max(0, Math.min(Math.floor(position), getValue().length));
-            if (easyMdeInstance) {
-                const doc = easyMdeInstance.codemirror.getDoc();
-                const cursor = doc.posFromIndex(safeIndex);
-                doc.setCursor(cursor);
-                return;
-            }
+            const doc = easyMdeInstance.codemirror.getDoc();
+            const cursor = doc.posFromIndex(safeIndex);
+            doc.setCursor(cursor);
             try {
-                textarea.setSelectionRange(safeIndex, safeIndex);
+                textarea.selectionStart = safeIndex;
+                textarea.selectionEnd = safeIndex;
             } catch {}
             return;
         }
 
         const target = position === "end" ? "end" : "start";
-        if (easyMdeInstance) {
-            const doc = easyMdeInstance.codemirror.getDoc();
-            const value = doc.getValue();
-            const index = target === "end" ? value.length : 0;
-            const cursor = doc.posFromIndex(index);
-            doc.setCursor(cursor);
-            return;
-        }
-        const caretIndex = target === "end" ? textarea.value.length : 0;
+        const doc = easyMdeInstance.codemirror.getDoc();
+        const value = doc.getValue();
+        const index = target === "end" ? value.length : 0;
+        const cursor = doc.posFromIndex(index);
+        doc.setCursor(cursor);
         try {
-            textarea.setSelectionRange(caretIndex, caretIndex);
+            textarea.selectionStart = index;
+            textarea.selectionEnd = index;
         } catch {}
     }
 
@@ -288,34 +261,25 @@ export function createMarkdownEditorHost(options) {
 
         if (normalized.length === 0) return;
 
-        if (easyMdeInstance) {
-            const cm = easyMdeInstance.codemirror;
-            const doc = cm.getDoc();
-            const selection = doc.listSelections()[0] ?? { anchor: doc.getCursor("from"), head: doc.getCursor("to") };
-            const { start, end } = orderSelection(selection);
-            const startIndex = doc.indexFromPos(start);
-            const endIndex = doc.indexFromPos(end);
+        const cm = easyMdeInstance.codemirror;
+        const doc = cm.getDoc();
+        const selection = doc.listSelections()[0] ?? { anchor: doc.getCursor("from"), head: doc.getCursor("to") };
+        const { start, end } = orderSelection(selection);
+        const startIndex = doc.indexFromPos(start);
+        const endIndex = doc.indexFromPos(end);
 
-            textarea.value = doc.getValue();
-            textarea.selectionStart = startIndex;
-            textarea.selectionEnd = endIndex;
+        textarea.value = doc.getValue();
+        textarea.selectionStart = startIndex;
+        textarea.selectionEnd = endIndex;
 
-            const result = await insertAttachmentPlaceholders(textarea, normalized);
-            const insertedText = result.text.slice(startIndex, result.caretIndex);
+        const result = await insertAttachmentPlaceholders(textarea, normalized);
+        const insertedText = result.text.slice(startIndex, result.caretIndex);
 
-            doc.replaceRange(insertedText, start, end);
-            const nextCursor = doc.posFromIndex(result.caretIndex);
-            doc.setCursor(nextCursor);
-            syncTextareaValue();
-            emitChange();
-        } else {
-            const start = typeof textarea.selectionStart === "number" ? textarea.selectionStart : textarea.value.length;
-            const end = typeof textarea.selectionEnd === "number" ? textarea.selectionEnd : start;
-            textarea.selectionStart = start;
-            textarea.selectionEnd = end;
-            await insertAttachmentPlaceholders(textarea, normalized);
-            emitChange();
-        }
+        doc.replaceRange(insertedText, start, end);
+        const nextCursor = doc.posFromIndex(result.caretIndex);
+        doc.setCursor(nextCursor);
+        syncTextareaValue();
+        emitChange();
     }
 
     function emitChange() {
@@ -324,9 +288,7 @@ export function createMarkdownEditorHost(options) {
     }
 
     function refresh() {
-        if (easyMdeInstance) {
-            easyMdeInstance.codemirror.refresh();
-        }
+        easyMdeInstance.codemirror.refresh();
     }
 
     function focus() {
@@ -341,9 +303,7 @@ export function createMarkdownEditorHost(options) {
         isDestroyed = true;
         listeners.clear();
         renumberEnhancedOrderedLists = null;
-        if (easyMdeInstance) {
-            easyMdeInstance.toTextArea();
-        }
+        easyMdeInstance.toTextArea();
         if (showToolbar && toolbar) {
             toolbar.remove();
         }
@@ -358,7 +318,7 @@ export function createMarkdownEditorHost(options) {
     }
 
     function isEnhanced() {
-        return Boolean(easyMdeInstance);
+        return true;
     }
 
     function waitForPendingImages() {
@@ -366,16 +326,10 @@ export function createMarkdownEditorHost(options) {
     }
 
     function normalizeOrderedLists() {
-        if (easyMdeInstance && typeof renumberEnhancedOrderedLists === "function") {
+        if (typeof renumberEnhancedOrderedLists === "function") {
             renumberEnhancedOrderedLists();
             syncTextareaValue();
             return;
-        }
-        if (!easyMdeInstance) {
-            const mutated = normalizeOrderedListsTextarea(textarea);
-            if (mutated) {
-                emit("change", { value: textarea.value });
-            }
         }
     }
 
@@ -421,6 +375,27 @@ export function createMarkdownEditorHost(options) {
 
     function configureEasyMde(instance, { syncTextareaValue }) {
         const { codemirror } = instance;
+
+        const syncTextareaSelectionFromCodeMirror = () => {
+            const doc = codemirror.getDoc();
+            const selections = doc.listSelections();
+            if (!Array.isArray(selections) || selections.length === 0) {
+                try {
+                    textarea.selectionStart = 0;
+                    textarea.selectionEnd = 0;
+                } catch {}
+                return;
+            }
+            const primary = selections[0];
+            const anchorIndex = doc.indexFromPos(primary.anchor);
+            const headIndex = doc.indexFromPos(primary.head);
+            const start = Math.min(anchorIndex, headIndex);
+            const end = Math.max(anchorIndex, headIndex);
+            try {
+                textarea.selectionStart = start;
+                textarea.selectionEnd = end;
+            } catch {}
+        };
 
         const executeUndo = (cm) => {
             if (!cm) return;
@@ -587,6 +562,10 @@ export function createMarkdownEditorHost(options) {
             emit("blur");
         });
 
+        codemirror.on("cursorActivity", () => {
+            syncTextareaSelectionFromCodeMirror();
+        });
+
         codemirror.on("keydown", (cm, event) => {
             if (event.defaultPrevented) return;
 
@@ -696,7 +675,40 @@ export function createMarkdownEditorHost(options) {
             }
 
             if (isListLine(lineText)) {
+                const listInfo = parseListLine(lineText);
+                if (!listInfo) {
+                    cm.execCommand("newlineAndIndent");
+                    return;
+                }
+                if (cursor.ch <= listInfo.leading.length) {
+                    cm.execCommand("newlineAndIndent");
+                    return;
+                }
+
                 cm.execCommand("newlineAndIndentContinueMarkdownList");
+                if (listInfo.type === "unordered" && isTaskList(listInfo.rest)) {
+                    const spacing = listInfo.spacing ?? " ";
+                    const basePrefix = `${listInfo.leading}${listInfo.marker}${spacing}`;
+                    const continuationPrefix = `${basePrefix}[ ] `;
+                    const insertionCursor = cm.getCursor();
+                    const newLineText = cm.getLine(insertionCursor.line);
+                    if (
+                        newLineText.startsWith(basePrefix)
+                        && !newLineText.startsWith(`${basePrefix}[`)
+                    ) {
+                        const remainder = newLineText.slice(basePrefix.length).replace(/^\s*/, "");
+                        const updatedLine = `${continuationPrefix}${remainder}`;
+                        cm.replaceRange(
+                            updatedLine,
+                            { line: insertionCursor.line, ch: 0 },
+                            { line: insertionCursor.line, ch: newLineText.length }
+                        );
+                        cm.setCursor({
+                            line: insertionCursor.line,
+                            ch: continuationPrefix.length
+                        });
+                    }
+                }
                 withListAutoRenumber(() => {
                     autoRenumberOrderedList(cm, cm.getCursor().line);
                 });
@@ -849,114 +861,6 @@ export function createMarkdownEditorHost(options) {
         renumberEnhancedOrderedLists = () => renumberAllOrderedListsInCodeMirror(codemirror);
     }
 
-    function setupFallbackTextarea(el, emitFn) {
-        el.addEventListener("input", () => {
-            if (el.__gravityHandlingInput) {
-                return;
-            }
-            if (el.__gravityLastKey === "Enter") {
-                el.__gravityHandlingInput = true;
-                const previousValue = typeof el.__gravityPrevValue === "string" ? el.__gravityPrevValue : el.value;
-                const previousCaret = typeof el.__gravityPrevSelectionStart === "number"
-                    ? el.__gravityPrevSelectionStart
-                    : (el.selectionStart ?? previousValue.length);
-                el.value = previousValue;
-                el.setSelectionRange(previousCaret, previousCaret);
-                handleTextareaEnter(el);
-                el.__gravityLastKey = undefined;
-                delete el.__gravityPrevValue;
-                delete el.__gravityPrevSelectionStart;
-                el.__gravityHandlingInput = false;
-                emitFn("change", { value: el.value });
-                return;
-            }
-            emitFn("change", { value: el.value });
-        });
-        el.addEventListener("blur", () => {
-            normalizeOrderedLists();
-            emitFn("blur");
-        });
-        el.addEventListener("keydown", (event) => {
-            const isModifier = event.metaKey || event.ctrlKey;
-
-            if (!isModifier && !event.altKey && BRACKET_PAIRS[event.key]) {
-                event.preventDefault();
-                applyBracketPair(el, event.key, BRACKET_PAIRS[event.key]);
-                emitFn("change", { value: el.value });
-                return;
-            }
-
-            if (!isModifier && !event.altKey && CLOSING_BRACKETS.has(event.key)) {
-                const skipped = skipExistingClosingBracketTextarea(el, event.key);
-                if (skipped) {
-                    event.preventDefault();
-                    return;
-                }
-            }
-
-            if (isModifier && event.shiftKey && (event.key === "k" || event.key === "K")) {
-                event.preventDefault();
-                deleteCurrentLineTextarea(el);
-                normalizeOrderedLists();
-                emitFn("change", { value: el.value });
-                return;
-            }
-
-            if (isModifier && event.shiftKey && (event.key === "d" || event.key === "D")) {
-                event.preventDefault();
-                duplicateCurrentLineTextarea(el);
-                normalizeOrderedLists();
-                emitFn("change", { value: el.value });
-                return;
-            }
-
-            if (!isModifier && !event.altKey && !event.shiftKey && event.key === "Enter") {
-                el.__gravityPrevValue = el.value;
-                el.__gravityPrevSelectionStart = el.selectionStart ?? el.value.length;
-                el.__gravityLastKey = "Enter";
-            } else {
-                el.__gravityLastKey = undefined;
-            }
-
-            if ((event.key === "Enter" || event.key === "s" || event.key === "S") && isModifier) {
-                event.preventDefault();
-                normalizeOrderedLists();
-                emitFn("submit");
-                return;
-            }
-
-            if (event.key === "Enter" && event.shiftKey && !isModifier) {
-                event.preventDefault();
-                insertSoftBreak(el);
-                emitFn("change", { value: el.value });
-                return;
-            }
-
-            if (event.key === "Tab" && !isModifier && !event.altKey) {
-                event.preventDefault();
-                if (event.shiftKey) {
-                    applyOutdent(el);
-                } else {
-                    applyIndent(el);
-                }
-                emitFn("change", { value: el.value });
-                return;
-            }
-
-            if (!isNavigationKey(event)) return;
-            if (event.key === "ArrowUp" && isTextareaCaretOnFirstLine(el)) {
-                event.preventDefault();
-                normalizeOrderedLists();
-                emitFn("navigatePrevious");
-            }
-            if (event.key === "ArrowDown" && isTextareaCaretOnLastLine(el)) {
-                event.preventDefault();
-                normalizeOrderedLists();
-                emitFn("navigateNext");
-            }
-        });
-    }
-
     function isNavigationKey(event) {
         return (event.key === "ArrowUp" || event.key === "ArrowDown")
             && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
@@ -981,16 +885,6 @@ export function createMarkdownEditorHost(options) {
         const head = doc.getCursor("head");
         const index = doc.indexFromPos(head);
         return !cm.getValue().slice(index).includes("\n");
-    }
-
-    function isTextareaCaretOnFirstLine(el) {
-        const caret = el.selectionStart ?? 0;
-        return !el.value.slice(0, caret).includes("\n");
-    }
-
-    function isTextareaCaretOnLastLine(el) {
-        const caret = el.selectionEnd ?? el.value.length;
-        return !el.value.slice(caret).includes("\n");
     }
 
     function hasImageFile(dataTransfer) {
@@ -1107,68 +1001,6 @@ function loadImage(source) {
     });
 }
 
-const INDENT_SEQUENCE = "    ";
-
-
-
-function insertSoftBreak(textarea) {
-    const { selectionStart = 0, selectionEnd = 0, value } = textarea;
-    const before = value.slice(0, selectionStart);
-    const after = value.slice(selectionEnd);
-    const nextValue = `${before}${SOFT_BREAK}${after}`;
-    textarea.value = nextValue;
-    const caret = selectionStart + SOFT_BREAK.length;
-    textarea.setSelectionRange(caret, caret);
-}
-
-function applyBracketPair(textarea, openChar, closeChar) {
-    if (typeof closeChar !== "string") return;
-    const start = typeof textarea.selectionStart === "number" ? textarea.selectionStart : textarea.value.length;
-    const end = typeof textarea.selectionEnd === "number" ? textarea.selectionEnd : start;
-    const before = textarea.value.slice(0, start);
-    const after = textarea.value.slice(end);
-    const selected = textarea.value.slice(start, end);
-    const isSquarePair = openChar === "[" && closeChar === "]";
-
-    if (isSquarePair && start === end) {
-        const insertion = "[ ] ";
-        textarea.value = `${before}${insertion}${after}`;
-        const caretAfterClose = start + insertion.length;
-        textarea.setSelectionRange(caretAfterClose, caretAfterClose);
-        return;
-    }
-
-    textarea.value = `${before}${openChar}${selected}${closeChar}${after}`;
-    const nextStart = start + 1;
-    const nextEnd = end + 1;
-    if (start === end) {
-        textarea.setSelectionRange(nextStart, nextStart);
-    } else {
-        textarea.setSelectionRange(nextStart, nextEnd);
-    }
-}
-
-function skipExistingClosingBracketTextarea(textarea, closeChar) {
-    if (typeof closeChar !== "string") return false;
-    const start = typeof textarea.selectionStart === "number" ? textarea.selectionStart : textarea.value.length;
-    const end = typeof textarea.selectionEnd === "number" ? textarea.selectionEnd : start;
-    if (start !== end) return false;
-    if (closeChar === "]" && start >= 3) {
-        const preceding = textarea.value.slice(start - 3, start);
-        if (preceding === " ] ") {
-            return true;
-        }
-    }
-    if (textarea.value.charAt(start) !== closeChar) return false;
-    const nextCaret = start + 1;
-    try {
-        textarea.setSelectionRange(nextCaret, nextCaret);
-    } catch {
-        return false;
-    }
-    return true;
-}
-
 function handleBracketAutoClose(cm, openChar, closeChar) {
     if (typeof closeChar !== "string") return false;
     const selections = cm.listSelections();
@@ -1250,66 +1082,6 @@ function skipExistingClosingBracket(cm, closeChar) {
     return moved;
 }
 
-function deleteCurrentLineTextarea(textarea) {
-    if (!(textarea instanceof HTMLTextAreaElement)) return;
-    const value = textarea.value;
-    const selectionStart = textarea.selectionStart ?? 0;
-    const selectionEnd = textarea.selectionEnd ?? selectionStart;
-    const anchor = Math.min(selectionStart, selectionEnd);
-    const head = Math.max(selectionStart, selectionEnd);
-    let deleteStart = findLineStart(value, anchor);
-    let deleteEnd = findLineEnd(value, head);
-
-    if (deleteEnd < value.length) {
-        deleteEnd += 1;
-    } else if (deleteStart > 0) {
-        deleteStart = findLineStart(value, deleteStart - 1);
-    }
-
-    const before = value.slice(0, deleteStart);
-    const after = value.slice(deleteEnd);
-    textarea.value = `${before}${after}`;
-    const nextCaret = Math.min(deleteStart, textarea.value.length);
-    try {
-        textarea.setSelectionRange(nextCaret, nextCaret);
-    } catch {}
-}
-
-function duplicateCurrentLineTextarea(textarea) {
-    if (!(textarea instanceof HTMLTextAreaElement)) return;
-    const value = textarea.value;
-    const selectionStart = textarea.selectionStart ?? 0;
-    const selectionEnd = textarea.selectionEnd ?? selectionStart;
-    const anchor = Math.min(selectionStart, selectionEnd);
-    const head = Math.max(selectionStart, selectionEnd);
-    const lineStart = findLineStart(value, anchor);
-    const lineEnd = findLineEnd(value, head);
-    const plainSegment = value.slice(lineStart, lineEnd);
-    const hasTrailingNewline = value.charAt(lineEnd) === "\n";
-
-    let nextValue;
-    let duplicateStart;
-    if (hasTrailingNewline) {
-        const before = value.slice(0, lineEnd + 1);
-        const insertion = value.slice(lineStart, lineEnd + 1);
-        const after = value.slice(lineEnd + 1);
-        nextValue = `${before}${insertion}${after}`;
-        duplicateStart = before.length;
-    } else {
-        const before = value.slice(0, lineEnd);
-        const after = value.slice(lineEnd);
-        const insertion = `\n${plainSegment}`;
-        nextValue = `${before}${insertion}${after}`;
-        duplicateStart = before.length + 1;
-    }
-
-    textarea.value = nextValue;
-    const duplicateEnd = Math.min(duplicateStart + plainSegment.length, textarea.value.length);
-    try {
-        textarea.setSelectionRange(duplicateStart, duplicateEnd);
-    } catch {}
-}
-
 function handleCodeFenceInCodeMirror(cm, cursor, lineText) {
     const parsed = parseCodeFence(lineText);
     if (!parsed) return false;
@@ -1324,34 +1096,6 @@ function handleCodeFenceInCodeMirror(cm, cursor, lineText) {
         cm.setCursor({ line: cursor.line + 1, ch: parsed.leading.length });
     });
     return true;
-}
-
-function handleCodeFenceEnterTextarea(textarea, context) {
-    const { caret, lineStart, lineEnd, lineText } = context;
-    const parsed = parseCodeFence(lineText);
-    if (!parsed) return false;
-    if (caret !== lineEnd) return false;
-    if (!isOpeningFenceInText(textarea.value.slice(0, lineStart), parsed.marker)) return false;
-
-    const nextLineStart = lineEnd + 1;
-    const nextLineEnd = findLineEnd(textarea.value, nextLineStart);
-    const nextLine = textarea.value.slice(nextLineStart, nextLineEnd);
-    if (isFenceLineWithMarker(nextLine, parsed.marker)) return false;
-
-    const before = textarea.value.slice(0, caret);
-   const after = textarea.value.slice(caret);
-   const insertion = `\n${parsed.leading}\n${parsed.leading}${parsed.fence}`;
-   textarea.value = `${before}${insertion}${after}`;
-   const caretIndex = before.length + 1 + parsed.leading.length;
-   textarea.setSelectionRange(caretIndex, caretIndex);
-    if (typeof requestAnimationFrame === "function") {
-        requestAnimationFrame(() => {
-            try {
-                textarea.setSelectionRange(caretIndex, caretIndex);
-            } catch {}
-        });
-    }
-   return true;
 }
 
 function parseCodeFence(lineText) {
@@ -1380,57 +1124,12 @@ function isOpeningFenceInCodeMirror(cm, lineNumber, marker) {
     return parity === 0;
 }
 
-function isOpeningFenceInText(text, marker) {
-    if (!text) return true;
-    const lines = text.split(/\n/);
-    let parity = 0;
-    for (const line of lines) {
-        const candidate = parseCodeFence(line);
-        if (candidate && candidate.marker === marker) {
-            parity = parity === 0 ? 1 : 0;
-        }
-    }
-    return parity === 0;
-}
-
 function isFenceLineWithMarker(lineText, marker) {
     if (typeof lineText !== "string") return false;
     const parsed = parseCodeFence(lineText.trimEnd());
     if (!parsed) return false;
     if (parsed.marker !== marker) return false;
     return parsed.info.length === 0;
-}
-
-function handleTextareaEnter(textarea) {
-    const caret = textarea.selectionStart ?? 0;
-    const lineStart = findLineStart(textarea.value, caret);
-    const lineEnd = findLineEnd(textarea.value, caret);
-    const lineText = textarea.value.slice(lineStart, lineEnd);
-
-    if (handleCodeFenceEnterTextarea(textarea, { caret, lineStart, lineEnd, lineText })) {
-        return;
-    }
-
-    if (isTableRow(lineText) && !isTableSeparator(lineText)) {
-        insertTableRowTextarea(textarea, lineEnd, lineText);
-        return;
-    }
-
-    if (isListLine(lineText)) {
-        handleListEnter(textarea, { caret, lineStart, lineEnd, lineText });
-        return;
-    }
-
-    insertPlainNewline(textarea, caret);
-}
-
-function insertPlainNewline(textarea, caret) {
-    const { value } = textarea;
-    const before = value.slice(0, caret);
-    const after = value.slice(caret);
-    textarea.value = `${before}\n${after}`;
-    const nextCaret = before.length + 1;
-    textarea.setSelectionRange(nextCaret, nextCaret);
 }
 
 function isListLine(lineText) {
@@ -1445,102 +1144,6 @@ function isTableSeparator(lineText) {
     return TABLE_SEPARATOR_REGEX.test(lineText);
 }
 
-function insertTableRowTextarea(textarea, lineEnd, lineText) {
-    const pipeCount = (lineText.match(/\|/g) || []).length;
-    const cellCount = Math.max(pipeCount - 1, 1);
-    const cells = Array.from({ length: cellCount }, () => " ");
-    const newRow = `\n| ${cells.join(" | ")} |`;
-    const before = textarea.value.slice(0, lineEnd);
-    const after = textarea.value.slice(lineEnd);
-    textarea.value = `${before}${newRow}${after}`;
-    const nextCaret = before.length + 3; // newline + "| "
-    textarea.setSelectionRange(nextCaret, nextCaret);
-    if (typeof requestAnimationFrame === "function") {
-        requestAnimationFrame(() => {
-            try {
-                textarea.setSelectionRange(nextCaret, nextCaret);
-            } catch {}
-        });
-    }
-}
-
-function handleListEnter(textarea, context) {
-    const { caret, lineStart, lineEnd, lineText } = context;
-    const listInfo = parseListLine(lineText);
-    if (!listInfo) {
-        insertPlainNewline(textarea, caret);
-        return;
-    }
-
-    const prefix = listInfo.type === "ordered"
-        ? `${listInfo.leading}${listInfo.number}${listInfo.separator}`
-        : `${listInfo.leading}${listInfo.marker} `;
-    const contentAfterPrefix = lineText.slice(prefix.length);
-    const caretInLine = caret - lineStart;
-    const trailingAfterCaret = lineText.slice(caretInLine).trim().length > 0;
-
-    if (contentAfterPrefix.trim().length === 0 && !trailingAfterCaret) {
-        const indentation = listInfo.leading;
-        const before = textarea.value.slice(0, lineStart);
-        const after = textarea.value.slice(lineEnd);
-        textarea.value = `${before}${indentation}${after}`;
-        const nextCaret = before.length + indentation.length;
-        textarea.setSelectionRange(nextCaret, nextCaret);
-        return;
-    }
-
-    const nextPrefix = listInfo.type === "ordered"
-        ? `${listInfo.leading}${listInfo.number + 1}${listInfo.separator}`
-        : `${listInfo.leading}${listInfo.marker} `;
-
-    const selectionStart = textarea.selectionStart ?? caret;
-    const selectionEnd = textarea.selectionEnd ?? selectionStart;
-
-    if (selectionStart === selectionEnd) {
-        const collapsedCaret = selectionStart;
-        let caretInLine = collapsedCaret - lineStart;
-        if (caretInLine < 0) caretInLine = 0;
-        if (caretInLine > lineText.length) caretInLine = lineText.length;
-
-        const prefixLength = listInfo.type === "ordered"
-            ? `${listInfo.number}${listInfo.separator}`.length + listInfo.leading.length
-            : `${listInfo.marker} `.length + listInfo.leading.length;
-        const content = lineText.slice(prefixLength);
-        let caretInContent = caretInLine - prefixLength;
-        if (caretInContent <= 0) caretInContent = content.length;
-        if (caretInContent > content.length) caretInContent = content.length;
-
-        const headContent = content.slice(0, caretInContent);
-        const tailContent = content.slice(caretInContent);
-
-        const beforeLine = textarea.value.slice(0, lineStart);
-        const afterLine = textarea.value.slice(lineEnd);
-        const currentPrefix = listInfo.type === "ordered"
-            ? `${listInfo.leading}${listInfo.number}${listInfo.separator}`
-            : `${listInfo.leading}${listInfo.marker} `;
-        const updatedCurrentLine = `${currentPrefix}${headContent}`;
-        const newLine = `${nextPrefix}${tailContent}`;
-
-        textarea.value = `${beforeLine}${updatedCurrentLine}\n${newLine}${afterLine}`;
-
-        let caretIndex = beforeLine.length + updatedCurrentLine.length + 1 + nextPrefix.length;
-        if (listInfo.type === "ordered") {
-            caretIndex = renumberOrderedListTextarea(textarea, caretIndex);
-        }
-        textarea.setSelectionRange(caretIndex, caretIndex);
-        return;
-    }
-
-    textarea.setRangeText(`\n${nextPrefix}`, selectionStart, selectionEnd, "end");
-    let caretIndex = textarea.selectionStart ?? (selectionStart + nextPrefix.length + 1);
-
-    if (listInfo.type === "ordered") {
-        caretIndex = renumberOrderedListTextarea(textarea, caretIndex);
-    }
-
-    textarea.setSelectionRange(caretIndex, caretIndex);
-}
-
 function parseListLine(lineText) {
     const orderedMatch = lineText.match(/^(\s*)(\d+)(\.\s+)(.*)$/);
     if (orderedMatch) {
@@ -1552,246 +1155,22 @@ function parseListLine(lineText) {
             rest: orderedMatch[4] ?? ""
         };
     }
-    const unorderedMatch = lineText.match(/^(\s*)([-*+])\s+.*$/);
+    const unorderedMatch = lineText.match(/^(\s*)([-*+])(\s+)(.*)$/);
     if (unorderedMatch) {
         return {
             type: "unordered",
             leading: unorderedMatch[1] ?? "",
-            marker: unorderedMatch[2] ?? "-"
+            marker: unorderedMatch[2] ?? "-",
+            spacing: unorderedMatch[3] ?? " ",
+            rest: unorderedMatch[4] ?? ""
         };
     }
     return null;
 }
 
-function renumberOrderedListTextarea(textarea, caretIndex) {
-    const lines = textarea.value.split("\n");
-    let runningIndex = 0;
-    let insertedLineIndex = 0;
-    for (let i = 0; i < lines.length; i += 1) {
-        const line = lines[i];
-        const lineLength = line.length;
-        if (caretIndex <= runningIndex + lineLength) {
-            insertedLineIndex = i;
-            break;
-        }
-        runningIndex += lineLength + 1;
+function isTaskList(rest) {
+    if (typeof rest !== "string") {
+        return false;
     }
-
-    let start = insertedLineIndex;
-    while (start > 0 && ORDERED_LIST_REGEX.test(lines[start - 1])) start -= 1;
-    let end = insertedLineIndex;
-    while (end + 1 < lines.length && ORDERED_LIST_REGEX.test(lines[end + 1])) end += 1;
-
-    const firstMatch = lines[start]?.match(/^(\s*)(\d+)(\.\s+)(.*)$/);
-    const initialIndent = firstMatch ? (firstMatch[1] ?? "").length : 0;
-    const initialNumber = firstMatch ? Number.parseInt(firstMatch[2], 10) : 1;
-    const stack = [{
-        indent: initialIndent,
-        counter: Number.isFinite(initialNumber) ? initialNumber : 1
-    }];
-    for (let lineIdx = start; lineIdx <= end; lineIdx += 1) {
-        const content = lines[lineIdx];
-        const parsed = content.match(/^(\s*)(\d+)(\.\s+)(.*)$/);
-        if (!parsed) continue;
-        const leading = parsed[1] ?? "";
-        const indentLength = leading.length;
-
-        while (stack.length > 0 && indentLength < stack[stack.length - 1].indent) {
-            stack.pop();
-        }
-
-        if (stack.length === 0) {
-            stack.push({ indent: indentLength, counter: 1 });
-        }
-
-        let frame = stack[stack.length - 1];
-        if (indentLength > frame.indent) {
-            frame = { indent: indentLength, counter: 1 };
-            stack.push(frame);
-        } else if (indentLength < frame.indent) {
-            frame = { indent: indentLength, counter: 1 };
-            stack.push(frame);
-        }
-
-        const currentNumber = frame.counter;
-        frame.counter += 1;
-
-        const separator = parsed[3] ?? ". ";
-        const rest = parsed[4] ?? "";
-        lines[lineIdx] = `${leading}${currentNumber}${separator}${rest}`;
-    }
-
-    textarea.value = lines.join("\n");
-
-    let newCaret = 0;
-    for (let i = 0; i < insertedLineIndex; i += 1) {
-        newCaret += lines[i].length + 1;
-    }
-    const currentLine = lines[insertedLineIndex] ?? "";
-    const caretMatch = currentLine.match(/^(\s*)(\d+)(\.\s+)/);
-    const prefixLength = caretMatch
-        ? (caretMatch[1]?.length ?? 0) + (caretMatch[2]?.length ?? 0) + (caretMatch[3]?.length ?? 0)
-        : 0;
-    newCaret += prefixLength;
-    return newCaret;
-}
-
-function normalizeOrderedListsTextarea(textarea) {
-    if (!(textarea instanceof HTMLTextAreaElement)) return false;
-    const computeCaretIndex = (rows, targetLine) => {
-        let offset = 0;
-        for (let i = 0; i < targetLine && i < rows.length; i += 1) {
-            offset += rows[i].length;
-            if (i < rows.length - 1) offset += 1;
-        }
-        return offset;
-    };
-
-    let lines = textarea.value.split("\n");
-    let mutated = false;
-    let lineIndex = 0;
-
-    while (lineIndex < lines.length) {
-        if (!ORDERED_LIST_REGEX.test(lines[lineIndex])) {
-            lineIndex += 1;
-            continue;
-        }
-
-        const blockStart = lineIndex;
-        while (lineIndex < lines.length && ORDERED_LIST_REGEX.test(lines[lineIndex])) {
-            lineIndex += 1;
-        }
-
-        const firstLine = lines[blockStart] ?? "";
-        const adjustedFirstLine = firstLine.replace(/^(\s*)(\d+)(\.\s+)/, (_, leading = "", _num, separator = ". ") => `${leading}1${separator}`);
-        if (adjustedFirstLine !== firstLine) {
-            lines[blockStart] = adjustedFirstLine;
-            textarea.value = lines.join("\n");
-            mutated = true;
-            lines = textarea.value.split("\n");
-        }
-
-        const caretIndex = computeCaretIndex(lines, blockStart);
-        const beforeValue = textarea.value;
-        renumberOrderedListTextarea(textarea, caretIndex);
-        if (textarea.value !== beforeValue) {
-            mutated = true;
-        }
-
-        lines = textarea.value.split("\n");
-        lineIndex = blockStart;
-        while (lineIndex < lines.length && ORDERED_LIST_REGEX.test(lines[lineIndex])) {
-            lineIndex += 1;
-        }
-    }
-
-    if (mutated) {
-        try {
-            const caret = textarea.value.length;
-            textarea.setSelectionRange(caret, caret);
-        } catch {}
-    }
-
-    return mutated;
-}
-
-function applyIndent(textarea) {
-    const { selectionStart, selectionEnd, value } = textarea;
-    const start = findLineStart(value, selectionStart);
-    const end = findLineEnd(value, selectionEnd);
-    const segment = value.slice(start, end);
-    const lines = segment.split(/\n/);
-    const indented = lines.map((line) => `${INDENT_SEQUENCE}${line}`).join("\n");
-    const before = value.slice(0, start);
-    const after = value.slice(end);
-    textarea.value = `${before}${indented}${after}`;
-    let caretAfterIndent = null;
-    if (selectionStart === selectionEnd) {
-        const caretOffset = selectionStart - start;
-        const nextCaret = start + INDENT_SEQUENCE.length + caretOffset;
-        textarea.setSelectionRange(nextCaret, nextCaret);
-        caretAfterIndent = nextCaret;
-    } else {
-        textarea.setSelectionRange(start, start + indented.length);
-    }
-
-    if (lines.some((line) => ORDERED_LIST_REGEX.test(line))) {
-        const targetCaret = caretAfterIndent ?? (start + indented.length);
-        const adjustedCaret = renumberOrderedListTextarea(textarea, targetCaret);
-        if (caretAfterIndent !== null) {
-            textarea.setSelectionRange(adjustedCaret, adjustedCaret);
-        }
-    }
-}
-
-function applyOutdent(textarea) {
-    const { selectionStart, selectionEnd, value } = textarea;
-    const start = findLineStart(value, selectionStart);
-    const end = findLineEnd(value, selectionEnd);
-    const segment = value.slice(start, end);
-    const lines = segment.split(/\n/);
-    let removedFromFirstLine = 0;
-    const outdented = lines.map((line, index) => {
-        const { text, removed } = outdentLine(line);
-        if (index === 0) removedFromFirstLine = removed;
-        return text;
-    }).join("\n");
-
-    const before = value.slice(0, start);
-    const after = value.slice(end);
-    textarea.value = `${before}${outdented}${after}`;
-
-    let caretAfterOutdent = null;
-    if (selectionStart === selectionEnd) {
-        const caretOffset = selectionStart - start;
-        const nextCaret = start + Math.max(caretOffset - removedFromFirstLine, 0);
-        textarea.setSelectionRange(nextCaret, nextCaret);
-        caretAfterOutdent = nextCaret;
-    } else {
-        textarea.setSelectionRange(start, start + outdented.length);
-    }
-
-    if (lines.some((line) => ORDERED_LIST_REGEX.test(line))) {
-        const targetCaret = caretAfterOutdent ?? (start + outdented.length);
-        const adjustedCaret = renumberOrderedListTextarea(textarea, targetCaret);
-        if (caretAfterOutdent !== null) {
-            textarea.setSelectionRange(adjustedCaret, adjustedCaret);
-        }
-    }
-}
-
-function outdentLine(line) {
-    if (!line) {
-        return { text: line, removed: 0 };
-    }
-    if (line.startsWith("\t")) {
-        return { text: line.slice(1), removed: 1 };
-    }
-    if (line.startsWith(INDENT_SEQUENCE)) {
-        return { text: line.slice(INDENT_SEQUENCE.length), removed: INDENT_SEQUENCE.length };
-    }
-    const spacesMatch = line.match(/^ +/);
-    if (spacesMatch) {
-        const count = Math.min(spacesMatch[0].length, INDENT_SEQUENCE.length);
-        return { text: line.slice(count), removed: count };
-    }
-    return { text: line, removed: 0 };
-}
-
-function findLineStart(text, index) {
-    const safeIndex = Math.max(0, Math.min(index ?? 0, text.length));
-    let cursor = safeIndex;
-    while (cursor > 0 && text.charAt(cursor - 1) !== "\n") {
-        cursor -= 1;
-    }
-    return cursor;
-}
-
-function findLineEnd(text, index) {
-    const safeIndex = Math.max(0, Math.min(index ?? text.length, text.length));
-    let cursor = safeIndex;
-    while (cursor < text.length && text.charAt(cursor) !== "\n") {
-        cursor += 1;
-    }
-    return cursor;
+    return TASK_LIST_REGEX.test(rest.trimStart());
 }

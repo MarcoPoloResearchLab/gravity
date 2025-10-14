@@ -2,7 +2,7 @@
 
 import { nowIso } from "../utils/datetime.js";
 import { generateNoteId } from "../utils/id.js";
-import { createElement, autoResize } from "../utils/dom.js";
+import { createElement } from "../utils/dom.js";
 import {
     ARIA_LABEL_NEW_NOTE,
     ERROR_NOTES_CONTAINER_NOT_FOUND,
@@ -20,9 +20,11 @@ import {
     transformMarkdownWithAttachments
 } from "./imagePaste.js";
 import { createMarkdownEditorHost, MARKDOWN_MODE_EDIT } from "./markdownEditorHost.js";
-import { isTopEditorAutofocusSuppressed, clearTopEditorAutofocusSuppression } from "./focusManager.js";
-
-const TOP_EDITOR_RESIZE_OPTIONS = Object.freeze({ minHeightPx: 20, extraPaddingPx: 0 });
+import {
+    isTopEditorAutofocusSuppressed,
+    clearTopEditorAutofocusSuppression,
+    suppressTopEditorAutofocus
+} from "./focusManager.js";
 
 /**
  * Mount the always-empty top editor. It never persists empties; on finalize
@@ -73,6 +75,7 @@ export function mountTopEditor({ notesContainer }) {
                 return;
             }
             maintainAutofocus = false;
+            suppressTopEditorAutofocus();
         });
     }
 
@@ -90,9 +93,6 @@ export function mountTopEditor({ notesContainer }) {
         const attachments = getAllAttachments(editor);
         const markdownWithAttachments = transformMarkdownWithAttachments(editorHost.getValue(), attachments);
         renderSanitizedMarkdown(preview, markdownWithAttachments);
-        if (!editorHost.isEnhanced()) {
-            autoResize(editor, TOP_EDITOR_RESIZE_OPTIONS);
-        }
     };
 
     editorHost.on("change", updatePreview);
@@ -147,20 +147,9 @@ export function mountTopEditor({ notesContainer }) {
         editorHost.setMode(MARKDOWN_MODE_EDIT);
         renderSanitizedMarkdown(preview, "");
         resetAttachments(editor);
-        autoResize(editor, TOP_EDITOR_RESIZE_OPTIONS);
         keepFocus();
 
         triggerClassificationForCard(record.noteId, text, notesContainer);
-    }
-
-    // Ensure the caret is visible even when empty (fallback textarea only)
-    function ensureCaretVisible(el) {
-        if (editorHost.isEnhanced()) return;
-        if (el.value === "") {
-            el.value = " ";
-            try { el.setSelectionRange(1, 1); } catch {}
-            el.value = "";
-        }
     }
 
     function keepFocus(options = {}) {
@@ -182,12 +171,7 @@ export function mountTopEditor({ notesContainer }) {
             return Boolean(editingCard || (activeBlock && activeBlock !== wrapper));
         };
 
-        const isFocused = () => {
-            if (editorHost.isEnhanced()) {
-                return Boolean(wrapper.querySelector(".CodeMirror-focused"));
-            }
-            return document.activeElement === editor;
-        };
+        const isFocused = () => Boolean(wrapper.querySelector(".CodeMirror-focused"));
 
         const kick = () => {
             if (shouldRespectExternalFocus()) {
@@ -208,13 +192,8 @@ export function mountTopEditor({ notesContainer }) {
             }
 
             tries += 1;
-            if (!editorHost.isEnhanced()) {
-                autoResize(editor, TOP_EDITOR_RESIZE_OPTIONS);
-            }
-
             if (!isFocused()) {
                 editorHost.focus();
-                ensureCaretVisible(editor);
             }
 
             if (!isFocused() && tries < maxTries) {

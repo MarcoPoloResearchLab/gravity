@@ -30,7 +30,7 @@ You are a staff level full stack engineer. Your task is to **re-evaluate and ref
     * Design and use shared components
 5. **Tests** → Add/adjust Puppeteer tests for key flows (button → event → notification; cross-panel isolation). Prioritize end-2-end and integration tests.
 6. **Docs** → Update README and MIGRATION.md with new event contracts, removed globals, and developer instructions.
-7. **Timeouts**  Set a timer before running any CLI command, tests, build, git etc. If an operation takes unreasonably long without producing an output, abort it and consider a diffeernt approach. Prepend all CLI invocations with `timeout <N>s` command.
+7. **Timeouts**  Set a timer before running any CLI command, tests, build, git etc. If an operation takes unreasonably long without producing an output, abort it and consider a diffeernt approach. Prepend all CLI invocations with `timeout -k <N>s -s SIGKILL <N>s` command. Theis is MANDATORY for each and every CLI command.
 
 ## Output requirements
 
@@ -244,6 +244,10 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
         On CI, run tests inside the deterministic chromedp/headless-shell image (no flaky system deps).
     - httpexpect (Go) — fast API assertions
         For API-level flows that don’t need a browser; keeps failures precise.
+- [x] [GN-34] The tests take too long to complete -- GitHub allows maximum 360 seconds. Take a look at all of thests , measure their time of the execution, consider the techniques of decreasing the time.
+- [x] [GN-37] Check if the enter is pressed at the first line of a list (whether numeric or pointed) and do not add a list item, just use normal enter. Consult MDE documentation
+- [x] [GN-38] Check if a list is a checkmarked list `- [ ]` and add a checkmark item on continuation. Consult MDE documentation.
+- [x] [GN-39] Check if Google Sign In offers a different, minimized styling (small button) so that Google login buttom allows for better rendering on narrow screens.
 
 ### BugFixes
 
@@ -361,5 +365,576 @@ The value of the attribute “expires” for the cookie “_ga_WYL7PDVTHN” has
 
 [GSI_LOGGER]: The given origin is not allowed for the given client ID. client:74:89
 ```
+- [x] [GN-32] tests are failing: `  ✖ lists and tables auto-continue in fallback editor (3382.860931ms)`
+- [x] [GN-33] tests are hanging indefinetely. Do not run all the tests -- run each test and use a background teask to kill the testing process after 30 seconds. No individual test shall run longer than 30 seconds. Find the slow tests and refactor them into faster tests. Currently the test suit just hangs: nothing happens after that:
+```
+18:50:30 tyemirov@Vadyms-MacBook-Pro:~/Development/MarcoPoloResearchLab/gravity - [bugfix/GN-31-session-persistence] $ npm test
+
+> test
+> node --test
+
+▶ App notifications
+  ✔ import failure surfaces toast notification (4421.345531ms)
+✔ App notifications (9659.739847ms)
+▶ Auth avatar menu
+  ✔ hides Google button after sign-in and reveals stacked avatar menu (4838.078242ms)
+✔ Auth avatar menu (9618.511449ms)
+✔ createGoogleIdentityController initializes GSI and dispatches auth events (2.479104ms)
+▶ Auth session persistence
+  ✔ session survives refresh (9025.933276ms)
+✔ Auth session persistence (13676.841375ms)
+▶ Auth status messaging
+  ✔ signed-out view omits status banner (4340.028626ms)
+  ✔ signed-in view keeps status hidden (1213.086394ms)
+✔ Auth status messaging (9619.552318ms)
+✔ backend uses CGO-free sqlite driver (16.34869ms)
+✔ resolveBackendBaseUrl falls back to default without environment (1.447279ms)
+✔ resolveBackendBaseUrl respects window.GRAVITY_CONFIG override (0.220591ms)
+✔ resolveBackendBaseUrl defers to meta tag when global override absent (0.214999ms)
+✔ resolveBackendBaseUrl infers from location when override empty (0.156234ms)
+✔ resolveLlmProxyBaseUrl falls back to default proxy host (0.291679ms)
+✔ resolveLlmProxyBaseUrl respects window.GRAVITY_CONFIG override (0.174074ms)
+✔ resolveLlmProxyBaseUrl defers to meta tag when global override absent (0.2269ms)
+✔ resolveLlmProxyBaseUrl falls back to origin when overrides blank (0.1578ms)
+✔ resolveLlmProxyClassifyUrl composes default endpoint (0.332282ms)
+✔ resolveLlmProxyClassifyUrl respects global override (0.231197ms)
+✔ resolveLlmProxyClassifyUrl defers to meta override (0.200596ms)
+✔ resolveLlmProxyClassifyUrl disables requests when override blank (0.125911ms)
+✔ resolveLlmProxyClassifyUrl composes base overrides (0.1589ms)
+✔ clipboard plain text scenarios (1.330712ms)
+✔ backend Docker packaging artifacts exist (8.586726ms)
+▶ Enhanced Markdown editor
+  ✔ EasyMDE auto-continues lists, fences, and brackets (4912.771905ms)
+  ✔ EasyMDE undo and redo shortcuts restore history (1893.786269ms)
+  ✔ EasyMDE skips duplicate closing brackets (1448.874346ms)
+  ✔ EasyMDE delete line shortcut removes the active row (1514.142143ms)
+  ✔ EasyMDE duplicate line shortcut copies the active row (1798.92773ms)
+  ✔ EasyMDE renumbers ordered lists before submit (1366.25618ms)
+  ✔ EasyMDE renumbers ordered lists after pasted insertion (1335.76732ms)
+✔ Enhanced Markdown editor (17983.613515ms)
+▶ Markdown inline editor
+  ✔ click-to-edit auto-grows and saves inline (5661.607731ms)
+  ✔ top editor collapses height after submitting long note (3778.337152ms)
+  ✔ top editor respects external focus selections (2127.556505ms)
+  ✔ checkbox toggles from preview persist to markdown (1826.492284ms)
+  ✔ typing [ inserts spaced brackets and advances the caret (1352.32849ms)
+  ✔ closing brackets skip duplicates in inline editor (1906.259247ms)
+  ✔ delete line shortcut removes the active textarea row (1421.225603ms)
+  ✔ duplicate line shortcut copies the active textarea row (1357.035299ms)
+  ✔ ordered lists renumber on submit and navigation (1403.430927ms)
+  ✔ nested ordered lists restart numbering at each depth (1357.754283ms)
+  ✔ ctrl-enter keeps order when no edits are made (1579.169188ms)
+  ✔ ctrl-enter bubbles notes to the top after edits (1446.743905ms)
+  ✔ ctrl-enter ignores trailing whitespace changes (1950.487048ms)
+  ✔ ctrl-enter leaves focus available for the next choice (1354.317006ms)
+  ✔ preview checkbox bubbling waits before reordering (1776.595539ms)
+  ✔ preview checkbox toggle keeps focus on the toggled card (1381.878465ms)
+  ✔ pin toggle keeps a single pinned card and persists (1768.325608ms)
+  ✔ activating a second note exits the first from edit mode (1367.88495ms)
+  ✔ editing re-renders preview after bubbling (1733.383399ms)
+  ✔ arrow navigation bubbles edited notes to the top (1418.534303ms)
+  ✔ clicking a long note reveals the full content and caret at end (1326.260675ms)
+  ✔ preview click positions caret at clicked text (1313.382186ms)
+  ✔ preview click sets caret when caretRangeFromPoint returns element nodes (1652.277626ms)
+  ✔ preview click maps caret across inline formatting cases (4297.291436ms)
+  ✔ preview click preserves caret offsets inside list items (1315.569548ms)
+  ✔ second click keeps caret position and prevents clipping (1342.58597ms)
+  ✔ tables render without forcing full card width (1305.407442ms)
+  ✔ pressing F1 shows the keyboard shortcuts modal (1359.409812ms)
+  ✖ lists and tables auto-continue in fallback editor (3382.860931ms)
+✖ Markdown inline editor (58430.893542ms)
+▶ Full stack integration
+  ✔ persists notes through the real backend (1954.107686ms)
+✔ Full stack integration (21598.451274ms)
+✔ buildDeterministicPreview handles image-only markdown (1.752838ms)
+✔ buildDeterministicPreview retains full image markdown when base64 exceeds preview cap (1.020446ms)
+✔ buildDeterministicPreview preserves multiple images without statistics (27.877898ms)
+✔ buildDeterministicPreview leaves long text untouched (0.206095ms)
+✔ buildDeterministicPreview flags code without tracking words or images (0.242075ms)
+```
+When interrupted I git the followiong output
+
+test at tests/editor.inline.puppeteer.test.js:1970:9
+✖ lists and tables auto-continue in fallback editor (3382.860931ms)
+  AssertionError [ERR_ASSERTION]: Ordered list renumbering
+  actual expected
+  
+  '1. First\n2. Se\n3. Second'
+  
+      at TestContext.<anonymous> (file:///Users/tyemirov/Development/MarcoPoloResearchLab/gravity/tests/editor.inline.puppeteer.test.js:2063:28)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: '1. First\n2. Se\n3. cond',
+    expected: '1. First\n2. \n3. Second',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/persistence.backend.puppeteer.test.js:127:9
+✖ flushes notes to the backend over HTTP (20.156436ms)
+  TypeError: t.timeout is not a function
+      at TestContext.<anonymous> (file:///Users/tyemirov/Development/MarcoPoloResearchLab/gravity/tests/persistence.backend.puppeteer.test.js:133:15)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1106:25)
+      at async Promise.all (index 0)
+      at async Suite.run (node:internal/test_runner/test:1516:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3)
+
+test at tests/persistence.backend.puppeteer.test.js:1:1
+✖ tests/persistence.backend.puppeteer.test.js (10493979.087332ms)
+  'Promise resolution is still pending but the event loop has already resolved'
+
+- [x] [GN-35] the tests lost the color formatting. Some tests are failing. There is no comprehensive summary at the end, and the one present is misleading as it doesnt mention the failing tests
+  ```
+  test:11 tyemirov@Vadyms-MacBook-Pro:~/Development/MarcoPoloResearchLab/gravitm - [maintenance/GN-33-test-runtime] $ 
+
+  > test
+  > node tests/run-tests.js
+
+
+  ▶ app.notifications.puppeteer.test.js
+  ▶ App notifications
+    ✔ import failure surfaces toast notification (1009.883107ms)
+  ✔ App notifications (2306.383459ms)
+  ℹ tests 1
+  ℹ suites 1
+  ℹ pass 1
+  ℹ fail 0
+  ℹ cancelled 0
+  ℹ skipped 0
+  ℹ todo 0
+  ℹ duration_ms 2821.873278
+  ✔ app.notifications.puppeteer.test.js (2898ms)
+
+  ▶ auth.avatarMenu.puppeteer.test.js
+  ▶ Auth avatar menu
+    ✔ hides Google button after sign-in and reveals stacked avatar menu (501.817021ms)
+  ✔ Auth avatar menu (1448.279404ms)
+  ℹ tests 1
+  ℹ suites 1
+  ℹ pass 1
+  ℹ fail 0
+  ℹ cancelled 0
+  ℹ skipped 0
+  ℹ todo 0
+  ℹ duration_ms 1817.699879
+  ✔ auth.avatarMenu.puppeteer.test.js (1900ms)
+
+  ▶ auth.google.test.js
+  ✔ createGoogleIdentityController initializes GSI and dispatches auth events (4.916316ms)
+  ℹ tests 1
+  ℹ suites 0
+  ℹ pass 1
+  ℹ fail 0
+  ℹ cancelled 0
+  ℹ skipped 0
+  ℹ todo 0
+  ℹ duration_ms 116.798036
+  ✔ auth.google.test.js (203ms)
+
+  ▶ auth.sessionPersistence.puppeteer.test.js
+  ✖ /Users/tyemirov/Development/MarcoPoloResearchLab/gravity/tests/auth.sessionPersistence.puppeteer.test.js (29905.916209ms)
+  ℹ tests 1
+  ℹ suites 0
+  ℹ pass 0
+  ℹ fail 0
+  ℹ cancelled 1
+  ℹ skipped 0
+  ℹ todo 0
+  ℹ duration_ms 29916.461858
+
+  ✖ failing tests:
+
+  test at tests/auth.sessionPersistence.puppeteer.test.js:1:1
+  ✖ /Users/tyemirov/Development/MarcoPoloResearchLab/gravity/tests/auth.sessionPersistence.puppeteer.test.js (29905.916209ms)
+    'Promise resolution is still pending but the event loop has already resolved'
+  ✖ auth.sessionPersistence.puppeteer.test.js exceeded 30000ms watchdog
+
+  ▶ auth.status.puppeteer.test.js
+  ▶ Auth status messaging
+    ✔ signed-out view omits status banner (465.527932ms)
+    ✔ signed-in view keeps status hidden (427.811216ms)
+  ✔ Auth status messaging (1895.431821ms)
+  ℹ tests 2
+  ℹ suites 1
+  ℹ pass 2
+  ℹ fail 0
+  ℹ cancelled 0
+  ℹ skipped 0
+  ℹ todo 0
+  ℹ duration_ms 2305.932069
+  ✔ auth.status.puppeteer.test.js (2395ms)
+
+  ▶ backend.sqlite.driver.test.js
+  ✔ backend uses CGO-free sqlite driver (5.770908ms)
+  ℹ tests 1
+  ℹ suites 0
+  ℹ pass 1
+  ℹ fail 0
+  ℹ cancelled 0
+  ℹ skipped 0
+  ℹ todo 0
+  ℹ duration_ms 105.97768
+  ✔ backend.sqlite.driver.test.js (182ms)
+
+  ▶ config.runtime.test.js
+  ✔ resolveBackendBaseUrl falls back to default without environment (1.244965ms)
+  ✔ resolveBackendBaseUrl respects window.GRAVITY_CONFIG override (0.179134ms)
+  ✔ resolveBackendBaseUrl defers to meta tag when global override absent (0.180235ms)
+  ✔ resolveBackendBaseUrl infers from location when override empty (0.139983ms)
+  ✔ resolveLlmProxyBaseUrl falls back to default proxy host (0.264071ms)
+  ✔ resolveLlmProxyBaseUrl respects window.GRAVITY_CONFIG override (0.147376ms)
+  ✔ resolveLlmProxyBaseUrl defers to meta tag when global override absent (0.182087ms)
+  ✔ resolveLlmProxyBaseUrl falls back to origin when overrides blank (0.132249ms)
+  ✔ resolveLlmProxyClassifyUrl composes default endpoint (0.289371ms)
+  ✔ resolveLlmProxyClassifyUrl respects global override (0.212745ms)
+  ✔ resolveLlmProxyClassifyUrl defers to meta override (0.177172ms)
+  ✔ resolveLlmProxyClassifyUrl disables requests when override blank (0.10408ms)
+  ✔ resolveLlmProxyClassifyUrl composes base overrides (0.117477ms)
+  ℹ tests 13
+  ℹ suites 0
+  ℹ pass 13
+  ℹ fail 0
+  ℹ cancelled 0
+  ℹ skipped 0
+  ℹ todo 0
+  ℹ duration_ms 113.4821
+  ✔ config.runtime.test.js (189ms)
+
+  ▶ copy.plaintext.test.js
+  ✔ clipboard plain text scenarios (1.195466ms)
+  ℹ tests 1
+  ℹ suites 0
+  ℹ pass 1
+  ℹ fail 0
+  ℹ cancelled 0
+  ℹ skipped 0
+  ℹ todo 0
+  ℹ duration_ms 105.842079
+  ✔ copy.plaintext.test.js (181ms)
+
+  ▶ docker.packaging.test.js
+  ✔ backend Docker packaging artifacts exist (2.933767ms)
+  ℹ tests 1
+  ℹ suites 0
+  ℹ pass 1
+  ℹ fail 0
+  ℹ cancelled 0
+  ℹ skipped 0
+  ℹ todo 0
+  ℹ duration_ms 104.107367
+  ✔ docker.packaging.test.js (178ms)
+
+  ▶ editor.enhanced.puppeteer.test.js
+  ▶ Enhanced Markdown editor
+    ✔ EasyMDE auto-continues lists, fences, and brackets (1959.155247ms)
+    ✔ EasyMDE undo and redo shortcuts restore history (944.124553ms)
+    ✔ EasyMDE skips duplicate closing brackets (1356.59823ms)
+    ✔ EasyMDE delete line shortcut removes the active row (1343.693013ms)
+    ✔ EasyMDE duplicate line shortcut copies the active row (1333.017122ms)
+    ✔ EasyMDE renumbers ordered lists before submit (1353.884705ms)
+    ✔ EasyMDE renumbers ordered lists after pasted insertion (1308.63101ms)
+  ✔ Enhanced Markdown editor (10500.348092ms)
+  ℹ tests 7
+  ℹ suites 1
+  ℹ pass 7
+  ℹ fail 0
+  ℹ cancelled 0
+  ℹ skipped 0
+  ℹ todo 0
+  ℹ duration_ms 10865.171119
+  ✔ editor.enhanced.puppeteer.test.js (10940ms)
+
+  ▶ editor.inline.puppeteer.test.js
+  ▶ Markdown inline editor
+    ✔ click-to-edit auto-grows and saves inline (2126.465389ms)
+    ✔ top editor collapses height after submitting long note (2470.45372ms)
+    ✔ top editor respects external focus selections (2011.161195ms)
+    ✔ checkbox toggles from preview persist to markdown (1339.553535ms)
+    ✔ typing [ inserts spaced brackets and advances the caret (1333.005874ms)
+    ✔ closing brackets skip duplicates in inline editor (1339.792291ms)
+    ✔ delete line shortcut removes the active textarea row (1333.262826ms)
+    ✔ duplicate line shortcut copies the active textarea row (1333.252177ms)
+    ✔ ordered lists renumber on submit and navigation (1390.943864ms)
+    ✔ nested ordered lists restart numbering at each depth (1336.282813ms)
+    ✔ ctrl-enter keeps order when no edits are made (1523.744028ms)
+    ✔ ctrl-enter bubbles notes to the top after edits (1377.282706ms)
+    ✔ ctrl-enter ignores trailing whitespace changes (1564.043937ms)
+    ✔ ctrl-enter leaves focus available for the next choice (1310.891454ms)
+    ✔ preview checkbox bubbling waits before reordering (1758.103523ms)
+    ✔ preview checkbox toggle keeps focus on the toggled card (1415.265788ms)
+    ✔ pin toggle keeps a single pinned card and persists (1418.367738ms)
+    ✔ activating a second note exits the first from edit mode (1533.214504ms)
+  ✖ /Users/tyemirov/Development/MarcoPoloResearchLab/gravity/tests/editor.inline.puppeteer.test.js (29924.070924ms)
+  ℹ tests 19
+  ℹ suites 0
+  ℹ pass 18
+  ℹ fail 0
+  ℹ cancelled 1
+  ℹ skipped 0
+  ℹ todo 0
+  ℹ duration_ms 29931.259803
+
+  ✖ failing tests:
+
+  test at tests/editor.inline.puppeteer.test.js:1:1
+  ✖ /Users/tyemirov/Development/MarcoPoloResearchLab/gravity/tests/editor.inline.puppeteer.test.js (29924.070924ms)
+    'Promise resolution is still pending but the event loop has already resolved'
+  ✖ editor.inline.puppeteer.test.js exceeded 30000ms watchdog
+
+  ▶ fullstack.endtoend.puppeteer.test.js
+  ▶ Full stack integration
+    ✔ persists notes through the real backend (1850.581616ms)
+  ✔ Full stack integration (6749.871419ms)
+  ℹ tests 1
+  ℹ suites 1
+  ℹ pass 1
+  ℹ fail 0
+  ℹ cancelled 0
+  ℹ skipped 0
+  ℹ todo 0
+  ℹ duration_ms 7130.153949
+  ✔ fullstack.endtoend.puppeteer.test.js (7224ms)
+
+  ▶ helpers/testHarness.test.js
+  ✔ runTestProcess resolves for short-lived scripts (133.069775ms)
+  ✔ runTestProcess terminates hung scripts (209.986285ms)
+  ℹ tests 2
+  ℹ suites 0
+  ℹ pass 2
+  ℹ fail 0
+  ℹ cancelled 0
+  ℹ skipped 0
+  ℹ todo 0
+  ℹ duration_ms 449.701982
+  ✔ helpers/testHarness.test.js (533ms)
+
+  ▶ markdownPreview.test.js
+  ✔ buildDeterministicPreview handles image-only markdown (1.969294ms)
+  ✔ buildDeterministicPreview retains full image markdown when base64 exceeds preview cap (1.540188ms)
+  ✔ buildDeterministicPreview preserves multiple images without statistics (0.216864ms)
+  ✔ buildDeterministicPreview leaves long text untouched (0.265903ms)
+  ✔ buildDeterministicPreview flags code without tracking words or images (0.259685ms)
+  ℹ tests 5
+  ℹ suites 0
+  ℹ pass 5
+  ℹ fail 0
+  ℹ cancelled 0
+  ℹ skipped 0
+  ℹ todo 0
+  ℹ duration_ms 111.963934
+  ✔ markdownPreview.test.js (195ms)
+
+  ▶ persistence.backend.puppeteer.test.js
+  ▶ Backend sync integration
+    ✖ flushes notes to the backend over HTTP (9803.311141ms)
+  ✖ Backend sync integration (11147.879369ms)
+  ✖ /Users/tyemirov/Development/MarcoPoloResearchLab/gravity/tests/persistence.backend.puppeteer.test.js (29920.784482ms)
+  ℹ tests 2
+  ℹ suites 1
+  ℹ pass 0
+  ℹ fail 1
+  ℹ cancelled 1
+  ℹ skipped 0
+  ℹ todo 0
+  ℹ duration_ms 29928.670169
+
+  ✖ failing tests:
+
+  test at tests/persistence.backend.puppeteer.test.js:165:9
+  ✖ flushes notes to the backend over HTTP (9803.311141ms)
+    TimeoutError: Waiting failed: 8000ms exceeded
+        at new WaitTask (file:///Users/tyemirov/Development/MarcoPoloResearchLab/gravity/node_modules/puppeteer-core/lib/esm/puppeteer/common/WaitTask.js:45:34)
+        at IsolatedWorld.waitForFunction (file:///Users/tyemirov/Development/MarcoPoloResearchLab/gravity/node_modules/puppeteer-core/lib/esm/puppeteer/api/Realm.js:22:26)
+        at CdpFrame.waitForFunction (file:///Users/tyemirov/Development/MarcoPoloResearchLab/gravity/node_modules/puppeteer-core/lib/esm/puppeteer/api/Frame.js:568:43)
+        at CdpFrame.<anonymous> (file:///Users/tyemirov/Development/MarcoPoloResearchLab/gravity/node_modules/puppeteer-core/lib/esm/puppeteer/util/decorators.js:101:27)
+        at CdpPage.waitForFunction (file:///Users/tyemirov/Development/MarcoPoloResearchLab/gravity/node_modules/puppeteer-core/lib/esm/puppeteer/api/Page.js:1430:37)
+        at waitForSyncManagerUser (file:///Users/tyemirov/Development/MarcoPoloResearchLab/gravity/tests/persistence.backend.puppeteer.test.js:502:16)
+        at TestContext.<anonymous> (file:///Users/tyemirov/Development/MarcoPoloResearchLab/gravity/tests/persistence.backend.puppeteer.test.js:191:21)
+        at async Test.run (node:internal/test_runner/test:1113:7)
+        at async Promise.all (index 0)
+        at async Suite.run (node:internal/test_runner/test:1516:7)
+
+  test at tests/persistence.backend.puppeteer.test.js:1:1
+  ✖ /Users/tyemirov/Development/MarcoPoloResearchLab/gravity/tests/persistence.backend.puppeteer.test.js (29920.784482ms)
+    'Promise resolution is still pending but the event loop has already resolved'
+  ✖ persistence.backend.puppeteer.test.js exceeded 30000ms watchdog
+
+  ▶ persistence.sync.puppeteer.test.js
+  ▶ Backend persistence
+    ✔ notes persist across clients via backend sync (924.893997ms)
+  ✔ Backend persistence (1929.042231ms)
+  ℹ tests 1
+  ℹ suites 1
+  ℹ pass 1
+  ℹ fail 0
+  ℹ cancelled 0
+  ℹ skipped 0
+  ℹ todo 0
+  ℹ duration_ms 2300.688642
+  ✔ persistence.sync.puppeteer.test.js (2381ms)
+
+  ▶ preview.bounded.puppeteer.test.js
+  ▶ Bounded previews
+    ✔ preview clamps content with fade, continuation marker, and code badge (2201.748628ms)
+    ✔ expanding preview preserves viewport position (1630.770742ms)
+    ✔ short and medium previews hide the expand toggle (920.388043ms)
+  ✔ Bounded previews (5696.645457ms)
+  ℹ tests 3
+  ℹ suites 1
+  ℹ pass 3
+  ℹ fail 0
+  ℹ cancelled 0
+  ℹ skipped 0
+  ℹ todo 0
+  ℹ duration_ms 6075.089926
+  ✔ preview.bounded.puppeteer.test.js (6153ms)
+
+  ▶ preview.checkmark.puppeteer.test.js
+  ▶ Checklist preview interactions
+    ✔ preview checkbox toggle keeps a single persisted note (2701.735555ms)
+    ✔ rapid preview toggles keep records unique across notes (1907.828118ms)
+  ✔ Checklist preview interactions (5549.420709ms)
+  ℹ tests 2
+  ℹ suites 1
+  ℹ pass 2
+  ℹ fail 0
+  ℹ cancelled 0
+  ℹ skipped 0
+  ℹ todo 0
+  ℹ duration_ms 5915.935167
+  ✔ preview.checkmark.puppeteer.test.js (5995ms)
+
+  ▶ store.test.js
+  ▶ GravityStore.loadAllNotes
+    ✔ ignores invalid persisted notes (2.058661ms)
+    ✔ saveAllNotes persists only validated notes (0.541766ms)
+    ✔ getById returns stored record or null (0.456625ms)
+  ✔ GravityStore.loadAllNotes (4.125448ms)
+  ▶ GravityStore export/import
+    ✔ exportNotes serializes sanitized records (0.5298ms)
+    ▶ importNotes appends only unique records
+      ✔ imports new record with sanitized attachments (1.509328ms)
+      ✔ skips records with duplicate identifiers (0.266423ms)
+      ✔ skips records with identical content attachments and classification (0.210509ms)
+      ✔ imports only unique subset when mixed (0.237367ms)
+    ✔ importNotes appends only unique records (3.025701ms)
+    ✔ importNotes rejects invalid payloads (2.097629ms)
+  ✔ GravityStore export/import (5.897776ms)
+  ▶ GravityStore user scopes
+    ✔ isolates persisted notes per user (0.410872ms)
+  ✔ GravityStore user scopes (0.484392ms)
+  ℹ tests 11
+  ℹ suites 3
+  ℹ pass 11
+  ℹ fail 0
+  ℹ cancelled 0
+  ℹ skipped 0
+  ℹ todo 0
+  ℹ duration_ms 124.114567
+  ✔ store.test.js (205ms)
+
+  ▶ sync.endtoend.puppeteer.test.js
+  ▶ UI sync integration
+    ✔ user-created notes synchronize to the backend (2183.50089ms)
+  ✔ UI sync integration (6170.871624ms)
+  ℹ tests 1
+  ℹ suites 1
+  ℹ pass 1
+  ℹ fail 0
+  ℹ cancelled 0
+  ℹ skipped 0
+  ℹ todo 0
+  ℹ duration_ms 6528.369858
+  ✔ sync.endtoend.puppeteer.test.js (6608ms)
+
+  ▶ sync.manager.test.js
+  ▶ SyncManager
+    ✔ handleSignIn exchanges credential, flushes queue, and reconciles snapshot (3.988753ms)
+  ✔ SyncManager (5.009177ms)
+  ℹ tests 1
+  ℹ suites 1
+  ℹ pass 1
+  ℹ fail 0
+  ℹ cancelled 0
+  ℹ skipped 0
+  ℹ todo 0
+  ℹ duration_ms 114.4475
+  ✔ sync.manager.test.js (196ms)
+
+  Test summary:
+  - app.notifications.puppeteer.test.js: pass in 2898ms
+  - auth.avatarMenu.puppeteer.test.js: pass in 1900ms
+  - auth.google.test.js: pass in 203ms
+  - auth.sessionPersistence.puppeteer.test.js: timeout in 30018ms
+  - auth.status.puppeteer.test.js: pass in 2395ms
+  - backend.sqlite.driver.test.js: pass in 182ms
+  - config.runtime.test.js: pass in 189ms
+  - copy.plaintext.test.js: pass in 181ms
+  - docker.packaging.test.js: pass in 178ms
+  - editor.enhanced.puppeteer.test.js: pass in 10940ms
+  - editor.inline.puppeteer.test.js: timeout in 30020ms
+  - fullstack.endtoend.puppeteer.test.js: pass in 7224ms
+  - helpers/testHarness.test.js: pass in 533ms
+  - markdownPreview.test.js: pass in 195ms
+  - persistence.backend.puppeteer.test.js: timeout in 30014ms
+  - persistence.sync.puppeteer.test.js: pass in 2381ms
+  - preview.bounded.puppeteer.test.js: pass in 6153ms
+  - preview.checkmark.puppeteer.test.js: pass in 5995ms
+  - store.test.js: pass in 205ms
+  - sync.endtoend.puppeteer.test.js: pass in 6608ms
+  - sync.manager.test.js: pass in 196ms
+  ```
 
 ### Maintenance
+
+- [x] [GN-35] add a small “Privacy • Terms” link. and I mean small. it must serve a page under /privacy
+    ```html
+    <!doctype html>
+    <html lang="en">
+    <head>
+    <meta charset="utf-8">
+    <title>Privacy Policy — RSVP</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow">
+    <style>
+        body{font:16px/1.5 system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:40px;max-width:800px}
+        h1{font-size:1.6rem;margin-bottom:.2rem}
+    </style>
+    </head>
+    <body>
+    <h1>Privacy Policy — Gravity Notes</h1>
+    <p><strong>Effective Date:</strong> 2025-10-11</p>
+    <p>RSVP uses Google Identity Services to authenticate users. We receive your Google profile
+        information (name, email, profile image) only to sign you in. We do not sell or share your data,
+        and we only store your notes so the service functions.</p>
+    <p>To request deletion of your data, contact
+        <a href="mailto:support@mprlab.com">support@mprlab.com</a>.</p>
+    </body>
+    </html>
+    ```
+- [x] [GN-36] add privacy to the sitemap
+- [ ] [GN-37] Remove all and any fallbacks in the code, Rely om MDE for the inline editor functionality. ✖ editor.inline.puppeteer.test.js exit=1 (14501ms)
+  ```
+  test at tests/editor.inline.puppeteer.test.js:2194:9
+  ✖ fallback editor handles first-line enter and checklist continuation (314.070187ms)
+    AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+    + actual - expected
+    
+    + '* Alpha\n* \n* Beta'
+    - '\n* Alpha\n* Beta'
+    
+        at TestContext.<anonymous> (file:///Users/tyemirov/Development/MarcoPoloResearchLab/gravity/tests/editor.inline.puppeteer.test.js:2218:24)
+        at async Test.run (node:internal/test_runner/test:1113:7)
+        at async Suite.processPendingSubtests (node:internal/test_runner/test:788:7) {
+      generatedMessage: true,
+      code: 'ERR_ASSERTION',
+      actual: '* Alpha\n* \n* Beta',
+      expected: '\n* Alpha\n* Beta',
+      operator: 'strictEqual',
+      diff: 'simple'
+    }
+    ✖ Failed (exitCode=1)
+  ```

@@ -14,6 +14,7 @@ export const LABEL_VIEW_RENDERED = "View (Rendered)";
 export const LABEL_NEW_NOTE = "New note";
 export const LABEL_APP_TITLE = "Gravity Notes";
 export const LABEL_APP_SUBTITLE = "Append anywhere · Bubble to top · Auto-organize";
+export const LABEL_PRIVACY_TERMS_LINK = "Privacy • Terms";
 export const ARIA_LABEL_NEW_NOTE = "New note";
 export const ARIA_LABEL_COPY_MARKDOWN = "Copy Markdown";
 export const ARIA_LABEL_COPY_RENDERED = "Copy Rendered HTML";

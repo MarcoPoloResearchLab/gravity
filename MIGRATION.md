@@ -68,6 +68,11 @@ harness to assert note creation flows enqueue real sync operations, while
 `tests/auth.sessionPersistence.puppeteer.test.js` guards the persisted Google session behaviour. Run `npm test` after
 modifying any event contract to maintain parity with the automation suite.
 
+`tests/run-tests.js` orchestrates the suite instead of invoking `node --test` directly. Each file executes with a
+30-second watchdog and ANSI summary; tune the timeout via `GRAVITY_TEST_TIMEOUT_MS` or adjust the SIGKILL grace period
+with `GRAVITY_TEST_KILL_GRACE_MS`. Filter runs using `GRAVITY_TEST_PATTERN="auth.sessionPersistence" npm test` when
+iterating on a specific suite.
+
 ## Backend Scaffold
 
 * The monorepo now ships a Go backend under `/backend` to sync notes across devices while preserving local-first storage.

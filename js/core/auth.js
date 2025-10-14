@@ -84,12 +84,12 @@ export function createGoogleIdentityController(options) {
 
     if (buttonElement && typeof identity.renderButton === "function") {
         try {
-            identity.renderButton(buttonElement, {
-                theme: "outline",
-                size: "medium",
-                shape: "pill",
-                text: "signin_with"
-            });
+        identity.renderButton(buttonElement, {
+            theme: "outline",
+            size: "small",
+            shape: "pill",
+            text: "signin_with"
+        });
         } catch (error) {
             logging.error(error);
         }

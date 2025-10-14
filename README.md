@@ -171,6 +171,9 @@ Or embed a meta tag when templating the page:
 
 ## Testing
 
+- The test harness (`node tests/run-tests.js`) executes each suite in isolation with a 30 s watchdog and renders a
+  coloured summary. Adjust the timeout or kill grace via `GRAVITY_TEST_TIMEOUT_MS` and `GRAVITY_TEST_KILL_GRACE_MS`, or
+  narrow the run with `GRAVITY_TEST_PATTERN="editor.inline" npm test`.
 - `npm test` drives the Node test suite, including Puppeteer coverage for the inline editor, bounded previews, and
   the notification flow.
 - `tests/preview.bounded.puppeteer.test.js` now guards the viewport anchoring behaviour—expanding a rendered note keeps

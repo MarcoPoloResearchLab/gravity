@@ -1,12 +1,19 @@
-- [x] tests/helpers/backendHarness.js — Add lifecycle-managed Go backend launcher for shared end-to-end automation (GN-32).
-- [x] tests/fullstack.endtoend.puppeteer.test.js — Run the real backend with Puppeteer and verify cross-layer auth + sync flow (GN-32).
-- [x] js/ui/card.js — Guard checklist preview toggles so a single click updates existing notes without duplicating records (GN-27).
-- [x] tests/preview.checkmark.puppeteer.test.js — Reproduce the checklist duplication scenario and assert only one note remains after toggling (GN-27).
-- [x] js/ui/card.js — Translate rendered click offsets into editor caret positions when switching modes (GN-28).
-- [x] tests/editor.inline.puppeteer.test.js — Add preview-click caret coverage to guarantee rendered interactions align with editor positions (GN-28).
-- [x] js/core/config.js / js/constants.js — Support environment-driven LLM proxy URL overrides while preserving secure defaults (GN-29).
-- [x] tests/config.runtime.test.js — Verify meta/config/env overrides correctly update the LLM proxy endpoint (GN-29).
-- [x] tests/sync.endtoend.puppeteer.test.js — Spin up the Go backend with the UI and validate bidirectional synchronization events (GN-30).
-- [x] tests/auth.sessionPersistence.puppeteer.test.js — Ensure Google login state survives a full page refresh (GN-31).
-- [x] README.md / MIGRATION.md — Document the proxy configuration, sync workflow, and session persistence guarantees.
-- [x] NOTES.md — Mark GN-27 through GN-32 complete once fixes and tests pass.
+// Outstanding refactors and fixes
+- [x] tests/run-tests.js — finalize the per-suite watchdog, parallel kill switch, runtime analytics, and ANSI summary output (GN-33, GN-35).
+- [x] tests/helpers/testHarness.js — expose color helpers, timeout enforcement hooks, and shared CLI formatting utilities (GN-33, GN-35).
+- [x] tests/harness/run-tests.harness.test.js — cover watchdog termination paths, summary totals, and error reporting (GN-33, GN-35).
+- [x] tests/helpers/puppeteerEnvironment.js — centralize browser/page lifecycle management to cut suite setup cost (GN-34).
+- [x] tests/editor.inline.puppeteer.test.js — consolidate navigation flows and waits so the inline editor finishes within the watchdog budget (GN-34).
+- [x] tests/persistence.backend.puppeteer.test.js — reuse shared helpers and shorten sync waits to avoid 30s hangs (GN-34).
+- [x] tests/auth.sessionPersistence.puppeteer.test.js — align waits and fixtures with the new timeout contract (GN-34).
+- [x] README.md — document the harness CLI, watchdog flags, and runtime expectations (GN-33, GN-35).
+- [x] MIGRATION.md — record the harness migration steps and timeout policies (GN-33, GN-34, GN-35).
+- [x] NOTES.md — mark GN-33, GN-34, and GN-35 complete once validated.
+
+- [x] index.html — add the footer “Privacy • Terms” link and switch Google Sign-In to the compact button variant (GN-35, GN-39).
+- [x] privacy/index.html — serve the provided privacy policy content at `/privacy` (GN-35).
+- [x] sitemap.xml — include `/privacy` in the sitemap (GN-36).
+
+- [x] js/ui/markdownEditorHost.js — adjust EasyMDE list-enter handling for first-line lists and checkmark continuation (GN-37, GN-38).
+- [x] tests/editor.enhanced.puppeteer.test.js — extend coverage for the new list-enter behaviors (GN-37, GN-38).
+- [x] constants.js — lift any new user-facing copy introduced by the list behavior changes (GN-37, GN-38).
