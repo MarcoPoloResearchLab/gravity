@@ -22,3 +22,5 @@
 - [x] js/core/syncManager.js — surface sign-in result metadata and guard snapshot refresh outcomes (GN-31 follow-up).
 - [x] tests/persistence.sync.puppeteer.test.js — remove debug instrumentation and rely on sync manager helpers for deterministic cross-client verification (GN-31 follow-up).
 - [x] tests/helpers/syncTestUtils.js — expose optional mock backend injection and shared wait utilities for auth-oriented suites (GN-31 follow-up).
+- [x] tests/helpers/backendHarness.js — centralize real backend orchestration for integration tests (GN-31 follow-up).
+- [x] tests/auth.*.puppeteer.test.js, tests/persistence.sync.puppeteer.test.js, tests/fullstack.endtoend.puppeteer.test.js, tests/sync.endtoend.puppeteer.test.js — run against spawned backend instead of fetch mocks (GN-31 follow-up).

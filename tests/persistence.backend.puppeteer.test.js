@@ -1,11 +1,4 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { createSign, generateKeyPairSync } from "node:crypto";
-import { once } from "node:events";
-import fs from "node:fs/promises";
-import http from "node:http";
-import net from "node:net";
-import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
@@ -23,6 +16,10 @@ import {
     waitForSyncManagerUser,
     extractSyncDebugState
 } from "./helpers/syncTestUtils.js";
+import {
+    startTestBackend,
+    waitForBackendNote
+} from "./helpers/backendHarness.js";
 
 const SANDBOX = await ensurePuppeteerSandbox();
 let puppeteerModule;
@@ -33,15 +30,11 @@ try {
 }
 
 const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
-const BACKEND_DIR = path.join(REPO_ROOT, "backend");
 const PAGE_URL = `file://${path.join(REPO_ROOT, "index.html")}`;
 
-const TEST_GOOGLE_CLIENT_ID = "gravity-test-client";
-const TEST_SIGNING_SECRET = "gravity-test-signing-secret";
 const TEST_USER_ID = "integration-sync-user";
 const GLOBAL_TIMEOUT_MS = readPositiveInteger(process.env.GRAVITY_TEST_TIMEOUT_MS, 30000);
 const BACKEND_SYNC_TEST_TIMEOUT_MS = GLOBAL_TIMEOUT_MS;
-const BACKEND_PROCESS_FORCE_KILL_TIMEOUT_MS = Math.max(2000, Math.min(5000, Math.floor(GLOBAL_TIMEOUT_MS / 6)));
 const PUPPETEER_WAIT_TIMEOUT_MS = Math.max(4000, Math.min(15000, Math.floor(GLOBAL_TIMEOUT_MS / 2)));
 
 if (!puppeteerModule) {
@@ -59,83 +52,21 @@ if (!puppeteerModule) {
     test.describe("Backend sync integration", () => {
         /** @type {import('puppeteer').Browser?} */
         let browser = null;
-        /** @type {{ close: () => Promise<void>, url: string, tokenFactory: () => string }|null} */
+        /** @type {{ close: () => Promise<void>, baseUrl: string, tokenFactory: (userId: string) => string }|null} */
         let backendContext = null;
 
         test.before(async () => {
-            const rsaKeys = generateRsaKeyPair();
-            const jwksServer = await startJwksServer(rsaKeys.jwk);
-
-            const backendPort = await getAvailablePort();
-            const backendAddress = `127.0.0.1:${backendPort}`;
-            const jwksUrl = `${jwksServer.url}/oauth2/v3/certs`;
-            const databasePath = await createTempDatabasePath();
-            const backendProcess = await startBackendProcess({
-                address: backendAddress,
-                jwksUrl,
-                databasePath
+            backendContext = await startTestBackend({
+                logLevel: "info"
             });
-
-            let backendClosed = false;
-            let backendClosingPromise = null;
-            let jwksClosed = false;
-            const databaseDirectory = path.dirname(databasePath);
-
-            async function shutdownBackend() {
-                if (backendClosed) {
-                    return backendClosingPromise;
-                }
-                backendClosed = true;
-                backendClosingPromise = (async () => {
-                    try {
-                        if (backendProcess.exitCode === null && backendProcess.signalCode === null) {
-                            backendProcess.kill("SIGTERM");
-                            const forceKillTimer = setTimeout(() => {
-                                if (backendProcess.exitCode === null && backendProcess.signalCode === null) {
-                                    backendProcess.kill("SIGKILL");
-                                }
-                            }, BACKEND_PROCESS_FORCE_KILL_TIMEOUT_MS);
-                            try {
-                                await once(backendProcess, "exit");
-                            } finally {
-                                clearTimeout(forceKillTimer);
-                            }
-                        }
-                    } finally {
-                        if (!jwksClosed) {
-                            jwksClosed = true;
-                            await jwksServer.close();
-                        }
-                        await fs.rm(databaseDirectory, { recursive: true, force: true }).catch(() => {});
-                    }
-                })();
-                return backendClosingPromise;
-            }
-
-            backendContext = {
-                process: backendProcess,
-                url: `http://${backendAddress}`,
-                tokenFactory: () => createSignedGoogleToken({
-                    audience: TEST_GOOGLE_CLIENT_ID,
-                    subject: TEST_USER_ID,
-                    privateKey: rsaKeys.privateKey,
-                    keyId: rsaKeys.keyId,
-                    issuer: "https://accounts.google.com"
-                }),
-                async close() {
-                    await shutdownBackend();
-                }
-            };
             const launchOptions = createSandboxedLaunchOptions(SANDBOX);
             browser = await puppeteerModule.launch(launchOptions);
         });
 
         test.after(async () => {
+            await backendContext?.close();
             if (browser) {
                 await browser.close();
-            }
-            if (backendContext) {
-                await backendContext.close();
             }
             await cleanupPuppeteerSandbox(SANDBOX);
             process.nextTick(() => process.exit(0));
@@ -157,7 +88,7 @@ if (!puppeteerModule) {
             };
             deadlineSignal.addEventListener("abort", abortHandler, { once: true });
 
-            const backendUrl = backendContext.url;
+            const backendUrl = backendContext.baseUrl;
             page = await raceWithSignal(deadlineSignal, prepareFrontendPage(browser, PAGE_URL, {
                 backendBaseUrl: backendUrl,
                 llmProxyClassifyUrl: backendUrl
@@ -168,7 +99,7 @@ if (!puppeteerModule) {
                 }
             });
             try {
-                const credential = backendContext.tokenFactory();
+                const credential = backendContext.tokenFactory(TEST_USER_ID);
                 await raceWithSignal(deadlineSignal, dispatchSignIn(page, credential, TEST_USER_ID));
                 await page.evaluate(async ({ userId, token }) => {
                     const root = document.querySelector("[x-data]");
@@ -259,177 +190,7 @@ if (!puppeteerModule) {
     });
 }
 
-function generateRsaKeyPair() {
-    const { privateKey, publicKey } = generateKeyPairSync("rsa", {
-        modulusLength: 2048
-    });
-    const jwk = publicKey.export({ format: "jwk" });
-    const keyId = "gravity-test-key";
-    return {
-        privateKey,
-        jwk: {
-            ...jwk,
-            kid: keyId,
-            use: "sig",
-            alg: "RS256"
-        },
-        keyId
-    };
-}
-
-async function startJwksServer(jwk) {
-    const server = http.createServer((req, res) => {
-        if (req.url === "/oauth2/v3/certs") {
-            res.statusCode = 200;
-            res.setHeader("Content-Type", "application/json");
-            res.end(JSON.stringify({ keys: [jwk] }));
-            return;
-        }
-        res.statusCode = 404;
-        res.end("not found");
-    });
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-    const address = /** @type {{ port: number }} */ (server.address());
-    return {
-        url: `http://127.0.0.1:${address.port}`,
-        close: () => new Promise((resolve) => server.close(() => resolve()))
-    };
-}
-
-async function startBackendProcess({ address, jwksUrl, databasePath }) {
-    const args = [
-        "run",
-        "./cmd/gravity-api",
-        "--http-address", address,
-        "--google-client-id", TEST_GOOGLE_CLIENT_ID,
-        "--google-jwks-url", jwksUrl,
-        "--database-path", databasePath,
-        "--signing-secret", TEST_SIGNING_SECRET,
-        "--log-level", "info"
-    ];
-    const child = spawn("go", args, {
-        cwd: BACKEND_DIR,
-        stdio: ["ignore", "pipe", "pipe"]
-    });
-    const backendLogs = [];
-    if (child.stdout) {
-        child.stdout.setEncoding("utf8");
-        child.stdout.on("data", (chunk) => {
-            backendLogs.push({ stream: "stdout", message: chunk });
-            process.stderr.write(`[backend stdout] ${chunk}`);
-        });
-    }
-    if (child.stderr) {
-        child.stderr.setEncoding("utf8");
-        child.stderr.on("data", (chunk) => {
-            backendLogs.push({ stream: "stderr", message: chunk });
-            process.stderr.write(`[backend stderr] ${chunk}`);
-        });
-    }
-
-    let resolved = false;
-    const startup = new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-            if (!resolved) {
-                resolved = true;
-                reject(new Error("backend startup timed out"));
-            }
-        }, 20000);
-
-        const handleOutput = (chunk) => {
-            const text = chunk.toString();
-            if (!resolved && text.includes("server starting")) {
-                resolved = true;
-                clearTimeout(timeout);
-                child.stdout.off("data", handleOutput);
-                resolve(null);
-            }
-        };
-
-        child.stdout.on("data", handleOutput);
-        child.stderr.on("data", (chunk) => {
-            if (!resolved) {
-                const text = chunk.toString();
-                if (text.includes("server starting")) {
-                    resolved = true;
-                    clearTimeout(timeout);
-                    child.stdout.off("data", handleOutput);
-                    resolve(null);
-                }
-            }
-        });
-
-        child.once("exit", (code, signal) => {
-            if (!resolved) {
-                resolved = true;
-                clearTimeout(timeout);
-                reject(new Error(`backend exited during startup (code=${code}, signal=${signal})`));
-            }
-        });
-    });
-
-    await startup;
-    child.backendLogs = backendLogs;
-    return child;
-}
-
-async function getAvailablePort() {
-    return new Promise((resolve, reject) => {
-        const server = net.createServer();
-        server.listen(0, "127.0.0.1", () => {
-            const address = /** @type {{ port: number }} */ (server.address());
-            const port = address.port;
-            server.close((error) => {
-                if (error) {
-                    reject(error);
-                    return;
-                }
-                resolve(port);
-            });
-        });
-        server.on("error", reject);
-    });
-}
-
-async function createTempDatabasePath() {
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "gravity-backend-"));
-    return path.join(tmpDir, "gravity.db");
-}
-
-function createSignedGoogleToken({ audience, subject, issuer, privateKey, keyId, expiresInSeconds = 5 * 60 }) {
-    const header = {
-        alg: "RS256",
-        typ: "JWT",
-        kid: keyId
-    };
-    const nowSeconds = Math.floor(Date.now() / 1000);
-    const payload = {
-        aud: audience,
-        iss: issuer,
-        sub: subject,
-        exp: nowSeconds + expiresInSeconds,
-        iat: nowSeconds
-    };
-    const encodedHeader = base64UrlEncode(Buffer.from(JSON.stringify(header), "utf8"));
-    const encodedPayload = base64UrlEncode(Buffer.from(JSON.stringify(payload), "utf8"));
-    const signingInput = `${encodedHeader}.${encodedPayload}`;
-    const signer = createSign("RSA-SHA256");
-    signer.update(signingInput);
-    signer.end();
-    const signature = signer.sign(privateKey);
-    const encodedSignature = base64UrlEncode(signature);
-    return `${signingInput}.${encodedSignature}`;
-}
-
-function base64UrlEncode(buffer) {
-    return Buffer.from(buffer)
-        .toString("base64")
-        .replace(/=+$/u, "")
-        .replace(/\+/gu, "-")
-        .replace(/\//gu, "_");
-}
-
-/**
+/** 
  * @param {string | undefined} candidate
  * @param {number} fallback
  */
@@ -521,65 +282,4 @@ async function dispatchNoteCreate(page, { noteId, markdownText, timestampIso }) 
         storeUpdated: false,
         shouldRender: false
     });
-}
-
-function fetchBackendNotes({ backendUrl, token, timeoutMs }) {
-    return new Promise((resolve, reject) => {
-        try {
-            const url = new URL("/notes", backendUrl);
-            const request = http.request({
-                method: "GET",
-                hostname: url.hostname,
-                port: url.port,
-                path: url.pathname,
-                protocol: url.protocol,
-                headers: {
-                    Authorization: `Bearer ${token}`
-                }
-            }, (response) => {
-                const chunks = [];
-                response.setEncoding("utf8");
-                response.on("data", (chunk) => {
-                    chunks.push(chunk);
-                });
-                response.on("end", () => {
-                    resolve({
-                        statusCode: response.statusCode ?? 0,
-                        body: chunks.join("")
-                    });
-                });
-            });
-            request.on("error", reject);
-            request.setTimeout(timeoutMs, () => {
-                request.destroy(new Error(`Backend request timed out after ${timeoutMs}ms`));
-            });
-            request.end();
-        } catch (error) {
-            reject(error);
-        }
-    });
-}
-
-async function waitForBackendNote({ backendUrl, token, noteId, timeoutMs }) {
-    const start = Date.now();
-    const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-    while (Date.now() - start < timeoutMs) {
-        const { statusCode, body } = await fetchBackendNotes({ backendUrl, token, timeoutMs });
-        if (statusCode === 200) {
-            try {
-                const payload = JSON.parse(body);
-                const notes = Array.isArray(payload?.notes) ? payload.notes : [];
-                const match = notes.find((entry) => entry?.payload?.noteId === noteId);
-                if (match) {
-                    return payload;
-                }
-            } catch {
-                // ignore JSON parse errors and retry
-            }
-        } else if (statusCode >= 400 && statusCode < 500) {
-            throw new Error(`Backend responded with status ${statusCode}`);
-        }
-        await delay(200);
-    }
-    throw new Error(`Note ${noteId} did not appear in backend within ${timeoutMs}ms`);
 }

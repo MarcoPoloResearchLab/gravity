@@ -4,7 +4,12 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import { ensurePuppeteerSandbox, cleanupPuppeteerSandbox } from "./helpers/puppeteerEnvironment.js";
-import { dispatchSignIn, installMockBackend } from "./helpers/syncTestUtils.js";
+import {
+    prepareFrontendPage,
+    dispatchSignIn,
+    waitForSyncManagerUser
+} from "./helpers/syncTestUtils.js";
+import { startTestBackend } from "./helpers/backendHarness.js";
 
 const SANDBOX = await ensurePuppeteerSandbox();
 const {
@@ -43,6 +48,8 @@ if (!puppeteerModule) {
         let browser = null;
         /** @type {Error|null} */
         let launchError = null;
+        /** @type {{ baseUrl: string, tokenFactory: (userId: string) => string, close: () => Promise<void> }|null} */
+        let backendContext = null;
 
         const skipIfNoBrowser = () => {
             if (!browser) {
@@ -53,6 +60,7 @@ if (!puppeteerModule) {
         };
 
         test.before(async () => {
+            backendContext = await startTestBackend();
             const launchArgs = [
                 "--allow-file-access-from-files",
                 "--disable-crashpad",
@@ -83,6 +91,7 @@ if (!puppeteerModule) {
         });
 
         test.after(async () => {
+            await backendContext?.close();
             if (browser) {
                 await browser.close();
             }
@@ -91,11 +100,15 @@ if (!puppeteerModule) {
 
         test("signed-out view omits status banner", async () => {
             if (skipIfNoBrowser()) return;
+            if (!backendContext) {
+                throw new Error("backend harness unavailable");
+            }
 
-            const page = await browser.newPage();
+            const page = await prepareFrontendPage(browser, PAGE_URL, {
+                backendBaseUrl: backendContext.baseUrl,
+                llmProxyClassifyUrl: ""
+            });
             try {
-                await installMockBackend(page);
-                await page.goto(PAGE_URL, { waitUntil: "load" });
                 await page.waitForSelector(".auth-status");
 
                 const statusContent = await page.$eval(".auth-status", (element) => element.textContent?.trim() ?? "");
@@ -107,12 +120,18 @@ if (!puppeteerModule) {
 
         test("signed-in view keeps status hidden", async () => {
             if (skipIfNoBrowser()) return;
+            if (!backendContext) {
+                throw new Error("backend harness unavailable");
+            }
 
-            const page = await browser.newPage();
+            const page = await prepareFrontendPage(browser, PAGE_URL, {
+                backendBaseUrl: backendContext.baseUrl,
+                llmProxyClassifyUrl: ""
+            });
             try {
-                await installMockBackend(page);
-                await page.goto(PAGE_URL, { waitUntil: "load" });
-                await dispatchSignIn(page, "status-token", "status-user");
+                const credential = backendContext.tokenFactory("status-user");
+                await dispatchSignIn(page, credential, "status-user");
+                await waitForSyncManagerUser(page, "status-user", 5000);
 
                 await page.waitForSelector(".auth-status");
                 const statusMetrics = await page.$eval(".auth-status", (element) => ({

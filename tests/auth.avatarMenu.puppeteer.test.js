@@ -10,7 +10,12 @@ import {
     LABEL_SIGN_OUT
 } from "../js/constants.js";
 import { ensurePuppeteerSandbox, cleanupPuppeteerSandbox } from "./helpers/puppeteerEnvironment.js";
-import { dispatchSignIn, installMockBackend } from "./helpers/syncTestUtils.js";
+import {
+    prepareFrontendPage,
+    dispatchSignIn,
+    waitForSyncManagerUser
+} from "./helpers/syncTestUtils.js";
+import { startTestBackend } from "./helpers/backendHarness.js";
 
 const SANDBOX = await ensurePuppeteerSandbox();
 const {
@@ -49,6 +54,8 @@ if (!puppeteerModule) {
         let browser = null;
         /** @type {Error|null} */
         let launchError = null;
+        /** @type {{ baseUrl: string, tokenFactory: (userId: string) => string, close: () => Promise<void> }|null} */
+        let backendContext = null;
 
         const skipIfNoBrowser = () => {
             if (!browser) {
@@ -59,6 +66,7 @@ if (!puppeteerModule) {
         };
 
         test.before(async () => {
+            backendContext = await startTestBackend();
             const launchArgs = [
                 "--allow-file-access-from-files",
                 "--disable-crashpad",
@@ -89,6 +97,7 @@ if (!puppeteerModule) {
         });
 
         test.after(async () => {
+            await backendContext?.close();
             if (browser) {
                 await browser.close();
             }
@@ -97,14 +106,18 @@ if (!puppeteerModule) {
 
         test("hides Google button after sign-in and reveals stacked avatar menu", async () => {
             if (skipIfNoBrowser()) return;
+            if (!backendContext) {
+                throw new Error("backend harness unavailable");
+            }
 
             assert.equal(LABEL_EXPORT_NOTES, "Export Notes");
             assert.equal(LABEL_IMPORT_NOTES, "Import Notes");
 
-            const page = await browser.newPage();
+            const page = await prepareFrontendPage(browser, PAGE_URL, {
+                backendBaseUrl: backendContext.baseUrl,
+                llmProxyClassifyUrl: ""
+            });
             try {
-                await installMockBackend(page);
-                await page.goto(PAGE_URL, { waitUntil: "load" });
                 await page.waitForSelector(".auth-button-host");
 
                 await page.waitForSelector("#guest-export-button:not([hidden])");
@@ -144,7 +157,9 @@ if (!puppeteerModule) {
                 const hostBeforeSignIn = await page.$(".auth-button-host");
                 assert.ok(hostBeforeSignIn, "auth button host should render while signed out");
 
-                await dispatchSignIn(page, "avatar-menu-token", "avatar-menu-user");
+                const credential = backendContext.tokenFactory("avatar-menu-user");
+                await dispatchSignIn(page, credential, "avatar-menu-user");
+                await waitForSyncManagerUser(page, "avatar-menu-user", 5000);
 
                 await page.waitForFunction(() => !document.querySelector(".auth-button-host"));
 

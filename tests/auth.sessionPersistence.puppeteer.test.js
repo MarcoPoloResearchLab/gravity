@@ -13,6 +13,7 @@ import {
     dispatchSignIn,
     waitForSyncManagerUser
 } from "./helpers/syncTestUtils.js";
+import { startTestBackend } from "./helpers/backendHarness.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
@@ -41,13 +42,17 @@ if (!puppeteerModule) {
     test.describe("Auth session persistence", () => {
         /** @type {import('puppeteer').Browser | null} */
         let browser = null;
+        /** @type {{ baseUrl: string, tokenFactory: (userId: string) => string, close: () => Promise<void> }|null} */
+        let backendContext = null;
 
         test.before(async () => {
+            backendContext = await startTestBackend();
             const launchOptions = createSandboxedLaunchOptions(SANDBOX);
             browser = await puppeteerModule.launch(launchOptions);
         });
 
         test.after(async () => {
+            await backendContext?.close();
             if (browser) {
                 await browser.close();
             }
@@ -56,18 +61,17 @@ if (!puppeteerModule) {
 
         test("session survives refresh", async () => {
             assert.ok(browser, "browser must be initialised");
+            assert.ok(backendContext, "backend must be initialised");
 
             const userId = "session-persist-user";
-            const credential = "session-test-credential";
-
             const page = await prepareFrontendPage(browser, PAGE_URL, {
-                backendBaseUrl: "http://localhost:8080",
-                llmProxyClassifyUrl: "",
-                mockBackend: true
+                backendBaseUrl: backendContext.baseUrl,
+                llmProxyClassifyUrl: ""
             });
             try {
+                const credential = backendContext.tokenFactory(userId);
                 await dispatchSignIn(page, credential, userId);
-                await waitForSyncManagerUser(page, userId);
+                await waitForSyncManagerUser(page, userId, 5000);
 
                 const activeKeyBefore = await page.evaluate(async () => {
                     const module = await import("./js/core/store.js");
@@ -76,7 +80,7 @@ if (!puppeteerModule) {
                 assert.ok(typeof activeKeyBefore === "string" && activeKeyBefore.includes(encodeURIComponent(userId)));
 
                 await page.reload({ waitUntil: "domcontentloaded" });
-                await waitForSyncManagerUser(page, userId);
+                await waitForSyncManagerUser(page, userId, 5000);
 
                 const activeKeyAfter = await page.evaluate(async () => {
                     const module = await import("./js/core/store.js");

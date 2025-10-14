@@ -6,7 +6,7 @@ import test from "node:test";
 import {
     EVENT_NOTE_CREATE
 } from "../js/constants.js";
-import { createBackendHarness } from "./helpers/backendHarness.js";
+import { startTestBackend, waitForBackendNote } from "./helpers/backendHarness.js";
 import { ensurePuppeteerSandbox, cleanupPuppeteerSandbox } from "./helpers/puppeteerEnvironment.js";
 import {
     prepareFrontendPage,
@@ -51,14 +51,14 @@ if (!puppeteerModule) {
     test.describe("Full stack integration", () => {
         /** @type {import('puppeteer').Browser | null} */
         let browser = null;
-        /** @type {{ baseUrl: string, createCredential: (userId: string) => string, close: () => Promise<void> } | null} */
-        let backendHarness = null;
+        /** @type {{ baseUrl: string, tokenFactory: (userId: string) => string, close: () => Promise<void> } | null} */
+        let backendContext = null;
         /** @type {Error | null} */
         let initializationError = null;
 
         test.before(async () => {
             try {
-                backendHarness = await createBackendHarness();
+                backendContext = await startTestBackend();
             } catch (error) {
                 initializationError = error instanceof Error ? error : new Error(String(error));
                 return;
@@ -91,11 +91,9 @@ if (!puppeteerModule) {
         });
 
         test.after(async () => {
+            await backendContext?.close();
             if (browser) {
                 await browser.close();
-            }
-            if (backendHarness) {
-                await backendHarness.close();
             }
             await cleanupPuppeteerSandbox(SANDBOX);
         });
@@ -109,13 +107,13 @@ if (!puppeteerModule) {
                 throw initializationError;
             }
             assert.ok(browser, "browser must be initialised");
-            assert.ok(backendHarness, "backend harness must be initialised");
+            assert.ok(backendContext, "backend harness must be initialised");
 
             const userId = "fullstack-sync-user";
-            const credential = backendHarness.createCredential(userId);
+            const credential = backendContext.tokenFactory(userId);
 
             const page = await prepareFrontendPage(browser, PAGE_URL, {
-                backendBaseUrl: backendHarness.baseUrl,
+                backendBaseUrl: backendContext.baseUrl,
                 llmProxyClassifyUrl: ""
             });
             try {
@@ -132,17 +130,15 @@ if (!puppeteerModule) {
 
                 await waitForPendingOperations(page);
                 const debugState = await extractSyncDebugState(page);
-                assert.ok(debugState?.backendToken?.accessToken, "expected backend token after sync");
+                const backendToken = debugState?.backendToken?.accessToken;
+                assert.ok(backendToken, "expected backend token after sync");
 
-                const verifyResponse = await fetch(`${backendHarness.baseUrl}/notes`, {
-                    headers: {
-                        Authorization: `Bearer ${debugState.backendToken.accessToken}`
-                    }
+                await waitForBackendNote({
+                    backendUrl: backendContext.baseUrl,
+                    token: backendToken,
+                    noteId,
+                    timeoutMs: 5000
                 });
-                assert.equal(verifyResponse.status, 200, "backend snapshot request should succeed");
-                const payload = await verifyResponse.json();
-                const noteIds = Array.isArray(payload?.notes) ? payload.notes.map((entry) => entry?.payload?.noteId) : [];
-                assert.ok(noteIds.includes(noteId), "backend snapshot should include newly persisted note");
             } finally {
                 await page.close();
             }

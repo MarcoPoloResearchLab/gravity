@@ -5,9 +5,9 @@ const APP_READY_SELECTOR = `[${ATTRIBUTE_APP_READY}="true"]`;
 
 /**
  * Prepare a new browser page configured for backend synchronization tests.
- * @param {import('puppeteer').Browser} browser
+ * @param {import('puppeteer').Browser | import('puppeteer').BrowserContext} browser
  * @param {string} pageUrl
- * @param {{ backendBaseUrl: string, llmProxyClassifyUrl?: string, mockBackend?: boolean }} options
+ * @param {{ backendBaseUrl: string, llmProxyClassifyUrl?: string }} options
  * @returns {Promise<import('puppeteer').Page>}
  */
 export async function prepareFrontendPage(browser, pageUrl, options) {
@@ -28,10 +28,6 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
         backendBaseUrl: options.backendBaseUrl,
         llmProxyClassifyUrl: options.llmProxyClassifyUrl ?? ""
     });
-
-    if (options.mockBackend === true) {
-        await installMockBackend(page);
-    }
 
     await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
     await page.waitForSelector(APP_READY_SELECTOR);
@@ -153,47 +149,6 @@ export async function waitForPendingOperations(page) {
         }
         const debugState = syncManager.getDebugState();
         return Array.isArray(debugState?.pendingOperations) && debugState.pendingOperations.length === 0;
-    });
-}
-
-export async function installMockBackend(page) {
-    await page.evaluateOnNewDocument(() => {
-        const originalFetch = window.fetch.bind(window);
-        const mockHandlers = {
-            "/auth/google": () => ({
-                status: 200,
-                body: JSON.stringify({ access_token: "mock-backend-token", expires_in: 1800 }),
-                headers: { "Content-Type": "application/json" }
-            }),
-            "/notes/sync": () => ({
-                status: 200,
-                body: JSON.stringify({ results: [] }),
-                headers: { "Content-Type": "application/json" }
-            }),
-            "/notes": () => ({
-                status: 200,
-                body: JSON.stringify({ notes: [] }),
-                headers: { "Content-Type": "application/json" }
-            })
-        };
-
-        window.fetch = async (input, init = {}) => {
-            const target = typeof input === "string" ? input : (typeof input?.url === "string" ? input.url : "");
-            try {
-                const parsed = new URL(target, window.location.origin);
-                const handler = mockHandlers[parsed.pathname];
-                if (handler) {
-                    const response = handler();
-                    return new Response(response.body, {
-                        status: response.status,
-                        headers: response.headers
-                    });
-                }
-            } catch (_error) {
-                return originalFetch(input, init);
-            }
-            return originalFetch(input, init);
-        };
     });
 }
 

@@ -366,6 +366,7 @@ The value of the attribute “expires” for the cookie “_ga_WYL7PDVTHN” has
 [GSI_LOGGER]: The given origin is not allowed for the given client ID. client:74:89
 ```
     - Follow-up 2025-10-14: GravityStore scope is applied before invoking `syncManager.handleSignIn`, ensuring snapshot persistence and cross-client hydration. `tests/persistence.sync.puppeteer.test.js` now completes in ~3.5s and a full `npm test` run finishes in ~43s (22 suites, 0 failures, 0 timeouts).
+    - Real backend harness (`tests/helpers/backendHarness.js`) now powers auth and sync integration suites; all former fetch mocks removed so Go API runs for every puppeteer flow.
 - [x] [GN-32] tests are failing: `  ✖ lists and tables auto-continue in fallback editor (3382.860931ms)`
 - [x] [GN-33] tests are hanging indefinetely. Do not run all the tests -- run each test and use a background teask to kill the testing process after 30 seconds. No individual test shall run longer than 30 seconds. Find the slow tests and refactor them into faster tests. Currently the test suit just hangs: nothing happens after that:
 ```
