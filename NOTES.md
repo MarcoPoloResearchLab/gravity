@@ -486,7 +486,7 @@ test at tests/persistence.backend.puppeteer.test.js:1:1
 ✖ tests/persistence.backend.puppeteer.test.js (10493979.087332ms)
   'Promise resolution is still pending but the event loop has already resolved'
 
-- [ ] [GN-35] the tests lost the color formatting. Some tests are failing. There is no comprehensive summary at the end, and the one present is misleading as it doesnt mention the failing tests
+- [x] [GN-35] the tests lost the color formatting. Some tests are failing. There is no comprehensive summary at the end, and the one present is misleading as it doesnt mention the failing tests
   ```
   test:11 tyemirov@Vadyms-MacBook-Pro:~/Development/MarcoPoloResearchLab/gravitm - [maintenance/GN-33-test-runtime] $ 
 
@@ -890,7 +890,7 @@ test at tests/persistence.backend.puppeteer.test.js:1:1
 
 ### Maintenance
 
-- [ ] [GN-35] add a small “Privacy • Terms” link. and I mean small. it must serve a page under /privacy
+- [x] [GN-35] add a small “Privacy • Terms” link. and I mean small. it must serve a page under /privacy
     ```html
     <!doctype html>
     <html lang="en">
