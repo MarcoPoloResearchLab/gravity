@@ -366,7 +366,7 @@ The value of the attribute “expires” for the cookie “_ga_WYL7PDVTHN” has
 [GSI_LOGGER]: The given origin is not allowed for the given client ID. client:74:89
 ```
 - [x] [GN-32] tests are failing: `  ✖ lists and tables auto-continue in fallback editor (3382.860931ms)`
-- [ ] [GN-33] tests are hanging indefinetely. Do not run all the tests -- run each test and use a background teask to kill the testing process after 30 seconds. No individual test shall run longer than 30 seconds. Find the slow tests and refactor them into faster tests. Currently the test suit just hangs: nothing happens after that:
+- [x] [GN-33] tests are hanging indefinetely. Do not run all the tests -- run each test and use a background teask to kill the testing process after 30 seconds. No individual test shall run longer than 30 seconds. Find the slow tests and refactor them into faster tests. Currently the test suit just hangs: nothing happens after that:
 ```
 18:50:30 tyemirov@Vadyms-MacBook-Pro:~/Development/MarcoPoloResearchLab/gravity - [bugfix/GN-31-session-persistence] $ npm test
 
