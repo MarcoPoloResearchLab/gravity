@@ -5,7 +5,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { rm, mkdtemp } from "node:fs/promises";
+import { rm, mkdtemp, stat, mkdir, readFile, writeFile } from "node:fs/promises";
 import { once } from "node:events";
 import { setTimeout as delay } from "node:timers/promises";
 
@@ -17,6 +17,7 @@ const BACKEND_MAIN_RELATIVE = "./cmd/gravity-api";
 const READINESS_TIMEOUT_MS = 15000;
 const READINESS_POLL_INTERVAL_MS = 250;
 const BACKEND_SHUTDOWN_TIMEOUT_MS = 5000;
+const BINARY_CACHE_DIR = path.join(os.tmpdir(), "gravity-backend-binaries");
 
 /**
  * @typedef {Object} BackendHarness
@@ -38,11 +39,7 @@ export async function createBackendHarness() {
     const googleClientId = `gravity-test-${crypto.randomUUID()}`;
 
     const jwksService = await startJwksService();
-    const binaryPath = path.join(
-        workspaceDir,
-        process.platform === "win32" ? "gravity-api.exe" : "gravity-api"
-    );
-    await buildBackendBinary(goExecutable, binaryPath);
+    const binaryPath = await ensureBackendBinary(goExecutable);
 
     const backendProcess = spawn(binaryPath, [], {
         cwd: BACKEND_ROOT,
@@ -168,10 +165,44 @@ function allocatePort() {
  * @param {string} targetBinary
  * @returns {Promise<void>}
  */
-async function buildBackendBinary(goExecutable, targetBinary) {
-    await runCommand(goExecutable, ["build", "-o", targetBinary, BACKEND_MAIN_RELATIVE], {
-        cwd: BACKEND_ROOT
-    });
+async function ensureBackendBinary(goExecutable) {
+    const binaryName = process.platform === "win32" ? "gravity-api.exe" : "gravity-api";
+    const cacheTarget = path.join(BINARY_CACHE_DIR, binaryName);
+    await mkdir(BINARY_CACHE_DIR, { recursive: true });
+
+    const sourceFingerprint = await computeSourceFingerprint();
+    const cacheFingerprintPath = path.join(BINARY_CACHE_DIR, `${binaryName}.fingerprint`);
+    let cacheValid = false;
+    try {
+        const [binaryStats, fingerprint] = await Promise.all([
+            stat(cacheTarget),
+            readFile(cacheFingerprintPath)
+        ]);
+        cacheValid = binaryStats.size > 0 && fingerprint.toString() === sourceFingerprint;
+    } catch {
+        cacheValid = false;
+    }
+
+    if (!cacheValid) {
+        await runCommand(goExecutable, ["build", "-o", cacheTarget, BACKEND_MAIN_RELATIVE], {
+            cwd: BACKEND_ROOT
+        });
+        await writeFile(cacheFingerprintPath, sourceFingerprint);
+    }
+
+    return cacheTarget;
+}
+
+async function computeSourceFingerprint() {
+    const files = ["go.mod", "go.sum", path.join("cmd", "gravity-api", "main.go")];
+    const chunks = [];
+    for (const file of files) {
+        try {
+            const data = await readFile(path.join(BACKEND_ROOT, file));
+            chunks.push(data);
+        } catch {}
+    }
+    return crypto.createHash("sha256").update(Buffer.concat(chunks)).digest("hex");
 }
 
 /**
