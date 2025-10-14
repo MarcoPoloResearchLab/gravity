@@ -915,4 +915,26 @@ test at tests/persistence.backend.puppeteer.test.js:1:1
     </body>
     </html>
     ```
-- [ ] [GN-36] add privacy to the sitemap
+- [x] [GN-36] add privacy to the sitemap
+- [ ] [GN-37] Remove all and any fallbacks in the code, Rely om MDE for the inline editor functionality. ✖ editor.inline.puppeteer.test.js exit=1 (14501ms)
+  ```
+  test at tests/editor.inline.puppeteer.test.js:2194:9
+  ✖ fallback editor handles first-line enter and checklist continuation (314.070187ms)
+    AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+    + actual - expected
+    
+    + '* Alpha\n* \n* Beta'
+    - '\n* Alpha\n* Beta'
+    
+        at TestContext.<anonymous> (file:///Users/tyemirov/Development/MarcoPoloResearchLab/gravity/tests/editor.inline.puppeteer.test.js:2218:24)
+        at async Test.run (node:internal/test_runner/test:1113:7)
+        at async Suite.processPendingSubtests (node:internal/test_runner/test:788:7) {
+      generatedMessage: true,
+      code: 'ERR_ASSERTION',
+      actual: '* Alpha\n* \n* Beta',
+      expected: '\n* Alpha\n* Beta',
+      operator: 'strictEqual',
+      diff: 'simple'
+    }
+    ✖ Failed (exitCode=1)
+  ```
