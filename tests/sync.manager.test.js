@@ -100,10 +100,14 @@ test.describe("SyncManager", () => {
 
         assert.equal(operationsHandled.length, 0, "operations should queue offline before sign-in");
 
-        await syncManager.handleSignIn({
+        const signInResult = await syncManager.handleSignIn({
             userId: "user-sync",
             credential: "stub-google-credential"
         });
+
+        assert.equal(signInResult.authenticated, true, "sign-in should report success");
+        assert.equal(signInResult.queueFlushed, true, "queued operations should flush");
+        assert.equal(signInResult.snapshotApplied, true, "snapshot should apply after flush");
 
         assert.equal(operationsHandled.length >= 3, true, "exchange, sync, and snapshot should occur");
         assert.equal(operationsHandled[0].type, "exchange");
@@ -122,5 +126,26 @@ test.describe("SyncManager", () => {
         assert.equal(debugState.pendingOperations.length, 0);
         assert.equal(debugState.activeUserId, "user-sync");
         assert.equal(debugState.backendToken?.accessToken, "backend-token");
+    });
+
+    test("handleSignIn reports authentication failure when credential exchange fails", async () => {
+        const syncManager = createSyncManager({
+            backendClient: {
+                async exchangeGoogleCredential() {
+                    throw new Error("credential expired");
+                }
+            }
+        });
+
+        const result = await syncManager.handleSignIn({ userId: "user-expired", credential: "expired" });
+
+        assert.equal(result.authenticated, false);
+        assert.equal(result.queueFlushed, false);
+        assert.equal(result.snapshotApplied, false);
+
+        const debugState = syncManager.getDebugState();
+        assert.equal(debugState.activeUserId, null);
+        assert.equal(debugState.backendToken, null);
+        assert.equal(Array.isArray(debugState.pendingOperations) && debugState.pendingOperations.length, 0);
     });
 });

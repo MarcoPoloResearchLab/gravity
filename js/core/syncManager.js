@@ -14,6 +14,10 @@ import { EVENT_SYNC_SNAPSHOT_APPLIED } from "../constants.js";
  */
 
 /**
+ * @typedef {{ authenticated: boolean, queueFlushed: boolean, snapshotApplied: boolean }} SignInResult
+ */
+
+/**
  * Create a synchronization manager responsible for coordinating backend persistence.
  * @param {{
  *   backendClient?: ReturnType<typeof createBackendClient>,
@@ -120,35 +124,42 @@ export function createSyncManager(options = {}) {
         /**
          * Handle sign-in by exchanging credentials, flushing queue, and reconciling a snapshot.
          * @param {{ userId: string, credential: string }} params
-         * @returns {Promise<void>}
+         * @returns {Promise<SignInResult>}
          */
         async handleSignIn(params) {
             if (!params || !params.userId) {
-                return;
+                return { authenticated: false, queueFlushed: false, snapshotApplied: false };
             }
-            state.userId = params.userId;
-            state.metadata = metadataStore.load(params.userId);
-            state.queue = queueStore.load(params.userId);
 
+            const loadedMetadata = metadataStore.load(params.userId);
+            const loadedQueue = queueStore.load(params.userId);
+
+            let exchanged;
             try {
-                const token = await backendClient.exchangeGoogleCredential({ credential: params.credential });
-                state.backendToken = {
-                    accessToken: token.accessToken,
-                    expiresAtMs: clock().getTime() + token.expiresIn * 1000
-                };
+                exchanged = await backendClient.exchangeGoogleCredential({ credential: params.credential });
             } catch (error) {
                 logging.error(error);
-                persistState();
-                return;
+                return { authenticated: false, queueFlushed: false, snapshotApplied: false };
             }
+
+            state.userId = params.userId;
+            state.metadata = loadedMetadata;
+            state.queue = loadedQueue;
+            state.backendToken = {
+                accessToken: exchanged.accessToken,
+                expiresAtMs: clock().getTime() + exchanged.expiresIn * 1000
+            };
 
             seedInitialOperations();
             persistState();
 
             const queueFlushed = await flushQueue();
+            let snapshotApplied = false;
             if (queueFlushed) {
-                await refreshSnapshot();
+                snapshotApplied = await refreshSnapshot();
             }
+
+            return { authenticated: true, queueFlushed, snapshotApplied };
         },
 
         /**
@@ -273,7 +284,7 @@ export function createSyncManager(options = {}) {
 
     async function refreshSnapshot() {
         if (!state.userId || !state.backendToken) {
-            return;
+            return false;
         }
         try {
             const snapshot = await backendClient.fetchSnapshot({
@@ -281,8 +292,10 @@ export function createSyncManager(options = {}) {
             });
             applySnapshot(snapshot?.notes ?? []);
             persistState();
+            return true;
         } catch (error) {
             logging.error(error);
+            return false;
         }
     }
 
