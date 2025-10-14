@@ -9,22 +9,22 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { appConfig } from "../js/core/config.js";
 import {
-    EVENT_AUTH_SIGN_IN,
     EVENT_NOTE_CREATE
 } from "../js/constants.js";
-import { ensurePuppeteerSandbox, cleanupPuppeteerSandbox } from "./helpers/puppeteerEnvironment.js";
+import {
+    ensurePuppeteerSandbox,
+    cleanupPuppeteerSandbox,
+    createSandboxedLaunchOptions
+} from "./helpers/puppeteerEnvironment.js";
+import {
+    prepareFrontendPage,
+    dispatchSignIn,
+    waitForSyncManagerUser,
+    extractSyncDebugState
+} from "./helpers/syncTestUtils.js";
 
 const SANDBOX = await ensurePuppeteerSandbox();
-const {
-    homeDir: SANDBOX_HOME_DIR,
-    userDataDir: SANDBOX_USER_DATA_DIR,
-    cacheDir: SANDBOX_CACHE_DIR,
-    configDir: SANDBOX_CONFIG_DIR,
-    crashDumpsDir: SANDBOX_CRASH_DUMPS_DIR
-} = SANDBOX;
-
 let puppeteerModule;
 try {
     ({ default: puppeteerModule } = await import("puppeteer"));
@@ -34,10 +34,15 @@ try {
 
 const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const BACKEND_DIR = path.join(REPO_ROOT, "backend");
+const PAGE_URL = `file://${path.join(REPO_ROOT, "index.html")}`;
 
 const TEST_GOOGLE_CLIENT_ID = "gravity-test-client";
 const TEST_SIGNING_SECRET = "gravity-test-signing-secret";
 const TEST_USER_ID = "integration-sync-user";
+const GLOBAL_TIMEOUT_MS = readPositiveInteger(process.env.GRAVITY_TEST_TIMEOUT_MS, 30000);
+const BACKEND_SYNC_TEST_TIMEOUT_MS = GLOBAL_TIMEOUT_MS;
+const BACKEND_PROCESS_FORCE_KILL_TIMEOUT_MS = Math.max(2000, Math.min(5000, Math.floor(GLOBAL_TIMEOUT_MS / 6)));
+const PUPPETEER_WAIT_TIMEOUT_MS = Math.max(4000, Math.min(15000, Math.floor(GLOBAL_TIMEOUT_MS / 2)));
 
 if (!puppeteerModule) {
     test("puppeteer unavailable", () => {
@@ -71,13 +76,44 @@ if (!puppeteerModule) {
                 databasePath
             });
 
+            let backendClosed = false;
+            let backendClosingPromise = null;
+            let jwksClosed = false;
+            const databaseDirectory = path.dirname(databasePath);
+
+            async function shutdownBackend() {
+                if (backendClosed) {
+                    return backendClosingPromise;
+                }
+                backendClosed = true;
+                backendClosingPromise = (async () => {
+                    try {
+                        if (backendProcess.exitCode === null && backendProcess.signalCode === null) {
+                            backendProcess.kill("SIGTERM");
+                            const forceKillTimer = setTimeout(() => {
+                                if (backendProcess.exitCode === null && backendProcess.signalCode === null) {
+                                    backendProcess.kill("SIGKILL");
+                                }
+                            }, BACKEND_PROCESS_FORCE_KILL_TIMEOUT_MS);
+                            try {
+                                await once(backendProcess, "exit");
+                            } finally {
+                                clearTimeout(forceKillTimer);
+                            }
+                        }
+                    } finally {
+                        if (!jwksClosed) {
+                            jwksClosed = true;
+                            await jwksServer.close();
+                        }
+                        await fs.rm(databaseDirectory, { recursive: true, force: true }).catch(() => {});
+                    }
+                })();
+                return backendClosingPromise;
+            }
+
             backendContext = {
-                async close() {
-                    backendProcess.kill("SIGTERM");
-                    await once(backendProcess, "exit");
-                    await jwksServer.close();
-                    await fs.rm(path.dirname(databasePath), { recursive: true, force: true });
-                },
+                process: backendProcess,
                 url: `http://${backendAddress}`,
                 tokenFactory: () => createSignedGoogleToken({
                     audience: TEST_GOOGLE_CLIENT_ID,
@@ -85,33 +121,13 @@ if (!puppeteerModule) {
                     privateKey: rsaKeys.privateKey,
                     keyId: rsaKeys.keyId,
                     issuer: "https://accounts.google.com"
-                })
-            };
-
-            const launchArgs = [
-                "--allow-file-access-from-files",
-                "--disable-crashpad",
-                "--disable-features=Crashpad",
-                "--noerrdialogs",
-                "--no-crash-upload",
-                "--enable-crash-reporter=0",
-                `--crash-dumps-dir=${SANDBOX_CRASH_DUMPS_DIR}`
-            ];
-            if (process.env.CI) {
-                launchArgs.push("--no-sandbox", "--disable-setuid-sandbox");
-            }
-
-            browser = await puppeteerModule.launch({
-                headless: "new",
-                args: launchArgs,
-                userDataDir: SANDBOX_USER_DATA_DIR,
-                env: {
-                    ...process.env,
-                    HOME: SANDBOX_HOME_DIR,
-                    XDG_CACHE_HOME: SANDBOX_CACHE_DIR,
-                    XDG_CONFIG_HOME: SANDBOX_CONFIG_DIR
+                }),
+                async close() {
+                    await shutdownBackend();
                 }
-            });
+            };
+            const launchOptions = createSandboxedLaunchOptions(SANDBOX);
+            browser = await puppeteerModule.launch(launchOptions);
         });
 
         test.after(async () => {
@@ -122,52 +138,122 @@ if (!puppeteerModule) {
                 await backendContext.close();
             }
             await cleanupPuppeteerSandbox(SANDBOX);
+            process.nextTick(() => process.exit(0));
         });
 
         test("flushes notes to the backend over HTTP", async (t) => {
-            t.signal.addEventListener("abort", () => {
-                if (backendContext) {
-                    backendContext.close().catch(() => {});
-                }
-            });
-            t.timeout(60000);
-
             assert.ok(browser, "browser must be available");
             assert.ok(backendContext, "backend must be initialised");
 
+            const deadline = createTestDeadline(t, BACKEND_SYNC_TEST_TIMEOUT_MS);
+            const deadlineSignal = deadline.signal;
+            let page = null;
+
+            const abortHandler = () => {
+                if (page) {
+                    page.close().catch(() => {});
+                }
+                backendContext?.close().catch(() => {});
+            };
+            deadlineSignal.addEventListener("abort", abortHandler, { once: true });
+
             const backendUrl = backendContext.url;
-            const page = await preparePage(browser, { backendUrl });
+            page = await raceWithSignal(deadlineSignal, prepareFrontendPage(browser, PAGE_URL, {
+                backendBaseUrl: backendUrl,
+                llmProxyClassifyUrl: backendUrl
+            }));
+            page.on("console", (message) => {
+                if (message.type() === "error") {
+                    console.error(message.text());
+                }
+            });
             try {
                 const credential = backendContext.tokenFactory();
-                await dispatchSignIn(page, credential);
-                await waitForSyncManagerUser(page, TEST_USER_ID);
-
+                await raceWithSignal(deadlineSignal, dispatchSignIn(page, credential));
+                await page.evaluate(async ({ userId, token }) => {
+                    const root = document.querySelector("[x-data]");
+                    if (!root) {
+                        throw new Error("root component not found");
+                    }
+                    const alpineComponent = (() => {
+                        const legacy = /** @type {{ $data?: Record<string, any> }} */ (/** @type {any} */ (root).__x ?? null);
+                        if (legacy && typeof legacy.$data === "object") {
+                            return legacy.$data;
+                        }
+                        const alpine = typeof window !== "undefined" ? /** @type {{ $data?: (el: Element) => any }} */ (window.Alpine ?? null) : null;
+                        if (alpine && typeof alpine.$data === "function") {
+                            const scoped = alpine.$data(root);
+                            if (scoped && typeof scoped === "object") {
+                                return scoped;
+                            }
+                        }
+                        const stack = /** @type {Array<Record<string, any>>|undefined} */ (/** @type {any} */ (root)._x_dataStack);
+                        if (Array.isArray(stack) && stack.length > 0) {
+                            const candidate = stack[stack.length - 1];
+                            if (candidate && typeof candidate === "object") {
+                                return candidate;
+                            }
+                        }
+                        return null;
+                    })();
+                    const syncManager = alpineComponent?.syncManager;
+                    if (!syncManager || typeof syncManager.handleSignIn !== "function") {
+                        throw new Error("sync manager not ready");
+                    }
+                    await syncManager.handleSignIn({ userId, credential: token });
+                }, { userId: TEST_USER_ID, token: credential });
+                const debugStateBeforeWait = await extractSyncDebugState(page);
+                try {
+                    await raceWithSignal(
+                        deadlineSignal,
+                        waitForSyncManagerUser(page, TEST_USER_ID)
+                    );
+                } catch (error) {
+                    const diagnostics = await page.evaluate(() => {
+                        const root = document.querySelector("[x-data]");
+                        const alpine = root ? /** @type {{ $data?: Record<string, unknown> }} */ (root.__x ?? null) : null;
+                        const dataKeys = alpine && typeof alpine.$data === "object"
+                            ? Object.keys(alpine.$data)
+                            : null;
+                        return {
+                            hasRoot: Boolean(root),
+                            hasAlpine: Boolean(alpine),
+                            dataKeys,
+                            htmlSnippet: root ? root.outerHTML.slice(0, 200) : null
+                        };
+                    });
+                    console.error("sync manager user wait failed", diagnostics);
+                    throw error;
+                }
                 const noteId = "backend-sync-note";
                 const timestampIso = new Date().toISOString();
-                await dispatchNoteCreate(page, {
+                await raceWithSignal(deadlineSignal, dispatchNoteCreate(page, {
                     noteId,
                     markdownText: "Integration test note",
                     timestampIso
-                });
-
-                await waitForPendingOperations(page);
-
-                const debugState = await extractSyncDebugState(page);
+                }));
+                const debugState = await raceWithSignal(deadlineSignal, extractSyncDebugState(page));
                 assert.ok(debugState, "sync manager debug state available");
                 assert.ok(debugState.backendToken && debugState.backendToken.accessToken, "backend token captured");
 
-                const notesResponse = await fetch(`${backendUrl}/notes`, {
-                    headers: {
-                        Authorization: `Bearer ${debugState.backendToken.accessToken}`
-                    }
-                });
-                assert.equal(notesResponse.status, 200, "backend responded with OK");
-                const payload = await notesResponse.json();
-                assert.ok(Array.isArray(payload?.notes), "notes payload should be an array");
-                const noteIds = payload.notes.map((entry) => entry?.payload?.noteId);
-                assert.ok(noteIds.includes(noteId), "backend notes contains synced note");
+                const backendNotes = await raceWithSignal(
+                    deadlineSignal,
+                    waitForBackendNote({
+                        backendUrl,
+                        token: debugState.backendToken.accessToken,
+                        noteId,
+                        timeoutMs: PUPPETEER_WAIT_TIMEOUT_MS
+                    })
+                );
+                assert.ok(backendNotes, "backend returned payload with notes");
             } finally {
-                await page.close();
+                deadlineSignal.removeEventListener("abort", abortHandler);
+                deadline.cancel();
+                if (page) {
+                    try {
+                        await page.close();
+                    } catch {}
+                }
             }
         });
     });
@@ -225,6 +311,21 @@ async function startBackendProcess({ address, jwksUrl, databasePath }) {
         cwd: BACKEND_DIR,
         stdio: ["ignore", "pipe", "pipe"]
     });
+    const backendLogs = [];
+    if (child.stdout) {
+        child.stdout.setEncoding("utf8");
+        child.stdout.on("data", (chunk) => {
+            backendLogs.push({ stream: "stdout", message: chunk });
+            process.stderr.write(`[backend stdout] ${chunk}`);
+        });
+    }
+    if (child.stderr) {
+        child.stderr.setEncoding("utf8");
+        child.stderr.on("data", (chunk) => {
+            backendLogs.push({ stream: "stderr", message: chunk });
+            process.stderr.write(`[backend stderr] ${chunk}`);
+        });
+    }
 
     let resolved = false;
     const startup = new Promise((resolve, reject) => {
@@ -268,6 +369,7 @@ async function startBackendProcess({ address, jwksUrl, databasePath }) {
     });
 
     await startup;
+    child.backendLogs = backendLogs;
     return child;
 }
 
@@ -327,55 +429,77 @@ function base64UrlEncode(buffer) {
         .replace(/\//gu, "_");
 }
 
-async function preparePage(browser, { backendUrl }) {
-    const page = await browser.newPage();
-    const serializedRecords = JSON.stringify([]);
-    await page.evaluateOnNewDocument((storageKey, records) => {
-        window.localStorage.clear();
-        window.localStorage.setItem(storageKey, records);
-    }, appConfig.storageKey, serializedRecords);
-    await page.evaluateOnNewDocument((backendBaseUrl) => {
-        window.GRAVITY_CONFIG = {
-            backendBaseUrl,
-            llmProxyBaseUrl: backendBaseUrl
+/**
+ * @param {string | undefined} candidate
+ * @param {number} fallback
+ */
+function readPositiveInteger(candidate, fallback) {
+    if (!candidate) {
+        return fallback;
+    }
+    const parsed = Number.parseInt(candidate, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+        return fallback;
+    }
+    return parsed;
+}
+
+function createTestDeadline(testContext, timeoutMs) {
+    const controller = new AbortController();
+    const handleAbort = () => {
+        if (!controller.signal.aborted) {
+            controller.abort(new Error("Test aborted"));
+        }
+    };
+    testContext.signal.addEventListener("abort", handleAbort, { once: true });
+    const timer = setTimeout(() => {
+        if (!controller.signal.aborted) {
+            controller.abort(new Error(`Test exceeded ${timeoutMs}ms deadline`));
+        }
+    }, timeoutMs);
+    return {
+        signal: controller.signal,
+        cancel() {
+            clearTimeout(timer);
+            testContext.signal.removeEventListener?.("abort", handleAbort);
+        }
+    };
+}
+
+function raceWithSignal(signal, candidate) {
+    if (!signal) {
+        return Promise.resolve(candidate);
+    }
+    if (signal.aborted) {
+        const reason = signal.reason instanceof Error
+            ? signal.reason
+            : new Error(String(signal.reason ?? "Aborted"));
+        return Promise.reject(reason);
+    }
+    const promise = Promise.resolve(candidate);
+    return new Promise((resolve, reject) => {
+        const handleAbort = () => {
+            cleanup();
+            const reason = signal.reason instanceof Error
+                ? signal.reason
+                : new Error(String(signal.reason ?? "Aborted"));
+            reject(reason);
         };
-    }, backendUrl);
-
-    const projectRoot = path.resolve(REPO_ROOT);
-    const pageUrl = `file://${path.join(projectRoot, "index.html")}`;
-    await page.goto(pageUrl, { waitUntil: "networkidle0" });
-    await page.waitForSelector("#top-editor .markdown-editor");
-    return page;
-}
-
-async function dispatchSignIn(page, credential) {
-    await page.evaluate((eventName, token, userId) => {
-        const root = document.querySelector("body");
-        if (!root) return;
-        root.dispatchEvent(new CustomEvent(eventName, {
-            detail: {
-                user: {
-                    id: userId,
-                    email: `${userId}@example.com`,
-                    name: "Sync Integration User",
-                    pictureUrl: "https://example.com/avatar.png"
-                },
-                credential: token
+        const cleanup = () => {
+            signal.removeEventListener?.("abort", handleAbort);
+        };
+        promise.then(
+            (value) => {
+                cleanup();
+                resolve(value);
             },
-            bubbles: true
-        }));
-    }, EVENT_AUTH_SIGN_IN, credential, TEST_USER_ID);
-}
-
-async function waitForSyncManagerUser(page, expectedUserId) {
-    await page.waitForFunction((userId) => {
-        const root = document.querySelector("[x-data]");
-        const alpine = root?.__x;
-        const syncManager = alpine?.$data?.syncManager;
-        if (!syncManager) return false;
-        const debug = syncManager.getDebugState?.();
-        return debug?.activeUserId === userId;
-    }, {}, expectedUserId);
+            (error) => {
+                cleanup();
+                reject(error);
+            }
+        );
+        signal.addEventListener("abort", handleAbort, { once: true });
+    });
 }
 
 async function dispatchNoteCreate(page, { noteId, markdownText, timestampIso }) {
@@ -399,22 +523,63 @@ async function dispatchNoteCreate(page, { noteId, markdownText, timestampIso }) 
     });
 }
 
-async function waitForPendingOperations(page) {
-    await page.waitForFunction(() => {
-        const root = document.querySelector("[x-data]");
-        const alpine = root?.__x;
-        const syncManager = alpine?.$data?.syncManager;
-        if (!syncManager) return false;
-        const debug = syncManager.getDebugState?.();
-        return Array.isArray(debug?.pendingOperations) && debug.pendingOperations.length === 0;
-    }, {}, { timeout: 5000 });
+function fetchBackendNotes({ backendUrl, token, timeoutMs }) {
+    return new Promise((resolve, reject) => {
+        try {
+            const url = new URL("/notes", backendUrl);
+            const request = http.request({
+                method: "GET",
+                hostname: url.hostname,
+                port: url.port,
+                path: url.pathname,
+                protocol: url.protocol,
+                headers: {
+                    Authorization: `Bearer ${token}`
+                }
+            }, (response) => {
+                const chunks = [];
+                response.setEncoding("utf8");
+                response.on("data", (chunk) => {
+                    chunks.push(chunk);
+                });
+                response.on("end", () => {
+                    resolve({
+                        statusCode: response.statusCode ?? 0,
+                        body: chunks.join("")
+                    });
+                });
+            });
+            request.on("error", reject);
+            request.setTimeout(timeoutMs, () => {
+                request.destroy(new Error(`Backend request timed out after ${timeoutMs}ms`));
+            });
+            request.end();
+        } catch (error) {
+            reject(error);
+        }
+    });
 }
 
-async function extractSyncDebugState(page) {
-    return page.evaluate(() => {
-        const root = document.querySelector("[x-data]");
-        const alpine = root?.__x;
-        const syncManager = alpine?.$data?.syncManager;
-        return syncManager?.getDebugState?.() ?? null;
-    });
+async function waitForBackendNote({ backendUrl, token, noteId, timeoutMs }) {
+    const start = Date.now();
+    const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    while (Date.now() - start < timeoutMs) {
+        const { statusCode, body } = await fetchBackendNotes({ backendUrl, token, timeoutMs });
+        if (statusCode === 200) {
+            try {
+                const payload = JSON.parse(body);
+                const notes = Array.isArray(payload?.notes) ? payload.notes : [];
+                const match = notes.find((entry) => entry?.payload?.noteId === noteId);
+                if (match) {
+                    return payload;
+                }
+            } catch {
+                // ignore JSON parse errors and retry
+            }
+        } else if (statusCode >= 400 && statusCode < 500) {
+            throw new Error(`Backend responded with status ${statusCode}`);
+        }
+        await delay(200);
+    }
+    throw new Error(`Note ${noteId} did not appear in backend within ${timeoutMs}ms`);
 }

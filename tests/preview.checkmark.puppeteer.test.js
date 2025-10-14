@@ -4,17 +4,13 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import { appConfig } from "../js/core/config.js";
-import { ensurePuppeteerSandbox, cleanupPuppeteerSandbox } from "./helpers/puppeteerEnvironment.js";
+import {
+    ensurePuppeteerSandbox,
+    cleanupPuppeteerSandbox,
+    createSandboxedLaunchOptions
+} from "./helpers/puppeteerEnvironment.js";
 
 const SANDBOX = await ensurePuppeteerSandbox();
-const {
-    homeDir: SANDBOX_HOME_DIR,
-    userDataDir: SANDBOX_USER_DATA_DIR,
-    cacheDir: SANDBOX_CACHE_DIR,
-    configDir: SANDBOX_CONFIG_DIR,
-    crashDumpsDir: SANDBOX_CRASH_DUMPS_DIR
-} = SANDBOX;
-
 let puppeteerModule;
 try {
     ({ default: puppeteerModule } = await import("puppeteer"));
@@ -68,30 +64,9 @@ if (!puppeteerModule) {
         };
 
         test.before(async () => {
-            const launchArgs = [
-                "--allow-file-access-from-files",
-                "--disable-crashpad",
-                "--disable-features=Crashpad",
-                "--noerrdialogs",
-                "--no-crash-upload",
-                "--enable-crash-reporter=0",
-                `--crash-dumps-dir=${SANDBOX_CRASH_DUMPS_DIR}`
-            ];
-            if (process.env.CI) {
-                launchArgs.push("--no-sandbox", "--disable-setuid-sandbox");
-            }
             try {
-                browser = await puppeteerModule.launch({
-                    headless: "new",
-                    args: launchArgs,
-                    userDataDir: SANDBOX_USER_DATA_DIR,
-                    env: {
-                        ...process.env,
-                        HOME: SANDBOX_HOME_DIR,
-                        XDG_CACHE_HOME: SANDBOX_CACHE_DIR,
-                        XDG_CONFIG_HOME: SANDBOX_CONFIG_DIR
-                    }
-                });
+                const launchOptions = createSandboxedLaunchOptions(SANDBOX);
+                browser = await puppeteerModule.launch(launchOptions);
             } catch (error) {
                 launchError = error instanceof Error ? error : new Error(String(error));
             }
@@ -127,7 +102,7 @@ if (!puppeteerModule) {
                 assert.equal(summary.totalRecords, 1, "exactly one record persists after toggling");
                 assert.equal(summary.noteOccurrences[CHECKLIST_NOTE_ID], 1, "note identifier remains unique");
 
-                await page.reload({ waitUntil: "networkidle0" });
+                await page.reload({ waitUntil: "domcontentloaded" });
                 await page.waitForSelector(cardSelector);
                 const renderedCount = await page.$$eval(cardSelector, (nodes) => nodes.length);
                 assert.equal(renderedCount, 1, "only one card renders after reload");
@@ -215,7 +190,7 @@ async function preparePage(browser, { records }) {
         }
     }, appConfig.storageKey, serialized);
 
-    await page.goto(PAGE_URL, { waitUntil: "networkidle0" });
+    await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
     await page.waitForSelector("#top-editor .markdown-editor");
     if (Array.isArray(records) && records.length > 0) {
         await page.waitForSelector(".markdown-block[data-note-id]");

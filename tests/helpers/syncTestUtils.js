@@ -27,7 +27,7 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
         llmProxyClassifyUrl: options.llmProxyClassifyUrl ?? ""
     });
 
-    await page.goto(pageUrl, { waitUntil: "networkidle0" });
+    await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
     await page.waitForSelector("#top-editor .markdown-editor", { timeout: 5000 });
     return page;
 }
@@ -66,7 +66,7 @@ export async function dispatchSignIn(page, credential, userId) {
  * @param {string} expectedUserId
  * @returns {Promise<void>}
  */
-export async function waitForSyncManagerUser(page, expectedUserId) {
+export async function waitForSyncManagerUser(page, expectedUserId, timeoutMs) {
     await page.waitForFunction((userId) => {
         const root = document.querySelector("[x-data]");
         if (!root) {
@@ -99,7 +99,7 @@ export async function waitForSyncManagerUser(page, expectedUserId) {
         }
         const debugState = syncManager.getDebugState();
         return debugState?.activeUserId === userId;
-    }, {}, expectedUserId);
+    }, typeof timeoutMs === "number" && Number.isFinite(timeoutMs) ? { timeout: timeoutMs } : {}, expectedUserId);
 }
 
 /**
@@ -181,4 +181,36 @@ export async function extractSyncDebugState(page) {
         }
         return syncManager.getDebugState();
     });
+}
+
+export async function waitForSyncManagerBootstrap(page, timeoutMs) {
+    await page.waitForFunction(() => {
+        const root = document.querySelector("[x-data]");
+        if (!root) {
+            return false;
+        }
+        const alpineComponent = (() => {
+            const legacy = /** @type {{ $data?: Record<string, any> }} */ (/** @type {any} */ (root).__x ?? null);
+            if (legacy && typeof legacy.$data === "object") {
+                return legacy.$data;
+            }
+            const alpine = typeof window !== "undefined" ? /** @type {{ $data?: (el: Element) => any }} */ (window.Alpine ?? null) : null;
+            if (alpine && typeof alpine.$data === "function") {
+                const scoped = alpine.$data(root);
+                if (scoped && typeof scoped === "object") {
+                    return scoped;
+                }
+            }
+            const stack = /** @type {Array<Record<string, any>>|undefined} */ (/** @type {any} */ (root)._x_dataStack);
+            if (Array.isArray(stack) && stack.length > 0) {
+                const candidate = stack[stack.length - 1];
+                if (candidate && typeof candidate === "object") {
+                    return candidate;
+                }
+            }
+            return null;
+        })();
+        const syncManager = alpineComponent?.syncManager;
+        return Boolean(syncManager && typeof syncManager.handleSignIn === "function");
+    }, typeof timeoutMs === "number" && Number.isFinite(timeoutMs) ? { timeout: timeoutMs } : {});
 }
