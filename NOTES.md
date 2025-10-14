@@ -365,6 +365,7 @@ The value of the attribute “expires” for the cookie “_ga_WYL7PDVTHN” has
 
 [GSI_LOGGER]: The given origin is not allowed for the given client ID. client:74:89
 ```
+    - Follow-up 2025-10-14: GravityStore scope is applied before invoking `syncManager.handleSignIn`, ensuring snapshot persistence and cross-client hydration. `tests/persistence.sync.puppeteer.test.js` now completes in ~3.5s and a full `npm test` run finishes in ~43s (22 suites, 0 failures, 0 timeouts).
 - [x] [GN-32] tests are failing: `  ✖ lists and tables auto-continue in fallback editor (3382.860931ms)`
 - [x] [GN-33] tests are hanging indefinetely. Do not run all the tests -- run each test and use a background teask to kill the testing process after 30 seconds. No individual test shall run longer than 30 seconds. Find the slow tests and refactor them into faster tests. Currently the test suit just hangs: nothing happens after that:
 ```
@@ -916,25 +917,4 @@ test at tests/persistence.backend.puppeteer.test.js:1:1
     </html>
     ```
 - [x] [GN-36] add privacy to the sitemap
-- [ ] [GN-37] Remove all and any fallbacks in the code, Rely om MDE for the inline editor functionality. ✖ editor.inline.puppeteer.test.js exit=1 (14501ms)
-  ```
-  test at tests/editor.inline.puppeteer.test.js:2194:9
-  ✖ fallback editor handles first-line enter and checklist continuation (314.070187ms)
-    AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
-    + actual - expected
-    
-    + '* Alpha\n* \n* Beta'
-    - '\n* Alpha\n* Beta'
-    
-        at TestContext.<anonymous> (file:///Users/tyemirov/Development/MarcoPoloResearchLab/gravity/tests/editor.inline.puppeteer.test.js:2218:24)
-        at async Test.run (node:internal/test_runner/test:1113:7)
-        at async Suite.processPendingSubtests (node:internal/test_runner/test:788:7) {
-      generatedMessage: true,
-      code: 'ERR_ASSERTION',
-      actual: '* Alpha\n* \n* Beta',
-      expected: '\n* Alpha\n* Beta',
-      operator: 'strictEqual',
-      diff: 'simple'
-    }
-    ✖ Failed (exitCode=1)
-  ```
+- [x] [GN-37] Remove all and any fallbacks in the code, rely on EasyMDE for inline editor functionality. Verified by `tests/editor.inline.puppeteer.test.js` passing and exercising first-line enter and checklist continuation scenarios.

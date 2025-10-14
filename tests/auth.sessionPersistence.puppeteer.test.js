@@ -62,7 +62,8 @@ if (!puppeteerModule) {
 
             const page = await prepareFrontendPage(browser, PAGE_URL, {
                 backendBaseUrl: "http://localhost:8080",
-                llmProxyClassifyUrl: ""
+                llmProxyClassifyUrl: "",
+                mockBackend: true
             });
             try {
                 await dispatchSignIn(page, credential, userId);

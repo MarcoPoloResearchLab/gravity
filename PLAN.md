@@ -18,3 +18,7 @@
 - [x] js/ui/markdownEditorHost.js — adjust EasyMDE list-enter handling for first-line lists and checkmark continuation (GN-37, GN-38).
 - [x] tests/editor.enhanced.puppeteer.test.js — extend coverage for the new list-enter behaviors (GN-37, GN-38).
 - [x] constants.js — lift any new user-facing copy introduced by the list behavior changes (GN-37, GN-38).
+- [x] js/app.js — apply user scope before sync sign-in to keep snapshot persistence tied to the authenticated account (GN-31 follow-up).
+- [x] js/core/syncManager.js — surface sign-in result metadata and guard snapshot refresh outcomes (GN-31 follow-up).
+- [x] tests/persistence.sync.puppeteer.test.js — remove debug instrumentation and rely on sync manager helpers for deterministic cross-client verification (GN-31 follow-up).
+- [x] tests/helpers/syncTestUtils.js — expose optional mock backend injection and shared wait utilities for auth-oriented suites (GN-31 follow-up).

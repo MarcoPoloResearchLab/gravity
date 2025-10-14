@@ -5,7 +5,7 @@ import test from "node:test";
 
 import { EVENT_NOTE_CREATE } from "../js/constants.js";
 import { ensurePuppeteerSandbox, cleanupPuppeteerSandbox } from "./helpers/puppeteerEnvironment.js";
-import { dispatchSignIn } from "./helpers/syncTestUtils.js";
+import { dispatchSignIn, waitForPendingOperations, waitForSyncManagerUser } from "./helpers/syncTestUtils.js";
 
 const SANDBOX = await ensurePuppeteerSandbox();
 const {
@@ -297,6 +297,7 @@ if (!puppeteerModule) {
             await exposeBackend(pageA);
             await pageA.goto(PAGE_URL, { waitUntil: "load" });
             await dispatchSignIn(pageA, "stub-google-credential", "sync-user");
+            await waitForSyncManagerUser(pageA, "sync-user", 5000);
             await pageA.waitForSelector(".auth-avatar:not([hidden])");
 
             await dispatchNoteCreate(pageA, {
@@ -304,6 +305,7 @@ if (!puppeteerModule) {
                 markdownText: "Backend persisted note",
                 timestampIso: "2023-11-14T21:05:00.000Z"
             });
+            await waitForPendingOperations(pageA);
 
             await expectServerNote("sync-user", "sync-note");
 
@@ -312,6 +314,8 @@ if (!puppeteerModule) {
             await exposeBackend(pageB);
             await pageB.goto(PAGE_URL, { waitUntil: "load" });
             await dispatchSignIn(pageB, "stub-google-credential", "sync-user");
+            await waitForSyncManagerUser(pageB, "sync-user", 5000);
+            await waitForPendingOperations(pageB);
             await pageB.waitForSelector(".auth-avatar:not([hidden])");
 
             await pageB.waitForSelector('.markdown-block[data-note-id="sync-note"]');

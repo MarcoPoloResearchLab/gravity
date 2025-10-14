@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import { ensurePuppeteerSandbox, cleanupPuppeteerSandbox } from "./helpers/puppeteerEnvironment.js";
-import { dispatchSignIn } from "./helpers/syncTestUtils.js";
+import { dispatchSignIn, installMockBackend } from "./helpers/syncTestUtils.js";
 
 const SANDBOX = await ensurePuppeteerSandbox();
 const {
@@ -94,6 +94,7 @@ if (!puppeteerModule) {
 
             const page = await browser.newPage();
             try {
+                await installMockBackend(page);
                 await page.goto(PAGE_URL, { waitUntil: "load" });
                 await page.waitForSelector(".auth-status");
 
@@ -109,6 +110,7 @@ if (!puppeteerModule) {
 
             const page = await browser.newPage();
             try {
+                await installMockBackend(page);
                 await page.goto(PAGE_URL, { waitUntil: "load" });
                 await dispatchSignIn(page, "status-token", "status-user");
 
