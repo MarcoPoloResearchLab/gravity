@@ -719,6 +719,22 @@ body.keyboard-shortcuts-open {
     overflow: hidden;
 }
 
+.app-footer {
+    margin: 1.5rem auto 1rem;
+    text-align: center;
+}
+
+.app-legal-link {
+    color: #a0a7b8;
+    font-size: 0.75rem;
+    text-decoration: none;
+}
+
+.app-legal-link:focus,
+.app-legal-link:hover {
+    text-decoration: underline;
+}
+
 @media (max-width: 480px) {
     .markdown-block { grid-template-columns: 1fr 5.25rem; }
     .action-button { font-size: 0.85rem; padding: 0.2rem 0.3rem; }
