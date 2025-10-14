@@ -2,6 +2,7 @@
 - [x] tests/run-tests.js — finalize the per-suite watchdog, parallel kill switch, runtime analytics, and ANSI summary output (GN-33, GN-35).
 - [x] tests/helpers/testHarness.js — expose color helpers, timeout enforcement hooks, and shared CLI formatting utilities (GN-33, GN-35).
 - [x] tests/harness/run-tests.harness.test.js — cover watchdog termination paths, summary totals, and error reporting (GN-33, GN-35).
+- [x] tests/harness/fixtures/hanging.test.js — provide deterministic timeout fixture for harness integration tests (GN-33).
 - [x] tests/helpers/puppeteerEnvironment.js — centralize browser/page lifecycle management to cut suite setup cost (GN-34).
 - [x] tests/editor.inline.puppeteer.test.js — consolidate navigation flows and waits so the inline editor finishes within the watchdog budget (GN-34).
 - [x] tests/persistence.backend.puppeteer.test.js — reuse shared helpers and shorten sync waits to avoid 30s hangs (GN-34).

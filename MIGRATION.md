@@ -69,9 +69,11 @@ harness to assert note creation flows enqueue real sync operations, while
 modifying any event contract to maintain parity with the automation suite.
 
 `tests/run-tests.js` orchestrates the suite instead of invoking `node --test` directly. Each file executes with a
-30-second watchdog and ANSI summary; tune the timeout via `GRAVITY_TEST_TIMEOUT_MS` or adjust the SIGKILL grace period
-with `GRAVITY_TEST_KILL_GRACE_MS`. Filter runs using `GRAVITY_TEST_PATTERN="auth.sessionPersistence" npm test` when
-iterating on a specific suite.
+30-second watchdog and ANSI summary; tune the timeout via `GRAVITY_TEST_TIMEOUT_MS`, adjust the SIGKILL grace period
+with `GRAVITY_TEST_KILL_GRACE_MS`, or supply per-file overrides through the `GRAVITY_TEST_TIMEOUT_OVERRIDES` /
+`GRAVITY_TEST_KILL_GRACE_OVERRIDES` environment variables (`relative/path.test.js=45000`). Filter runs using
+`GRAVITY_TEST_PATTERN="auth.sessionPersistence" npm test` when iterating on a specific suite. The long-running backend
+integration suites have relaxed defaults baked in so they can bootstrap the Go binary without tripping the watchdog.
 
 ## Backend Scaffold
 

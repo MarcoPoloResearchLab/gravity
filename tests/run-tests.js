@@ -66,6 +66,26 @@ function parseTimeout(value, fallback) {
     return parsed;
 }
 
+function parseOverrides(raw) {
+    const map = new Map();
+    if (!raw) {
+        return map;
+    }
+    const segments = raw.split(",");
+    for (const segment of segments) {
+        const trimmed = segment.trim();
+        if (trimmed.length === 0) continue;
+        const [key, value] = trimmed.split("=");
+        const file = key?.trim();
+        const parsed = Number.parseInt(value, 10);
+        if (!file || !Number.isFinite(parsed) || parsed <= 0) {
+            continue;
+        }
+        map.set(file, parsed);
+    }
+    return map;
+}
+
 async function main() {
     const patternInput = process.env.GRAVITY_TEST_PATTERN ?? null;
     const pattern = patternInput ? new RegExp(patternInput) : null;
@@ -78,6 +98,29 @@ async function main() {
         process.env.GRAVITY_TEST_KILL_GRACE_MS,
         harnessDefaults.killGraceMs
     );
+    const timeoutOverrides = parseOverrides(process.env.GRAVITY_TEST_TIMEOUT_OVERRIDES ?? "");
+    const killOverrides = parseOverrides(process.env.GRAVITY_TEST_KILL_GRACE_OVERRIDES ?? "");
+
+    const defaultTimeoutEntries = [
+        ["fullstack.endtoend.puppeteer.test.js", 60000],
+        ["persistence.backend.puppeteer.test.js", 45000],
+        ["sync.endtoend.puppeteer.test.js", 45000]
+    ];
+    for (const [file, value] of defaultTimeoutEntries) {
+        if (!timeoutOverrides.has(file)) {
+            timeoutOverrides.set(file, value);
+        }
+    }
+    const defaultKillEntries = [
+        ["fullstack.endtoend.puppeteer.test.js", 10000],
+        ["persistence.backend.puppeteer.test.js", 8000],
+        ["sync.endtoend.puppeteer.test.js", 8000]
+    ];
+    for (const [file, value] of defaultKillEntries) {
+        if (!killOverrides.has(file)) {
+            killOverrides.set(file, value);
+        }
+    }
 
     const files = (await discoverTestFiles(TESTS_ROOT)).sort((a, b) => a.localeCompare(b));
     if (files.length === 0) {
@@ -109,13 +152,15 @@ async function main() {
 
     for (const relative of selected) {
         const absolute = path.join(TESTS_ROOT, relative);
+        const effectiveTimeout = timeoutOverrides.get(relative) ?? timeoutMs;
+        const effectiveKillGrace = killOverrides.get(relative) ?? killGraceMs;
         console.log(sectionHeading(relative));
-        const args = ["--test", absolute, `--test-timeout=${Math.max(timeoutMs - 1000, 1000)}`];
+        const args = ["--test", absolute, `--test-timeout=${Math.max(effectiveTimeout - 1000, 1000)}`];
         const result = await runTestProcess({
             command: process.execPath,
             args,
-            timeoutMs,
-            killGraceMs,
+            timeoutMs: effectiveTimeout,
+            killGraceMs: effectiveKillGrace,
             env: process.env,
             onStdout: (chunk) => process.stdout.write(chunk),
             onStderr: (chunk) => process.stderr.write(chunk)
@@ -134,7 +179,7 @@ async function main() {
         if (result.timedOut) {
             hasFailure = true;
             timeoutCount += 1;
-            const timeoutMessage = `${cliColors.symbols.timeout} ${cliColors.yellow(`Timed out after ${formatDuration(timeoutMs)}`)}`;
+            const timeoutMessage = `${cliColors.symbols.timeout} ${cliColors.yellow(`Timed out after ${formatDuration(effectiveTimeout)}`)}`;
             console.error(`  ${timeoutMessage}`);
             continue;
         }

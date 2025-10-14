@@ -35,6 +35,7 @@ test("run-tests harness surfaces timeouts in summary", async () => {
         timeoutMs: 8000,
         env: {
             ...process.env,
+            GRAVITY_TEST_FORCE_HANG: "1",
             GRAVITY_TEST_PATTERN: "^helpers/testHarness\\.test\\.js$",
             GRAVITY_TEST_TIMEOUT_MS: "50",
             FORCE_COLOR: "1",
