@@ -244,7 +244,10 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
         On CI, run tests inside the deterministic chromedp/headless-shell image (no flaky system deps).
     - httpexpect (Go) — fast API assertions
         For API-level flows that don’t need a browser; keeps failures precise.
-- [ ] [GN-34] The tests take too long to complete -- GitHub allows maximum 360 seconds. Take a look at all of thests , measure their time of the execution, consider the techniques of decreasing the time.
+- [x] [GN-34] The tests take too long to complete -- GitHub allows maximum 360 seconds. Take a look at all of thests , measure their time of the execution, consider the techniques of decreasing the time.
+- [x] [GN-37] Check if the enter is pressed at the first line of a list (whether numeric or pointed) and do not add a list item, just use normal enter. Consult MDE documentation
+- [x] [GN-38] Check if a list is a checkmarked list `- [ ]` and add a checkmark item on continuation. Consult MDE documentation.
+- [x] [GN-39] Check if Google Sign In offers a different, minimized styling (small button) so that Google login buttom allows for better rendering on narrow screens.
 
 ### BugFixes
 
