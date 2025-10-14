@@ -12,6 +12,8 @@ const BACKEND_DIR = path.join(REPO_ROOT, "backend");
 const DEFAULT_GOOGLE_CLIENT_ID = "gravity-test-client";
 const DEFAULT_SIGNING_SECRET = "gravity-test-signing-secret";
 const DEFAULT_JWT_ISSUER = "https://accounts.google.com";
+const isWindows = process.platform === "win32";
+let backendBinaryPromise = null;
 
 /**
  * Start a Gravity backend instance and supporting JWKS server for integration tests.
@@ -32,6 +34,7 @@ export async function startTestBackend(options = {}) {
     const signingSecret = options.signingSecret ?? DEFAULT_SIGNING_SECRET;
     const logLevel = options.logLevel ?? "info";
 
+    const binaryPath = await ensureBackendBinary();
     const rsaKeys = generateRsaKeyPair();
     const jwksServer = await startJwksServer(rsaKeys.jwk);
     const jwksUrl = `${jwksServer.url}/oauth2/v3/certs`;
@@ -41,6 +44,7 @@ export async function startTestBackend(options = {}) {
     const databasePath = await createTempDatabasePath();
 
     const backendProcess = await startBackendProcess({
+        binaryPath,
         address: backendAddress,
         jwksUrl,
         databasePath,
@@ -207,10 +211,8 @@ async function startJwksServer(jwk) {
     };
 }
 
-async function startBackendProcess({ address, jwksUrl, databasePath, googleClientId, signingSecret, logLevel }) {
+async function startBackendProcess({ binaryPath, address, jwksUrl, databasePath, googleClientId, signingSecret, logLevel }) {
     const args = [
-        "run",
-        "./cmd/gravity-api",
         "--http-address", address,
         "--google-client-id", googleClientId,
         "--google-jwks-url", jwksUrl,
@@ -218,7 +220,7 @@ async function startBackendProcess({ address, jwksUrl, databasePath, googleClien
         "--signing-secret", signingSecret,
         "--log-level", logLevel
     ];
-    const child = spawn("go", args, {
+    const child = spawn(binaryPath, args, {
         cwd: BACKEND_DIR,
         stdio: ["ignore", "ignore", "ignore"]
     });
@@ -254,6 +256,24 @@ async function createTempDatabasePath() {
     return path.join(tmpDir, "gravity.db");
 }
 
+async function ensureBackendBinary() {
+    if (!backendBinaryPromise) {
+        backendBinaryPromise = (async () => {
+            const buildDir = await fs.mkdtemp(path.join(os.tmpdir(), "gravity-backend-bin-"));
+            const binaryName = isWindows ? "gravity-api.exe" : "gravity-api";
+            const binaryPath = path.join(buildDir, binaryName);
+            await runCommand("go", ["build", "-o", binaryPath, "./cmd/gravity-api"], {
+                cwd: BACKEND_DIR
+            });
+            process.once("exit", () => {
+                fs.rm(buildDir, { recursive: true, force: true }).catch(() => {});
+            });
+            return binaryPath;
+        })();
+    }
+    return backendBinaryPromise;
+}
+
 async function waitForServerReady(address, timeoutMs = 20000) {
     const [host, portString] = address.split(":");
     const port = Number.parseInt(portString, 10);
@@ -284,6 +304,44 @@ function attemptTcpConnection(host, port) {
         socket.setTimeout(500, () => {
             socket.destroy();
             resolve(false);
+        });
+    });
+}
+
+function runCommand(command, args, options) {
+    return new Promise((resolve, reject) => {
+        const child = spawn(command, args, {
+            ...options,
+            stdio: ["ignore", "pipe", "pipe"]
+        });
+        let stdout = "";
+        let stderr = "";
+        child.stdout?.setEncoding("utf8");
+        child.stderr?.setEncoding("utf8");
+        child.stdout?.on("data", (chunk) => {
+            stdout += chunk;
+        });
+        child.stderr?.on("data", (chunk) => {
+            stderr += chunk;
+        });
+        child.on("error", reject);
+        child.on("exit", (code, signal) => {
+            if (code === 0) {
+                resolve();
+            } else {
+                const message = [`Command failed: ${command} ${args.join(" ")}`];
+                if (stdout.trim().length > 0) {
+                    message.push(`stdout:\n${stdout}`);
+                }
+                if (stderr.trim().length > 0) {
+                    message.push(`stderr:\n${stderr}`);
+                }
+                if (signal) {
+                    message.push(`signal: ${signal}`);
+                }
+                const error = new Error(message.join("\n"));
+                reject(error);
+            }
         });
     });
 }
