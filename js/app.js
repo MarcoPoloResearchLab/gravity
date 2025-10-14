@@ -9,12 +9,14 @@ import { GravityStore } from "./core/store.js";
 import { appConfig } from "./core/config.js";
 import { createGoogleIdentityController } from "./core/auth.js";
 import { createSyncManager } from "./core/syncManager.js";
+import { loadAuthState, saveAuthState, clearAuthState } from "./core/authState.js";
 import { mountTopEditor } from "./ui/topEditor.js";
 import {
     LABEL_APP_SUBTITLE,
     LABEL_APP_TITLE,
     LABEL_EXPORT_NOTES,
     LABEL_IMPORT_NOTES,
+    ATTRIBUTE_APP_READY,
     ERROR_NOTES_CONTAINER_NOT_FOUND,
     ERROR_AUTHENTICATION_GENERIC,
     EVENT_NOTE_CREATE,
@@ -26,6 +28,7 @@ import {
     EVENT_AUTH_SIGN_IN,
     EVENT_AUTH_SIGN_OUT,
     EVENT_AUTH_ERROR,
+    EVENT_SYNC_SNAPSHOT_APPLIED,
     MESSAGE_NOTES_IMPORTED,
     MESSAGE_NOTES_SKIPPED,
     MESSAGE_NOTES_IMPORT_FAILED
@@ -72,6 +75,7 @@ function gravityApp() {
         guestExportButton: /** @type {HTMLButtonElement|null} */ (null),
         syncManager: /** @type {ReturnType<typeof createSyncManager>|null} */ (null),
         initialized: false,
+        readyQueue: /** @type {Array<() => unknown>} */ ([]),
 
         init() {
             this.notesContainer = this.$refs.notesContainer ?? document.getElementById("notes-container");
@@ -89,12 +93,19 @@ function gravityApp() {
             this.initializeAuth();
             this.initializeTopEditor();
             this.initializeImportExport();
-            this.syncManager = createSyncManager();
-            GravityStore.setUserScope(null);
-            this.initializeNotes();
+            this.syncManager = createSyncManager({ eventTarget: this.$el ?? null });
+            const restored = this.restoreAuthFromStorage();
+            if (!restored) {
+                GravityStore.setUserScope(null);
+                this.initializeNotes();
+                this.setGuestExportVisibility(true);
+            }
             initializeKeyboardShortcutsModal();
-            this.setGuestExportVisibility(true);
             this.initialized = true;
+            if (this.$el instanceof HTMLElement) {
+                this.$el.setAttribute(ATTRIBUTE_APP_READY, "true");
+            }
+            this.flushReadyQueue();
         },
 
         /**
@@ -162,6 +173,37 @@ function gravityApp() {
 
             this.authControls.showSignedOut();
             this.ensureGoogleIdentityController();
+        },
+
+        /**
+         * Attempt to rehydrate authentication from storage.
+         * @returns {boolean}
+         */
+        restoreAuthFromStorage() {
+            const persisted = loadAuthState();
+            if (!persisted || !persisted.user || typeof persisted.user.id !== "string" || persisted.user.id.length === 0) {
+                if (persisted) {
+                    clearAuthState();
+                }
+                return false;
+            }
+            const target = this.$el instanceof HTMLElement ? this.$el : document.body;
+            if (!target) {
+                return false;
+            }
+            try {
+                target.dispatchEvent(new CustomEvent(EVENT_AUTH_SIGN_IN, {
+                    detail: {
+                        user: persisted.user,
+                        credential: persisted.credential,
+                        restored: true
+                    }
+                }));
+                return true;
+            } catch (error) {
+                logging.error(error);
+                return false;
+            }
         },
 
         /**
@@ -349,43 +391,60 @@ function gravityApp() {
             });
 
             root.addEventListener(EVENT_AUTH_SIGN_IN, (event) => {
-                const detail = /** @type {{ user?: { id?: string, email?: string|null, name?: string|null, pictureUrl?: string|null }, credential?: string }} */ (event?.detail ?? {});
-                const user = detail?.user;
-                if (!user || !user.id) {
-                    return;
-                }
-                this.authUser = {
-                    id: user.id,
-                    email: typeof user.email === "string" ? user.email : null,
-                    name: typeof user.name === "string" ? user.name : null,
-                    pictureUrl: typeof user.pictureUrl === "string" ? user.pictureUrl : null
-                };
-                this.authControls?.clearError();
-                this.authControls?.showSignedIn(this.authUser);
-                this.avatarMenu?.setEnabled(true);
-                this.avatarMenu?.close({ focusTrigger: false });
-                GravityStore.setUserScope(this.authUser.id);
-                this.initializeNotes();
-                const credential = typeof detail?.credential === "string" ? detail.credential : "";
-                this.syncManager?.handleSignIn({
-                    userId: this.authUser.id,
-                    credential
-                }).catch((error) => {
-                    logging.error(error);
+                this.runWhenReady(() => {
+                    const detail = /** @type {{ user?: { id?: string, email?: string|null, name?: string|null, pictureUrl?: string|null }, credential?: string }} */ (event?.detail ?? {});
+                    const user = detail?.user;
+                    if (!user || !user.id) {
+                        return;
+                    }
+                    this.authUser = {
+                        id: user.id,
+                        email: typeof user.email === "string" ? user.email : null,
+                        name: typeof user.name === "string" ? user.name : null,
+                        pictureUrl: typeof user.pictureUrl === "string" ? user.pictureUrl : null
+                    };
+                    this.authControls?.clearError();
+                    this.authControls?.showSignedIn(this.authUser);
+                    this.avatarMenu?.setEnabled(true);
+                    this.avatarMenu?.close({ focusTrigger: false });
+                    GravityStore.setUserScope(this.authUser.id);
+                    this.initializeNotes();
+                    const credential = typeof detail?.credential === "string" ? detail.credential : "";
+                    const result = this.syncManager?.handleSignIn({
+                        userId: this.authUser.id,
+                        credential
+                    });
+                    if (result && typeof result.then === "function") {
+                        result.catch((error) => {
+                            logging.error(error);
+                        });
+                    }
+                    this.setGuestExportVisibility(false);
+                    saveAuthState({
+                        user: {
+                            id: this.authUser.id,
+                            email: this.authUser.email,
+                            name: this.authUser.name,
+                            pictureUrl: this.authUser.pictureUrl
+                        },
+                        credential
+                    });
                 });
-                this.setGuestExportVisibility(false);
             });
 
             root.addEventListener(EVENT_AUTH_SIGN_OUT, () => {
-                this.authUser = null;
-                this.authControls?.clearError();
-                this.authControls?.showSignedOut();
-                this.avatarMenu?.setEnabled(false);
-                this.avatarMenu?.close({ focusTrigger: false });
-                GravityStore.setUserScope(null);
-                this.initializeNotes();
-                this.syncManager?.handleSignOut();
-                this.setGuestExportVisibility(true);
+                this.runWhenReady(() => {
+                    this.authUser = null;
+                    this.authControls?.clearError();
+                    this.authControls?.showSignedOut();
+                    this.avatarMenu?.setEnabled(false);
+                    this.avatarMenu?.close({ focusTrigger: false });
+                    GravityStore.setUserScope(null);
+                    this.initializeNotes();
+                    this.syncManager?.handleSignOut();
+                    this.setGuestExportVisibility(true);
+                    clearAuthState();
+                });
             });
 
             root.addEventListener(EVENT_AUTH_ERROR, (event) => {
@@ -407,6 +466,12 @@ function gravityApp() {
                     ? detail.durationMs
                     : NOTIFICATION_DEFAULT_DURATION_MS;
                 this.emitNotification(detail.message, duration);
+            });
+
+            root.addEventListener(EVENT_SYNC_SNAPSHOT_APPLIED, () => {
+                const refreshedRecords = GravityStore.loadAllNotes();
+                initializeNotesState(refreshedRecords);
+                this.renderNotes(refreshedRecords);
             });
         },
 
@@ -500,6 +565,36 @@ function gravityApp() {
         emitNotification(message, durationMs = NOTIFICATION_DEFAULT_DURATION_MS) {
             void durationMs; // duration reserved for future adjustments
             showSaveFeedback(message);
+        },
+
+        runWhenReady(callback) {
+            if (this.initialized) {
+                return callback();
+            }
+            this.readyQueue.push(callback);
+            return undefined;
+        },
+
+        flushReadyQueue() {
+            if (this.readyQueue.length === 0) {
+                return;
+            }
+            const pending = this.readyQueue.splice(0, this.readyQueue.length);
+            for (const task of pending) {
+                try {
+                    const outcome = task();
+                    if (outcome && typeof outcome.then === "function") {
+                        outcome.catch((error) => {
+                            logging.error(error);
+                        });
+                    }
+                } catch (error) {
+                    logging.error(error);
+                }
+            }
+            if (this.readyQueue.length > 0) {
+                this.flushReadyQueue();
+            }
         }
     };
 }

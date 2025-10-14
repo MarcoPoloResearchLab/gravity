@@ -28,9 +28,10 @@ export const GravityStore = (() => {
         try {
             const rawRecords = JSON.parse(raw);
             if (!Array.isArray(rawRecords)) return [];
-            return rawRecords
+            const normalized = rawRecords
                 .map(normalizeRecord)
                 .filter(isValidNoteRecord);
+            return dedupeRecordsById(normalized);
         } catch {
             return [];
         }
@@ -46,8 +47,9 @@ export const GravityStore = (() => {
                 .map(normalizeRecord)
                 .filter(isValidNoteRecord)
             : [];
+        const deduped = dedupeRecordsById(normalized);
         const storageKey = getActiveStorageKey();
-        localStorage.setItem(storageKey, JSON.stringify(normalized));
+        localStorage.setItem(storageKey, JSON.stringify(deduped));
     }
 
     /**
@@ -280,6 +282,30 @@ function isValidNoteRecord(record) {
     if (!isNonBlankString(/** @type {{ noteId?: unknown }} */ (record).noteId)) return false;
     if (!isNonBlankString(/** @type {{ markdownText?: unknown }} */ (record).markdownText)) return false;
     return true;
+}
+
+/**
+ * Remove duplicate records by identifier, preserving the most recently seen entry.
+ * @param {NoteRecord[]} records
+ * @returns {NoteRecord[]}
+ */
+function dedupeRecordsById(records) {
+    if (!Array.isArray(records) || records.length === 0) {
+        return [];
+    }
+    const byId = new Map();
+    for (let index = records.length - 1; index >= 0; index -= 1) {
+        const record = records[index];
+        if (!record || !isNonBlankString(record.noteId)) {
+            continue;
+        }
+        if (!byId.has(record.noteId)) {
+            byId.set(record.noteId, record);
+        }
+    }
+    const deduped = Array.from(byId.values());
+    deduped.reverse();
+    return deduped;
 }
 
 /**

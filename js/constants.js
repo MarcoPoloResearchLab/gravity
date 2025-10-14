@@ -14,6 +14,7 @@ export const LABEL_VIEW_RENDERED = "View (Rendered)";
 export const LABEL_NEW_NOTE = "New note";
 export const LABEL_APP_TITLE = "Gravity Notes";
 export const LABEL_APP_SUBTITLE = "Append anywhere · Bubble to top · Auto-organize";
+export const LABEL_PRIVACY_TERMS_LINK = "Privacy • Terms";
 export const ARIA_LABEL_NEW_NOTE = "New note";
 export const ARIA_LABEL_COPY_MARKDOWN = "Copy Markdown";
 export const ARIA_LABEL_COPY_RENDERED = "Copy Rendered HTML";
@@ -41,6 +42,7 @@ export const MESSAGE_NOTES_IMPORT_FAILED = "Import failed";
 
 export const FILENAME_EXPORT_NOTES_JSON = "gravity-notes.json";
 export const ACCEPT_IMPORT_NOTES_JSON = "application/json";
+export const STORAGE_KEY_AUTH_STATE = "gravityAuthState";
 
 export const ERROR_IMPORT_INVALID_PAYLOAD = "Imported file must contain a JSON array of notes.";
 export const ERROR_IMPORT_READ_FAILED = "Unable to read the selected import file.";
@@ -56,6 +58,14 @@ export const CLIPBOARD_METADATA_VERSION = 1;
 export const CLIPBOARD_METADATA_DATA_URL_PREFIX = `data:${CLIPBOARD_MIME_NOTE};base64,`;
 export const MESSAGE_NOTE_COPIED = "Copied to clipboard";
 export const PASTED_IMAGE_ALT_TEXT_PREFIX = "Pasted image";
+
+export const GLOBAL_CONFIG_OBJECT_KEY = "GRAVITY_CONFIG";
+export const CONFIG_KEY_BACKEND_BASE_URL = "backendBaseUrl";
+export const CONFIG_KEY_LLM_PROXY_BASE_URL = "llmProxyBaseUrl";
+export const CONFIG_KEY_LLM_PROXY_CLASSIFY_URL = "llmProxyClassifyUrl";
+export const META_NAME_BACKEND_BASE_URL = "gravity-backend-base-url";
+export const META_NAME_LLM_PROXY_BASE_URL = "gravity-llm-proxy-base-url";
+export const META_NAME_LLM_PROXY_CLASSIFY_URL = "gravity-llm-proxy-classify-url";
 
 export const CLASSIFIER_ALLOWED_HANDLES = Object.freeze(["@self", "@alice", "@peter", "@nat"]);
 export const CLASSIFIER_KNOWN_PROJECTS = Object.freeze(["Moving Maps", "Blanket"]);
@@ -76,6 +86,8 @@ export const EVENT_NOTIFICATION_REQUEST = "gravity:notify";
 export const EVENT_AUTH_SIGN_IN = "gravity:auth-sign-in";
 export const EVENT_AUTH_SIGN_OUT = "gravity:auth-sign-out";
 export const EVENT_AUTH_ERROR = "gravity:auth-error";
+export const EVENT_SYNC_SNAPSHOT_APPLIED = "gravity:sync-snapshot-applied";
+export const ATTRIBUTE_APP_READY = "data-app-ready";
 
 export const LABEL_SIGN_IN_WITH_GOOGLE = "Sign in with Google";
 export const LABEL_SIGN_OUT = "Sign out";

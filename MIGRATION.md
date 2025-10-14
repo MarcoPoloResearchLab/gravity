@@ -16,6 +16,7 @@ DOM-scoped events and persists note data via `GravityStore`:
 | `gravity:auth-sign-in` | `{ user: { id, email, name, pictureUrl }, credential }` | Namespace `GravityStore` to the authenticated user and refresh the notebook. |
 | `gravity:auth-sign-out` | `{ reason }` | Return to the anonymous notebook and hide the profile controls. |
 | `gravity:auth-error` | `{ reason, error }` | Surface authentication failures via the toast pipeline without crashing the app. |
+| `gravity:sync-snapshot-applied` | `{ records, source }` | Rehydrate the grid after backend reconciliation updates the persisted notes. |
 
 `storeUpdated` identifies whether the origin component already synchronised storage (e.g., card merges call
 `syncStoreFromDom`). `shouldRender` lets card-level flows opt-out of full list re-renders when they already reconciled
@@ -44,14 +45,35 @@ the DOM.
   `gravity:auth-sign-out` events by rehydrating the card grid via `initializeNotes()`.
 * Google Identity Services loads from `https://accounts.google.com/gsi/client`; the client ID lives in
   `appConfig.googleClientId` and should be reused across environments.
+* `appConfig.backendBaseUrl` reads overrides from `window.GRAVITY_CONFIG.backendBaseUrl` or the
+  `<meta name="gravity-backend-base-url">` tag. Absent overrides it falls back to the current origin (or
+  `http://localhost:8080` when served from `file://`).
+* `appConfig.llmProxyBaseUrl` follows the same override rules via `window.GRAVITY_CONFIG.llmProxyBaseUrl` or
+  `<meta name="gravity-llm-proxy-base-url">`, defaulting to the current origin or the hosted proxy at
+  `https://llm-proxy.mprlab.com` when unspecified. The full classify endpoint lives in
+  `appConfig.llmProxyClassifyUrl`, resovable via `window.GRAVITY_CONFIG.llmProxyClassifyUrl` or
+  `<meta name="gravity-llm-proxy-classify-url">`; providing an empty string disables remote classification during
+  development.
 * The auth controls hide the Google button once a profile is active and expose the stacked avatar menu (export, import,
   sign out). The sign-out item dispatches `gravity:auth-sign-out`.
+* Successful `gravity:auth-sign-in` handlers now persist `{ user, credential }` in `localStorage` so reloads replay the
+  sign-in event automatically. `gravity:auth-sign-out` clears the stored state to return to the anonymous notebook.
 
 ## Testing Expectations
 
 Puppeteer coverage now includes `tests/app.notifications.puppeteer.test.js` to confirm the import error path emits a
 `gravity:notify` toast and `tests/preview.bounded.puppeteer.test.js` to keep the viewport anchored when expanding long
-previews. Run `npm test` after modifying any event contract to maintain parity with the automation suite.
+previews. `tests/fullstack.endtoend.puppeteer.test.js` and `tests/sync.endtoend.puppeteer.test.js` start the Go backend
+harness to assert note creation flows enqueue real sync operations, while
+`tests/auth.sessionPersistence.puppeteer.test.js` guards the persisted Google session behaviour. Run `npm test` after
+modifying any event contract to maintain parity with the automation suite.
+
+`tests/run-tests.js` orchestrates the suite instead of invoking `node --test` directly. Each file executes with a
+30-second watchdog and ANSI summary; tune the timeout via `GRAVITY_TEST_TIMEOUT_MS`, adjust the SIGKILL grace period
+with `GRAVITY_TEST_KILL_GRACE_MS`, or supply per-file overrides through the `GRAVITY_TEST_TIMEOUT_OVERRIDES` /
+`GRAVITY_TEST_KILL_GRACE_OVERRIDES` environment variables (`relative/path.test.js=45000`). Filter runs using
+`GRAVITY_TEST_PATTERN="auth.sessionPersistence" npm test` when iterating on a specific suite. The long-running backend
+integration suites have relaxed defaults baked in so they can bootstrap the Go binary without tripping the watchdog.
 
 ## Backend Scaffold
 

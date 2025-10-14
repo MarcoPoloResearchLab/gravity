@@ -14,8 +14,8 @@ import (
 	"github.com/MarcoPoloResearchLab/gravity/backend/internal/notes"
 	"github.com/MarcoPoloResearchLab/gravity/backend/internal/server"
 	"github.com/gin-gonic/gin"
+	sqlite "github.com/glebarez/sqlite"
 	"go.uber.org/zap"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 

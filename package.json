@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test"
+    "test": "node tests/run-tests.js"
   },
   "devDependencies": {
     "puppeteer": "^23.6.1"

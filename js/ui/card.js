@@ -1,7 +1,7 @@
 // @ts-check
 
 import { nowIso } from "../utils/datetime.js";
-import { createElement, autoResize } from "../utils/dom.js";
+import { createElement } from "../utils/dom.js";
 import { copyToClipboard } from "../utils/clipboard.js";
 import { isNonBlankString } from "../utils/string.js";
 import { updateActionButtons, insertCardRespectingPinned } from "./card/listControls.js";
@@ -113,14 +113,139 @@ function calculatePreviewTextOffset(previewElement, event) {
         return null;
     }
 
-    if (range.startContainer?.nodeType !== Node.TEXT_NODE) {
+    const resolved = resolveRangeEndpoint(range.startContainer, range.startOffset, previewElement);
+    if (!resolved) {
         return null;
     }
 
-    const preRange = range.cloneRange();
+    const preRange = doc.createRange();
     preRange.selectNodeContents(previewElement);
-    preRange.setEnd(range.startContainer, range.startOffset);
+    try {
+        preRange.setEnd(resolved.container, resolved.offset);
+    } catch {
+        return null;
+    }
     return preRange.toString().length;
+}
+
+/**
+ * Normalize a DOM range endpoint to a concrete text position.
+ * @param {Node} node
+ * @param {number} offset
+ * @param {HTMLElement} root
+ * @returns {{ container: Node, offset: number }|null}
+ */
+function resolveRangeEndpoint(node, offset, root) {
+    if (!node) {
+        return null;
+    }
+    if (node.nodeType === Node.TEXT_NODE) {
+        const content = node.textContent ?? "";
+        return {
+            container: node,
+            offset: clamp(offset, 0, content.length)
+        };
+    }
+    if (node.nodeType === Node.ELEMENT_NODE) {
+        const element = /** @type {Element} */ (node);
+        const childNodes = element.childNodes;
+        const safeIndex = clamp(offset, 0, childNodes.length);
+        const forwardNode = findFirstTextNode(childNodes[safeIndex] ?? null);
+        if (forwardNode) {
+            return {
+                container: forwardNode,
+                offset: 0
+            };
+        }
+        for (let index = Math.min(childNodes.length - 1, safeIndex - 1); index >= 0; index -= 1) {
+            const backwardNode = findLastTextNode(childNodes[index]);
+            if (backwardNode) {
+                const content = backwardNode.textContent ?? "";
+                return {
+                    container: backwardNode,
+                    offset: content.length
+                };
+            }
+        }
+        if (element === root) {
+            return {
+                container: element,
+                offset: safeIndex
+            };
+        }
+    }
+    const parent = node.parentNode;
+    if (!parent || !(parent instanceof Node) || parent === node) {
+        return null;
+    }
+    const parentChildren = parent.childNodes;
+    const indexInParent = Array.prototype.indexOf.call(parentChildren, node);
+    return resolveRangeEndpoint(parent, indexInParent >= 0 ? indexInParent : 0, root);
+}
+
+/**
+ * Find the first descendant text node of the provided node.
+ * @param {Node|null} node
+ * @returns {Node|null}
+ */
+function findFirstTextNode(node) {
+    if (!node) {
+        return null;
+    }
+    if (node.nodeType === Node.TEXT_NODE) {
+        return node;
+    }
+    const doc = node.ownerDocument;
+    if (!doc) {
+        return null;
+    }
+    const walker = doc.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    const next = walker.nextNode();
+    return next ?? null;
+}
+
+/**
+ * Find the last descendant text node of the provided node.
+ * @param {Node|null} node
+ * @returns {Node|null}
+ */
+function findLastTextNode(node) {
+    if (!node) {
+        return null;
+    }
+    if (node.nodeType === Node.TEXT_NODE) {
+        return node;
+    }
+    const doc = node.ownerDocument;
+    if (!doc) {
+        return null;
+    }
+    const walker = doc.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    let last = null;
+    while (walker.nextNode()) {
+        last = walker.currentNode;
+    }
+    return last;
+}
+
+/**
+ * Clamp a numeric value into the provided range.
+ * @param {number} value
+ * @param {number} min
+ * @param {number} max
+ * @returns {number}
+ */
+function clamp(value, min, max) {
+    if (Number.isNaN(value)) {
+        return min;
+    }
+    if (value < min) {
+        return min;
+    }
+    if (value > max) {
+        return max;
+    }
+    return value;
 }
 
 function mapPlainTextOffsetToMarkdown(source, plainOffset) {
@@ -131,21 +256,12 @@ function mapPlainTextOffsetToMarkdown(source, plainOffset) {
     if (mapping.map.length === 0) {
         return 0;
     }
-    const clamped = Math.max(0, Math.min(Math.floor(plainOffset), mapping.map.length));
-    if (clamped === mapping.map.length) {
-        return source.length;
+    const initialIndex = resolveMarkdownIndex(mapping, plainOffset);
+    const adjustedPlainOffset = adjustPlainOffsetForListMarkers(source, initialIndex, plainOffset);
+    if (adjustedPlainOffset !== plainOffset) {
+        return resolveMarkdownIndex(mapping, adjustedPlainOffset);
     }
-    const resolved = mapping.map[clamped];
-    if (typeof resolved === "number" && !Number.isNaN(resolved)) {
-        return resolved;
-    }
-    for (let index = clamped - 1; index >= 0; index -= 1) {
-        const candidate = mapping.map[index];
-        if (typeof candidate === "number" && !Number.isNaN(candidate)) {
-            return candidate;
-        }
-    }
-    return 0;
+    return initialIndex;
 }
 
 function buildMarkdownPlainMapping(source) {
@@ -272,7 +388,58 @@ function buildMarkdownPlainMapping(source) {
     };
 
     processSegment(0, source.length);
-    return { plain: plainChars.join(""), map };
+    return {
+        plain: plainChars.join(""),
+        map,
+        sourceLength: source.length
+    };
+}
+
+function resolveMarkdownIndex(mapping, plainOffset) {
+    const clamped = Math.max(0, Math.min(Math.floor(plainOffset), mapping.map.length));
+    if (clamped === mapping.map.length) {
+        return mapping.sourceLength;
+    }
+    const resolved = mapping.map[clamped];
+    if (typeof resolved === "number" && !Number.isNaN(resolved)) {
+        return resolved;
+    }
+    for (let index = clamped - 1; index >= 0; index -= 1) {
+        const candidate = mapping.map[index];
+        if (typeof candidate === "number" && !Number.isNaN(candidate)) {
+            return candidate;
+        }
+    }
+    return 0;
+}
+
+function adjustPlainOffsetForListMarkers(source, approxIndex, plainOffset) {
+    if (!Number.isFinite(plainOffset) || plainOffset <= 0 || approxIndex <= 0) {
+        return plainOffset;
+    }
+    const lineBreakIndex = source.lastIndexOf("\n", approxIndex - 1);
+    const lineStart = lineBreakIndex === -1 ? 0 : lineBreakIndex + 1;
+    const lineSlice = source.slice(lineStart);
+    const match = lineSlice.match(/^(\s*)([*+-]|\d+[.)])(\s+)/);
+    if (!match) {
+        return plainOffset;
+    }
+    const markerSpan = match[0].length;
+    if (approxIndex < lineStart + markerSpan) {
+        return plainOffset;
+    }
+    const trailingSpaces = match[3].length;
+    if (!trailingSpaces) {
+        return plainOffset;
+    }
+    const adjustment = lineStart === 0
+        ? Math.max(0, trailingSpaces - 1)
+        : trailingSpaces;
+    if (adjustment === 0) {
+        return plainOffset;
+    }
+    const adjusted = plainOffset + adjustment;
+    return adjusted > Number.MAX_SAFE_INTEGER ? plainOffset : adjusted;
 }
 
 function countRunOfChar(value, start, char) {
@@ -671,7 +838,6 @@ export function renderCard(record, options = {}) {
     const editor  = createElement("textarea", "markdown-editor");
     editor.value  = record.markdownText;
     editor.setAttribute("rows", "1");
-    autoResize(editor);
 
     registerInitialAttachments(editor, initialAttachments);
     enableClipboardImagePaste(editor);
@@ -724,6 +890,7 @@ export function renderCard(record, options = {}) {
     editorHosts.set(card, editorHost);
     card.__markdownHost = editorHost;
     card.dataset.initialValue = record.markdownText;
+    card.dataset.attachmentsSignature = createAttachmentSignature(initialAttachments);
     if (isNonBlankString(record.createdAtIso)) {
         card.dataset.createdAtIso = record.createdAtIso;
     }
@@ -742,9 +909,6 @@ export function renderCard(record, options = {}) {
         applyPreviewBadges(badges, nextMeta);
         restorePreviewFocus(card);
         scheduleOverflowCheck(previewWrapper, preview, expandToggle);
-        if (!editorHost.isEnhanced()) {
-            autoResize(editor);
-        }
     };
 
     const updateModeControls = () => {
@@ -806,8 +970,10 @@ export function renderCard(record, options = {}) {
         queuePreviewFocus(card, { type: "checkbox", taskIndex, remaining: 2 });
         host.setValue(nextMarkdown);
         refreshPreview();
-        persistCardState(card, notesContainer, nextMarkdown, { bubbleToTop: false });
-        schedulePreviewBubble(card, notesContainer);
+        const persisted = persistCardState(card, notesContainer, nextMarkdown, { bubbleToTop: false });
+        if (persisted) {
+            schedulePreviewBubble(card, notesContainer);
+        }
     }
 }
 
@@ -906,19 +1072,31 @@ function showClipboardFeedback(container, message) {
 function persistCardState(card, notesContainer, markdownText, options = {}) {
     const { bubbleToTop = true } = options;
     if (!(card instanceof HTMLElement) || typeof markdownText !== "string") {
-        return;
+        return false;
     }
     const noteId = card.getAttribute("data-note-id");
-    if (!noteId) {
-        return;
+    if (!isNonBlankString(noteId)) {
+        return false;
     }
     const editor = /** @type {HTMLTextAreaElement|null} */ (card.querySelector(".markdown-editor"));
     if (!(editor instanceof HTMLTextAreaElement)) {
-        return;
+        return false;
+    }
+
+    const attachments = collectReferencedAttachments(editor);
+    const normalizedNext = normalizeMarkdownForComparison(markdownText);
+    const previousValue = typeof card.dataset.initialValue === "string" ? card.dataset.initialValue : "";
+    const normalizedPrevious = normalizeMarkdownForComparison(previousValue);
+    const nextAttachmentsSignature = createAttachmentSignature(attachments);
+    const previousAttachmentsSignature = typeof card.dataset.attachmentsSignature === "string"
+        ? card.dataset.attachmentsSignature
+        : "";
+
+    if (normalizedNext === normalizedPrevious && nextAttachmentsSignature === previousAttachmentsSignature) {
+        return false;
     }
 
     const timestamp = nowIso();
-    const attachments = collectReferencedAttachments(editor);
 
     const createdAtIso = isNonBlankString(card.dataset.createdAtIso)
         ? card.dataset.createdAtIso
@@ -937,6 +1115,7 @@ function persistCardState(card, notesContainer, markdownText, options = {}) {
     card.dataset.createdAtIso = createdAtIso;
     card.dataset.updatedAtIso = timestamp;
     card.dataset.lastActivityIso = timestamp;
+    card.dataset.attachmentsSignature = nextAttachmentsSignature;
 
     if (notesContainer instanceof HTMLElement) {
         if (bubbleToTop) {
@@ -957,6 +1136,7 @@ function persistCardState(card, notesContainer, markdownText, options = {}) {
     const toggle = card.querySelector(".note-expand-toggle");
     scheduleOverflowCheck(previewWrapper, preview, toggle);
     dispatchNoteUpdate(card, record, { storeUpdated: true, shouldRender: false });
+    return true;
 }
 
 function toggleTaskAtIndex(markdown, targetIndex) {
@@ -1027,18 +1207,8 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
     const initialValue = editorHost ? editorHost.getValue() : editor?.value ?? "";
     card.dataset.initialValue = initialValue;
 
-    if (!wasEditing && editorHost && !editorHost.isEnhanced() && editor) {
-        const h = Math.max(preview.offsetHeight, 36);
-        editor.style.height = `${h}px`;
-        editor.style.minHeight = `${h}px`;
-    }
-
     card.classList.add("editing-in-place");
     editorHost?.setMode(MARKDOWN_MODE_EDIT);
-
-    if (editorHost && !editorHost.isEnhanced() && editor) {
-        autoResize(editor);
-    }
 
     if (bubbleSelfToTop) {
         const firstCard = notesContainer.firstElementChild;
@@ -1052,10 +1222,6 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
     // Focus after paint; then release the height lock
     requestAnimationFrame(() => {
         editorHost?.focus();
-        if (editorHost && !editorHost.isEnhanced() && editor) {
-            autoResize(editor);
-            setTimeout(() => { editor.style.minHeight = ""; }, 120);
-        }
     });
 
     updateActionButtons(notesContainer);
@@ -1240,9 +1406,6 @@ function mergeDown(card, notesContainer) {
     registerInitialAttachments(editorBelow, mergedAttachments);
     const mergedMarkdown = transformMarkdownWithAttachments(merged, mergedAttachments);
     renderSanitizedMarkdown(previewBelow, mergedMarkdown);
-    if (!hostBelow || !hostBelow.isEnhanced()) {
-        autoResize(editorBelow);
-    }
 
     const idHere = card.getAttribute("data-note-id");
     if (idHere) {
@@ -1316,9 +1479,6 @@ function mergeUp(card, notesContainer) {
     registerInitialAttachments(editorAbove, mergedAttachments);
     const mergedMarkdown = transformMarkdownWithAttachments(merged, mergedAttachments);
     renderSanitizedMarkdown(previewAbove, mergedMarkdown);
-    if (!hostAbove || !hostAbove.isEnhanced()) {
-        autoResize(editorAbove);
-    }
 
     const idHere = card.getAttribute("data-note-id");
     if (idHere) {
@@ -1512,6 +1672,26 @@ function areAttachmentDictionariesEqual(current, previous) {
     }
 
     return true;
+}
+
+/**
+ * Create a stable signature for attachments to detect content changes.
+ * @param {Record<string, import("../types.d.js").AttachmentRecord>} attachments
+ * @returns {string}
+ */
+function createAttachmentSignature(attachments) {
+    const entries = Object.entries(attachments || {});
+    if (entries.length === 0) {
+        return "";
+    }
+    entries.sort(([a], [b]) => a.localeCompare(b));
+    return entries
+        .map(([key, record]) => {
+            const dataLength = record && typeof record.dataUrl === "string" ? record.dataUrl.length : 0;
+            const altText = record && typeof record.altText === "string" ? record.altText : "";
+            return `${key}:${dataLength}:${altText}`;
+        })
+        .join("|");
 }
 
 /* ---------- Chips & classification ---------- */

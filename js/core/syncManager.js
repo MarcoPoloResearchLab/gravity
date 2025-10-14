@@ -6,6 +6,7 @@ import { createSyncMetadataStore } from "./syncMetadataStore.js";
 import { createSyncQueue } from "./syncQueue.js";
 import { appConfig } from "./config.js";
 import { logging } from "../utils/logging.js";
+import { EVENT_SYNC_SNAPSHOT_APPLIED } from "../constants.js";
 
 /**
  * @typedef {import("./syncMetadataStore.js").NoteMetadata} NoteMetadata
@@ -19,7 +20,8 @@ import { logging } from "../utils/logging.js";
  *   metadataStore?: ReturnType<typeof createSyncMetadataStore>,
  *   queueStore?: ReturnType<typeof createSyncQueue>,
  *   clock?: () => Date,
- *   randomUUID?: () => string
+ *   randomUUID?: () => string,
+ *   eventTarget?: EventTarget|null
  * }} [options]
  */
 export function createSyncManager(options = {}) {
@@ -30,6 +32,11 @@ export function createSyncManager(options = {}) {
     const generateUUID = typeof options.randomUUID === "function"
         ? options.randomUUID
         : defaultRandomUUID;
+    const defaultEventTarget = typeof globalThis !== "undefined"
+        && typeof globalThis.document !== "undefined"
+        ? globalThis.document
+        : null;
+    const syncEventTarget = options.eventTarget ?? defaultEventTarget;
 
     /** @type {{ userId: string|null, backendToken: { accessToken: string, expiresAtMs: number }|null, metadata: Record<string, NoteMetadata>, queue: PendingOperation[], flushing: boolean }} */
     const state = {
@@ -138,8 +145,10 @@ export function createSyncManager(options = {}) {
             seedInitialOperations();
             persistState();
 
-            await flushQueue();
-            await refreshSnapshot();
+            const queueFlushed = await flushQueue();
+            if (queueFlushed) {
+                await refreshSnapshot();
+            }
         },
 
         /**
@@ -224,15 +233,18 @@ export function createSyncManager(options = {}) {
 
     async function flushQueue() {
         if (!state.userId || !state.backendToken) {
-            return;
+            return false;
         }
-        if (state.flushing || state.queue.length === 0) {
-            return;
+        if (state.flushing) {
+            return false;
+        }
+        if (state.queue.length === 0) {
+            return true;
         }
         if (state.backendToken.expiresAtMs <= clock().getTime()) {
             state.backendToken = null;
             persistState();
-            return;
+            return false;
         }
 
         state.flushing = true;
@@ -240,7 +252,7 @@ export function createSyncManager(options = {}) {
             const pendingOperations = state.queue.slice();
             const operations = pendingOperations.map(convertToSyncOperation);
             if (operations.length === 0) {
-                return;
+                return true;
             }
             const response = await backendClient.syncOperations({
                 accessToken: state.backendToken.accessToken,
@@ -250,8 +262,10 @@ export function createSyncManager(options = {}) {
             const sentOperationIds = new Set(pendingOperations.map((operation) => operation.operationId));
             state.queue = state.queue.filter((operation) => !sentOperationIds.has(operation.operationId));
             persistState();
+            return state.queue.length === 0;
         } catch (error) {
             logging.error(error);
+            return false;
         } finally {
             state.flushing = false;
         }
@@ -278,11 +292,12 @@ export function createSyncManager(options = {}) {
      * @returns {void}
      */
     function applySyncResults(results, requestedOperations) {
-        if (!Array.isArray(results)) {
+        if (!Array.isArray(results) || results.length === 0) {
             return;
         }
         const existingNotes = GravityStore.loadAllNotes();
         const notesById = new Map(existingNotes.map((record) => [record.noteId, record]));
+        let hasChanges = false;
 
         for (const result of results) {
             const noteId = typeof result?.note_id === "string" ? result.note_id : null;
@@ -298,10 +313,11 @@ export function createSyncManager(options = {}) {
                 metadata.clientEditSeq = serverEditSeq;
             }
             const isDeleted = result?.is_deleted === true;
-           if (isDeleted) {
+            if (isDeleted) {
                 const existing = GravityStore.getById(noteId);
                 if (existing) {
                     GravityStore.removeById(noteId);
+                    hasChanges = true;
                 }
                 delete state.metadata[noteId];
                 notesById.delete(noteId);
@@ -313,10 +329,14 @@ export function createSyncManager(options = {}) {
             }
             notesById.set(noteId, payload);
             GravityStore.upsertNonEmpty(payload);
+            hasChanges = true;
         }
 
         const noteArray = Array.from(notesById.values());
         GravityStore.saveAllNotes(noteArray);
+        if (hasChanges) {
+            dispatchSnapshotEvent(noteArray, "sync-results");
+        }
     }
 
     /**
@@ -352,6 +372,7 @@ export function createSyncManager(options = {}) {
             nextRecords.push(payload);
         }
         GravityStore.saveAllNotes(nextRecords);
+        dispatchSnapshotEvent(nextRecords, "snapshot");
     }
 
     /**
@@ -389,6 +410,32 @@ export function createSyncManager(options = {}) {
             updated_at_s: operation.updatedAtSeconds,
             payload: operation.payload
         };
+    }
+
+    function dispatchSnapshotEvent(records, source) {
+        if (!syncEventTarget) {
+            return;
+        }
+        const detail = {
+            records: records.map((record) => cloneRecord(record)),
+            source
+        };
+        try {
+            const event = new CustomEvent(EVENT_SYNC_SNAPSHOT_APPLIED, {
+                bubbles: true,
+                detail
+            });
+            syncEventTarget.dispatchEvent(event);
+        } catch (error) {
+            logging.error(error);
+            try {
+                const fallbackEvent = new Event(EVENT_SYNC_SNAPSHOT_APPLIED);
+                /** @type {any} */ (fallbackEvent).detail = detail;
+                syncEventTarget.dispatchEvent(fallbackEvent);
+            } catch (fallbackError) {
+                logging.error(fallbackError);
+            }
+        }
     }
 }
 

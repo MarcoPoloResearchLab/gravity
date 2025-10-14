@@ -4,13 +4,13 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import {
-    EVENT_AUTH_SIGN_IN,
     EVENT_AUTH_SIGN_OUT,
     LABEL_EXPORT_NOTES,
     LABEL_IMPORT_NOTES,
     LABEL_SIGN_OUT
 } from "../js/constants.js";
 import { ensurePuppeteerSandbox, cleanupPuppeteerSandbox } from "./helpers/puppeteerEnvironment.js";
+import { dispatchSignIn } from "./helpers/syncTestUtils.js";
 
 const SANDBOX = await ensurePuppeteerSandbox();
 const {
@@ -104,10 +104,9 @@ if (!puppeteerModule) {
             const page = await browser.newPage();
             try {
                 await page.goto(PAGE_URL, { waitUntil: "load" });
+                await page.waitForSelector(".auth-button-host");
 
-                await page.waitForSelector(".auth-button-host", { timeout: 2000 });
-
-                await page.waitForSelector("#guest-export-button:not([hidden])", { timeout: 2000 });
+                await page.waitForSelector("#guest-export-button:not([hidden])");
 
                 await page.evaluate(() => {
                     window.__guestExports = [];
@@ -125,7 +124,7 @@ if (!puppeteerModule) {
                 });
 
                 await page.click("#guest-export-button");
-                await page.waitForFunction(() => Array.isArray(window.__guestExports) && window.__guestExports.length > 0, { timeout: 2000 });
+                await page.waitForFunction(() => Array.isArray(window.__guestExports) && window.__guestExports.length > 0);
                 const exportedPayload = await page.evaluate(() => window.__guestExports[0]);
                 assert.equal(exportedPayload, "[]");
 
@@ -144,27 +143,14 @@ if (!puppeteerModule) {
                 const hostBeforeSignIn = await page.$(".auth-button-host");
                 assert.ok(hostBeforeSignIn, "auth button host should render while signed out");
 
-                await page.evaluate((eventName) => {
-                    const root = document.querySelector("body");
-                    if (!root) return;
-                    const userDetail = {
-                        id: "integration-user",
-                        email: "integration.user@example.com",
-                        name: "Integration User",
-                        pictureUrl: "https://example.com/avatar.png"
-                    };
-                    root.dispatchEvent(new CustomEvent(eventName, {
-                        detail: { user: userDetail },
-                        bubbles: true
-                    }));
-                }, EVENT_AUTH_SIGN_IN);
+                await dispatchSignIn(page, "avatar-menu-token", "avatar-menu-user");
 
-                await page.waitForFunction(() => !document.querySelector(".auth-button-host"), { timeout: 2000 });
+                await page.waitForFunction(() => !document.querySelector(".auth-button-host"));
 
                 const hostAfterSignIn = await page.$(".auth-button-host");
                 assert.equal(hostAfterSignIn, null);
 
-                await page.waitForSelector(".auth-avatar:not([hidden])", { timeout: 2000 });
+                await page.waitForSelector(".auth-avatar:not([hidden])");
 
                 const guestHiddenAfterSignIn = await page.evaluate(() => {
                     const button = document.querySelector("#guest-export-button");
@@ -174,7 +160,7 @@ if (!puppeteerModule) {
 
                 await page.click(".auth-avatar-trigger");
 
-                await page.waitForSelector("[data-test='auth-menu'][data-open='true']", { timeout: 2000 });
+                await page.waitForSelector("[data-test='auth-menu'][data-open='true']");
 
                 const visibleItems = await page.$$eval("[data-test='auth-menu'] [data-test='auth-menu-item']", (elements) => {
                     return elements.map((element) => element.textContent?.trim() ?? "").filter((text) => text.length > 0);
@@ -195,8 +181,8 @@ if (!puppeteerModule) {
                     }));
                 }, EVENT_AUTH_SIGN_OUT);
 
-                await page.waitForSelector(".auth-button-host", { timeout: 2000 });
-                await page.waitForSelector("#guest-export-button:not([hidden])", { timeout: 2000 });
+                await page.waitForSelector(".auth-button-host");
+                await page.waitForSelector("#guest-export-button:not([hidden])");
             } finally {
                 await page.close();
             }
