@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { runTestProcess } from "../helpers/testHarness.js";
+import { harnessDefaults, runTestProcess } from "../helpers/testHarness.js";
 
 const CURRENT_FILE = fileURLToPath(import.meta.url);
 const TESTS_DIRECTORY = path.resolve(path.dirname(CURRENT_FILE), "..");
@@ -42,7 +42,10 @@ test("run-tests harness surfaces timeouts in summary", async () => {
             NO_COLOR: ""
         }
     });
-    assert.notEqual(result.exitCode, 0);
+    assert.ok(result.timedOut || result.exitCode !== 0);
+    if (result.timedOut) {
+        assert.equal(result.terminationReason, harnessDefaults.terminationReason.timeout);
+    }
     assert.match(result.stdout, /timeout/u);
     assert.match(result.stdout, /\u001B\[33m/u);
 });

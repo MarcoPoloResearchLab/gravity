@@ -169,7 +169,7 @@ if (!puppeteerModule) {
             });
             try {
                 const credential = backendContext.tokenFactory();
-                await raceWithSignal(deadlineSignal, dispatchSignIn(page, credential));
+                await raceWithSignal(deadlineSignal, dispatchSignIn(page, credential, TEST_USER_ID));
                 await page.evaluate(async ({ userId, token }) => {
                     const root = document.querySelector("[x-data]");
                     if (!root) {

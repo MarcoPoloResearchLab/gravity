@@ -9,7 +9,6 @@ import {
     cleanupPuppeteerSandbox,
     createSandboxedLaunchOptions
 } from "./helpers/puppeteerEnvironment.js";
-
 const SANDBOX = await ensurePuppeteerSandbox();
 let puppeteerModule;
 try {
@@ -144,7 +143,7 @@ if (!puppeteerModule) {
                 await page.waitForFunction((selector) => {
                     const node = document.querySelector(selector);
                     return node?.classList.contains("note-preview--expanded") ?? false;
-                }, {}, previewSelector);
+                }, undefined, previewSelector);
 
                 const imagePreviewHtml = await page.$eval(`[data-note-id="image-only"] .note-preview`, (element) => element.innerHTML);
                 assert.ok(/<img/i.test(imagePreviewHtml), "image-only note should render inline <img>");
@@ -182,8 +181,20 @@ if (!puppeteerModule) {
 
                 const trailingToggleSelector = `[data-note-id="${TRAILING_IMAGE_NOTE_ID}"] .note-expand-toggle`;
                 await page.waitForSelector(trailingToggleSelector);
-                await page.click(trailingToggleSelector);
-                await new Promise((resolve) => setTimeout(resolve, 150));
+                await page.evaluate((selector) => {
+                    const toggle = document.querySelector(selector);
+                    if (toggle instanceof HTMLElement) {
+                        toggle.click();
+                    }
+                }, trailingToggleSelector);
+                await page.waitForFunction(
+                    (selector) => {
+                        const preview = document.querySelector(selector);
+                        return preview ? preview.classList.contains("note-preview--expanded") : false;
+                    },
+                    undefined,
+                    `[data-note-id="${TRAILING_IMAGE_NOTE_ID}"] .note-preview`
+                );
                 const trailingExpandedPreview = await page.$eval(
                     `[data-note-id="${TRAILING_IMAGE_NOTE_ID}"] .note-preview`,
                     (node) => node.classList.contains("note-preview--expanded")
@@ -196,6 +207,14 @@ if (!puppeteerModule) {
                 await page.click(`[data-note-id="${TRAILING_IMAGE_NOTE_ID}"] .note-preview`);
                 await page.waitForSelector(`[data-note-id="${TRAILING_IMAGE_NOTE_ID}"].editing-in-place`);
 
+                await page.waitForFunction(
+                    (selector) => {
+                        const preview = document.querySelector(selector);
+                        return preview ? !preview.classList.contains("note-preview--expanded") : false;
+                    },
+                    undefined,
+                    `[data-note-id="${TRAILING_IMAGE_NOTE_ID}"] .note-preview`
+                );
                 const trailingPreviewExpanded = await page.$eval(`[data-note-id="${TRAILING_IMAGE_NOTE_ID}"] .note-preview`, (node) => node.classList.contains("note-preview--expanded"));
                 assert.equal(trailingPreviewExpanded, false, "editing collapses expanded previews");
 

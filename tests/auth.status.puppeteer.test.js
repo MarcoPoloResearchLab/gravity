@@ -3,8 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { EVENT_AUTH_SIGN_IN } from "../js/constants.js";
 import { ensurePuppeteerSandbox, cleanupPuppeteerSandbox } from "./helpers/puppeteerEnvironment.js";
+import { dispatchSignIn } from "./helpers/syncTestUtils.js";
 
 const SANDBOX = await ensurePuppeteerSandbox();
 const {
@@ -95,7 +95,6 @@ if (!puppeteerModule) {
             const page = await browser.newPage();
             try {
                 await page.goto(PAGE_URL, { waitUntil: "load" });
-
                 await page.waitForSelector(".auth-status");
 
                 const statusContent = await page.$eval(".auth-status", (element) => element.textContent?.trim() ?? "");
@@ -111,21 +110,7 @@ if (!puppeteerModule) {
             const page = await browser.newPage();
             try {
                 await page.goto(PAGE_URL, { waitUntil: "load" });
-
-                await page.evaluate((eventName) => {
-                    const root = document.querySelector("body");
-                    if (!root) return;
-                    const userDetail = {
-                        id: "status-user",
-                        email: "status.user@example.com",
-                        name: "Status User",
-                        pictureUrl: "https://example.com/avatar.png"
-                    };
-                    root.dispatchEvent(new CustomEvent(eventName, {
-                        detail: { user: userDetail },
-                        bubbles: true
-                    }));
-                }, EVENT_AUTH_SIGN_IN);
+                await dispatchSignIn(page, "status-token", "status-user");
 
                 await page.waitForSelector(".auth-status");
                 const statusMetrics = await page.$eval(".auth-status", (element) => ({

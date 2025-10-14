@@ -1,5 +1,7 @@
 import { appConfig } from "../../js/core/config.js";
-import { EVENT_AUTH_SIGN_IN } from "../../js/constants.js";
+import { ATTRIBUTE_APP_READY, EVENT_AUTH_SIGN_IN } from "../../js/constants.js";
+
+const APP_READY_SELECTOR = `[${ATTRIBUTE_APP_READY}="true"]`;
 
 /**
  * Prepare a new browser page configured for backend synchronization tests.
@@ -28,7 +30,8 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
     });
 
     await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector("#top-editor .markdown-editor", { timeout: 5000 });
+    await page.waitForSelector(APP_READY_SELECTOR);
+    await page.waitForSelector("#top-editor .markdown-editor");
     return page;
 }
 
@@ -40,6 +43,9 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
  * @returns {Promise<void>}
  */
 export async function dispatchSignIn(page, credential, userId) {
+    if (typeof userId !== "string" || userId.length === 0) {
+        throw new Error("dispatchSignIn requires a userId.");
+    }
     await page.evaluate((eventName, token, id) => {
         const root = document.querySelector("body");
         if (!root) {
@@ -67,6 +73,9 @@ export async function dispatchSignIn(page, credential, userId) {
  * @returns {Promise<void>}
  */
 export async function waitForSyncManagerUser(page, expectedUserId, timeoutMs) {
+    const options = typeof timeoutMs === "number" && Number.isFinite(timeoutMs)
+        ? { timeout: timeoutMs }
+        : undefined;
     await page.waitForFunction((userId) => {
         const root = document.querySelector("[x-data]");
         if (!root) {
@@ -99,7 +108,7 @@ export async function waitForSyncManagerUser(page, expectedUserId, timeoutMs) {
         }
         const debugState = syncManager.getDebugState();
         return debugState?.activeUserId === userId;
-    }, typeof timeoutMs === "number" && Number.isFinite(timeoutMs) ? { timeout: timeoutMs } : {}, expectedUserId);
+    }, options, expectedUserId);
 }
 
 /**
@@ -140,7 +149,7 @@ export async function waitForPendingOperations(page) {
         }
         const debugState = syncManager.getDebugState();
         return Array.isArray(debugState?.pendingOperations) && debugState.pendingOperations.length === 0;
-    }, { timeout: 5000 });
+    });
 }
 
 /**

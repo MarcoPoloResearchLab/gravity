@@ -3,11 +3,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import {
-    EVENT_AUTH_SIGN_IN,
-    EVENT_NOTE_CREATE
-} from "../js/constants.js";
+import { EVENT_NOTE_CREATE } from "../js/constants.js";
 import { ensurePuppeteerSandbox, cleanupPuppeteerSandbox } from "./helpers/puppeteerEnvironment.js";
+import { dispatchSignIn } from "./helpers/syncTestUtils.js";
 
 const SANDBOX = await ensurePuppeteerSandbox();
 const {
@@ -28,6 +26,7 @@ try {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+const SERVER_SYNC_TIMEOUT_MS = 4000;
 
 const BACKEND_STATE = {
     credentialMap: new Map([["stub-google-credential", "sync-user"]]),
@@ -194,26 +193,6 @@ function resetBackendState() {
     BACKEND_STATE.tokenCounter = 0;
 }
 
-async function dispatchSignIn(page) {
-    await page.evaluate((eventName) => {
-        const root = document.querySelector("body");
-        if (!root) return;
-        const userDetail = {
-            id: "sync-user",
-            email: "sync.user@example.com",
-            name: "Sync User",
-            pictureUrl: "https://example.com/avatar.png"
-        };
-        root.dispatchEvent(new CustomEvent(eventName, {
-            detail: {
-                user: userDetail,
-                credential: "stub-google-credential"
-            },
-            bubbles: true
-        }));
-    }, EVENT_AUTH_SIGN_IN);
-}
-
 async function dispatchNoteCreate(page, { noteId, markdownText, timestampIso }) {
     await page.evaluate((eventName, detail) => {
         const root = document.querySelector("body");
@@ -236,7 +215,7 @@ async function dispatchNoteCreate(page, { noteId, markdownText, timestampIso }) 
 }
 
 async function expectServerNote(userId, noteId) {
-    const deadline = Date.now() + 4000;
+    const deadline = Date.now() + SERVER_SYNC_TIMEOUT_MS;
     while (Date.now() < deadline) {
         const userNotes = BACKEND_STATE.notesByUser.get(userId);
         if (userNotes && userNotes.has(noteId)) {
@@ -317,8 +296,8 @@ if (!puppeteerModule) {
             const pageA = await browser.newPage();
             await exposeBackend(pageA);
             await pageA.goto(PAGE_URL, { waitUntil: "load" });
-            await dispatchSignIn(pageA);
-            await pageA.waitForSelector(".auth-avatar:not([hidden])", { timeout: 2000 });
+            await dispatchSignIn(pageA, "stub-google-credential", "sync-user");
+            await pageA.waitForSelector(".auth-avatar:not([hidden])");
 
             await dispatchNoteCreate(pageA, {
                 noteId: "sync-note",
@@ -332,10 +311,10 @@ if (!puppeteerModule) {
             const pageB = await contextB.newPage();
             await exposeBackend(pageB);
             await pageB.goto(PAGE_URL, { waitUntil: "load" });
-            await dispatchSignIn(pageB);
-            await pageB.waitForSelector(".auth-avatar:not([hidden])", { timeout: 2000 });
+            await dispatchSignIn(pageB, "stub-google-credential", "sync-user");
+            await pageB.waitForSelector(".auth-avatar:not([hidden])");
 
-            await pageB.waitForSelector('.markdown-block[data-note-id="sync-note"]', { timeout: 4000 });
+            await pageB.waitForSelector('.markdown-block[data-note-id="sync-note"]');
             const renderedMarkdown = await pageB.$eval('.markdown-block[data-note-id="sync-note"] .markdown-content', (element) => element.textContent?.trim() ?? "");
             assert.match(renderedMarkdown, /Backend persisted note/);
 
