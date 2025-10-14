@@ -17,20 +17,3 @@ export function createElement(tag, className, text) {
     }
     return element;
 }
-
-/**
- * Adjust a textarea's height to match its content.
- * @param {HTMLTextAreaElement} textarea
- * @param {{ minHeightPx?: number, extraPaddingPx?: number }} [options]
- * @returns {void}
- */
-export function autoResize(textarea, options = {}) {
-    if (!(textarea instanceof HTMLTextAreaElement)) {
-        return;
-    }
-    const { minHeightPx = 0, extraPaddingPx = 5 } = options;
-    textarea.style.height = "auto";
-    const measured = textarea.scrollHeight + extraPaddingPx;
-    const nextHeight = Math.max(measured, minHeightPx);
-    textarea.style.height = `${nextHeight}px`;
-}

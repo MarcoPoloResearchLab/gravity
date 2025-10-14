@@ -1,7 +1,7 @@
 // @ts-check
 
 import { nowIso } from "../utils/datetime.js";
-import { createElement, autoResize } from "../utils/dom.js";
+import { createElement } from "../utils/dom.js";
 import { copyToClipboard } from "../utils/clipboard.js";
 import { isNonBlankString } from "../utils/string.js";
 import { updateActionButtons, insertCardRespectingPinned } from "./card/listControls.js";
@@ -838,7 +838,6 @@ export function renderCard(record, options = {}) {
     const editor  = createElement("textarea", "markdown-editor");
     editor.value  = record.markdownText;
     editor.setAttribute("rows", "1");
-    autoResize(editor);
 
     registerInitialAttachments(editor, initialAttachments);
     enableClipboardImagePaste(editor);
@@ -910,9 +909,6 @@ export function renderCard(record, options = {}) {
         applyPreviewBadges(badges, nextMeta);
         restorePreviewFocus(card);
         scheduleOverflowCheck(previewWrapper, preview, expandToggle);
-        if (!editorHost.isEnhanced()) {
-            autoResize(editor);
-        }
     };
 
     const updateModeControls = () => {
@@ -1211,18 +1207,8 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
     const initialValue = editorHost ? editorHost.getValue() : editor?.value ?? "";
     card.dataset.initialValue = initialValue;
 
-    if (!wasEditing && editorHost && !editorHost.isEnhanced() && editor) {
-        const h = Math.max(preview.offsetHeight, 36);
-        editor.style.height = `${h}px`;
-        editor.style.minHeight = `${h}px`;
-    }
-
     card.classList.add("editing-in-place");
     editorHost?.setMode(MARKDOWN_MODE_EDIT);
-
-    if (editorHost && !editorHost.isEnhanced() && editor) {
-        autoResize(editor);
-    }
 
     if (bubbleSelfToTop) {
         const firstCard = notesContainer.firstElementChild;
@@ -1236,10 +1222,6 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
     // Focus after paint; then release the height lock
     requestAnimationFrame(() => {
         editorHost?.focus();
-        if (editorHost && !editorHost.isEnhanced() && editor) {
-            autoResize(editor);
-            setTimeout(() => { editor.style.minHeight = ""; }, 120);
-        }
     });
 
     updateActionButtons(notesContainer);
@@ -1424,9 +1406,6 @@ function mergeDown(card, notesContainer) {
     registerInitialAttachments(editorBelow, mergedAttachments);
     const mergedMarkdown = transformMarkdownWithAttachments(merged, mergedAttachments);
     renderSanitizedMarkdown(previewBelow, mergedMarkdown);
-    if (!hostBelow || !hostBelow.isEnhanced()) {
-        autoResize(editorBelow);
-    }
 
     const idHere = card.getAttribute("data-note-id");
     if (idHere) {
@@ -1500,9 +1479,6 @@ function mergeUp(card, notesContainer) {
     registerInitialAttachments(editorAbove, mergedAttachments);
     const mergedMarkdown = transformMarkdownWithAttachments(merged, mergedAttachments);
     renderSanitizedMarkdown(previewAbove, mergedMarkdown);
-    if (!hostAbove || !hostAbove.isEnhanced()) {
-        autoResize(editorAbove);
-    }
 
     const idHere = card.getAttribute("data-note-id");
     if (idHere) {
