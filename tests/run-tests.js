@@ -25,25 +25,6 @@ const TESTS_ROOT = path.dirname(CURRENT_FILE);
 const RUNTIME_OPTIONS_PATH = path.join(TESTS_ROOT, "runtime-options.json");
 
 /**
- * Pretty section header.
- * @param {string} label
- */
-function sectionHeading(label) {
-  return `\n${cliColors.symbols.section} ${cliColors.bold(label)}`;
-}
-
-/**
- * Colored counter text.
- * @param {number} count
- * @param {string} label
- * @param {(s:string)=>string} colorize
- */
-function formatCountLabeled(count, label, colorize) {
-  const formatted = `${count} ${label}`;
-  return count === 0 ? cliColors.dim(formatted) : colorize(formatted);
-}
-
-/**
  * @param {string} root
  * @returns {Promise<string[]>}
  */
@@ -66,13 +47,22 @@ async function discoverTestFiles(root) {
 }
 
 /**
- * Exact filename match (no regex).
+ * Exclude self-test fixtures from normal discovery.
+ * These files are only invoked explicitly by the harness self-tests.
  * @param {string} relativePath
- * @param {string | null} pattern
+ */
+function isExcludedFromDiscovery(relativePath) {
+  const prefix = "harness" + path.sep + "fixtures" + path.sep;
+  return relativePath.startsWith(prefix);
+}
+
+/**
+ * @param {string} relativePath
+ * @param {RegExp|null} pattern
  */
 function matchesPattern(relativePath, pattern) {
   if (!pattern) return true;
-  return relativePath === pattern;
+  return pattern.test(relativePath);
 }
 
 /**
@@ -81,20 +71,23 @@ function matchesPattern(relativePath, pattern) {
  */
 function parseTimeout(value, fallback) {
   if (typeof value === "number") {
-    return Number.isFinite(value) && value > 0 ? value : fallback;
+    if (Number.isFinite(value) && value > 0) return value;
+    return fallback;
   }
   if (!value) return fallback;
-  const parsed = Number.parseInt(String(value), 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  const parsed = Number.parseInt(/** @type {any} */ (value), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return parsed;
 }
 
 async function loadRuntimeOptions() {
   try {
     const raw = await fs.readFile(RUNTIME_OPTIONS_PATH, "utf8");
     const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : {};
+    if (!parsed || typeof parsed !== "object") return {};
+    return parsed;
   } catch (error) {
-    if (error && typeof error === "object" && "code" in error && /** @type any */(error).code === "ENOENT") {
+    if (error && typeof error === "object" && "code" in error && /** @type {any} */(error).code === "ENOENT") {
       return {};
     }
     throw error;
@@ -103,14 +96,21 @@ async function loadRuntimeOptions() {
 
 async function main() {
   const runtimeOptions = await loadRuntimeOptions();
-  const pattern = typeof runtimeOptions.pattern === "string" && runtimeOptions.pattern.length > 0
-    ? runtimeOptions.pattern
-    : null;
+
+  // Minimal mode = no browser/backend/launch guard. Used by harness self-tests.
+  const minimal = Boolean(runtimeOptions.minimal);
+  // Raw mode = execute files as plain Node scripts (no --test). Implies minimal semantics.
+  const raw = Boolean(runtimeOptions.raw);
+
+  const patternInput = typeof runtimeOptions.pattern === "string" ? runtimeOptions.pattern : null;
+  const pattern = patternInput ? new RegExp(patternInput) : null;
 
   const timeoutMs = parseTimeout(runtimeOptions.timeoutMs, harnessDefaults.timeoutMs);
   const killGraceMs = parseTimeout(runtimeOptions.killGraceMs, harnessDefaults.killGraceMs);
 
+  /** @type {Map<string, number>} */
   const timeoutOverrides = new Map();
+  /** @type {Map<string, number>} */
   const killOverrides = new Map();
 
   if (runtimeOptions.timeoutOverrides && typeof runtimeOptions.timeoutOverrides === "object") {
@@ -126,47 +126,60 @@ async function main() {
     }
   }
 
-  // sensible defaults for longer integration tests unless explicitly overridden
-  const defaultTimeouts = [
-    ["fullstack.endtoend.puppeteer.test.js", 60000],
-    ["persistence.backend.puppeteer.test.js", 45000],
-    ["sync.endtoend.puppeteer.test.js", 45000]
-  ];
-  for (const [file, value] of defaultTimeouts) {
-    if (!timeoutOverrides.has(file)) timeoutOverrides.set(file, value);
+  // Default per-file overrides for real runs (not in minimal/raw mode).
+  if (!minimal && !raw) {
+    const defaultTimeoutEntries = [
+      ["fullstack.endtoend.puppeteer.test.js", 60000],
+      ["persistence.backend.puppeteer.test.js", 45000],
+      ["sync.endtoend.puppeteer.test.js", 45000]
+    ];
+    for (const [file, value] of defaultTimeoutEntries) {
+      if (!timeoutOverrides.has(file)) timeoutOverrides.set(file, value);
+    }
+    const defaultKillEntries = [
+      ["fullstack.endtoend.puppeteer.test.js", 10000],
+      ["persistence.backend.puppeteer.test.js", 8000],
+      ["sync.endtoend.puppeteer.test.js", 8000]
+    ];
+    for (const [file, value] of defaultKillEntries) {
+      if (!killOverrides.has(file)) killOverrides.set(file, value);
+    }
   }
 
-  const defaultKillGraces = [
-    ["fullstack.endtoend.puppeteer.test.js", 10000],
-    ["persistence.backend.puppeteer.test.js", 8000],
-    ["sync.endtoend.puppeteer.test.js", 8000]
-  ];
-  for (const [file, value] of defaultKillGraces) {
-    if (!killOverrides.has(file)) killOverrides.set(file, value);
+  /** @type {string[]} */
+  let files;
+
+  // If explicitFiles are provided, use them as-is (used by harness self-tests).
+  if (Array.isArray(runtimeOptions.explicitFiles) && runtimeOptions.explicitFiles.length > 0) {
+    files = runtimeOptions.explicitFiles.slice();
+  } else {
+    files = (await discoverTestFiles(TESTS_ROOT)).sort((a, b) => a.localeCompare(b));
+    if (files.length === 0) {
+      console.warn("No test files discovered under tests/.");
+      return 0;
+    }
+    // Exclude self-test fixtures from normal discovery
+    files = files.filter((f) => !isExcludedFromDiscovery(f));
+    files = files.filter((file) => matchesPattern(file, pattern));
+    if (files.length === 0) {
+      console.warn("No test files matched filter criteria.");
+      return 0;
+    }
   }
 
-  const files = (await discoverTestFiles(TESTS_ROOT)).sort((a, b) => a.localeCompare(b));
-  if (files.length === 0) {
-    console.error("No test files discovered under tests/.");
-    return 2; // make absence explicit to CI
-  }
-
-  const selected = files.filter((f) => matchesPattern(f, pattern));
-  if (selected.length === 0) {
-    console.error(`No test files matched pattern: ${pattern}`);
-    return 2;
-  }
-
+  // Guard import only in full mode (prevents Puppeteer launches in normal runs)
   const guardPath = path.join(TESTS_ROOT, "helpers", "browserLaunchGuard.js");
   const guardSpecifier = toImportSpecifier(guardPath);
 
-  const sharedBrowserContext = await launchSharedBrowser();
-  if (!sharedBrowserContext) throw new Error("Shared browser failed to launch.");
+  let sharedBrowserContext = null;
+  let backendHandle = null;
 
-  const backendHandle = await startTestBackend();
-  if (!backendHandle.signingKeyPem || !backendHandle.signingKeyId) {
-    throw new Error("Shared backend did not expose signing metadata.");
-  }
+  const sectionHeading = (label) => `\n${cliColors.symbols.section} ${cliColors.bold(label)}`;
+  const formatCount = (count, label, format) => {
+    const formatted = `${count} ${label}`;
+    if (count === 0) return cliColors.dim(formatted);
+    return format(formatted);
+  };
 
   let hasFailure = false;
   const summary = [];
@@ -176,35 +189,50 @@ async function main() {
   let timeoutCount = 0;
 
   try {
-    await fs.writeFile(
-      RUNTIME_CONTEXT_PATH,
-      JSON.stringify({
-        backend: {
-          baseUrl: backendHandle.baseUrl,
-          googleClientId: backendHandle.googleClientId,
-          signingKeyPem: backendHandle.signingKeyPem,
-          signingKeyId: backendHandle.signingKeyId
-        },
-        browser: {
-          wsEndpoint: sharedBrowserContext.wsEndpoint
-        }
-      }),
-      "utf8"
-    );
+    if (!minimal && !raw) {
+      sharedBrowserContext = await launchSharedBrowser();
+      if (!sharedBrowserContext) throw new Error("Shared browser failed to launch.");
+      backendHandle = await startTestBackend();
+      if (!backendHandle.signingKeyPem || !backendHandle.signingKeyId) {
+        throw new Error("Shared backend did not expose signing metadata.");
+      }
+      // Write runtime context for browser-using tests
+      await fs.writeFile(
+        RUNTIME_CONTEXT_PATH,
+        JSON.stringify({
+          backend: {
+            baseUrl: backendHandle.baseUrl,
+            googleClientId: backendHandle.googleClientId,
+            signingKeyPem: backendHandle.signingKeyPem,
+            signingKeyId: backendHandle.signingKeyId
+          },
+          browser: {
+            wsEndpoint: sharedBrowserContext.wsEndpoint
+          }
+        }),
+        "utf8"
+      );
+    }
 
-    for (const relative of selected) {
+    for (const relative of files) {
       const absolute = path.join(TESTS_ROOT, relative);
       const effectiveTimeout = timeoutOverrides.get(relative) ?? timeoutMs;
       const effectiveKillGrace = killOverrides.get(relative) ?? killGraceMs;
 
       console.log(sectionHeading(relative));
 
-      const args = [
-        "--import", guardSpecifier,
-        "--test",
-        absolute,
-        `--test-timeout=${Math.max(effectiveTimeout - 1000, 1000)}`
-      ];
+      /** @type {string[]} */
+      const args = [];
+      if (!raw) {
+        // Run with Node test runner
+        args.push("--test", absolute, `--test-timeout=${Math.max(effectiveTimeout - 1000, 1000)}`);
+        if (!minimal) {
+          args.unshift("--import", guardSpecifier);
+        }
+      } else {
+        // Raw script execution (no test runner) — used to validate harness timeouts deterministically
+        args.push(absolute);
+      }
 
       const result = await runTestProcess({
         command: process.execPath,
@@ -228,14 +256,15 @@ async function main() {
       if (result.timedOut) {
         hasFailure = true;
         timeoutCount += 1;
-        console.error(`  ${cliColors.symbols.timeout} ${cliColors.yellow(`Timed out after ${formatDuration(effectiveTimeout)}`)}`);
+        const timeoutMessage = `${cliColors.symbols.timeout} ${cliColors.yellow(`Timed out after ${formatDuration(effectiveTimeout)}`)}`;
+        console.error(`  ${timeoutMessage}`);
         continue;
       }
       if (result.exitCode !== 0) {
         hasFailure = true;
         failCount += 1;
-        const detail = result.signal ? `signal=${result.signal}` : `exitCode=${result.exitCode}`;
-        console.error(`  ${cliColors.symbols.fail} ${cliColors.red(`Failed (${detail})`)}`);
+        const signalDetail = result.signal ? `signal=${result.signal}` : `exitCode=${result.exitCode}`;
+        console.error(`  ${cliColors.symbols.fail} ${cliColors.red(`Failed (${signalDetail})`)}`);
       } else {
         passCount += 1;
         const durationLabel = cliColors.dim(`(${formatDuration(result.durationMs)})`);
@@ -244,33 +273,41 @@ async function main() {
     }
   } finally {
     await fs.rm(RUNTIME_CONTEXT_PATH, { force: true }).catch(() => {});
-    await backendHandle.close();
-    await closeSharedBrowser();
+    if (backendHandle) await backendHandle.close().catch(() => {});
+    if (sharedBrowserContext) await closeSharedBrowser().catch(() => {});
   }
 
   console.log(sectionHeading("Summary"));
   for (const entry of summary) {
-    const status = entry.timedOut ? "timeout" : (entry.exitCode === 0 ? "pass" : "fail");
+    const status = entry.timedOut ? "timeout" : entry.exitCode === 0 ? "pass" : "fail";
     const durationLabel = cliColors.dim(`(${formatDuration(entry.durationMs)})`);
     if (status === "timeout") {
       console.log(`  ${cliColors.symbols.timeout} ${cliColors.bold(entry.file)} ${cliColors.yellow("timeout")} ${durationLabel}`);
-    } else if (status === "fail") {
-      const detail = entry.signal ? `signal=${entry.signal}` : `exit=${entry.exitCode}`;
-      console.log(`  ${cliColors.symbols.fail} ${cliColors.bold(entry.file)} ${cliColors.red(detail)} ${durationLabel}`);
-    } else {
-      console.log(`  ${cliColors.symbols.pass} ${cliColors.bold(entry.file)} ${durationLabel}`);
+      continue;
     }
-  }
-
+    if (status === "fail") {
+      const failureDetail = entry.signal ? `signal=${entry.signal}` : `exit=${entry.exitCode}`;
+      console.log(`  ${cliColors.symbols.fail} ${cliColors.bold(entry.file)} ${cliColors.red(failureDetail)} ${durationLabel}`);
+      continue;
+    }
+    console.log(`  ${cliColors.symbols.pass} ${cliColors.bold(entry.file)} ${durationLabel}`);
+    }
+  
   const totalsLine = [
-    formatCountLabeled(passCount, "passed", cliColors.green),
-    formatCountLabeled(failCount, "failed", cliColors.red),
-    formatCountLabeled(timeoutCount, "timed out", cliColors.yellow)
+    formatCount(passCount, "passed", cliColors.green),
+    formatCount(failCount, "failed", cliColors.red),
+    formatCount(timeoutCount, "timed out", cliColors.yellow)
   ].join(cliColors.dim(" | "));
   console.log(`  ${cliColors.bold("Totals")}: ${totalsLine}`);
   console.log(`  ${cliColors.cyan("Duration")}: ${cliColors.bold(formatDuration(totalDurationMs))}`);
 
-  return hasFailure ? 1 : 0;
+  if (timeoutCount > 0) {
+    return harnessDefaults.exitCode.timeout;
+  }
+  if (hasFailure) {
+    return harnessDefaults.exitCode.failure;
+  }
+  return harnessDefaults.exitCode.success;
 }
 
 main()
