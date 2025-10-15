@@ -1,5 +1,7 @@
 import { appConfig } from "../../js/core/config.js";
 import { ATTRIBUTE_APP_READY, EVENT_AUTH_SIGN_IN } from "../../js/constants.js";
+import { ensurePuppeteerSandbox, cleanupPuppeteerSandbox, createSandboxedLaunchOptions } from "./puppeteerEnvironment.js";
+import { startTestBackend } from "./backendHarness.js";
 
 const APP_READY_SELECTOR = `[${ATTRIBUTE_APP_READY}="true"]`;
 
@@ -33,6 +35,38 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
     await page.waitForSelector(APP_READY_SELECTOR);
     await page.waitForSelector("#top-editor .markdown-editor");
     return page;
+}
+
+/**
+ * Initialize a standard Puppeteer test harness.
+ * @returns {Promise<{
+ *   browser: import('puppeteer').Browser,
+ *   page: import('puppeteer').Page,
+ *   backend: { baseUrl: string, tokenFactory: (userId: string) => string, close: () => Promise<void> },
+ *   teardown: () => Promise<void>
+ * }>}
+ */
+export async function initializePuppeteerTest() {
+    const sandbox = await ensurePuppeteerSandbox();
+    const backend = await startTestBackend();
+    const browser = await import("puppeteer").then((module) => module.default.launch(createSandboxedLaunchOptions(sandbox)));
+    const page = await browser.newPage();
+    await page.evaluateOnNewDocument(() => {
+        window.GRAVITY_CONFIG = {
+            llmProxyClassifyUrl: ""
+        };
+    });
+    await page.goto(`file://${path.join(path.resolve(".", "index.html"))}`, { waitUntil: "domcontentloaded" });
+    await page.waitForSelector("#top-editor .markdown-editor");
+
+    const teardown = async () => {
+        await page.close().catch(() => {});
+        await browser.close().catch(() => {});
+        await backend.close().catch(() => {});
+        await cleanupPuppeteerSandbox(sandbox);
+    };
+
+    return { browser, page, backend, teardown };
 }
 
 /**
