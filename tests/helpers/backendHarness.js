@@ -1,111 +1,411 @@
 import { spawn } from "node:child_process";
-import crypto from "node:crypto";
+import { createPrivateKey, createSign, generateKeyPairSync } from "node:crypto";
+import { once } from "node:events";
+import fs from "node:fs/promises";
 import http from "node:http";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { rm, mkdtemp, stat, mkdir, readFile, writeFile } from "node:fs/promises";
-import { once } from "node:events";
-import { setTimeout as delay } from "node:timers/promises";
+import { readRuntimeContext } from "./runtimeContext.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = path.resolve(__dirname, "..", "..");
-const BACKEND_ROOT = path.join(PROJECT_ROOT, "backend");
-const BACKEND_MAIN_RELATIVE = "./cmd/gravity-api";
-
-const READINESS_TIMEOUT_MS = 15000;
-const READINESS_POLL_INTERVAL_MS = 250;
-const BACKEND_SHUTDOWN_TIMEOUT_MS = 5000;
-const BINARY_CACHE_DIR = path.join(os.tmpdir(), "gravity-backend-binaries");
+const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..");
+const BACKEND_DIR = path.join(REPO_ROOT, "backend");
+const DEFAULT_GOOGLE_CLIENT_ID = "gravity-test-client";
+const DEFAULT_SIGNING_SECRET = "gravity-test-signing-secret";
+const DEFAULT_JWT_ISSUER = "https://accounts.google.com";
+const isWindows = process.platform === "win32";
+let backendBinaryPromise = null;
 
 /**
- * @typedef {Object} BackendHarness
- * @property {string} baseUrl
- * @property {(userId: string) => string} createCredential
- * @property {() => Promise<void>} close
+ * Start a Gravity backend instance and supporting JWKS server for integration tests.
+ * @param {{
+ *   googleClientId?: string,
+ *   signingSecret?: string,
+ *   logLevel?: string
+ * }} [options]
+ * @returns {Promise<{
+ *   baseUrl: string,
+ *   googleClientId: string,
+ *   tokenFactory: (userId: string, expiresInSeconds?: number) => string,
+ *   close: () => Promise<void>
+ * }>}
  */
+let sharedBackendInstance = null;
+let sharedBackendRefs = 0;
 
-/**
- * Spin up the Go backend with deterministic JWKS for end-to-end testing.
- * @returns {Promise<BackendHarness>}
- */
-export async function createBackendHarness() {
-    const goExecutable = await resolveGoExecutable();
-    const workspaceDir = await mkdtemp(path.join(os.tmpdir(), "gravity-backend-"));
-    const databasePath = path.join(workspaceDir, "gravity-test.db");
-    const httpAddress = `127.0.0.1:${await allocatePort()}`;
-    const signingSecret = crypto.randomBytes(32).toString("hex");
-    const googleClientId = `gravity-test-${crypto.randomUUID()}`;
+export async function startTestBackend(options = {}) {
+    const normalizedOptions = {
+        googleClientId: options.googleClientId ?? DEFAULT_GOOGLE_CLIENT_ID,
+        signingSecret: options.signingSecret ?? DEFAULT_SIGNING_SECRET,
+        logLevel: options.logLevel ?? "info"
+    };
+    const sharedContextBackend = attemptRuntimeContextBackend(normalizedOptions);
+    if (sharedContextBackend) {
+        return sharedContextBackend;
+    }
+    const instanceKey = JSON.stringify(normalizedOptions);
 
-    const jwksService = await startJwksService();
-    const binaryPath = await ensureBackendBinary(goExecutable);
+    if (sharedBackendInstance && sharedBackendInstance.key === instanceKey) {
+        sharedBackendRefs += 1;
+        return createSharedHandle(sharedBackendInstance);
+    }
 
-    const backendProcess = spawn(binaryPath, [], {
-        cwd: BACKEND_ROOT,
-        env: {
-            ...process.env,
-            GRAVITY_HTTP_ADDRESS: httpAddress,
-            GRAVITY_GOOGLE_CLIENT_ID: googleClientId,
-            GRAVITY_GOOGLE_JWKS_URL: jwksService.url,
-            GRAVITY_AUTH_SIGNING_SECRET: signingSecret,
-            GRAVITY_DATABASE_PATH: databasePath,
-            GRAVITY_LOG_LEVEL: "error"
-        },
-        stdio: ["ignore", "pipe", "pipe"]
+    if (sharedBackendInstance) {
+        await disposeSharedBackend();
+    }
+
+    const binaryPath = await ensureBackendBinary();
+    const rsaKeys = generateRsaKeyPair();
+    const jwksServer = await startJwksServer(rsaKeys.jwk);
+    const jwksUrl = `${jwksServer.url}/oauth2/v3/certs`;
+
+    const backendPort = await getAvailablePort();
+    const backendAddress = `127.0.0.1:${backendPort}`;
+    const databasePath = await createTempDatabasePath();
+
+    const backendProcess = await startBackendProcess({
+        binaryPath,
+        address: backendAddress,
+        jwksUrl,
+        databasePath,
+        googleClientId: normalizedOptions.googleClientId,
+        signingSecret: normalizedOptions.signingSecret,
+        logLevel: normalizedOptions.logLevel
     });
+    await waitForServerReady(backendAddress);
 
-    const processOutput = captureProcessOutput(backendProcess);
+    const databaseDirectory = path.dirname(databasePath);
 
+    sharedBackendInstance = {
+        key: instanceKey,
+        baseUrl: `http://${backendAddress}`,
+        googleClientId: normalizedOptions.googleClientId,
+        signingKeyPem: rsaKeys.privateKeyPem,
+        signingKeyId: rsaKeys.keyId,
+        tokenFactory(userId, expiresInSeconds = 5 * 60) {
+            return createSignedGoogleToken({
+                audience: normalizedOptions.googleClientId,
+                subject: userId,
+                issuer: DEFAULT_JWT_ISSUER,
+                privateKey: rsaKeys.privateKey,
+                keyId: rsaKeys.keyId,
+                expiresInSeconds
+            });
+        },
+        async shutdown() {
+            if (backendProcess.exitCode === null && backendProcess.signalCode === null) {
+                backendProcess.kill("SIGTERM");
+                const killTimer = setTimeout(() => {
+                    if (backendProcess.exitCode === null && backendProcess.signalCode === null) {
+                        backendProcess.kill("SIGKILL");
+                    }
+                }, 4000);
+                try {
+                    await once(backendProcess, "exit");
+                } finally {
+                    clearTimeout(killTimer);
+                }
+            }
+            await jwksServer.close().catch(() => {});
+            await fs.rm(databaseDirectory, { recursive: true, force: true }).catch(() => {});
+        }
+    };
+    sharedBackendRefs = 1;
+
+    return createSharedHandle(sharedBackendInstance);
+}
+
+function attemptRuntimeContextBackend(normalizedOptions) {
+    let context;
     try {
-        await waitForReadiness(`http://${httpAddress}`, backendProcess);
+        context = readRuntimeContext();
     } catch (error) {
-        await shutdownProcess(backendProcess);
-        await jwksService.close();
-        await rm(workspaceDir, { recursive: true, force: true });
-        const readinessError = error instanceof Error ? error : new Error(String(error));
-        readinessError.message = `${readinessError.message}\n${processOutput.toString()}`;
-        throw readinessError;
+        if (error instanceof Error && error.message.startsWith("Runtime context unavailable")) {
+            return null;
+        }
+        throw error;
+    }
+
+    const backend = context?.backend;
+    if (!backend) {
+        return null;
+    }
+
+    const { baseUrl, googleClientId, signingKeyPem, signingKeyId } = backend;
+    if (normalizedOptions.googleClientId !== googleClientId) {
+        throw new Error(`Shared backend configured for client id ${googleClientId}, but ${normalizedOptions.googleClientId} was requested.`);
+    }
+    if (typeof baseUrl !== "string" || typeof signingKeyPem !== "string" || typeof signingKeyId !== "string") {
+        throw new Error("Runtime context backend entry is incomplete.");
+    }
+
+    let privateKey;
+    try {
+        privateKey = createPrivateKey({ key: signingKeyPem, format: "pem", type: "pkcs8" });
+    } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        throw new Error(`Unable to reconstruct shared backend signing key: ${reason}`);
     }
 
     return {
-        baseUrl: `http://${httpAddress}`,
-        createCredential: (userId) => issueGoogleToken({
-            userId,
-            audience: googleClientId,
-            keyId: jwksService.keyId,
-            privateKey: jwksService.privateKey
-        }),
-        close: async () => {
-            await shutdownProcess(backendProcess);
-            await jwksService.close();
-            await rm(workspaceDir, { recursive: true, force: true });
+        baseUrl,
+        googleClientId,
+        signingKeyPem,
+        signingKeyId,
+        tokenFactory(userId, expiresInSeconds = 5 * 60) {
+            return createSignedGoogleToken({
+                audience: googleClientId,
+                subject: userId,
+                issuer: DEFAULT_JWT_ISSUER,
+                privateKey,
+                keyId: signingKeyId,
+                expiresInSeconds
+            });
+        },
+        async close() {
+            // shared backend is managed by the parent process; no-op for callers
         }
     };
 }
 
 /**
- * @returns {Promise<string>}
+ * Poll the backend for notes until a matching identifier appears.
+ * @param {{ backendUrl: string, token: string, noteId: string, timeoutMs?: number }} options
+ * @returns {Promise<any>}
  */
-async function resolveGoExecutable() {
-    try {
-        await runCommand("go", ["version"], { cwd: BACKEND_ROOT });
-        return "go";
-    } catch (error) {
-        const original = error instanceof Error ? error : new Error(String(error));
-        if (/** @type {{ code?: string }} */ (original).code === "ENOENT") {
-            throw original;
+export async function waitForBackendNote({ backendUrl, token, noteId, timeoutMs }) {
+    const resolvedTimeout = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 20000;
+    const deadline = Date.now() + resolvedTimeout;
+    while (Date.now() < deadline) {
+        const { statusCode, body } = await fetchBackendNotes({ backendUrl, token, timeoutMs: resolvedTimeout });
+        if (statusCode === 200) {
+            try {
+                const payload = JSON.parse(body);
+                const notes = Array.isArray(payload?.notes) ? payload.notes : [];
+                const match = notes.find((entry) => entry?.payload?.noteId === noteId);
+                if (match) {
+                    return payload;
+                }
+            } catch {
+                // ignore parse errors and retry
+            }
+        } else if (statusCode >= 400 && statusCode < 500) {
+            throw new Error(`Backend responded with status ${statusCode}`);
         }
-        throw new Error(`failed to detect Go toolchain: ${original.message}`);
+        await delay(200);
     }
+    throw new Error(`Note ${noteId} not found within ${resolvedTimeout}ms`);
+}
+
+function createSharedHandle(instance) {
+    let released = false;
+    sharedBackendRefs += 0;
+    return {
+        baseUrl: instance.baseUrl,
+        googleClientId: instance.googleClientId,
+        signingKeyPem: instance.signingKeyPem,
+        signingKeyId: instance.signingKeyId,
+        tokenFactory: instance.tokenFactory,
+        async close() {
+            if (released) {
+                return;
+            }
+            released = true;
+            sharedBackendRefs -= 1;
+            if (sharedBackendRefs <= 0) {
+                await disposeSharedBackend();
+            }
+        }
+    };
+}
+
+async function disposeSharedBackend() {
+    if (!sharedBackendInstance) {
+        return;
+    }
+    const context = sharedBackendInstance;
+    sharedBackendInstance = null;
+    sharedBackendRefs = 0;
+    await context.shutdown();
 }
 
 /**
- * @param {string} command
- * @param {readonly string[]} args
- * @param {import("node:child_process").SpawnOptions} options
- * @returns {Promise<{ stdout: string, stderr: string }>}
+ * Execute an authenticated GET /notes request against the backend.
+ * @param {{ backendUrl: string, token: string, timeoutMs: number }} options
+ * @returns {Promise<{ statusCode: number, body: string }>}
  */
+export function fetchBackendNotes({ backendUrl, token, timeoutMs }) {
+    return new Promise((resolve, reject) => {
+        try {
+            const url = new URL("/notes", backendUrl);
+            const request = http.request({
+                method: "GET",
+                hostname: url.hostname,
+                port: url.port,
+                path: url.pathname,
+                protocol: url.protocol,
+                headers: {
+                    Authorization: `Bearer ${token}`
+                }
+            }, (response) => {
+                const chunks = [];
+                response.setEncoding("utf8");
+                response.on("data", (chunk) => {
+                    chunks.push(chunk);
+                });
+                response.on("end", () => {
+                    resolve({
+                        statusCode: response.statusCode ?? 0,
+                        body: chunks.join("")
+                    });
+                });
+            });
+            request.on("error", reject);
+            request.setTimeout(timeoutMs, () => {
+                request.destroy(new Error(`Backend request timed out after ${timeoutMs}ms`));
+            });
+            request.end();
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+function generateRsaKeyPair() {
+    const { privateKey, publicKey } = generateKeyPairSync("rsa", {
+        modulusLength: 2048
+    });
+    const jwk = publicKey.export({ format: "jwk" });
+    const keyId = "gravity-test-key";
+    return {
+        privateKey,
+        privateKeyPem: privateKey.export({ format: "pem", type: "pkcs8" }).toString(),
+        jwk: {
+            ...jwk,
+            kid: keyId,
+            use: "sig",
+            alg: "RS256"
+        },
+        keyId
+    };
+}
+
+async function startJwksServer(jwk) {
+    const server = http.createServer((req, res) => {
+        if (req.url === "/oauth2/v3/certs") {
+            res.statusCode = 200;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ keys: [jwk] }));
+            return;
+        }
+        res.statusCode = 404;
+        res.end("not found");
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = /** @type {{ port: number }} */ (server.address());
+    return {
+        url: `http://127.0.0.1:${address.port}`,
+        close: () => new Promise((resolve) => server.close(() => resolve()))
+    };
+}
+
+async function startBackendProcess({ binaryPath, address, jwksUrl, databasePath, googleClientId, signingSecret, logLevel }) {
+    const args = [
+        "--http-address", address,
+        "--google-client-id", googleClientId,
+        "--google-jwks-url", jwksUrl,
+        "--database-path", databasePath,
+        "--signing-secret", signingSecret,
+        "--log-level", logLevel
+    ];
+    const child = spawn(binaryPath, args, {
+        cwd: BACKEND_DIR,
+        stdio: ["ignore", "ignore", "ignore"]
+    });
+
+    await new Promise((resolve, reject) => {
+        child.once("error", reject);
+        child.once("spawn", resolve);
+    });
+
+    return child;
+}
+
+async function getAvailablePort() {
+    return new Promise((resolve, reject) => {
+        const server = net.createServer();
+        server.listen(0, "127.0.0.1", () => {
+            const address = /** @type {{ port: number }} */ (server.address());
+            const port = address.port;
+            server.close((error) => {
+                if (error) {
+                    reject(error);
+                    return;
+                }
+                resolve(port);
+            });
+        });
+        server.on("error", reject);
+    });
+}
+
+async function createTempDatabasePath() {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "gravity-backend-"));
+    return path.join(tmpDir, "gravity.db");
+}
+
+async function ensureBackendBinary() {
+    if (!backendBinaryPromise) {
+        backendBinaryPromise = (async () => {
+            const buildDir = await fs.mkdtemp(path.join(os.tmpdir(), "gravity-backend-bin-"));
+            const binaryName = isWindows ? "gravity-api.exe" : "gravity-api";
+            const binaryPath = path.join(buildDir, binaryName);
+            await runCommand("go", ["build", "-o", binaryPath, "./cmd/gravity-api"], {
+                cwd: BACKEND_DIR
+            });
+            process.once("exit", () => {
+                fs.rm(buildDir, { recursive: true, force: true }).catch(() => {});
+            });
+            return binaryPath;
+        })();
+    }
+    return backendBinaryPromise;
+}
+
+async function waitForServerReady(address, timeoutMs = 20000) {
+    const [host, portString] = address.split(":");
+    const port = Number.parseInt(portString, 10);
+    if (!host || Number.isNaN(port)) {
+        throw new Error(`Invalid backend address: ${address}`);
+    }
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        const ready = await attemptTcpConnection(host, port);
+        if (ready) {
+            return;
+        }
+        await delay(100);
+    }
+    throw new Error(`Backend did not accept connections at ${address} within ${timeoutMs}ms`);
+}
+
+function attemptTcpConnection(host, port) {
+    return new Promise((resolve) => {
+        const socket = net.connect({ host, port }, () => {
+            socket.end();
+            resolve(true);
+        });
+        socket.on("error", () => {
+            socket.destroy();
+            resolve(false);
+        });
+        socket.setTimeout(500, () => {
+            socket.destroy();
+            resolve(false);
+        });
+    });
+}
+
 function runCommand(command, args, options) {
     return new Promise((resolve, reject) => {
         const child = spawn(command, args, {
@@ -114,293 +414,69 @@ function runCommand(command, args, options) {
         });
         let stdout = "";
         let stderr = "";
-        if (child.stdout) {
-            child.stdout.on("data", (chunk) => {
-                stdout += chunk.toString();
-            });
-        }
-        if (child.stderr) {
-            child.stderr.on("data", (chunk) => {
-                stderr += chunk.toString();
-            });
-        }
-        child.once("error", reject);
-        child.once("close", (code, signal) => {
+        child.stdout?.setEncoding("utf8");
+        child.stderr?.setEncoding("utf8");
+        child.stdout?.on("data", (chunk) => {
+            stdout += chunk;
+        });
+        child.stderr?.on("data", (chunk) => {
+            stderr += chunk;
+        });
+        child.on("error", reject);
+        child.on("exit", (code, signal) => {
             if (code === 0) {
-                resolve({ stdout, stderr });
-                return;
+                resolve();
+            } else {
+                const message = [`Command failed: ${command} ${args.join(" ")}`];
+                if (stdout.trim().length > 0) {
+                    message.push(`stdout:\n${stdout}`);
+                }
+                if (stderr.trim().length > 0) {
+                    message.push(`stderr:\n${stderr}`);
+                }
+                if (signal) {
+                    message.push(`signal: ${signal}`);
+                }
+                const error = new Error(message.join("\n"));
+                reject(error);
             }
-            const failure = new Error(
-                `command ${command} failed with code ${code ?? "null"}${signal ? ` (signal ${signal})` : ""}`
-            );
-            /** @type {any} */ (failure).stdout = stdout;
-            /** @type {any} */ (failure).stderr = stderr;
-            reject(failure);
         });
     });
 }
 
-/**
- * @returns {Promise<number>}
- */
-function allocatePort() {
-    return new Promise((resolve, reject) => {
-        const server = net.createServer();
-        server.unref();
-        server.on("error", reject);
-        server.listen(0, "127.0.0.1", () => {
-            const address = server.address();
-            if (address && typeof address === "object") {
-                const port = address.port;
-                server.close(() => resolve(port));
-                return;
-            }
-            server.close(() => reject(new Error("failed to allocate port")));
-        });
-    });
-}
-
-/**
- * @param {string} goExecutable
- * @param {string} targetBinary
- * @returns {Promise<void>}
- */
-async function ensureBackendBinary(goExecutable) {
-    const binaryName = process.platform === "win32" ? "gravity-api.exe" : "gravity-api";
-    const cacheTarget = path.join(BINARY_CACHE_DIR, binaryName);
-    await mkdir(BINARY_CACHE_DIR, { recursive: true });
-
-    const sourceFingerprint = await computeSourceFingerprint();
-    const cacheFingerprintPath = path.join(BINARY_CACHE_DIR, `${binaryName}.fingerprint`);
-    let cacheValid = false;
-    try {
-        const [binaryStats, fingerprint] = await Promise.all([
-            stat(cacheTarget),
-            readFile(cacheFingerprintPath)
-        ]);
-        cacheValid = binaryStats.size > 0 && fingerprint.toString() === sourceFingerprint;
-    } catch {
-        cacheValid = false;
-    }
-
-    if (!cacheValid) {
-        await runCommand(goExecutable, ["build", "-o", cacheTarget, BACKEND_MAIN_RELATIVE], {
-            cwd: BACKEND_ROOT
-        });
-        await writeFile(cacheFingerprintPath, sourceFingerprint);
-    }
-
-    return cacheTarget;
-}
-
-async function computeSourceFingerprint() {
-    const files = ["go.mod", "go.sum", path.join("cmd", "gravity-api", "main.go")];
-    const chunks = [];
-    for (const file of files) {
-        try {
-            const data = await readFile(path.join(BACKEND_ROOT, file));
-            chunks.push(data);
-        } catch {}
-    }
-    return crypto.createHash("sha256").update(Buffer.concat(chunks)).digest("hex");
-}
-
-/**
- * @param {{ userId: string, audience: string, keyId: string, privateKey: string }} params
- * @returns {string}
- */
-function issueGoogleToken(params) {
-    const issuedAt = Math.floor(Date.now() / 1000);
-    const expiresAt = issuedAt + 3600;
+function createSignedGoogleToken({ audience, subject, issuer, privateKey, keyId, expiresInSeconds }) {
     const header = {
         alg: "RS256",
         typ: "JWT",
-        kid: params.keyId
+        kid: keyId
     };
+    const nowSeconds = Math.floor(Date.now() / 1000);
     const payload = {
-        iss: "https://accounts.google.com",
-        aud: params.audience,
-        sub: params.userId,
-        email: `${params.userId}@example.com`,
-        email_verified: true,
-        iat: issuedAt,
-        exp: expiresAt,
-        jti: crypto.randomUUID()
+        aud: audience,
+        iss: issuer,
+        sub: subject,
+        exp: nowSeconds + expiresInSeconds,
+        iat: nowSeconds
     };
-    return signJwt(header, payload, params.privateKey);
-}
-
-/**
- * @returns {Promise<{ url: string, keyId: string, privateKey: string, close: () => Promise<void> }>}
- */
-async function startJwksService() {
-    const { publicKey, privateKey } = crypto.generateKeyPairSync("rsa", {
-        modulusLength: 2048,
-        publicKeyEncoding: { type: "spki", format: "pem" },
-        privateKeyEncoding: { type: "pkcs1", format: "pem" }
-    });
-
-    const publicKeyObject = crypto.createPublicKey(publicKey);
-    const jwkExport = /** @type {{ n: string, e: string }} */ (
-        publicKeyObject.export({ format: "jwk" })
-    );
-    const keyId = crypto
-        .createHash("sha256")
-        .update(publicKey)
-        .digest("hex")
-        .slice(0, 16);
-    const jwksDocument = JSON.stringify({
-        keys: [
-            {
-                kty: "RSA",
-                use: "sig",
-                alg: "RS256",
-                kid: keyId,
-                n: jwkExport.n,
-                e: jwkExport.e
-            }
-        ]
-    });
-
-    const server = http.createServer((request, response) => {
-        if (request.method !== "GET") {
-            response.writeHead(405);
-            response.end();
-            return;
-        }
-        response.writeHead(200, {
-            "content-type": "application/json",
-            "cache-control": "no-store"
-        });
-        response.end(jwksDocument);
-    });
-
-    const listenPort = await new Promise((resolve, reject) => {
-        server.on("error", reject);
-        server.listen(0, "127.0.0.1", () => {
-            const address = server.address();
-            if (address && typeof address === "object") {
-                resolve(address.port);
-                return;
-            }
-            reject(new Error("failed to start JWKS server"));
-        });
-    });
-
-    const url = `http://127.0.0.1:${listenPort}/jwks.json`;
-    return {
-        url,
-        keyId,
-        privateKey,
-        close: async () => {
-            server.close();
-            await once(server, "close");
-        }
-    };
-}
-
-/**
- * @param {import("node:child_process").ChildProcess} child
- * @returns {{ toString: () => string }}
- */
-function captureProcessOutput(child) {
-    let stdout = "";
-    let stderr = "";
-    if (child.stdout) {
-        child.stdout.on("data", (chunk) => {
-            stdout += chunk.toString();
-        });
-    }
-    if (child.stderr) {
-        child.stderr.on("data", (chunk) => {
-            stderr += chunk.toString();
-        });
-    }
-    return {
-        toString: () => {
-            const parts = [];
-            if (stdout.trim().length > 0) {
-                parts.push(`stdout:\n${stdout}`);
-            }
-            if (stderr.trim().length > 0) {
-                parts.push(`stderr:\n${stderr}`);
-            }
-            return parts.join("\n");
-        }
-    };
-}
-
-/**
- * @param {import("node:child_process").ChildProcess} processHandle
- * @returns {Promise<void>}
- */
-async function shutdownProcess(processHandle) {
-    if (processHandle.exitCode !== null) {
-        return;
-    }
-    processHandle.kill("SIGTERM");
-    const abortController = new AbortController();
-    const timeout = delay(BACKEND_SHUTDOWN_TIMEOUT_MS, undefined, { signal: abortController.signal }).catch(() => {});
-    const exitPromise = once(processHandle, "exit").then(() => abortController.abort());
-    await Promise.race([timeout, exitPromise]);
-    if (processHandle.exitCode === null) {
-        processHandle.kill("SIGKILL");
-        await once(processHandle, "exit");
-    }
-}
-
-/**
- * @param {string} baseUrl
- * @param {import("node:child_process").ChildProcess} processHandle
- * @returns {Promise<void>}
- */
-async function waitForReadiness(baseUrl, processHandle) {
-    const deadline = Date.now() + READINESS_TIMEOUT_MS;
-    while (Date.now() < deadline) {
-        try {
-            const response = await fetch(`${baseUrl}/notes`, {
-                method: "GET",
-                headers: { Authorization: "Bearer invalid" }
-            });
-            if (response.status === 401) {
-                return;
-            }
-        } catch {
-            // Retry until timeout
-        }
-        if (processHandle.exitCode !== null) {
-            throw new Error("backend process exited before readiness");
-        }
-        await delay(READINESS_POLL_INTERVAL_MS);
-    }
-    throw new Error("backend harness timed out waiting for readiness");
-}
-
-/**
- * @param {Record<string, unknown>} header
- * @param {Record<string, unknown>} payload
- * @param {string|Buffer|crypto.KeyObject} privateKey
- * @returns {string}
- */
-function signJwt(header, payload, privateKey) {
-    const headerSegment = base64UrlEncode(JSON.stringify(header));
-    const payloadSegment = base64UrlEncode(JSON.stringify(payload));
-    const signingInput = `${headerSegment}.${payloadSegment}`;
-    const signer = crypto.createSign("RSA-SHA256");
+    const encodedHeader = base64UrlEncode(Buffer.from(JSON.stringify(header), "utf8"));
+    const encodedPayload = base64UrlEncode(Buffer.from(JSON.stringify(payload), "utf8"));
+    const signingInput = `${encodedHeader}.${encodedPayload}`;
+    const signer = createSign("RSA-SHA256");
     signer.update(signingInput);
     signer.end();
     const signature = signer.sign(privateKey);
-    return `${signingInput}.${base64UrlEncode(signature)}`;
+    const encodedSignature = base64UrlEncode(signature);
+    return `${signingInput}.${encodedSignature}`;
 }
 
-/**
- * @param {string|Buffer} input
- * @returns {string}
- */
-function base64UrlEncode(input) {
-    return Buffer.from(input)
+function base64UrlEncode(buffer) {
+    return Buffer.from(buffer)
         .toString("base64")
+        .replace(/=+$/u, "")
         .replace(/\+/gu, "-")
-        .replace(/\//gu, "_")
-        .replace(/=+$/u, "");
+        .replace(/\//gu, "_");
+}
+
+function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }

@@ -187,6 +187,12 @@ function gravityApp() {
                 }
                 return false;
             }
+            if (typeof persisted.credential !== "string" || persisted.credential.length === 0) {
+                if (persisted) {
+                    clearAuthState();
+                }
+                return false;
+            }
             const target = this.$el instanceof HTMLElement ? this.$el : document.body;
             if (!target) {
                 return false;
@@ -388,15 +394,29 @@ function gravityApp() {
                     ? MESSAGE_NOTES_IMPORTED
                     : MESSAGE_NOTES_SKIPPED;
                 this.emitNotification(message);
-            });
+        });
 
-            root.addEventListener(EVENT_AUTH_SIGN_IN, (event) => {
-                this.runWhenReady(() => {
-                    const detail = /** @type {{ user?: { id?: string, email?: string|null, name?: string|null, pictureUrl?: string|null }, credential?: string }} */ (event?.detail ?? {});
-                    const user = detail?.user;
-                    if (!user || !user.id) {
-                        return;
-                    }
+        root.addEventListener(EVENT_AUTH_SIGN_IN, (event) => {
+            this.runWhenReady(() => {
+                const detail = /** @type {{ user?: { id?: string, email?: string|null, name?: string|null, pictureUrl?: string|null }, credential?: string, restored?: boolean }} */ (event?.detail ?? {});
+                const user = detail?.user;
+                if (!user || !user.id) {
+                    return;
+                }
+                const credential = typeof detail?.credential === "string" ? detail.credential : "";
+
+                const applyGuestState = () => {
+                    this.authUser = null;
+                    this.authControls?.showSignedOut();
+                    this.avatarMenu?.setEnabled(false);
+                    this.avatarMenu?.close({ focusTrigger: false });
+                    GravityStore.setUserScope(null);
+                    this.initializeNotes();
+                    this.setGuestExportVisibility(true);
+                    clearAuthState();
+                };
+
+                const applySignedInState = () => {
                     this.authUser = {
                         id: user.id,
                         email: typeof user.email === "string" ? user.email : null,
@@ -409,16 +429,6 @@ function gravityApp() {
                     this.avatarMenu?.close({ focusTrigger: false });
                     GravityStore.setUserScope(this.authUser.id);
                     this.initializeNotes();
-                    const credential = typeof detail?.credential === "string" ? detail.credential : "";
-                    const result = this.syncManager?.handleSignIn({
-                        userId: this.authUser.id,
-                        credential
-                    });
-                    if (result && typeof result.then === "function") {
-                        result.catch((error) => {
-                            logging.error(error);
-                        });
-                    }
                     this.setGuestExportVisibility(false);
                     saveAuthState({
                         user: {
@@ -429,8 +439,43 @@ function gravityApp() {
                         },
                         credential
                     });
-                });
+                };
+
+                const syncManager = this.syncManager;
+                const attemptSignIn = async () => {
+                    if (!credential) {
+                        applyGuestState();
+                        this.authControls?.showError(ERROR_AUTHENTICATION_GENERIC);
+                        return;
+                    }
+                    GravityStore.setUserScope(user.id);
+                    try {
+                        const result = syncManager && typeof syncManager.handleSignIn === "function"
+                            ? await syncManager.handleSignIn({ userId: user.id, credential })
+                            : { authenticated: true, queueFlushed: false, snapshotApplied: false };
+                        if (!result?.authenticated) {
+                            applyGuestState();
+                            this.authControls?.showError(ERROR_AUTHENTICATION_GENERIC);
+                            return;
+                        }
+                        applySignedInState();
+                    } catch (error) {
+                        logging.error(error);
+                        if (syncManager && typeof syncManager.handleSignOut === "function") {
+                            try {
+                                syncManager.handleSignOut();
+                            } catch (resetError) {
+                                logging.error(resetError);
+                            }
+                        }
+                        applyGuestState();
+                        this.authControls?.showError(ERROR_AUTHENTICATION_GENERIC);
+                    }
+                };
+
+                void attemptSignIn();
             });
+        });
 
             root.addEventListener(EVENT_AUTH_SIGN_OUT, () => {
                 this.runWhenReady(() => {
