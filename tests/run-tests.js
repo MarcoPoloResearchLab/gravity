@@ -18,9 +18,11 @@ import {
     closeSharedBrowser,
     toImportSpecifier
 } from "./helpers/browserHarness.js";
+import { RUNTIME_CONTEXT_PATH } from "./helpers/runtimeContext.js";
 
 const CURRENT_FILE = fileURLToPath(import.meta.url);
 const TESTS_ROOT = path.dirname(CURRENT_FILE);
+const RUNTIME_OPTIONS_PATH = path.join(TESTS_ROOT, "runtime-options.json");
 
 /**
  * @param {string} root
@@ -60,10 +62,16 @@ function matchesPattern(relativePath, pattern) {
 }
 
 /**
- * @param {string | undefined} value
+ * @param {unknown} value
  * @param {number} fallback
  */
 function parseTimeout(value, fallback) {
+    if (typeof value === "number") {
+        if (Number.isFinite(value) && value > 0) {
+            return value;
+        }
+        return fallback;
+    }
     if (!value) return fallback;
     const parsed = Number.parseInt(value, 10);
     if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -72,40 +80,49 @@ function parseTimeout(value, fallback) {
     return parsed;
 }
 
-function parseOverrides(raw) {
-    const map = new Map();
-    if (!raw) {
-        return map;
-    }
-    const segments = raw.split(",");
-    for (const segment of segments) {
-        const trimmed = segment.trim();
-        if (trimmed.length === 0) continue;
-        const [key, value] = trimmed.split("=");
-        const file = key?.trim();
-        const parsed = Number.parseInt(value, 10);
-        if (!file || !Number.isFinite(parsed) || parsed <= 0) {
-            continue;
+async function loadRuntimeOptions() {
+    try {
+        const raw = await fs.readFile(RUNTIME_OPTIONS_PATH, "utf8");
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object") {
+            return {};
         }
-        map.set(file, parsed);
+        return parsed;
+    } catch (error) {
+        if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+            return {};
+        }
+        throw error;
     }
-    return map;
 }
 
 async function main() {
-    const patternInput = process.env.GRAVITY_TEST_PATTERN ?? null;
+    const runtimeOptions = await loadRuntimeOptions();
+    const patternInput = typeof runtimeOptions.pattern === "string" ? runtimeOptions.pattern : null;
     const pattern = patternInput ? new RegExp(patternInput) : null;
 
-    const timeoutMs = parseTimeout(
-        process.env.GRAVITY_TEST_TIMEOUT_MS,
-        harnessDefaults.timeoutMs
-    );
-    const killGraceMs = parseTimeout(
-        process.env.GRAVITY_TEST_KILL_GRACE_MS,
-        harnessDefaults.killGraceMs
-    );
-    const timeoutOverrides = parseOverrides(process.env.GRAVITY_TEST_TIMEOUT_OVERRIDES ?? "");
-    const killOverrides = parseOverrides(process.env.GRAVITY_TEST_KILL_GRACE_OVERRIDES ?? "");
+    const timeoutMs = parseTimeout(runtimeOptions.timeoutMs, harnessDefaults.timeoutMs);
+    const killGraceMs = parseTimeout(runtimeOptions.killGraceMs, harnessDefaults.killGraceMs);
+
+    const timeoutOverrides = new Map();
+    const killOverrides = new Map();
+
+    if (runtimeOptions.timeoutOverrides && typeof runtimeOptions.timeoutOverrides === "object") {
+        for (const [key, value] of Object.entries(runtimeOptions.timeoutOverrides)) {
+            const parsed = parseTimeout(value, -1);
+            if (parsed > 0) {
+                timeoutOverrides.set(key, parsed);
+            }
+        }
+    }
+    if (runtimeOptions.killOverrides && typeof runtimeOptions.killOverrides === "object") {
+        for (const [key, value] of Object.entries(runtimeOptions.killOverrides)) {
+            const parsed = parseTimeout(value, -1);
+            if (parsed > 0) {
+                killOverrides.set(key, parsed);
+            }
+        }
+    }
 
     const defaultTimeoutEntries = [
         ["fullstack.endtoend.puppeteer.test.js", 60000],
@@ -142,23 +159,14 @@ async function main() {
 
     const guardPath = path.join(TESTS_ROOT, "helpers", "browserLaunchGuard.js");
     const guardSpecifier = toImportSpecifier(guardPath);
-    const guardFlag = `--import=${guardSpecifier}`;
-    const existingNodeOptions = process.env.NODE_OPTIONS ?? "";
-    if (!existingNodeOptions.includes(guardFlag)) {
-        process.env.NODE_OPTIONS = existingNodeOptions.length > 0
-            ? `${existingNodeOptions} ${guardFlag}`
-            : guardFlag;
-    }
 
-    await import("./helpers/browserLaunchGuard.js");
-
-    process.env.GRAVITY_TEST_ALLOW_BROWSER_LAUNCH = "1";
     let sharedBrowserContext = null;
     try {
         sharedBrowserContext = await launchSharedBrowser();
-    } finally {
-        process.env.GRAVITY_TEST_ALLOW_BROWSER_LAUNCH = "0";
+    } catch (error) {
+        throw error;
     }
+
     if (!sharedBrowserContext) {
         throw new Error("Shared browser failed to launch.");
     }
@@ -167,14 +175,6 @@ async function main() {
     if (!backendHandle.signingKeyPem || !backendHandle.signingKeyId) {
         throw new Error("Shared backend did not expose signing metadata.");
     }
-    const sharedEnvironment = {
-        GRAVITY_TEST_BACKEND_URL: backendHandle.baseUrl,
-        GRAVITY_TEST_GOOGLE_CLIENT_ID: backendHandle.googleClientId,
-        GRAVITY_TEST_JWT_PRIVATE_KEY_PEM_BASE64: Buffer.from(backendHandle.signingKeyPem, "utf8").toString("base64"),
-        GRAVITY_TEST_JWT_KEY_ID: backendHandle.signingKeyId,
-        GRAVITY_TEST_BROWSER_WS_ENDPOINT: sharedBrowserContext.wsEndpoint
-    };
-    Object.assign(process.env, sharedEnvironment);
 
     let hasFailure = false;
     const summary = [];
@@ -193,21 +193,38 @@ async function main() {
     };
 
     try {
+        await fs.writeFile(
+            RUNTIME_CONTEXT_PATH,
+            JSON.stringify({
+                backend: {
+                    baseUrl: backendHandle.baseUrl,
+                    googleClientId: backendHandle.googleClientId,
+                    signingKeyPem: backendHandle.signingKeyPem,
+                    signingKeyId: backendHandle.signingKeyId
+                },
+                browser: {
+                    wsEndpoint: sharedBrowserContext.wsEndpoint
+                }
+            }),
+            "utf8"
+        );
+
         for (const relative of selected) {
             const absolute = path.join(TESTS_ROOT, relative);
             const effectiveTimeout = timeoutOverrides.get(relative) ?? timeoutMs;
             const effectiveKillGrace = killOverrides.get(relative) ?? killGraceMs;
             console.log(sectionHeading(relative));
-            const args = ["--test", absolute, `--test-timeout=${Math.max(effectiveTimeout - 1000, 1000)}`];
+            const args = [
+                "--import", guardSpecifier,
+                "--test",
+                absolute,
+                `--test-timeout=${Math.max(effectiveTimeout - 1000, 1000)}`
+            ];
             const result = await runTestProcess({
                 command: process.execPath,
                 args,
                 timeoutMs: effectiveTimeout,
                 killGraceMs: effectiveKillGrace,
-                env: {
-                    ...process.env,
-                    ...sharedEnvironment
-                },
                 onStdout: (chunk) => process.stdout.write(chunk),
                 onStderr: (chunk) => process.stderr.write(chunk)
             });
@@ -241,6 +258,7 @@ async function main() {
             }
         }
     } finally {
+        await fs.rm(RUNTIME_CONTEXT_PATH, { force: true }).catch(() => {});
         await backendHandle.close();
         await closeSharedBrowser();
     }

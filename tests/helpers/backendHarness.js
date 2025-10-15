@@ -6,6 +6,7 @@ import http from "node:http";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { readRuntimeContext } from "./runtimeContext.js";
 
 const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..");
 const BACKEND_DIR = path.join(REPO_ROOT, "backend");
@@ -38,9 +39,9 @@ export async function startTestBackend(options = {}) {
         signingSecret: options.signingSecret ?? DEFAULT_SIGNING_SECRET,
         logLevel: options.logLevel ?? "info"
     };
-    const environmentBackend = attemptEnvironmentBackend(normalizedOptions);
-    if (environmentBackend) {
-        return environmentBackend;
+    const sharedContextBackend = attemptRuntimeContextBackend(normalizedOptions);
+    if (sharedContextBackend) {
+        return sharedContextBackend;
     }
     const instanceKey = JSON.stringify(normalizedOptions);
 
@@ -114,38 +115,50 @@ export async function startTestBackend(options = {}) {
     return createSharedHandle(sharedBackendInstance);
 }
 
-function attemptEnvironmentBackend(normalizedOptions) {
-    const baseUrl = process.env.GRAVITY_TEST_BACKEND_URL;
-    const privateKeyBase64 = process.env.GRAVITY_TEST_JWT_PRIVATE_KEY_PEM_BASE64;
-    const keyId = process.env.GRAVITY_TEST_JWT_KEY_ID;
-    const googleClientId = process.env.GRAVITY_TEST_GOOGLE_CLIENT_ID;
-    if (!baseUrl || !privateKeyBase64 || !keyId || !googleClientId) {
+function attemptRuntimeContextBackend(normalizedOptions) {
+    let context;
+    try {
+        context = readRuntimeContext();
+    } catch (error) {
+        if (error instanceof Error && error.message.startsWith("Runtime context unavailable")) {
+            return null;
+        }
+        throw error;
+    }
+
+    const backend = context?.backend;
+    if (!backend) {
         return null;
     }
+
+    const { baseUrl, googleClientId, signingKeyPem, signingKeyId } = backend;
     if (normalizedOptions.googleClientId !== googleClientId) {
         throw new Error(`Shared backend configured for client id ${googleClientId}, but ${normalizedOptions.googleClientId} was requested.`);
     }
+    if (typeof baseUrl !== "string" || typeof signingKeyPem !== "string" || typeof signingKeyId !== "string") {
+        throw new Error("Runtime context backend entry is incomplete.");
+    }
+
     let privateKey;
-    let pem;
     try {
-        pem = Buffer.from(privateKeyBase64, "base64").toString("utf8");
-        privateKey = createPrivateKey({ key: pem, format: "pem", type: "pkcs8" });
+        privateKey = createPrivateKey({ key: signingKeyPem, format: "pem", type: "pkcs8" });
     } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
         throw new Error(`Unable to reconstruct shared backend signing key: ${reason}`);
     }
+
     return {
         baseUrl,
         googleClientId,
-        signingKeyPem: pem,
-        signingKeyId: keyId,
+        signingKeyPem,
+        signingKeyId,
         tokenFactory(userId, expiresInSeconds = 5 * 60) {
             return createSignedGoogleToken({
                 audience: googleClientId,
                 subject: userId,
                 issuer: DEFAULT_JWT_ISSUER,
                 privateKey,
-                keyId,
+                keyId: signingKeyId,
                 expiresInSeconds
             });
         },

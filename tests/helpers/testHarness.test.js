@@ -8,12 +8,6 @@ import test from "node:test";
 
 import { harnessDefaults, runTestProcess } from "./testHarness.js";
 
-if (process.env.GRAVITY_TEST_FORCE_HANG === "1") {
-    test("simulated harness hang", async () => {
-        await new Promise(() => {});
-    });
-}
-
 test("runTestProcess resolves for short-lived scripts", { timeout: 5000 }, async (t) => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "gravity-harness-test-"));
     const scriptPath = path.join(tempDir, "short.js");

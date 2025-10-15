@@ -7,6 +7,7 @@ import {
     cleanupPuppeteerSandbox,
     createSandboxedLaunchOptions
 } from "./puppeteerEnvironment.js";
+import { readRuntimeContext } from "./runtimeContext.js";
 
 let sharedLaunchContext = null;
 
@@ -45,8 +46,9 @@ export async function closeSharedBrowser() {
  * @returns {string}
  */
 export function getSharedBrowserEndpoint() {
-    const endpoint = process.env.GRAVITY_TEST_BROWSER_WS_ENDPOINT;
-    if (!endpoint) {
+    const context = readRuntimeContext();
+    const endpoint = context?.browser?.wsEndpoint;
+    if (typeof endpoint !== "string" || endpoint.length === 0) {
         throw new Error("Shared browser endpoint not provided. Ensure run-tests launched the shared browser.");
     }
     return endpoint;
