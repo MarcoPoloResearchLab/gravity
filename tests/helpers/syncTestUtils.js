@@ -1,9 +1,15 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { appConfig } from "../../js/core/config.js";
 import { ATTRIBUTE_APP_READY, EVENT_AUTH_SIGN_IN } from "../../js/constants.js";
 import { ensurePuppeteerSandbox, cleanupPuppeteerSandbox, createSandboxedLaunchOptions } from "./puppeteerEnvironment.js";
 import { startTestBackend } from "./backendHarness.js";
 
 const APP_READY_SELECTOR = `[${ATTRIBUTE_APP_READY}="true"]`;
+const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = path.resolve(TESTS_DIR, "..", "..");
+const DEFAULT_PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
 
 /**
  * Prepare a new browser page configured for backend synchronization tests.
@@ -46,17 +52,16 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
  *   teardown: () => Promise<void>
  * }>}
  */
-export async function initializePuppeteerTest() {
+export async function initializePuppeteerTest(pageUrl = DEFAULT_PAGE_URL) {
     const sandbox = await ensurePuppeteerSandbox();
     const backend = await startTestBackend();
-    const browser = await import("puppeteer").then((module) => module.default.launch(createSandboxedLaunchOptions(sandbox)));
+    const puppeteer = await import("puppeteer").then((module) => module.default);
+    const browser = await puppeteer.launch(createSandboxedLaunchOptions(sandbox));
     const page = await browser.newPage();
-    await page.evaluateOnNewDocument(() => {
-        window.GRAVITY_CONFIG = {
-            llmProxyClassifyUrl: ""
-        };
-    });
-    await page.goto(`file://${path.join(path.resolve(".", "index.html"))}`, { waitUntil: "domcontentloaded" });
+    await page.evaluateOnNewDocument(({ config }) => {
+        window.GRAVITY_CONFIG = config;
+    }, { config: { backendBaseUrl: backend.baseUrl, llmProxyClassifyUrl: "" } });
+    await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
     await page.waitForSelector("#top-editor .markdown-editor");
 
     const teardown = async () => {

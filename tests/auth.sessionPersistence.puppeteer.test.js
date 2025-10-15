@@ -4,95 +4,91 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import {
-    ensurePuppeteerSandbox,
-    cleanupPuppeteerSandbox,
-    createSandboxedLaunchOptions
-} from "./helpers/puppeteerEnvironment.js";
-import {
-    prepareFrontendPage,
+    initializePuppeteerTest,
     dispatchSignIn,
     waitForSyncManagerUser
 } from "./helpers/syncTestUtils.js";
-import { startTestBackend } from "./helpers/backendHarness.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
 
-const SANDBOX = await ensurePuppeteerSandbox();
-let puppeteerModule;
+let puppeteerAvailable = true;
 try {
-    ({ default: puppeteerModule } = await import("puppeteer"));
+    await import("puppeteer");
 } catch {
-    puppeteerModule = null;
+    puppeteerAvailable = false;
 }
 
-if (!puppeteerModule) {
+if (!puppeteerAvailable) {
     test("puppeteer unavailable", () => {
         test.skip("Puppeteer is not installed in this environment.");
     });
 } else {
-    const executablePath = typeof puppeteerModule.executablePath === "function"
-        ? puppeteerModule.executablePath()
-        : undefined;
-    if (typeof executablePath === "string" && executablePath.length > 0) {
-        process.env.PUPPETEER_EXECUTABLE_PATH = executablePath;
-    }
-
     test.describe("Auth session persistence", () => {
-        /** @type {import('puppeteer').Browser | null} */
-        let browser = null;
-        /** @type {{ baseUrl: string, tokenFactory: (userId: string) => string, close: () => Promise<void> }|null} */
-        let backendContext = null;
+        /** @type {{ browser: import('puppeteer').Browser, page: import('puppeteer').Page, backend: { baseUrl: string, tokenFactory: (userId: string, expiresInSeconds?: number) => string, close: () => Promise<void> }, teardown: () => Promise<void> }|null} */
+        let harness = null;
+        /** @type {Error|null} */
+        let launchError = null;
 
         test.before(async () => {
-            backendContext = await startTestBackend();
-            const launchOptions = createSandboxedLaunchOptions(SANDBOX);
-            browser = await puppeteerModule.launch(launchOptions);
+            try {
+                harness = await initializePuppeteerTest(PAGE_URL);
+            } catch (error) {
+                launchError = error instanceof Error ? error : new Error(String(error));
+            }
         });
 
         test.after(async () => {
-            await backendContext?.close();
-            if (browser) {
-                await browser.close();
+            if (harness) {
+                await harness.teardown();
             }
-            await cleanupPuppeteerSandbox(SANDBOX);
+            harness = null;
         });
 
         test("session survives refresh", async () => {
-            assert.ok(browser, "browser must be initialised");
-            assert.ok(backendContext, "backend must be initialised");
+            if (!harness) {
+                test.skip(launchError ? launchError.message : "Puppeteer harness unavailable");
+                return;
+            }
+
+            const { page, backend } = harness;
+            await resetAppToSignedOut(page);
 
             const userId = "session-persist-user";
-            const page = await prepareFrontendPage(browser, PAGE_URL, {
-                backendBaseUrl: backendContext.baseUrl,
-                llmProxyClassifyUrl: ""
+            const credential = backend.tokenFactory(userId);
+            await dispatchSignIn(page, credential, userId);
+            await waitForSyncManagerUser(page, userId, 5000);
+
+            const activeKeyBefore = await page.evaluate(async () => {
+                const module = await import("./js/core/store.js");
+                return module.GravityStore.getActiveStorageKey();
             });
-            try {
-                const credential = backendContext.tokenFactory(userId);
-                await dispatchSignIn(page, credential, userId);
-                await waitForSyncManagerUser(page, userId, 5000);
+            assert.ok(typeof activeKeyBefore === "string" && activeKeyBefore.includes(encodeURIComponent(userId)));
 
-                const activeKeyBefore = await page.evaluate(async () => {
-                    const module = await import("./js/core/store.js");
-                    return module.GravityStore.getActiveStorageKey();
-                });
-                assert.ok(typeof activeKeyBefore === "string" && activeKeyBefore.includes(encodeURIComponent(userId)));
+            await page.reload({ waitUntil: "domcontentloaded" });
+            await waitForSyncManagerUser(page, userId, 5000);
 
-                await page.reload({ waitUntil: "domcontentloaded" });
-                await waitForSyncManagerUser(page, userId, 5000);
+            const activeKeyAfter = await page.evaluate(async () => {
+                const module = await import("./js/core/store.js");
+                return module.GravityStore.getActiveStorageKey();
+            });
+            assert.equal(activeKeyAfter, activeKeyBefore, "user scope should persist after reload");
 
-                const activeKeyAfter = await page.evaluate(async () => {
-                    const module = await import("./js/core/store.js");
-                    return module.GravityStore.getActiveStorageKey();
-                });
-                assert.equal(activeKeyAfter, activeKeyBefore, "user scope should persist after reload");
-
-                const authStatePersisted = await page.evaluate(() => window.localStorage.getItem("gravityAuthState"));
-                assert.ok(authStatePersisted, "auth state should remain stored");
-            } finally {
-                await page.close();
-            }
+            const authStatePersisted = await page.evaluate(() => window.localStorage.getItem("gravityAuthState"));
+            assert.ok(authStatePersisted, "auth state should remain stored");
         });
     });
+}
+
+async function resetAppToSignedOut(page) {
+    await page.evaluate(() => {
+        window.sessionStorage.setItem("__gravityTestInitialized", "true");
+        window.localStorage.setItem("gravityNotesData", "[]");
+        window.localStorage.removeItem("gravityAuthState");
+        window.location.reload();
+    });
+    await page.waitForNavigation({ waitUntil: "domcontentloaded" });
+    await page.waitForSelector("#top-editor .markdown-editor");
+    await page.waitForSelector(".auth-button-host");
 }

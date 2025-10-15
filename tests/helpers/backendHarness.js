@@ -29,10 +29,25 @@ let backendBinaryPromise = null;
  *   close: () => Promise<void>
  * }>}
  */
+let sharedBackendInstance = null;
+let sharedBackendRefs = 0;
+
 export async function startTestBackend(options = {}) {
-    const googleClientId = options.googleClientId ?? DEFAULT_GOOGLE_CLIENT_ID;
-    const signingSecret = options.signingSecret ?? DEFAULT_SIGNING_SECRET;
-    const logLevel = options.logLevel ?? "info";
+    const normalizedOptions = {
+        googleClientId: options.googleClientId ?? DEFAULT_GOOGLE_CLIENT_ID,
+        signingSecret: options.signingSecret ?? DEFAULT_SIGNING_SECRET,
+        logLevel: options.logLevel ?? "info"
+    };
+    const instanceKey = JSON.stringify(normalizedOptions);
+
+    if (sharedBackendInstance && sharedBackendInstance.key === instanceKey) {
+        sharedBackendRefs += 1;
+        return createSharedHandle(sharedBackendInstance);
+    }
+
+    if (sharedBackendInstance) {
+        await disposeSharedBackend();
+    }
 
     const binaryPath = await ensureBackendBinary();
     const rsaKeys = generateRsaKeyPair();
@@ -48,51 +63,21 @@ export async function startTestBackend(options = {}) {
         address: backendAddress,
         jwksUrl,
         databasePath,
-        googleClientId,
-        signingSecret,
-        logLevel
+        googleClientId: normalizedOptions.googleClientId,
+        signingSecret: normalizedOptions.signingSecret,
+        logLevel: normalizedOptions.logLevel
     });
     await waitForServerReady(backendAddress);
 
-    let backendClosed = false;
-    let closingPromise = Promise.resolve();
     const databaseDirectory = path.dirname(databasePath);
 
-    async function close() {
-        if (backendClosed) {
-            await closingPromise;
-            return;
-        }
-        backendClosed = true;
-        closingPromise = (async () => {
-            try {
-                if (backendProcess.exitCode === null && backendProcess.signalCode === null) {
-                    backendProcess.kill("SIGTERM");
-                    const killTimer = setTimeout(() => {
-                        if (backendProcess.exitCode === null && backendProcess.signalCode === null) {
-                            backendProcess.kill("SIGKILL");
-                        }
-                    }, 4000);
-                    try {
-                        await once(backendProcess, "exit");
-                    } finally {
-                        clearTimeout(killTimer);
-                    }
-                }
-            } finally {
-                await jwksServer.close().catch(() => {});
-                await fs.rm(databaseDirectory, { recursive: true, force: true }).catch(() => {});
-            }
-        })();
-        await closingPromise;
-    }
-
-    return {
+    sharedBackendInstance = {
+        key: instanceKey,
         baseUrl: `http://${backendAddress}`,
-        googleClientId,
+        googleClientId: normalizedOptions.googleClientId,
         tokenFactory(userId, expiresInSeconds = 5 * 60) {
             return createSignedGoogleToken({
-                audience: googleClientId,
+                audience: normalizedOptions.googleClientId,
                 subject: userId,
                 issuer: DEFAULT_JWT_ISSUER,
                 privateKey: rsaKeys.privateKey,
@@ -100,8 +85,27 @@ export async function startTestBackend(options = {}) {
                 expiresInSeconds
             });
         },
-        close
+        async shutdown() {
+            if (backendProcess.exitCode === null && backendProcess.signalCode === null) {
+                backendProcess.kill("SIGTERM");
+                const killTimer = setTimeout(() => {
+                    if (backendProcess.exitCode === null && backendProcess.signalCode === null) {
+                        backendProcess.kill("SIGKILL");
+                    }
+                }, 4000);
+                try {
+                    await once(backendProcess, "exit");
+                } finally {
+                    clearTimeout(killTimer);
+                }
+            }
+            await jwksServer.close().catch(() => {});
+            await fs.rm(databaseDirectory, { recursive: true, force: true }).catch(() => {});
+        }
     };
+    sharedBackendRefs = 1;
+
+    return createSharedHandle(sharedBackendInstance);
 }
 
 /**
@@ -130,6 +134,35 @@ export async function waitForBackendNote({ backendUrl, token, noteId, timeoutMs 
         await delay(200);
     }
     throw new Error(`Note ${noteId} not found within ${timeoutMs}ms`);
+}
+
+function createSharedHandle(instance) {
+    let released = false;
+    sharedBackendRefs += 0;
+    return {
+        baseUrl: instance.baseUrl,
+        tokenFactory: instance.tokenFactory,
+        async close() {
+            if (released) {
+                return;
+            }
+            released = true;
+            sharedBackendRefs -= 1;
+            if (sharedBackendRefs <= 0) {
+                await disposeSharedBackend();
+            }
+        }
+    };
+}
+
+async function disposeSharedBackend() {
+    if (!sharedBackendInstance) {
+        return;
+    }
+    const context = sharedBackendInstance;
+    sharedBackendInstance = null;
+    sharedBackendRefs = 0;
+    await context.shutdown();
 }
 
 /**
