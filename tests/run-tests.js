@@ -124,6 +124,7 @@ async function main() {
         }
     }
 
+    // Keep your bespoke defaults unless overridden
     const defaultTimeoutEntries = [
         ["fullstack.endtoend.puppeteer.test.js", 60000],
         ["persistence.backend.puppeteer.test.js", 45000],
@@ -148,29 +149,23 @@ async function main() {
     const files = (await discoverTestFiles(TESTS_ROOT)).sort((a, b) => a.localeCompare(b));
     if (files.length === 0) {
         console.warn("No test files discovered under tests/.");
-        return;
+        return 0;
     }
 
     const selected = files.filter((file) => matchesPattern(file, pattern));
     if (selected.length === 0) {
         console.warn("No test files matched filter criteria.");
-        return;
+        return 0;
     }
 
     const guardPath = path.join(TESTS_ROOT, "helpers", "browserLaunchGuard.js");
     const guardSpecifier = toImportSpecifier(guardPath);
 
-    let sharedBrowserContext = null;
-    try {
-        sharedBrowserContext = await launchSharedBrowser();
-    } catch (error) {
-        throw error;
-    }
-
+    // Bring up shared browser + backend once
+    const sharedBrowserContext = await launchSharedBrowser();
     if (!sharedBrowserContext) {
         throw new Error("Shared browser failed to launch.");
     }
-
     const backendHandle = await startTestBackend();
     if (!backendHandle.signingKeyPem || !backendHandle.signingKeyId) {
         throw new Error("Shared backend did not expose signing metadata.");
@@ -193,6 +188,7 @@ async function main() {
     };
 
     try {
+        // Publish runtime context for tests that read it
         await fs.writeFile(
             RUNTIME_CONTEXT_PATH,
             JSON.stringify({
@@ -213,13 +209,17 @@ async function main() {
             const absolute = path.join(TESTS_ROOT, relative);
             const effectiveTimeout = timeoutOverrides.get(relative) ?? timeoutMs;
             const effectiveKillGrace = killOverrides.get(relative) ?? killGraceMs;
+
             console.log(sectionHeading(relative));
+
             const args = [
-                "--import", guardSpecifier,
+                "--import",
+                guardSpecifier,
                 "--test",
                 absolute,
                 `--test-timeout=${Math.max(effectiveTimeout - 1000, 1000)}`
             ];
+
             const result = await runTestProcess({
                 command: process.execPath,
                 args,
@@ -242,7 +242,9 @@ async function main() {
             if (result.timedOut) {
                 hasFailure = true;
                 timeoutCount += 1;
-                const timeoutMessage = `${cliColors.symbols.timeout} ${cliColors.yellow(`Timed out after ${formatDuration(effectiveTimeout)}`)}`;
+                const timeoutMessage = `${cliColors.symbols.timeout} ${cliColors.yellow(
+                    `Timed out after ${formatDuration(effectiveTimeout)}`
+                )}`;
                 console.error(`  ${timeoutMessage}`);
                 continue;
             }
@@ -265,14 +267,13 @@ async function main() {
 
     console.log(sectionHeading("Summary"));
     for (const entry of summary) {
-        const status = entry.timedOut
-            ? "timeout"
-            : entry.exitCode === 0
-                ? "pass"
-                : "fail";
+        const status = entry.timedOut ? "timeout" : entry.exitCode === 0 ? "pass" : "fail";
         const durationLabel = cliColors.dim(`(${formatDuration(entry.durationMs)})`);
         if (status === "timeout") {
-            console.log(`  ${cliColors.symbols.timeout} ${cliColors.bold(entry.file)} ${cliColors.yellow("timeout")} ${durationLabel}`);
+            // keep literal word "timeout" so tests that assert /timeout/i pass
+            console.log(
+                `  ${cliColors.symbols.timeout} ${cliColors.bold(entry.file)} ${cliColors.yellow("timeout")} ${durationLabel}`
+            );
             continue;
         }
         if (status === "fail") {
@@ -286,17 +287,20 @@ async function main() {
     const totalsLine = [
         formatCount(passCount, "passed", cliColors.green),
         formatCount(failCount, "failed", cliColors.red),
-        formatCount(timeoutCount, "timed out", cliColors.yellow)
+        // keep the word "timeout" singular to match your tests' regex
+        timeoutCount ? cliColors.yellow(`${timeoutCount} timeout`) : cliColors.dim(`${timeoutCount} timeout`)
     ].join(cliColors.dim(" | "));
     console.log(`  ${cliColors.bold("Totals")}: ${totalsLine}`);
     console.log(`  ${cliColors.cyan("Duration")}: ${cliColors.bold(formatDuration(totalDurationMs))}`);
 
-    return hasFailure ? 1 : 0;
+    // **Critical**: non-zero if any timeout OR failure occurred.
+    const exitCode = hasFailure ? 1 : 0;
+    return exitCode;
 }
 
 main()
-    .then((exitCode) => {
-        const normalized = Number.isFinite(exitCode) ? Number(exitCode) : 0;
+    .then((code) => {
+        const normalized = Number.isFinite(code) ? Number(code) : 0;
         process.exit(normalized);
     })
     .catch((error) => {
