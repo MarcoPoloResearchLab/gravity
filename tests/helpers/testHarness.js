@@ -7,6 +7,9 @@ const DEFAULT_TIMEOUT_MS = 30000;
 const DEFAULT_KILL_GRACE_MS = 5000;
 const TERMINATION_REASON_EXIT = "exit";
 const TERMINATION_REASON_TIMEOUT = "timeout";
+const SUCCESS_EXIT_CODE = 0;
+const FAILURE_EXIT_CODE = 1;
+const TIMEOUT_EXIT_CODE = 124;
 const ANSI_CODES = Object.freeze({
     reset: "\u001B[0m",
     bold: "\u001B[1m",
@@ -178,6 +181,9 @@ export function runTestProcess(options) {
         });
 
         child.once("exit", (code, signal) => {
+            if (!timedOut && code === TIMEOUT_EXIT_CODE) {
+                terminationReason = TERMINATION_REASON_TIMEOUT;
+            }
             finalize(code, signal);
         });
 
@@ -200,5 +206,10 @@ export const harnessDefaults = Object.freeze({
     terminationReason: Object.freeze({
         exit: TERMINATION_REASON_EXIT,
         timeout: TERMINATION_REASON_TIMEOUT
+    }),
+    exitCode: Object.freeze({
+        success: SUCCESS_EXIT_CODE,
+        failure: FAILURE_EXIT_CODE,
+        timeout: TIMEOUT_EXIT_CODE
     })
 });

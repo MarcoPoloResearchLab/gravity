@@ -889,7 +889,67 @@ test at tests/persistence.backend.puppeteer.test.js:1:1
   - sync.endtoend.puppeteer.test.js: pass in 6608ms
   - sync.manager.test.js: pass in 196ms
   ```
+  - [x] [GN-41] Tests are failing. I want us to fully rethink the approach and ensure that the tesst are passing -- what is harness tests? dow e dtest somebody's else code? why do we need it? how do others test thi scenario, if at all? I want to be sure we have a comprehensive code covergae without any flakiness or cyclical tests
+    ```shell
+     ▶ Summary
+  ✔ app.notifications.puppeteer.test.js (1345ms)
+  ✔ auth.avatarMenu.puppeteer.test.js (1710ms)
+  ✔ auth.google.test.js (552ms)
+  ✔ auth.sessionPersistence.puppeteer.test.js (1317ms)
+  ✔ auth.status.puppeteer.test.js (1584ms)
+  ✔ backend.sqlite.driver.test.js (483ms)
+  ✔ config.runtime.test.js (503ms)
+  ✔ copy.plaintext.test.js (481ms)
+  ✔ docker.packaging.test.js (481ms)
+  ✔ editor.enhanced.puppeteer.test.js (4672ms)
+  ✔ editor.inline.puppeteer.test.js (8014ms)
+  ✔ fullstack.endtoend.puppeteer.test.js (1158ms)
+  ✔ harness/browser.singleton.test.js (519ms)
+  ✖ harness/run-tests.harness.test.js exit=1 (1250ms)
+  ✔ helpers/testHarness.test.js (1179ms)
+  ✔ markdownPreview.test.js (589ms)
+  ✔ persistence.backend.puppeteer.test.js (1313ms)
+  ✔ persistence.sync.puppeteer.test.js (1770ms)
+  ✔ preview.bounded.puppeteer.test.js (2508ms)
+  ✔ preview.checkmark.puppeteer.test.js (3162ms)
+  ✔ store.test.js (459ms)
+  ✔ sync.endtoend.puppeteer.test.js (1433ms)
+  ✔ sync.manager.test.js (454ms)
+  Totals: 22 passed | 1 failed | 0 timed out
+  Duration: 36935ms
 
+▶ harness/run-tests.harness.test.js
+✔ run-tests harness reports summary for passing suites (255.696534ms)
+✖ run-tests harness surfaces timeouts in summary (506.261286ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 1
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1139.050486
+
+✖ failing tests:
+
+test at tests/harness/run-tests.harness.test.js:106:1
+✖ run-tests harness surfaces timeouts in summary (506.261286ms)
+  AssertionError [ERR_ASSERTION]: unexpected terminationReason: exit
+  
+  'exit' !== 'timeout'
+  
+      at TestContext.<anonymous> (file:///Users/tyemirov/Development/MarcoPoloResearchLab/gravity/tests/harness/run-tests.harness.test.js:126:12)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'exit',
+    expected: 'timeout',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+  ✖ Failed (exitCode=1)
+    ```
 ### Maintenance
 
 - [x] [GN-35] add a small “Privacy • Terms” link. and I mean small. it must serve a page under /privacy
