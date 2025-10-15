@@ -461,6 +461,13 @@ function gravityApp() {
                         applySignedInState();
                     } catch (error) {
                         logging.error(error);
+                        if (syncManager && typeof syncManager.handleSignOut === "function") {
+                            try {
+                                syncManager.handleSignOut();
+                            } catch (resetError) {
+                                logging.error(resetError);
+                            }
+                        }
                         applyGuestState();
                         this.authControls?.showError(ERROR_AUTHENTICATION_GENERIC);
                     }
