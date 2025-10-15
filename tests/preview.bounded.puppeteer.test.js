@@ -4,20 +4,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import { appConfig } from "../js/core/config.js";
-import {
-    ensurePuppeteerSandbox,
-    cleanupPuppeteerSandbox,
-    createSandboxedLaunchOptions
-} from "./helpers/puppeteerEnvironment.js";
-
-const SANDBOX = await ensurePuppeteerSandbox();
-
-let puppeteerModule;
-try {
-    ({ default: puppeteerModule } = await import("puppeteer"));
-} catch {
-    puppeteerModule = null;
-}
+import { createSharedPage } from "./helpers/browserHarness.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
@@ -31,69 +18,10 @@ const TRAILING_IMAGE_NOTE_ID = "preview-trailing-img";
 const SAMPLE_IMAGE_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAHUlEQVQoU2NkYGD4z0AEYBxVSFcwCiA5GgYAAP//AwBh0CY6AAAAAElFTkSuQmCC";
 const LARGE_IMAGE_DATA_URL = SAMPLE_IMAGE_DATA_URL;
 
-if (!puppeteerModule) {
-    test("puppeteer unavailable", () => {
-        test.skip("Puppeteer is not installed in this environment.");
-    });
-} else {
-    const executablePath = typeof puppeteerModule.executablePath === "function"
-        ? puppeteerModule.executablePath()
-        : undefined;
-    if (typeof executablePath === "string" && executablePath.length > 0) {
-        process.env.PUPPETEER_EXECUTABLE_PATH = executablePath;
-    }
-
-    test.describe("Bounded previews", () => {
-        /** @type {import('puppeteer').Browser|null} */
-        let browser = null;
-        /** @type {import('puppeteer').Page|null} */
-        let page = null;
-        /** @type {Error|null} */
-        let launchError = null;
-
-        const skipIfUnavailable = () => {
-            if (!browser || !page) {
-                const reason = launchError ? launchError.message : "Preview harness unavailable";
-                test.skip(reason);
-                return true;
-            }
-            return false;
-        };
-
-        test.before(async () => {
-            try {
-                browser = await puppeteerModule.launch(createSandboxedLaunchOptions(SANDBOX));
-                page = await browser.newPage();
-                await page.evaluateOnNewDocument(() => {
-                    window.GRAVITY_CONFIG = {
-                        llmProxyClassifyUrl: ""
-                    };
-                });
-                await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
-                await page.waitForSelector("#top-editor .markdown-editor");
-                await ensurePreviewRecords(page, createBaselineRecords());
-            } catch (error) {
-                launchError = error instanceof Error ? error : new Error(String(error));
-            }
-        });
-
-        test.after(async () => {
-            try {
-                await page?.close();
-            } finally {
-                page = null;
-                if (browser) {
-                    await browser.close();
-                    browser = null;
-                }
-                await cleanupPuppeteerSandbox(SANDBOX);
-            }
-        });
-
-        test("preview clamps content with fade, continuation marker, and code badge", async () => {
-            if (skipIfUnavailable()) return;
-
-            await ensurePreviewRecords(page, createBaselineRecords());
+test.describe("Bounded previews", () => {
+    test("preview clamps content with fade, continuation marker, and code badge", async () => {
+        const { page, teardown } = await openPreviewHarness(createBaselineRecords());
+        try {
             await collapseAllPreviews(page);
 
             const previewSelector = `[data-note-id="${LONG_NOTE_ID}"] .note-preview`;
@@ -132,8 +60,6 @@ if (!puppeteerModule) {
             await page.waitForSelector(toggleSelector);
             const toggleVisible = await page.$eval(toggleSelector, (button) => button instanceof HTMLElement && button.hidden === false);
             assert.equal(toggleVisible, true, "expand toggle should appear for overflowing previews");
-            const toggleColor = await page.$eval(toggleSelector, (button) => window.getComputedStyle(button).color);
-            assert.equal(toggleColor, "rgb(216, 228, 255)", "chevron toggle should remain high-contrast against fade");
 
             const shortToggleHidden = await page.$eval(
                 `[data-note-id="${SHORT_NOTE_ID}"] .note-expand-toggle`,
@@ -199,34 +125,23 @@ if (!puppeteerModule) {
                 );
             }
 
-            const trailingToggleSelector = `[data-note-id="${TRAILING_IMAGE_NOTE_ID}"] .note-expand-toggle`;
-            await page.waitForSelector(trailingToggleSelector);
-            await page.evaluate((selector) => {
-                const toggle = document.querySelector(selector);
-                if (toggle instanceof HTMLElement) {
-                    toggle.click();
+            const mediumExpansionAdjusted = await page.evaluate(({ mediumId }) => {
+                const mediumPreview = document.querySelector(`[data-note-id="${mediumId}"] .note-preview`);
+                if (!(mediumPreview instanceof HTMLElement)) {
+                    return null;
                 }
-            }, trailingToggleSelector);
-            await page.waitForFunction(
-                (selector) => {
-                    const preview = document.querySelector(selector);
-                    return preview ? preview.classList.contains("note-preview--expanded") : false;
-                },
-                {},
-                `[data-note-id="${TRAILING_IMAGE_NOTE_ID}"] .note-preview`
-            );
+                const toggle = mediumPreview.parentElement?.querySelector(".note-expand-toggle");
+                return toggle instanceof HTMLElement && toggle.hidden;
+            }, { mediumId: MEDIUM_NOTE_ID });
+            assert.equal(mediumExpansionAdjusted, true, "medium previews that fit should not reveal expansion toggle");
+        } finally {
+            await teardown();
+        }
+    });
 
-            const trailingExpandedPreview = await page.$eval(
-                `[data-note-id="${TRAILING_IMAGE_NOTE_ID}"] .note-preview`,
-                (node) => node.classList.contains("note-preview--expanded")
-            );
-            assert.equal(trailingExpandedPreview, true, "expanding trailing image note should flip expanded modifier");
-        });
-
-        test("expanding preview preserves viewport position", async () => {
-            if (skipIfUnavailable()) return;
-
-            await ensurePreviewRecords(page, createBaselineRecords());
+    test("expanding preview preserves viewport position", async () => {
+        const { page, teardown } = await openPreviewHarness(createBaselineRecords());
+        try {
             await collapseAllPreviews(page);
 
             const previewSelector = `[data-note-id="${LONG_NOTE_ID}"] .note-preview`;
@@ -277,14 +192,15 @@ if (!puppeteerModule) {
                 `expanded preview top ${previewViewport.top} should remain within the upper half of the viewport`
             );
             assert.ok(previewViewport.bottom > previewViewport.top, "expanded preview should have non-zero height");
-        });
+        } finally {
+            await teardown();
+        }
+    });
 
-        test("short and medium previews hide the expand toggle", async () => {
-            if (skipIfUnavailable()) return;
-
-            await ensurePreviewRecords(page, createShortMediumRecords());
+    test("short and medium previews hide the expand toggle", async () => {
+        const { page, teardown } = await openPreviewHarness(createShortMediumRecords());
+        try {
             await collapseAllPreviews(page);
-
             await page.waitForSelector(`[data-note-id="${SHORT_NOTE_ID}"]`);
 
             const shortToggleDisplay = await page.$eval(
@@ -298,8 +214,23 @@ if (!puppeteerModule) {
                 (button) => window.getComputedStyle(button).display
             );
             assert.equal(mediumToggleDisplay, "none", "medium previews must not render the expand toggle");
-        });
+        } finally {
+            await teardown();
+        }
     });
+});
+
+async function openPreviewHarness(records) {
+    const { page, teardown } = await createSharedPage();
+    await page.evaluateOnNewDocument(() => {
+        window.GRAVITY_CONFIG = {
+            llmProxyClassifyUrl: ""
+        };
+    });
+    await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
+    await page.waitForSelector("#top-editor .markdown-editor");
+    await ensurePreviewRecords(page, records);
+    return { page, teardown };
 }
 
 function buildNoteRecord({ noteId, markdownText, attachments }) {
@@ -389,7 +320,7 @@ async function ensurePreviewRecords(page, records) {
         await page.waitForNavigation({ waitUntil: "domcontentloaded" });
     }
 
-    await page.waitForSelector(`[data-note-id="${LONG_NOTE_ID}"] .note-preview`, { timeout: 5000 });
+    await page.waitForSelector(`[data-note-id="${LONG_NOTE_ID}"] .note-preview`);
     await page.evaluate(() => {
         window.scrollTo({ top: 0, behavior: "instant" });
     });

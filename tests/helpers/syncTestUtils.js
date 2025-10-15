@@ -3,8 +3,8 @@ import { fileURLToPath } from "node:url";
 
 import { appConfig } from "../../js/core/config.js";
 import { ATTRIBUTE_APP_READY, EVENT_AUTH_SIGN_IN } from "../../js/constants.js";
-import { ensurePuppeteerSandbox, cleanupPuppeteerSandbox, createSandboxedLaunchOptions } from "./puppeteerEnvironment.js";
 import { startTestBackend } from "./backendHarness.js";
+import { connectSharedBrowser } from "./browserHarness.js";
 
 const APP_READY_SELECTOR = `[${ATTRIBUTE_APP_READY}="true"]`;
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -53,25 +53,25 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
  * }>}
  */
 export async function initializePuppeteerTest(pageUrl = DEFAULT_PAGE_URL) {
-    const sandbox = await ensurePuppeteerSandbox();
     const backend = await startTestBackend();
-    const puppeteer = await import("puppeteer").then((module) => module.default);
-    const browser = await puppeteer.launch(createSandboxedLaunchOptions(sandbox));
-    const page = await browser.newPage();
+    const browser = await connectSharedBrowser();
+    const context = await browser.createBrowserContext();
+    const page = await context.newPage();
     await page.evaluateOnNewDocument(({ config }) => {
         window.GRAVITY_CONFIG = config;
     }, { config: { backendBaseUrl: backend.baseUrl, llmProxyClassifyUrl: "" } });
     await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
+    await page.waitForSelector(APP_READY_SELECTOR);
     await page.waitForSelector("#top-editor .markdown-editor");
 
     const teardown = async () => {
         await page.close().catch(() => {});
-        await browser.close().catch(() => {});
+        await context.close().catch(() => {});
+        browser.disconnect();
         await backend.close().catch(() => {});
-        await cleanupPuppeteerSandbox(sandbox);
     };
 
-    return { browser, page, backend, teardown };
+    return { browser, context, page, backend, teardown };
 }
 
 /**
@@ -148,6 +148,33 @@ export async function waitForSyncManagerUser(page, expectedUserId, timeoutMs) {
         const debugState = syncManager.getDebugState();
         return debugState?.activeUserId === userId;
     }, options, expectedUserId);
+}
+
+/**
+ * Wait for the application ready signal on the provided page.
+ * @param {import('puppeteer').Page} page
+ * @returns {Promise<void>}
+ */
+export async function waitForAppReady(page) {
+    await page.waitForSelector(APP_READY_SELECTOR);
+}
+
+/**
+ * Reset the application state to a signed-out view and wait for readiness.
+ * @param {import('puppeteer').Page} page
+ * @returns {Promise<void>}
+ */
+export async function resetToSignedOut(page) {
+    await page.evaluate(() => {
+        window.sessionStorage.setItem("__gravityTestInitialized", "true");
+        window.localStorage.setItem("gravityNotesData", "[]");
+        window.localStorage.removeItem("gravityAuthState");
+        window.location.reload();
+    });
+    await page.waitForNavigation({ waitUntil: "domcontentloaded" });
+    await waitForAppReady(page);
+    await page.waitForSelector("#top-editor .markdown-editor");
+    await page.waitForSelector(".auth-button-host");
 }
 
 /**

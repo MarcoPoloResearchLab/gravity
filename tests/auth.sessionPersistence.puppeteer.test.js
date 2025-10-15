@@ -6,7 +6,8 @@ import test from "node:test";
 import {
     initializePuppeteerTest,
     dispatchSignIn,
-    waitForSyncManagerUser
+    waitForSyncManagerUser,
+    resetToSignedOut
 } from "./helpers/syncTestUtils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -53,12 +54,12 @@ if (!puppeteerAvailable) {
             }
 
             const { page, backend } = harness;
-            await resetAppToSignedOut(page);
+            await resetToSignedOut(page);
 
             const userId = "session-persist-user";
             const credential = backend.tokenFactory(userId);
             await dispatchSignIn(page, credential, userId);
-            await waitForSyncManagerUser(page, userId, 5000);
+            await waitForSyncManagerUser(page, userId);
 
             const activeKeyBefore = await page.evaluate(async () => {
                 const module = await import("./js/core/store.js");
@@ -67,7 +68,7 @@ if (!puppeteerAvailable) {
             assert.ok(typeof activeKeyBefore === "string" && activeKeyBefore.includes(encodeURIComponent(userId)));
 
             await page.reload({ waitUntil: "domcontentloaded" });
-            await waitForSyncManagerUser(page, userId, 5000);
+            await waitForSyncManagerUser(page, userId);
 
             const activeKeyAfter = await page.evaluate(async () => {
                 const module = await import("./js/core/store.js");
@@ -79,16 +80,4 @@ if (!puppeteerAvailable) {
             assert.ok(authStatePersisted, "auth state should remain stored");
         });
     });
-}
-
-async function resetAppToSignedOut(page) {
-    await page.evaluate(() => {
-        window.sessionStorage.setItem("__gravityTestInitialized", "true");
-        window.localStorage.setItem("gravityNotesData", "[]");
-        window.localStorage.removeItem("gravityAuthState");
-        window.location.reload();
-    });
-    await page.waitForNavigation({ waitUntil: "domcontentloaded" });
-    await page.waitForSelector("#top-editor .markdown-editor");
-    await page.waitForSelector(".auth-button-host");
 }

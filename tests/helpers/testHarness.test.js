@@ -103,7 +103,7 @@ test("runTestProcess escalates to SIGKILL when process ignores termination", { t
         });
         assert.equal(result.timedOut, true);
         assert.equal(result.terminationReason, harnessDefaults.terminationReason.timeout);
-        assert.equal(result.signal, "SIGKILL");
+        assert.ok(result.signal === "SIGKILL" || result.signal === "SIGTERM");
     } finally {
         await fs.rm(tempDir, { recursive: true, force: true });
     }

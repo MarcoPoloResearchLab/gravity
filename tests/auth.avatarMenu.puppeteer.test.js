@@ -12,7 +12,8 @@ import {
 import {
     initializePuppeteerTest,
     dispatchSignIn,
-    waitForSyncManagerUser
+    waitForSyncManagerUser,
+    resetToSignedOut
 } from "./helpers/syncTestUtils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -60,7 +61,7 @@ if (!puppeteerAvailable) {
 
             const { page, backend } = harness;
 
-            await resetAppToSignedOut(page);
+            await resetToSignedOut(page);
 
             assert.equal(LABEL_EXPORT_NOTES, "Export Notes");
             assert.equal(LABEL_IMPORT_NOTES, "Import Notes");
@@ -105,7 +106,7 @@ if (!puppeteerAvailable) {
 
             const credential = backend.tokenFactory("avatar-menu-user");
             await dispatchSignIn(page, credential, "avatar-menu-user");
-            await waitForSyncManagerUser(page, "avatar-menu-user", 5000);
+            await waitForSyncManagerUser(page, "avatar-menu-user");
 
             await page.waitForFunction(() => !document.querySelector(".auth-button-host"));
 
@@ -146,16 +147,4 @@ if (!puppeteerAvailable) {
             await page.waitForSelector("#guest-export-button:not([hidden])");
         });
     });
-}
-
-async function resetAppToSignedOut(page) {
-    await page.evaluate(() => {
-        window.sessionStorage.setItem("__gravityTestInitialized", "true");
-        window.localStorage.setItem("gravityNotesData", "[]");
-        window.localStorage.removeItem("gravityAuthState");
-        window.location.reload();
-    });
-    await page.waitForNavigation({ waitUntil: "domcontentloaded" });
-    await page.waitForSelector("#top-editor .markdown-editor");
-    await page.waitForSelector(".auth-button-host");
 }

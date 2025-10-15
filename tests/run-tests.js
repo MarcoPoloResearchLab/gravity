@@ -12,6 +12,12 @@ import {
     harnessDefaults,
     runTestProcess
 } from "./helpers/testHarness.js";
+import { startTestBackend } from "./helpers/backendHarness.js";
+import {
+    launchSharedBrowser,
+    closeSharedBrowser,
+    toImportSpecifier
+} from "./helpers/browserHarness.js";
 
 const CURRENT_FILE = fileURLToPath(import.meta.url);
 const TESTS_ROOT = path.dirname(CURRENT_FILE);
@@ -134,6 +140,42 @@ async function main() {
         return;
     }
 
+    const guardPath = path.join(TESTS_ROOT, "helpers", "browserLaunchGuard.js");
+    const guardSpecifier = toImportSpecifier(guardPath);
+    const guardFlag = `--import=${guardSpecifier}`;
+    const existingNodeOptions = process.env.NODE_OPTIONS ?? "";
+    if (!existingNodeOptions.includes(guardFlag)) {
+        process.env.NODE_OPTIONS = existingNodeOptions.length > 0
+            ? `${existingNodeOptions} ${guardFlag}`
+            : guardFlag;
+    }
+
+    await import("./helpers/browserLaunchGuard.js");
+
+    process.env.GRAVITY_TEST_ALLOW_BROWSER_LAUNCH = "1";
+    let sharedBrowserContext = null;
+    try {
+        sharedBrowserContext = await launchSharedBrowser();
+    } finally {
+        process.env.GRAVITY_TEST_ALLOW_BROWSER_LAUNCH = "0";
+    }
+    if (!sharedBrowserContext) {
+        throw new Error("Shared browser failed to launch.");
+    }
+
+    const backendHandle = await startTestBackend();
+    if (!backendHandle.signingKeyPem || !backendHandle.signingKeyId) {
+        throw new Error("Shared backend did not expose signing metadata.");
+    }
+    const sharedEnvironment = {
+        GRAVITY_TEST_BACKEND_URL: backendHandle.baseUrl,
+        GRAVITY_TEST_GOOGLE_CLIENT_ID: backendHandle.googleClientId,
+        GRAVITY_TEST_JWT_PRIVATE_KEY_PEM_BASE64: Buffer.from(backendHandle.signingKeyPem, "utf8").toString("base64"),
+        GRAVITY_TEST_JWT_KEY_ID: backendHandle.signingKeyId,
+        GRAVITY_TEST_BROWSER_WS_ENDPOINT: sharedBrowserContext.wsEndpoint
+    };
+    Object.assign(process.env, sharedEnvironment);
+
     let hasFailure = false;
     const summary = [];
     let totalDurationMs = 0;
@@ -150,49 +192,57 @@ async function main() {
         return format(formatted);
     };
 
-    for (const relative of selected) {
-        const absolute = path.join(TESTS_ROOT, relative);
-        const effectiveTimeout = timeoutOverrides.get(relative) ?? timeoutMs;
-        const effectiveKillGrace = killOverrides.get(relative) ?? killGraceMs;
-        console.log(sectionHeading(relative));
-        const args = ["--test", absolute, `--test-timeout=${Math.max(effectiveTimeout - 1000, 1000)}`];
-        const result = await runTestProcess({
-            command: process.execPath,
-            args,
-            timeoutMs: effectiveTimeout,
-            killGraceMs: effectiveKillGrace,
-            env: process.env,
-            onStdout: (chunk) => process.stdout.write(chunk),
-            onStderr: (chunk) => process.stderr.write(chunk)
-        });
+    try {
+        for (const relative of selected) {
+            const absolute = path.join(TESTS_ROOT, relative);
+            const effectiveTimeout = timeoutOverrides.get(relative) ?? timeoutMs;
+            const effectiveKillGrace = killOverrides.get(relative) ?? killGraceMs;
+            console.log(sectionHeading(relative));
+            const args = ["--test", absolute, `--test-timeout=${Math.max(effectiveTimeout - 1000, 1000)}`];
+            const result = await runTestProcess({
+                command: process.execPath,
+                args,
+                timeoutMs: effectiveTimeout,
+                killGraceMs: effectiveKillGrace,
+                env: {
+                    ...process.env,
+                    ...sharedEnvironment
+                },
+                onStdout: (chunk) => process.stdout.write(chunk),
+                onStderr: (chunk) => process.stderr.write(chunk)
+            });
 
-        summary.push({
-            file: relative,
-            durationMs: result.durationMs,
-            timedOut: result.timedOut,
-            exitCode: result.exitCode,
-            signal: result.signal,
-            terminationReason: result.terminationReason
-        });
-        totalDurationMs += result.durationMs;
+            summary.push({
+                file: relative,
+                durationMs: result.durationMs,
+                timedOut: result.timedOut,
+                exitCode: result.exitCode,
+                signal: result.signal,
+                terminationReason: result.terminationReason
+            });
+            totalDurationMs += result.durationMs;
 
-        if (result.timedOut) {
-            hasFailure = true;
-            timeoutCount += 1;
-            const timeoutMessage = `${cliColors.symbols.timeout} ${cliColors.yellow(`Timed out after ${formatDuration(effectiveTimeout)}`)}`;
-            console.error(`  ${timeoutMessage}`);
-            continue;
+            if (result.timedOut) {
+                hasFailure = true;
+                timeoutCount += 1;
+                const timeoutMessage = `${cliColors.symbols.timeout} ${cliColors.yellow(`Timed out after ${formatDuration(effectiveTimeout)}`)}`;
+                console.error(`  ${timeoutMessage}`);
+                continue;
+            }
+            if (result.exitCode !== 0) {
+                hasFailure = true;
+                failCount += 1;
+                const signalDetail = result.signal ? `signal=${result.signal}` : `exitCode=${result.exitCode}`;
+                console.error(`  ${cliColors.symbols.fail} ${cliColors.red(`Failed (${signalDetail})`)}`);
+            } else {
+                passCount += 1;
+                const durationLabel = cliColors.dim(`(${formatDuration(result.durationMs)})`);
+                console.log(`  ${cliColors.symbols.pass} ${cliColors.green("Passed")} ${durationLabel}`);
+            }
         }
-        if (result.exitCode !== 0) {
-            hasFailure = true;
-            failCount += 1;
-            const signalDetail = result.signal ? `signal=${result.signal}` : `exitCode=${result.exitCode}`;
-            console.error(`  ${cliColors.symbols.fail} ${cliColors.red(`Failed (${signalDetail})`)}`);
-        } else {
-            passCount += 1;
-            const durationLabel = cliColors.dim(`(${formatDuration(result.durationMs)})`);
-            console.log(`  ${cliColors.symbols.pass} ${cliColors.green("Passed")} ${durationLabel}`);
-        }
+    } finally {
+        await backendHandle.close();
+        await closeSharedBrowser();
     }
 
     console.log(sectionHeading("Summary"));

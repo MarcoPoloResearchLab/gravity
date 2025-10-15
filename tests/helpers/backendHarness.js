@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { createSign, generateKeyPairSync } from "node:crypto";
+import { createPrivateKey, createSign, generateKeyPairSync } from "node:crypto";
 import { once } from "node:events";
 import fs from "node:fs/promises";
 import http from "node:http";
@@ -38,6 +38,10 @@ export async function startTestBackend(options = {}) {
         signingSecret: options.signingSecret ?? DEFAULT_SIGNING_SECRET,
         logLevel: options.logLevel ?? "info"
     };
+    const environmentBackend = attemptEnvironmentBackend(normalizedOptions);
+    if (environmentBackend) {
+        return environmentBackend;
+    }
     const instanceKey = JSON.stringify(normalizedOptions);
 
     if (sharedBackendInstance && sharedBackendInstance.key === instanceKey) {
@@ -75,6 +79,8 @@ export async function startTestBackend(options = {}) {
         key: instanceKey,
         baseUrl: `http://${backendAddress}`,
         googleClientId: normalizedOptions.googleClientId,
+        signingKeyPem: rsaKeys.privateKeyPem,
+        signingKeyId: rsaKeys.keyId,
         tokenFactory(userId, expiresInSeconds = 5 * 60) {
             return createSignedGoogleToken({
                 audience: normalizedOptions.googleClientId,
@@ -108,15 +114,57 @@ export async function startTestBackend(options = {}) {
     return createSharedHandle(sharedBackendInstance);
 }
 
+function attemptEnvironmentBackend(normalizedOptions) {
+    const baseUrl = process.env.GRAVITY_TEST_BACKEND_URL;
+    const privateKeyBase64 = process.env.GRAVITY_TEST_JWT_PRIVATE_KEY_PEM_BASE64;
+    const keyId = process.env.GRAVITY_TEST_JWT_KEY_ID;
+    const googleClientId = process.env.GRAVITY_TEST_GOOGLE_CLIENT_ID;
+    if (!baseUrl || !privateKeyBase64 || !keyId || !googleClientId) {
+        return null;
+    }
+    if (normalizedOptions.googleClientId !== googleClientId) {
+        throw new Error(`Shared backend configured for client id ${googleClientId}, but ${normalizedOptions.googleClientId} was requested.`);
+    }
+    let privateKey;
+    let pem;
+    try {
+        pem = Buffer.from(privateKeyBase64, "base64").toString("utf8");
+        privateKey = createPrivateKey({ key: pem, format: "pem", type: "pkcs8" });
+    } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        throw new Error(`Unable to reconstruct shared backend signing key: ${reason}`);
+    }
+    return {
+        baseUrl,
+        googleClientId,
+        signingKeyPem: pem,
+        signingKeyId: keyId,
+        tokenFactory(userId, expiresInSeconds = 5 * 60) {
+            return createSignedGoogleToken({
+                audience: googleClientId,
+                subject: userId,
+                issuer: DEFAULT_JWT_ISSUER,
+                privateKey,
+                keyId,
+                expiresInSeconds
+            });
+        },
+        async close() {
+            // shared backend is managed by the parent process; no-op for callers
+        }
+    };
+}
+
 /**
  * Poll the backend for notes until a matching identifier appears.
- * @param {{ backendUrl: string, token: string, noteId: string, timeoutMs: number }} options
+ * @param {{ backendUrl: string, token: string, noteId: string, timeoutMs?: number }} options
  * @returns {Promise<any>}
  */
 export async function waitForBackendNote({ backendUrl, token, noteId, timeoutMs }) {
-    const deadline = Date.now() + timeoutMs;
+    const resolvedTimeout = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 20000;
+    const deadline = Date.now() + resolvedTimeout;
     while (Date.now() < deadline) {
-        const { statusCode, body } = await fetchBackendNotes({ backendUrl, token, timeoutMs });
+        const { statusCode, body } = await fetchBackendNotes({ backendUrl, token, timeoutMs: resolvedTimeout });
         if (statusCode === 200) {
             try {
                 const payload = JSON.parse(body);
@@ -133,7 +181,7 @@ export async function waitForBackendNote({ backendUrl, token, noteId, timeoutMs 
         }
         await delay(200);
     }
-    throw new Error(`Note ${noteId} not found within ${timeoutMs}ms`);
+    throw new Error(`Note ${noteId} not found within ${resolvedTimeout}ms`);
 }
 
 function createSharedHandle(instance) {
@@ -141,6 +189,9 @@ function createSharedHandle(instance) {
     sharedBackendRefs += 0;
     return {
         baseUrl: instance.baseUrl,
+        googleClientId: instance.googleClientId,
+        signingKeyPem: instance.signingKeyPem,
+        signingKeyId: instance.signingKeyId,
         tokenFactory: instance.tokenFactory,
         async close() {
             if (released) {
@@ -215,6 +266,7 @@ function generateRsaKeyPair() {
     const keyId = "gravity-test-key";
     return {
         privateKey,
+        privateKeyPem: privateKey.export({ format: "pem", type: "pkcs8" }).toString(),
         jwk: {
             ...jwk,
             kid: keyId,

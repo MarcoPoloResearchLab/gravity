@@ -6,11 +6,6 @@ import {
     EVENT_NOTE_CREATE
 } from "../js/constants.js";
 import {
-    ensurePuppeteerSandbox,
-    cleanupPuppeteerSandbox,
-    createSandboxedLaunchOptions
-} from "./helpers/puppeteerEnvironment.js";
-import {
     prepareFrontendPage,
     dispatchSignIn,
     waitForSyncManagerUser,
@@ -20,14 +15,7 @@ import {
     startTestBackend,
     waitForBackendNote
 } from "./helpers/backendHarness.js";
-
-const SANDBOX = await ensurePuppeteerSandbox();
-let puppeteerModule;
-try {
-    ({ default: puppeteerModule } = await import("puppeteer"));
-} catch {
-    puppeteerModule = null;
-}
+import { connectSharedBrowser } from "./helpers/browserHarness.js";
 
 const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const PAGE_URL = `file://${path.join(REPO_ROOT, "index.html")}`;
@@ -37,68 +25,55 @@ const GLOBAL_TIMEOUT_MS = readPositiveInteger(process.env.GRAVITY_TEST_TIMEOUT_M
 const BACKEND_SYNC_TEST_TIMEOUT_MS = GLOBAL_TIMEOUT_MS;
 const PUPPETEER_WAIT_TIMEOUT_MS = Math.max(4000, Math.min(15000, Math.floor(GLOBAL_TIMEOUT_MS / 2)));
 
-if (!puppeteerModule) {
-    test("puppeteer unavailable", () => {
-        test.skip("Puppeteer is not installed in this environment.");
+test.describe("Backend sync integration", () => {
+    /** @type {{ close: () => Promise<void>, baseUrl: string, tokenFactory: (userId: string) => string }|null} */
+    let backendContext = null;
+
+    test.before(async () => {
+        backendContext = await startTestBackend({
+            logLevel: "info"
+        });
     });
-} else {
-    const executablePath = typeof puppeteerModule.executablePath === "function"
-        ? puppeteerModule.executablePath()
-        : undefined;
-    if (typeof executablePath === "string" && executablePath.length > 0) {
-        process.env.PUPPETEER_EXECUTABLE_PATH = executablePath;
-    }
 
-    test.describe("Backend sync integration", () => {
-        /** @type {import('puppeteer').Browser?} */
-        let browser = null;
-        /** @type {{ close: () => Promise<void>, baseUrl: string, tokenFactory: (userId: string) => string }|null} */
-        let backendContext = null;
+    test.after(async () => {
+        await backendContext?.close();
+    });
 
-        test.before(async () => {
-            backendContext = await startTestBackend({
-                logLevel: "info"
-            });
-            const launchOptions = createSandboxedLaunchOptions(SANDBOX);
-            browser = await puppeteerModule.launch(launchOptions);
-        });
+    test("flushes notes to the backend over HTTP", async (t) => {
+        assert.ok(backendContext, "backend must be initialised");
 
-        test.after(async () => {
-            await backendContext?.close();
-            if (browser) {
-                await browser.close();
+        const deadline = createTestDeadline(t, BACKEND_SYNC_TEST_TIMEOUT_MS);
+        const deadlineSignal = deadline.signal;
+        let page = null;
+        let context = null;
+        let browserConnection = null;
+
+        const abortHandler = () => {
+            if (page) {
+                page.close().catch(() => {});
             }
-            await cleanupPuppeteerSandbox(SANDBOX);
-            process.nextTick(() => process.exit(0));
+            if (context) {
+                context.close().catch(() => {});
+            }
+            if (browserConnection) {
+                browserConnection.disconnect();
+            }
+        };
+        deadlineSignal.addEventListener("abort", abortHandler, { once: true });
+
+        const backendUrl = backendContext.baseUrl;
+        browserConnection = await connectSharedBrowser();
+        context = await browserConnection.createBrowserContext();
+        page = await raceWithSignal(deadlineSignal, prepareFrontendPage(context, PAGE_URL, {
+            backendBaseUrl: backendUrl,
+            llmProxyClassifyUrl: backendUrl
+        }));
+        page.on("console", (message) => {
+            if (message.type() === "error") {
+                console.error(message.text());
+            }
         });
-
-        test("flushes notes to the backend over HTTP", async (t) => {
-            assert.ok(browser, "browser must be available");
-            assert.ok(backendContext, "backend must be initialised");
-
-            const deadline = createTestDeadline(t, BACKEND_SYNC_TEST_TIMEOUT_MS);
-            const deadlineSignal = deadline.signal;
-            let page = null;
-
-            const abortHandler = () => {
-                if (page) {
-                    page.close().catch(() => {});
-                }
-                backendContext?.close().catch(() => {});
-            };
-            deadlineSignal.addEventListener("abort", abortHandler, { once: true });
-
-            const backendUrl = backendContext.baseUrl;
-            page = await raceWithSignal(deadlineSignal, prepareFrontendPage(browser, PAGE_URL, {
-                backendBaseUrl: backendUrl,
-                llmProxyClassifyUrl: backendUrl
-            }));
-            page.on("console", (message) => {
-                if (message.type() === "error") {
-                    console.error(message.text());
-                }
-            });
-            try {
+        try {
                 const credential = backendContext.tokenFactory(TEST_USER_ID);
                 await raceWithSignal(deadlineSignal, dispatchSignIn(page, credential, TEST_USER_ID));
                 await page.evaluate(async ({ userId, token }) => {
@@ -177,18 +152,21 @@ if (!puppeteerModule) {
                     })
                 );
                 assert.ok(backendNotes, "backend returned payload with notes");
-            } finally {
-                deadlineSignal.removeEventListener("abort", abortHandler);
-                deadline.cancel();
-                if (page) {
-                    try {
-                        await page.close();
-                    } catch {}
-                }
+        } finally {
+            deadlineSignal.removeEventListener("abort", abortHandler);
+            deadline.cancel();
+            if (page) {
+                await page.close().catch(() => {});
             }
-        });
+            if (context) {
+                await context.close().catch(() => {});
+            }
+            if (browserConnection) {
+                browserConnection.disconnect();
+            }
+        }
     });
-}
+});
 
 /** 
  * @param {string | undefined} candidate

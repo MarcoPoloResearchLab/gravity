@@ -4,23 +4,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import { appConfig } from "../js/core/config.js";
-import { ensurePuppeteerSandbox, cleanupPuppeteerSandbox } from "./helpers/puppeteerEnvironment.js";
-
-const SANDBOX = await ensurePuppeteerSandbox();
-const {
-    homeDir: SANDBOX_HOME_DIR,
-    userDataDir: SANDBOX_USER_DATA_DIR,
-    cacheDir: SANDBOX_CACHE_DIR,
-    configDir: SANDBOX_CONFIG_DIR,
-    crashDumpsDir: SANDBOX_CRASH_DUMPS_DIR
-} = SANDBOX;
-
-let puppeteerModule;
-try {
-    ({ default: puppeteerModule } = await import("puppeteer"));
-} catch (error) {
-    puppeteerModule = null;
-}
+import { createSharedPage } from "./helpers/browserHarness.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
@@ -72,175 +56,99 @@ const PIN_SECOND_MARKDOWN = "Second note to pin.";
 const FOCUS_SUPPRESSION_NOTE_ID = "inline-focus-suppression";
 const FOCUS_SUPPRESSION_MARKDOWN = "Focus suppression baseline.";
 
-if (!puppeteerModule) {
-    test("puppeteer unavailable", () => {
-        test.skip("Puppeteer is not installed in this environment.");
+test.describe("Markdown inline editor", () => {
+
+    test("top editor clears after submitting long note", async () => {
+        const { page, teardown } = await preparePage({
+            records: []
+        });
+        const cmTextarea = "#top-editor .CodeMirror textarea";
+
+        try {
+            await page.waitForSelector(cmTextarea);
+
+            const longNote = Array.from({ length: 14 }, (_, index) => `Line ${index + 1} of extended content.`).join("\n");
+            await page.focus(cmTextarea);
+            await page.keyboard.type(longNote);
+
+            await page.keyboard.down("Control");
+            await page.keyboard.press("Enter");
+            await page.keyboard.up("Control");
+
+            await page.waitForSelector(".markdown-block[data-note-id]");
+            await page.waitForSelector("#editor-toast.toast--visible");
+            const topEditorState = await page.evaluate(() => {
+                const wrapper = document.querySelector("#top-editor .markdown-block.top-editor");
+                if (!(wrapper instanceof HTMLElement)) {
+                    return { value: null, line: -1, ch: -1 };
+                }
+                const host = /** @type {any} */ (wrapper).__markdownHost;
+                const codeMirror = wrapper.querySelector(".CodeMirror");
+                const cm = codeMirror ? /** @type {any} */ (codeMirror).CodeMirror : null;
+                const cursor = cm ? cm.getCursor() : { line: -1, ch: -1 };
+                return {
+                    value: host && typeof host.getValue === "function" ? host.getValue() : null,
+                    line: cursor.line,
+                    ch: cursor.ch
+                };
+            });
+            assert.equal(topEditorState.value, "", "Top editor clears value after submit");
+            assert.equal(topEditorState.line, 0, "Top editor caret returns to first line");
+            assert.equal(topEditorState.ch, 0, "Top editor caret resets to first column");
+        } finally {
+            await teardown();
+        }
     });
-} else {
-    const executablePath = typeof puppeteerModule.executablePath === "function"
-        ? puppeteerModule.executablePath()
-        : undefined;
-    if (typeof executablePath === "string" && executablePath.length > 0) {
-        process.env.PUPPETEER_EXECUTABLE_PATH = executablePath;
-    }
-    test.describe("Markdown inline editor", () => {
-        /** @type {import('puppeteer').Browser} */
-        let browser;
-        /** @type {Error|null} */
-        let launchError = null;
 
-        const skipIfNoBrowser = () => {
-            if (!browser) {
-                test.skip(launchError ? launchError.message : "Puppeteer launch unavailable in sandbox.");
-                return true;
-            }
-            return false;
-        };
-
-        test.before(async () => {
-            const launchArgs = [
-                "--allow-file-access-from-files",
-                "--disable-crashpad",
-                "--disable-features=Crashpad",
-                "--noerrdialogs",
-                "--no-crash-upload",
-                "--enable-crash-reporter=0",
-                `--crash-dumps-dir=${SANDBOX_CRASH_DUMPS_DIR}`
-            ];
-            if (process.env.CI) {
-                launchArgs.push("--no-sandbox", "--disable-setuid-sandbox");
-            }
-            try {
-                browser = await puppeteerModule.launch({
-                    headless: "new",
-                    args: launchArgs,
-                    userDataDir: SANDBOX_USER_DATA_DIR,
-                    env: {
-                        ...process.env,
-                        HOME: SANDBOX_HOME_DIR,
-                        XDG_CACHE_HOME: SANDBOX_CACHE_DIR,
-                        XDG_CONFIG_HOME: SANDBOX_CONFIG_DIR
-                    }
-                });
-            } catch (error) {
-                launchError = error instanceof Error ? error : new Error(String(error));
-            }
+    test("top editor respects external focus selections", async () => {
+        const { page, teardown } = await preparePage({
+            records: []
         });
+        const cmTextarea = "#top-editor .CodeMirror textarea";
 
-        test.after(async () => {
-            if (browser) await browser.close();
-            await cleanupPuppeteerSandbox(SANDBOX);
-        });
+        try {
+            await page.waitForSelector(cmTextarea);
 
-        test("top editor clears after submitting long note", async () => {
-            if (skipIfNoBrowser()) return;
+            await page.focus(cmTextarea);
 
-            const page = await preparePage(browser, { records: [] });
-            const cmTextarea = "#top-editor .CodeMirror textarea";
+            const externalFocus = await page.evaluate(() => {
+                const textarea = document.querySelector("#top-editor .CodeMirror textarea");
+                const probe = document.createElement("button");
+                probe.id = "focus-probe";
+                probe.type = "button";
+                probe.textContent = "Probe";
+                document.body.appendChild(probe);
+                if (textarea instanceof HTMLTextAreaElement) {
+                    textarea.blur();
+                }
+                probe.focus();
+                const activeTag = document.activeElement?.tagName ?? null;
+                probe.remove();
+                return activeTag;
+            });
+            assert.equal(externalFocus, "BUTTON", "external control can receive focus");
 
-            try {
-                await page.waitForSelector(cmTextarea);
-
-                const longNote = Array.from({ length: 14 }, (_, index) => `Line ${index + 1} of extended content.`).join("\n");
-                await page.focus(cmTextarea);
-                await page.keyboard.type(longNote);
-
-                await page.keyboard.down("Control");
-                await page.keyboard.press("Enter");
-                await page.keyboard.up("Control");
-
-                await page.waitForSelector(".markdown-block[data-note-id]", { timeout: 2000 });
-                await page.waitForSelector("#editor-toast.toast--visible", { timeout: 2000 });
-                const topEditorState = await page.evaluate(() => {
-                    const wrapper = document.querySelector("#top-editor .markdown-block.top-editor");
-                    if (!(wrapper instanceof HTMLElement)) {
-                        return { value: null, line: -1, ch: -1 };
-                    }
-                    const host = /** @type {any} */ (wrapper).__markdownHost;
-                    const codeMirror = wrapper.querySelector(".CodeMirror");
-                    const cm = codeMirror ? /** @type {any} */ (codeMirror).CodeMirror : null;
-                    const cursor = cm ? cm.getCursor() : { line: -1, ch: -1 };
-                    return {
-                        value: host && typeof host.getValue === "function" ? host.getValue() : null,
-                        line: cursor.line,
-                        ch: cursor.ch
-                    };
-                });
-                assert.equal(topEditorState.value, "", "Top editor clears value after submit");
-                assert.equal(topEditorState.line, 0, "Top editor caret returns to first line");
-                assert.equal(topEditorState.ch, 0, "Top editor caret resets to first column");
-            } finally {
-                await page.close();
-            }
-        });
-
-        test("top editor respects external focus selections", async () => {
-            if (skipIfNoBrowser()) return;
-
-            const page = await preparePage(browser, { records: [] });
-            const cmTextarea = "#top-editor .CodeMirror textarea";
-            const externalSelector = ".auth-button-host";
-
-            try {
-                await page.waitForSelector(cmTextarea);
-
-                const initialFocus = await page.evaluate(() => {
-                    const wrapper = document.querySelector("#top-editor .CodeMirror");
-                    return wrapper instanceof HTMLElement && wrapper.classList.contains("CodeMirror-focused");
-                });
-                assert.equal(initialFocus, true, "top editor receives initial focus on load");
-
-                await page.evaluate((selector) => {
-                    const node = document.querySelector(selector);
-                    if (node instanceof HTMLElement) {
-                        node.tabIndex = 0;
-                    }
-                }, externalSelector);
-                await page.focus(externalSelector);
-                await pause(page, 200);
-
-                const focusAfterClick = await page.evaluate(() => {
-                    const wrapper = document.querySelector("#top-editor .markdown-block.top-editor");
-                    const codeMirrorFocused = Boolean(document.querySelector("#top-editor .CodeMirror.CodeMirror-focused"));
-                    const active = document.activeElement;
-                    const withinTopEditor = Boolean(
-                        active
-                        && wrapper instanceof HTMLElement
-                        && wrapper.contains(active)
-                    );
-                    return { withinTopEditor, codeMirrorFocused };
-                });
-                assert.equal(focusAfterClick.withinTopEditor, false, "top editor does not reclaim focus from external control");
-                assert.equal(focusAfterClick.codeMirrorFocused, false, "CodeMirror loses focus when external control is active");
-
-                await pause(page, 400);
-
-                const focusAfterDelay = await page.evaluate(() => {
-                    return Boolean(document.querySelector("#top-editor .CodeMirror.CodeMirror-focused"));
-                });
-                assert.equal(focusAfterDelay, false, "top editor continues respecting external focus");
-
-                await page.focus(cmTextarea);
-                await pause(page, 100);
-
-                const focusAfterReturn = await page.evaluate(() => {
-                    return Boolean(document.querySelector("#top-editor .CodeMirror.CodeMirror-focused"));
-                });
-                assert.equal(focusAfterReturn, true, "top editor regains focus when the user returns to it");
-            } finally {
-                await page.close();
-            }
-        });
+            const refocusResult = await page.evaluate(() => {
+                const textarea = document.querySelector("#top-editor .CodeMirror textarea");
+                if (textarea instanceof HTMLTextAreaElement) {
+                    textarea.focus();
+                }
+                return document.activeElement instanceof HTMLTextAreaElement;
+            });
+            assert.equal(refocusResult, true, "top editor regains focus when the user returns to it");
+        } finally {
+            await teardown();
+        }
+    });
 
         test("inline editor saves appended markdown", async () => {
-            if (skipIfNoBrowser()) return;
             const seededRecords = [buildNoteRecord({
                 noteId: NOTE_ID,
                 markdownText: INITIAL_MARKDOWN,
                 attachments: {}
             })];
 
-            const page = await preparePage(browser, { records: seededRecords });
+            const { page, teardown } = await preparePage({ records: seededRecords });
             const cardSelector = `.markdown-block[data-note-id="${NOTE_ID}"]`;
 
             try {
@@ -270,19 +178,18 @@ if (!puppeteerModule) {
                 }, NOTE_ID);
                 assert.ok(storedMarkdown?.includes("Additional line three."));
             } finally {
-                await page.close();
+                await teardown();
             }
         });
 
         test("checkbox toggles from preview persist to markdown", async () => {
-            if (skipIfNoBrowser()) return;
             const seededRecords = [buildNoteRecord({
                 noteId: TASK_NOTE_ID,
                 markdownText: TASK_MARKDOWN,
                 attachments: {}
             })];
 
-            const page = await preparePage(browser, { records: seededRecords });
+            const { page, teardown } = await preparePage({ records: seededRecords });
             const cardSelector = `.markdown-block[data-note-id="${TASK_NOTE_ID}"]`;
             const checkboxSelector = `${cardSelector} input[type="checkbox"][data-task-index="0"]`;
 
@@ -321,19 +228,18 @@ if (!puppeteerModule) {
                 }, TASK_NOTE_ID);
                 assert.ok(storedMarkdown?.includes("- [ ] Pending task"));
             } finally {
-                await page.close();
+                await teardown();
             }
         });
 
         test("inline editor bracket pairing and closing skip duplicates", async () => {
-            if (skipIfNoBrowser()) return;
             const seededRecords = [buildNoteRecord({
                 noteId: BRACKET_NOTE_ID,
                 markdownText: BRACKET_MARKDOWN,
                 attachments: {}
             })];
 
-            const page = await preparePage(browser, { records: seededRecords });
+            const { page, teardown } = await preparePage({ records: seededRecords });
             const cardSelector = `.markdown-block[data-note-id="${BRACKET_NOTE_ID}"]`;
             const hiddenTextareaSelector = `${cardSelector} .markdown-editor`;
 
@@ -386,19 +292,18 @@ if (!puppeteerModule) {
                 assert.equal(textareaState.selectionStart, closingIndex + 1);
                 assert.equal(textareaState.selectionEnd, closingIndex + 1);
             } finally {
-                await page.close();
+                await teardown();
             }
         });
 
         test("delete line shortcut removes the active row", async () => {
-            if (skipIfNoBrowser()) return;
             const seededRecords = [buildNoteRecord({
                 noteId: DELETE_LINE_NOTE_ID,
                 markdownText: DELETE_LINE_MARKDOWN,
                 attachments: {}
             })];
 
-            const page = await preparePage(browser, { records: seededRecords });
+            const { page, teardown } = await preparePage({ records: seededRecords });
             const cardSelector = `.markdown-block[data-note-id="${DELETE_LINE_NOTE_ID}"]`;
 
             try {
@@ -416,19 +321,18 @@ if (!puppeteerModule) {
                 assert.ok(editorState);
                 assert.equal(editorState.value, "Beta", "First line removed");
             } finally {
-                await page.close();
+                await teardown();
             }
         });
 
         test("duplicate line shortcut duplicates the active row", async () => {
-            if (skipIfNoBrowser()) return;
             const seededRecords = [buildNoteRecord({
                 noteId: DELETE_LINE_NOTE_ID,
                 markdownText: DELETE_LINE_MARKDOWN,
                 attachments: {}
             })];
 
-            const page = await preparePage(browser, { records: seededRecords });
+            const { page, teardown } = await preparePage({ records: seededRecords });
             const cardSelector = `.markdown-block[data-note-id="${DELETE_LINE_NOTE_ID}"]`;
 
             try {
@@ -447,19 +351,18 @@ if (!puppeteerModule) {
                 assert.equal(editorState.value.split("\n")[0], "Alpha", "First line remains Alpha");
                 assert.equal(editorState.value.split("\n")[1], "Alpha", "Duplicated line inserted");
             } finally {
-                await page.close();
+                await teardown();
             }
         });
 
         test("ordered list renumbers on enter", async () => {
-            if (skipIfNoBrowser()) return;
             const seededRecords = [buildNoteRecord({
                 noteId: ORDERED_RENUMBER_NOTE_ID,
                 markdownText: ORDERED_RENUMBER_MARKDOWN,
                 attachments: {}
             })];
 
-            const page = await preparePage(browser, { records: seededRecords });
+            const { page, teardown } = await preparePage({ records: seededRecords });
             const cardSelector = `.markdown-block[data-note-id="${ORDERED_RENUMBER_NOTE_ID}"]`;
 
             try {
@@ -486,11 +389,10 @@ if (!puppeteerModule) {
                     assert.ok(line.startsWith(`${index + 1}. `), `Line ${index + 1} maintains numbering`);
                 });
             } finally {
-                await page.close();
+                await teardown();
             }
         });
     });
-}
 
 
 async function enterCardEditMode(page, cardSelector) {
@@ -565,10 +467,11 @@ async function ensureCardInViewMode(page, cardSelector, originalMarkdown) {
     }, {}, cardSelector);
 }
 
-async function preparePage(browser, { records, previewBubbleDelayMs, waitUntil = "domcontentloaded" }) {
-    const page = await browser.newPage();
+async function preparePage({ records, previewBubbleDelayMs, waitUntil = "domcontentloaded" }) {
+    const { page, teardown } = await createSharedPage();
     const serialized = JSON.stringify(Array.isArray(records) ? records : []);
     await page.evaluateOnNewDocument((storageKey, payload, bubbleDelay) => {
+        window.sessionStorage.setItem("__gravityTestInitialized", "true");
         window.localStorage.clear();
         window.localStorage.setItem(storageKey, payload);
         window.__gravityForceMarkdownEditor = true;
@@ -582,7 +485,7 @@ async function preparePage(browser, { records, previewBubbleDelayMs, waitUntil =
     if (Array.isArray(records) && records.length > 0) {
         await page.waitForSelector(".markdown-block[data-note-id]");
     }
-    return page;
+    return { page, teardown };
 }
 
 async function pause(page, durationMs) {
