@@ -419,6 +419,9 @@ async function preparePage(browser, { records }) {
     await page.evaluateOnNewDocument((storageKey, payload) => {
         window.localStorage.clear();
         window.localStorage.setItem(storageKey, payload);
+        window.GRAVITY_CONFIG = {
+            llmProxyClassifyUrl: ""
+        };
     }, appConfig.storageKey, serialized);
 
     await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
