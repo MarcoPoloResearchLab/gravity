@@ -24,3 +24,4 @@
 - [x] tests/helpers/syncTestUtils.js — expose optional mock backend injection and shared wait utilities for auth-oriented suites (GN-31 follow-up).
 - [x] tests/helpers/backendHarness.js — centralize real backend orchestration for integration tests (GN-31 follow-up).
 - [x] tests/auth.*.puppeteer.test.js, tests/persistence.sync.puppeteer.test.js, tests/fullstack.endtoend.puppeteer.test.js, tests/sync.endtoend.puppeteer.test.js — run against spawned backend instead of fetch mocks (GN-31 follow-up).
+- [x] tests/run-tests.js — exit immediately with deterministic code so external timeouts respect the completed run (GN-40).

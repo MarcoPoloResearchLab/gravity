@@ -919,3 +919,4 @@ test at tests/persistence.backend.puppeteer.test.js:1:1
     ```
 - [x] [GN-36] add privacy to the sitemap
 - [x] [GN-37] Remove all and any fallbacks in the code, rely on EasyMDE for inline editor functionality. Verified by `tests/editor.inline.puppeteer.test.js` passing and exercising first-line enter and checklist continuation scenarios.
+- [x] [GN-40] Ensure the shared Puppeteer harness terminates immediately after printing the summary so outer CLI timeouts do not kill successful runs.

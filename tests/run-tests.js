@@ -273,12 +273,15 @@ async function main() {
     console.log(`  ${cliColors.bold("Totals")}: ${totalsLine}`);
     console.log(`  ${cliColors.cyan("Duration")}: ${cliColors.bold(formatDuration(totalDurationMs))}`);
 
-    if (hasFailure) {
-        process.exitCode = 1;
-    }
+    return hasFailure ? 1 : 0;
 }
 
-main().catch((error) => {
-    console.error("Test harness encountered an error:", error);
-    process.exitCode = 1;
-});
+main()
+    .then((exitCode) => {
+        const normalized = Number.isFinite(exitCode) ? Number(exitCode) : 0;
+        process.exit(normalized);
+    })
+    .catch((error) => {
+        console.error("Test harness encountered an error:", error);
+        process.exit(1);
+    });
