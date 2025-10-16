@@ -16,7 +16,6 @@ import {
     LABEL_APP_TITLE,
     LABEL_EXPORT_NOTES,
     LABEL_IMPORT_NOTES,
-    ATTRIBUTE_APP_READY,
     ERROR_NOTES_CONTAINER_NOT_FOUND,
     ERROR_AUTHENTICATION_GENERIC,
     EVENT_NOTE_CREATE,
@@ -74,8 +73,6 @@ function gravityApp() {
         authPollHandle: /** @type {number|null} */ (null),
         guestExportButton: /** @type {HTMLButtonElement|null} */ (null),
         syncManager: /** @type {ReturnType<typeof createSyncManager>|null} */ (null),
-        initialized: false,
-        readyQueue: /** @type {Array<() => unknown>} */ ([]),
 
         init() {
             this.notesContainer = this.$refs.notesContainer ?? document.getElementById("notes-container");
@@ -101,11 +98,6 @@ function gravityApp() {
                 this.setGuestExportVisibility(true);
             }
             initializeKeyboardShortcutsModal();
-            this.initialized = true;
-            if (this.$el instanceof HTMLElement) {
-                this.$el.setAttribute(ATTRIBUTE_APP_READY, "true");
-            }
-            this.flushReadyQueue();
         },
 
         /**
@@ -397,100 +389,89 @@ function gravityApp() {
         });
 
         root.addEventListener(EVENT_AUTH_SIGN_IN, (event) => {
-            this.runWhenReady(() => {
-                const detail = /** @type {{ user?: { id?: string, email?: string|null, name?: string|null, pictureUrl?: string|null }, credential?: string, restored?: boolean }} */ (event?.detail ?? {});
-                const user = detail?.user;
-                if (!user || !user.id) {
+            const detail = /** @type {{ user?: { id?: string, email?: string|null, name?: string|null, pictureUrl?: string|null }, credential?: string, restored?: boolean }} */ (event?.detail ?? {});
+            const user = detail?.user;
+            if (!user || !user.id) {
+                return;
+            }
+            const credential = typeof detail?.credential === "string" ? detail.credential : "";
+
+            const applyGuestState = () => {
+                this.authUser = null;
+                this.authControls?.showSignedOut();
+                this.avatarMenu?.setEnabled(false);
+                this.avatarMenu?.close({ focusTrigger: false });
+                GravityStore.setUserScope(null);
+                this.initializeNotes();
+                this.setGuestExportVisibility(true);
+                clearAuthState();
+            };
+
+            const applySignedInState = () => {
+                this.authUser = {
+                    id: user.id,
+                    email: typeof user.email === "string" ? user.email : null,
+                    name: typeof user.name === "string" ? user.name : null,
+                    pictureUrl: typeof user.pictureUrl === "string" ? user.pictureUrl : null
+                };
+                this.authControls?.clearError();
+                this.authControls?.showSignedIn(this.authUser);
+                this.avatarMenu?.setEnabled(true);
+                this.avatarMenu?.close({ focusTrigger: false });
+                GravityStore.setUserScope(this.authUser.id);
+                this.initializeNotes();
+                this.setGuestExportVisibility(false);
+                saveAuthState({
+                    user: {
+                        id: this.authUser.id,
+                        email: this.authUser.email,
+                        name: this.authUser.name,
+                        pictureUrl: this.authUser.pictureUrl
+                    },
+                    credential
+                });
+            };
+
+            const syncManager = this.syncManager;
+            const attemptSignIn = async () => {
+                if (!credential) {
+                    applyGuestState();
+                    this.authControls?.showError(ERROR_AUTHENTICATION_GENERIC);
                     return;
                 }
-                const credential = typeof detail?.credential === "string" ? detail.credential : "";
-
-                const applyGuestState = () => {
-                    this.authUser = null;
-                    this.authControls?.showSignedOut();
-                    this.avatarMenu?.setEnabled(false);
-                    this.avatarMenu?.close({ focusTrigger: false });
-                    GravityStore.setUserScope(null);
-                    this.initializeNotes();
-                    this.setGuestExportVisibility(true);
-                    clearAuthState();
-                };
-
-                const applySignedInState = () => {
-                    this.authUser = {
-                        id: user.id,
-                        email: typeof user.email === "string" ? user.email : null,
-                        name: typeof user.name === "string" ? user.name : null,
-                        pictureUrl: typeof user.pictureUrl === "string" ? user.pictureUrl : null
-                    };
-                    this.authControls?.clearError();
-                    this.authControls?.showSignedIn(this.authUser);
-                    this.avatarMenu?.setEnabled(true);
-                    this.avatarMenu?.close({ focusTrigger: false });
-                    GravityStore.setUserScope(this.authUser.id);
-                    this.initializeNotes();
-                    this.setGuestExportVisibility(false);
-                    saveAuthState({
-                        user: {
-                            id: this.authUser.id,
-                            email: this.authUser.email,
-                            name: this.authUser.name,
-                            pictureUrl: this.authUser.pictureUrl
-                        },
-                        credential
-                    });
-                };
-
-                const syncManager = this.syncManager;
-                const attemptSignIn = async () => {
-                    if (!credential) {
+                GravityStore.setUserScope(user.id);
+                try {
+                    const result = syncManager && typeof syncManager.handleSignIn === "function"
+                        ? await syncManager.handleSignIn({ userId: user.id, credential })
+                        : { authenticated: true, queueFlushed: false, snapshotApplied: false };
+                    if (!result?.authenticated) {
                         applyGuestState();
                         this.authControls?.showError(ERROR_AUTHENTICATION_GENERIC);
                         return;
                     }
-                    GravityStore.setUserScope(user.id);
-                    try {
-                        const result = syncManager && typeof syncManager.handleSignIn === "function"
-                            ? await syncManager.handleSignIn({ userId: user.id, credential })
-                            : { authenticated: true, queueFlushed: false, snapshotApplied: false };
-                        if (!result?.authenticated) {
-                            applyGuestState();
-                            this.authControls?.showError(ERROR_AUTHENTICATION_GENERIC);
-                            return;
-                        }
-                        applySignedInState();
-                    } catch (error) {
-                        logging.error(error);
-                        if (syncManager && typeof syncManager.handleSignOut === "function") {
-                            try {
-                                syncManager.handleSignOut();
-                            } catch (resetError) {
-                                logging.error(resetError);
-                            }
-                        }
-                        applyGuestState();
-                        this.authControls?.showError(ERROR_AUTHENTICATION_GENERIC);
-                    }
-                };
+                    applySignedInState();
+                } catch (error) {
+                    logging.error(error);
+                    applyGuestState();
+                    this.authControls?.showError(ERROR_AUTHENTICATION_GENERIC);
+                }
+            };
 
-                void attemptSignIn();
-            });
+            void attemptSignIn();
         });
 
-            root.addEventListener(EVENT_AUTH_SIGN_OUT, () => {
-                this.runWhenReady(() => {
-                    this.authUser = null;
-                    this.authControls?.clearError();
-                    this.authControls?.showSignedOut();
-                    this.avatarMenu?.setEnabled(false);
-                    this.avatarMenu?.close({ focusTrigger: false });
-                    GravityStore.setUserScope(null);
-                    this.initializeNotes();
-                    this.syncManager?.handleSignOut();
-                    this.setGuestExportVisibility(true);
-                    clearAuthState();
-                });
-            });
+        root.addEventListener(EVENT_AUTH_SIGN_OUT, () => {
+            this.authUser = null;
+            this.authControls?.clearError();
+            this.authControls?.showSignedOut();
+            this.avatarMenu?.setEnabled(false);
+            this.avatarMenu?.close({ focusTrigger: false });
+            GravityStore.setUserScope(null);
+            this.initializeNotes();
+            this.syncManager?.handleSignOut();
+            this.setGuestExportVisibility(true);
+            clearAuthState();
+        });
 
             root.addEventListener(EVENT_AUTH_ERROR, (event) => {
                 const detail = /** @type {{ error?: unknown, reason?: unknown }} */ (event?.detail ?? {});
@@ -610,36 +591,6 @@ function gravityApp() {
         emitNotification(message, durationMs = NOTIFICATION_DEFAULT_DURATION_MS) {
             void durationMs; // duration reserved for future adjustments
             showSaveFeedback(message);
-        },
-
-        runWhenReady(callback) {
-            if (this.initialized) {
-                return callback();
-            }
-            this.readyQueue.push(callback);
-            return undefined;
-        },
-
-        flushReadyQueue() {
-            if (this.readyQueue.length === 0) {
-                return;
-            }
-            const pending = this.readyQueue.splice(0, this.readyQueue.length);
-            for (const task of pending) {
-                try {
-                    const outcome = task();
-                    if (outcome && typeof outcome.then === "function") {
-                        outcome.catch((error) => {
-                            logging.error(error);
-                        });
-                    }
-                } catch (error) {
-                    logging.error(error);
-                }
-            }
-            if (this.readyQueue.length > 0) {
-                this.flushReadyQueue();
-            }
         }
     };
 }

@@ -2,11 +2,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { appConfig } from "../../js/core/config.js";
-import { ATTRIBUTE_APP_READY, EVENT_AUTH_SIGN_IN } from "../../js/constants.js";
+import { EVENT_AUTH_SIGN_IN } from "../../js/constants.js";
 import { startTestBackend } from "./backendHarness.js";
 import { connectSharedBrowser } from "./browserHarness.js";
 
-const APP_READY_SELECTOR = `[${ATTRIBUTE_APP_READY}="true"]`;
+const APP_BOOTSTRAP_SELECTOR = "#top-editor .markdown-editor";
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(TESTS_DIR, "..", "..");
 const DEFAULT_PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
@@ -19,7 +19,15 @@ const DEFAULT_PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
  * @returns {Promise<import('puppeteer').Page>}
  */
 export async function prepareFrontendPage(browser, pageUrl, options) {
+    const {
+        backendBaseUrl,
+        llmProxyClassifyUrl = "",
+        beforeNavigate
+    } = options;
     const page = await browser.newPage();
+    if (typeof beforeNavigate === "function") {
+        await beforeNavigate(page);
+    }
     await page.evaluateOnNewDocument((storageKey) => {
         const initialized = window.sessionStorage.getItem("__gravityTestInitialized") === "true";
         if (!initialized) {
@@ -33,13 +41,12 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
     await page.evaluateOnNewDocument((config) => {
         window.GRAVITY_CONFIG = config;
     }, {
-        backendBaseUrl: options.backendBaseUrl,
-        llmProxyClassifyUrl: options.llmProxyClassifyUrl ?? ""
+        backendBaseUrl,
+        llmProxyClassifyUrl
     });
 
     await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector(APP_READY_SELECTOR);
-    await page.waitForSelector("#top-editor .markdown-editor");
+    await waitForAppReady(page);
     return page;
 }
 
@@ -61,8 +68,7 @@ export async function initializePuppeteerTest(pageUrl = DEFAULT_PAGE_URL) {
         window.GRAVITY_CONFIG = config;
     }, { config: { backendBaseUrl: backend.baseUrl, llmProxyClassifyUrl: "" } });
     await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector(APP_READY_SELECTOR);
-    await page.waitForSelector("#top-editor .markdown-editor");
+    await waitForAppReady(page);
 
     const teardown = async () => {
         await page.close().catch(() => {});
@@ -156,7 +162,7 @@ export async function waitForSyncManagerUser(page, expectedUserId, timeoutMs) {
  * @returns {Promise<void>}
  */
 export async function waitForAppReady(page) {
-    await page.waitForSelector(APP_READY_SELECTOR);
+    await page.waitForSelector(APP_BOOTSTRAP_SELECTOR);
 }
 
 /**
