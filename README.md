@@ -169,6 +169,17 @@ Or embed a meta tag when templating the page:
 <meta name="gravity-llm-proxy-classify-url" content="https://proxy.example.com/v1/gravity/classify">
 ```
 
+## Development with Docker
+
+- `docker-compose.yml` provisions both services required for local development: the Go API (`backend`) pulled from
+  `ghcr.io/marcopoloresearchlab/gravity-backend:latest`, and a static web host powered by
+  [gHTTP](https://github.com/temirov/ghttp) (`frontend`) that serves the working directory read-only.
+- Run `docker compose pull` to fetch the latest backend image, then start the stack with `docker compose up`. The UI
+  serves from <http://localhost:8000> while the API listens on <http://localhost:8080>. The backend service
+  automatically sources secrets from `backend/.env`.
+- To tail application output run `docker compose logs -f backend`, and stop the stack with `docker compose down` when
+  finished.
+
 ## Testing
 
 - The test harness (`node tests/run-tests.js`) executes each suite in isolation with a 30 s watchdog and renders a
