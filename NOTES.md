@@ -1003,5 +1003,5 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
         Xc https://accounts.google.com/gsi/client:170
     Opening multiple popups was blocked due to lack of user activation. client:80:240
     Storage access automatically granted for origin “https://accounts.google.com” on “http://localhost:8000”.
-  - [ ] There are horrendous UI regressions in the front-end, like a giant first note of a different color, or multicolumn editing mode where the markdown is in a narrow column on the right. What is really scary that tests are passing.
+  - [x] [GN-43] There are horrendous UI regressions in the front-end, like a giant first note of a different color, or multicolumn editing mode where the markdown is in a narrow column on the right. What is really scary that tests are passing.
     
