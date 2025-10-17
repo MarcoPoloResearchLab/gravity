@@ -12,7 +12,7 @@ services:
     restart: unless-stopped
 
   backend:
-    image: ghcr.io/marcopoloresearchlab/gravity-backend:master
+    image: ghcr.io/marcopoloresearchlab/gravity-backend:latest
     pull_policy: always
     env_file:
       - backend/.env

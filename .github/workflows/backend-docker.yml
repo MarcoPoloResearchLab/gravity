@@ -3,7 +3,7 @@ name: Build and Publish Backend Image
 on:
   push:
     branches:
-      - main
+      - master
     paths:
       - 'backend/Dockerfile'
       - 'backend/**/*.go'
@@ -47,6 +47,8 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository_owner }}/gravity-backend
+          tags: |
+            type=raw,value=latest
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
