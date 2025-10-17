@@ -9,7 +9,7 @@ import { GravityStore } from "./core/store.js";
 import { appConfig } from "./core/config.js";
 import { createGoogleIdentityController } from "./core/auth.js";
 import { createSyncManager } from "./core/syncManager.js";
-import { loadAuthState, saveAuthState, clearAuthState } from "./core/authState.js";
+import { loadAuthState, saveAuthState, clearAuthState, isAuthStateFresh } from "./core/authState.js";
 import { mountTopEditor } from "./ui/topEditor.js";
 import {
     LABEL_APP_SUBTITLE,
@@ -183,6 +183,10 @@ function gravityApp() {
                 if (persisted) {
                     clearAuthState();
                 }
+                return false;
+            }
+            if (!isAuthStateFresh(persisted)) {
+                clearAuthState();
                 return false;
             }
             const target = this.$el instanceof HTMLElement ? this.$el : document.body;

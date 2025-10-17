@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -10,6 +11,8 @@ const APP_BOOTSTRAP_SELECTOR = "#top-editor .markdown-editor";
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(TESTS_DIR, "..", "..");
 const DEFAULT_PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+const DEFAULT_JWT_ISSUER = "https://accounts.google.com";
+const DEFAULT_JWT_AUDIENCE = appConfig.googleClientId;
 
 /**
  * Prepare a new browser page configured for backend synchronization tests.
@@ -48,6 +51,43 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
     await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
     await waitForAppReady(page);
     return page;
+}
+
+/**
+ * Compose an unsigned Google credential for UI integration tests.
+ * @param {{
+ *   userId: string,
+ *   email?: string|null,
+ *   name?: string|null,
+ *   pictureUrl?: string|null,
+ *   issuedAtSeconds?: number,
+ *   expiresInSeconds?: number
+ * }} options
+ * @returns {string}
+ */
+export function composeTestCredential(options) {
+    const issuedAtSeconds = typeof options.issuedAtSeconds === "number"
+        ? options.issuedAtSeconds
+        : Math.floor(Date.now() / 1000);
+    const expiresInSeconds = typeof options.expiresInSeconds === "number" && Number.isFinite(options.expiresInSeconds)
+        ? options.expiresInSeconds
+        : 5 * 60;
+    const payload = {
+        iss: DEFAULT_JWT_ISSUER,
+        aud: DEFAULT_JWT_AUDIENCE,
+        sub: options.userId,
+        email: options.email ?? null,
+        name: options.name ?? null,
+        picture: options.pictureUrl ?? null,
+        iat: issuedAtSeconds,
+        exp: issuedAtSeconds + expiresInSeconds,
+        jti: generateJwtIdentifier()
+    };
+    const header = {
+        alg: "none",
+        typ: "JWT"
+    };
+    return `${encodeSegment(header)}.${encodeSegment(payload)}.signature`;
 }
 
 /**
@@ -294,4 +334,24 @@ export async function waitForSyncManagerBootstrap(page, timeoutMs) {
         const syncManager = alpineComponent?.syncManager;
         return Boolean(syncManager && typeof syncManager.handleSignIn === "function");
     }, typeof timeoutMs === "number" && Number.isFinite(timeoutMs) ? { timeout: timeoutMs } : {});
+}
+
+/**
+ * @param {Record<string, unknown>} value
+ * @returns {string}
+ */
+function encodeSegment(value) {
+    return Buffer.from(JSON.stringify(value))
+        .toString("base64")
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/u, "");
+}
+
+/**
+ * Generate a pseudo-random JWT identifier.
+ * @returns {string}
+ */
+function generateJwtIdentifier() {
+    return randomBytes(16).toString("hex");
 }
