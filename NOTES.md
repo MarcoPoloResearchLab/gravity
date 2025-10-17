@@ -981,7 +981,7 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
   - [x] [GN-36] add privacy to the sitemap
   - [x] [GN-37] Remove all and any fallbacks in the code, rely on EasyMDE for inline editor functionality. Verified by `tests/editor.inline.puppeteer.test.js` passing and exercising first-line enter and checklist continuation scenarios.
   - [x] [GN-40] Ensure the shared Puppeteer harness terminates immediately after printing the summary so outer CLI timeouts do not kill successful runs.
-  - [ ] [GN-42] Prepare a docker compose file for development that starts both the back-end and the front-end.
+  - [x] [GN-42] Prepare a docker compose file for development that starts both the back-end and the front-end.
       1. Add a GitHub actions pipeline that generates docker image
       1. Use temirov/ghttp image for the front end. See the documentation at [GH-42-docs.md](/GN-42-docs.md)
       1. Load local .env for the backend

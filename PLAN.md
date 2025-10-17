@@ -5,7 +5,7 @@
 - [x] tests/helpers/syncTestUtils.js — support injecting stubbed backend responses for offline persistence coverage.
 
 // GN-42 developer docker stack
-- [ ] docker-compose.yml — define frontend service using temirov/ghttp, share local sources, and load backend environment file.
-- [ ] Dockerfile.frontend — build a static image on top of temirov/ghttp that bakes in repository assets for CI publishing.
-- [ ] .github/workflows/frontend-docker.yml — publish the frontend image to GHCR on main pushes and manual dispatch.
-- [ ] README.md — document docker compose workflow for running the full stack locally.
+- [x] docker-compose.yml — define frontend service using temirov/ghttp, share local sources, and load backend environment file.
+- [x] Dockerfile.frontend — build a static image on top of temirov/ghttp that bakes in repository assets for CI publishing.
+- [x] .github/workflows/frontend-docker.yml — publish the frontend image to GHCR on main pushes and manual dispatch.
+- [x] README.md — document docker compose workflow for running the full stack locally.
