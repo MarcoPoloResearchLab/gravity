@@ -171,11 +171,12 @@ Or embed a meta tag when templating the page:
 
 ## Development with Docker
 
-- `docker-compose.yml` provisions both services required for local development: the Go API (`backend`) and a static web
-  host powered by [gHTTP](https://github.com/temirov/ghttp) (`frontend`). The frontend container bind-mounts the working
-  tree read-only, so edits to `index.html`, `js/`, or `styles.css` are reflected immediately.
-- Start the stack with `docker compose up --build`. The UI serves from <http://localhost:8000> while the API listens on
-  <http://localhost:8080>. The backend service automatically sources secrets from `backend/.env`.
+- `docker-compose.yml` provisions both services required for local development: the Go API (`backend`) pulled from
+  `ghcr.io/marcopoloresearchlab/gravity-backend:latest`, and a static web host powered by
+  [gHTTP](https://github.com/temirov/ghttp) (`frontend`) that serves the working directory read-only.
+- Run `docker compose pull` to fetch the latest backend image, then start the stack with `docker compose up`. The UI
+  serves from <http://localhost:8000> while the API listens on <http://localhost:8080>. The backend service
+  automatically sources secrets from `backend/.env`.
 - To tail application output run `docker compose logs -f backend`, and stop the stack with `docker compose down` when
   finished.
 

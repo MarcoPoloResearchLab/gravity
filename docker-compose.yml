@@ -12,10 +12,8 @@ services:
     restart: unless-stopped
 
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    image: gravity-backend:local
+    image: ghcr.io/marcopoloresearchlab/gravity-backend:latest
+    pull_policy: always
     env_file:
       - backend/.env
     environment:
