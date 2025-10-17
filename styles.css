@@ -21,145 +21,55 @@ html, body {
 .app-branding { display: flex; flex-direction: column; }
 .app-title { margin: 0; font-size: 1.05rem; font-weight: 600; }
 .app-subtitle { margin-top: 0.15rem; font-size: 0.85rem; opacity: 0.7; }
-.app-auth {
+.app-controls {
     display: flex;
-    align-items: center;
-    gap: 0.65rem;
-    flex-wrap: wrap;
-    position: relative;
-}
-.auth-profile {
-    display: flex;
-    align-items: center;
     gap: 0.5rem;
-}
-.auth-avatar-trigger {
-    display: inline-flex;
+    flex-wrap: wrap;
     align-items: center;
-    justify-content: center;
-    padding: 0;
-    margin: 0;
-    border: none;
-    border-radius: 50%;
-    cursor: pointer;
+    margin-left: auto;
+}
+.app-control-button {
     background: transparent;
-    outline: none;
-}
-.auth-avatar {
-    width: 2.25rem;
-    height: 2.25rem;
-    border-radius: 50%;
-    object-fit: cover;
     border: 1px solid #28314a;
-    box-shadow: 0 0 0 1px rgba(10, 12, 18, 0.5);
-    transition: box-shadow 0.15s ease, transform 0.15s ease;
-}
-.auth-avatar-trigger:hover .auth-avatar,
-.auth-avatar-trigger:focus-visible .auth-avatar,
-.auth-avatar-trigger[data-open="true"] .auth-avatar {
-    box-shadow: 0 0 0 2px #ffffff;
-}
-.auth-menu-wrapper {
-    position: absolute;
-    top: 100%;
-    right: 0;
-    transform: translateY(0.6rem);
-    z-index: 20;
-}
-.auth-menu {
-    position: relative;
-    background: rgba(17, 20, 32, 0.98);
-    border: 1px solid #28314a;
-    border-radius: 0.75rem;
-    padding: 0.4rem;
-    min-width: 12rem;
-    box-shadow: 0 18px 42px rgba(5, 8, 16, 0.45);
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-}
-.auth-menu[hidden] {
-    display: none !important;
-}
-.auth-menu-item {
-    background: transparent;
-    border: none;
-    border-radius: 0.55rem;
-    color: #d5deff;
+    border-radius: 6px;
+    color: #7aa2ff;
     cursor: pointer;
     font-size: 0.85rem;
-    padding: 0.55rem 0.75rem;
-    text-align: left;
-    transition: background-color 0.12s ease, color 0.12s ease;
+    padding: 0.3rem 0.6rem;
+    transition: border-color 0.12s ease, color 0.12s ease, opacity 0.12s ease;
 }
-.auth-menu-item:hover,
-.auth-menu-item:focus-visible {
-    background: rgba(66, 94, 165, 0.25);
-    color: #ffffff;
-}
-.auth-menu-sign-out {
-    color: #f2b5b5;
-}
-.auth-menu-sign-out:hover,
-.auth-menu-sign-out:focus-visible {
-    background: rgba(138, 52, 52, 0.28);
-    color: #ffd6d6;
-}
-.auth-profile-text {
-    display: flex;
-    flex-direction: column;
-    line-height: 1.1;
-}
-.auth-display-name {
-    font-size: 0.82rem;
-    font-weight: 600;
-}
-.auth-email {
-    font-size: 0.72rem;
-    opacity: 0.75;
-}
-.auth-status {
-    font-size: 0.72rem;
-    color: #8ea2d8;
-    min-width: 6rem;
-}
-.auth-button-host {
-    min-height: 36px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.auth-inline-button {
-    background: transparent;
-    border: 1px solid #28314a;
-    border-radius: 999px;
-    color: #d5deff;
-    cursor: pointer;
-    font-size: 0.82rem;
-    padding: 0.4rem 0.85rem;
-    transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
-}
-
-.auth-inline-button:hover,
-.auth-inline-button:focus-visible {
-    background: rgba(66, 94, 165, 0.22);
-    color: #ffffff;
-    border-color: rgba(118, 146, 220, 0.7);
+.app-control-button:hover {
+    color: #b4c8ff;
+    border-color: #3a4b71;
 }
 
 /* Containers */
 .block-container { display: flex; flex-direction: column; }
 
-/* Simple note blocks without grid layout */
+#top-editor {
+    position: sticky;
+    top: 64px;
+    z-index: 8;
+    background: #0b0c0f;
+    border-bottom: 1px solid #20232b;
+    padding: 0.8rem 1rem;
+}
+
+/* Both note cards use the same grid skeleton */
 .markdown-block {
+    display: grid;
+    grid-template-columns: 1fr 6.25rem; /* content | actions */
+    align-items: start;
+    column-gap: 0.75rem;
+    row-gap: 0.35rem;
     border-bottom: 1px solid #20232b;
     padding: 0.6rem 1rem 0.9rem 1rem;
     box-sizing: border-box;
     background: #0b0c0f;
 }
 
-/* Content flows naturally */
+/* Content column */
+.meta-chips, .markdown-content, .markdown-editor { grid-column: 1; }
 .meta-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0 0 0.35rem 0; }
 .meta-chip {
     font-size: 0.72rem; padding: 0.18rem 0.4rem; border-radius: 0.35rem;
@@ -170,6 +80,7 @@ html, body {
 .meta-chip--cat     { border-color: #293a63; color: #c9dbff; }
 
 .note-badges {
+    grid-column: 1;
     display: flex;
     flex-wrap: wrap;
     gap: 0.4rem;
@@ -194,6 +105,7 @@ html, body {
 
 .note-preview {
     position: relative;
+    grid-column: 1;
     max-height: 18vh;
     overflow: hidden;
     border-radius: 0.5rem;
@@ -363,11 +275,17 @@ html, body {
 .markdown-editor-host--view .markdown-content { display: block; }
 .markdown-editor-host--edit .CodeMirror { display: block; }
 
-/* Hide action buttons completely */
-.actions { display: none; }
-.action-group { display: none; }
-.action-group--row { display: none; }
-.action-button { display: none; }
+/* Actions column (cards only) */
+.actions { grid-column: 2; display: flex; flex-direction: column; gap: 0.35rem; }
+.action-group { display: flex; flex-direction: column; gap: 0.35rem; }
+.action-group--row { flex-direction: row; gap: 0.25rem; }
+.action-button {
+    background: transparent; border: 1px solid #28314a; border-radius: 6px;
+    cursor: pointer; user-select: none; font-size: 0.9rem; color: #7aa2ff;
+    padding: 0.24rem 0.35rem; line-height: 1.05; text-align: center; box-sizing: border-box;
+    opacity: .5; transition: border-color .12s ease, color .12s ease, opacity .12s ease;
+}
+.action-group--row .action-button { flex: 1; }
 
 .markdown-block { position: relative; }
 .markdown-block--pinned {
@@ -377,18 +295,22 @@ html, body {
     background: #0b0c0f;
     border-bottom: 2px solid #7aa2ff;
 }
-/* Top editor appears as a normal small note */
 .markdown-block.top-editor {
-    padding: 0.6rem 1rem 0.9rem 1rem;
-    border-bottom: 1px solid #20232b;
-    background: #0b0c0f;
+    position: sticky;
+    top: 64px;
+    z-index: 5;
+    grid-template-columns: 1fr;
+    padding: 0;
+    border-bottom: none;
+    background: transparent;
 }
 
 .markdown-block.top-editor .markdown-content,
 .markdown-block.top-editor .markdown-editor {
     font-size: 0.95rem;
-    line-height: 1.35;
+    line-height: 1.05;
     min-height: 1rem;
+    padding: 0;
 }
 
 .action-button--compact { font-size: 0.72rem; padding: 0.16rem 0.3rem; }
@@ -464,8 +386,11 @@ html, body {
     transform: translateY(0);
 }
 
+body.${OVERLAY_BODY_LOCK_CLASS} ???
+
 /* Editor toolbar */
 .editor-mode-toolbar {
+    grid-column: 1;
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -689,24 +614,9 @@ body.keyboard-shortcuts-open {
     overflow: hidden;
 }
 
-.app-footer {
-    margin: 1.5rem auto 1rem;
-    text-align: center;
-}
-
-.app-legal-link {
-    color: #a0a7b8;
-    font-size: 0.75rem;
-    text-decoration: none;
-}
-
-.app-legal-link:focus,
-.app-legal-link:hover {
-    text-decoration: underline;
-}
-
 @media (max-width: 480px) {
-    .markdown-block { padding: 0.5rem 0.75rem 0.8rem 0.75rem; }
+    .markdown-block { grid-template-columns: 1fr 5.25rem; }
+    .action-button { font-size: 0.85rem; padding: 0.2rem 0.3rem; }
 }
 
 @media (max-width: 640px) {
