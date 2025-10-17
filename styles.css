@@ -151,15 +151,6 @@ html, body {
 /* Containers */
 .block-container { display: flex; flex-direction: column; }
 
-#top-editor {
-    position: sticky;
-    top: 64px;
-    z-index: 8;
-    background: #0b0c0f;
-    border-bottom: 1px solid #20232b;
-    padding: 0.8rem 1rem;
-}
-
 /* Both note cards use the same grid skeleton */
 .markdown-block {
     display: grid;
@@ -490,8 +481,6 @@ html, body {
     opacity: 1;
     transform: translateY(0);
 }
-
-body.${OVERLAY_BODY_LOCK_CLASS} ???
 
 /* Editor toolbar */
 .editor-mode-toolbar {
