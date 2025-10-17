@@ -985,3 +985,23 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
       1. Add a GitHub actions pipeline that generates docker image
       1. Use temirov/ghttp image for the front end. See the documentation at [GH-42-docs.md](/GN-42-docs.md)
       1. Load local .env for the backend
+  - [x] [GN-43] Address issues in JS console on Firefox
+    Cookie warnings 2
+    Feature Policy: Skipping unsupported feature name “identity-credentials-get”. client:269:37
+    Feature Policy: Skipping unsupported feature name “identity-credentials-get”. client:270:336
+    [GSI_LOGGER]: The given origin is not allowed for the given client ID. client:74:89
+        G https://accounts.google.com/gsi/client:74
+        Pg https://accounts.google.com/gsi/client:214
+        ba https://accounts.google.com/gsi/client:313
+        Jt https://accounts.google.com/gsi/client:331
+        Dr https://accounts.google.com/gsi/client:258
+        zf https://accounts.google.com/gsi/client:115
+        dispatchEvent https://accounts.google.com/gsi/client:114
+        lk https://accounts.google.com/gsi/client:162
+        pk https://accounts.google.com/gsi/client:165
+        me https://accounts.google.com/gsi/client:170
+        Xc https://accounts.google.com/gsi/client:170
+    Opening multiple popups was blocked due to lack of user activation. client:80:240
+    Storage access automatically granted for origin “https://accounts.google.com” on “http://localhost:8000”.
+  - [ ] There are horrendous UI regressions in the front-end, like a giant first note of a different color, or multicolumn editing mode where the markdown is in a narrow column on the right. What is really scary that tests are passing.
+    
