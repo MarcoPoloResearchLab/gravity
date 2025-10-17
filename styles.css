@@ -151,21 +151,15 @@ html, body {
 /* Containers */
 .block-container { display: flex; flex-direction: column; }
 
-/* Both note cards use the same grid skeleton */
+/* Simple note blocks without grid layout */
 .markdown-block {
-    display: grid;
-    grid-template-columns: 1fr 6.25rem; /* content | actions */
-    align-items: start;
-    column-gap: 0.75rem;
-    row-gap: 0.35rem;
     border-bottom: 1px solid #20232b;
     padding: 0.6rem 1rem 0.9rem 1rem;
     box-sizing: border-box;
     background: #0b0c0f;
 }
 
-/* Content column */
-.meta-chips, .markdown-content, .markdown-editor { grid-column: 1; }
+/* Content flows naturally */
 .meta-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0 0 0.35rem 0; }
 .meta-chip {
     font-size: 0.72rem; padding: 0.18rem 0.4rem; border-radius: 0.35rem;
@@ -176,7 +170,6 @@ html, body {
 .meta-chip--cat     { border-color: #293a63; color: #c9dbff; }
 
 .note-badges {
-    grid-column: 1;
     display: flex;
     flex-wrap: wrap;
     gap: 0.4rem;
@@ -201,7 +194,6 @@ html, body {
 
 .note-preview {
     position: relative;
-    grid-column: 1;
     max-height: 18vh;
     overflow: hidden;
     border-radius: 0.5rem;
@@ -371,17 +363,11 @@ html, body {
 .markdown-editor-host--view .markdown-content { display: block; }
 .markdown-editor-host--edit .CodeMirror { display: block; }
 
-/* Actions column (cards only) */
-.actions { grid-column: 2; display: flex; flex-direction: column; gap: 0.35rem; }
-.action-group { display: flex; flex-direction: column; gap: 0.35rem; }
-.action-group--row { flex-direction: row; gap: 0.25rem; }
-.action-button {
-    background: transparent; border: 1px solid #28314a; border-radius: 6px;
-    cursor: pointer; user-select: none; font-size: 0.9rem; color: #7aa2ff;
-    padding: 0.24rem 0.35rem; line-height: 1.05; text-align: center; box-sizing: border-box;
-    opacity: .5; transition: border-color .12s ease, color .12s ease, opacity .12s ease;
-}
-.action-group--row .action-button { flex: 1; }
+/* Hide action buttons completely */
+.actions { display: none; }
+.action-group { display: none; }
+.action-group--row { display: none; }
+.action-button { display: none; }
 
 .markdown-block { position: relative; }
 .markdown-block--pinned {
@@ -391,22 +377,18 @@ html, body {
     background: #0b0c0f;
     border-bottom: 2px solid #7aa2ff;
 }
+/* Top editor appears as a normal small note */
 .markdown-block.top-editor {
-    position: sticky;
-    top: 64px;
-    z-index: 5;
-    grid-template-columns: 1fr;
-    padding: 0;
-    border-bottom: none;
-    background: transparent;
+    padding: 0.6rem 1rem 0.9rem 1rem;
+    border-bottom: 1px solid #20232b;
+    background: #0b0c0f;
 }
 
 .markdown-block.top-editor .markdown-content,
 .markdown-block.top-editor .markdown-editor {
     font-size: 0.95rem;
-    line-height: 1.05;
+    line-height: 1.35;
     min-height: 1rem;
-    padding: 0;
 }
 
 .action-button--compact { font-size: 0.72rem; padding: 0.16rem 0.3rem; }
@@ -484,7 +466,6 @@ html, body {
 
 /* Editor toolbar */
 .editor-mode-toolbar {
-    grid-column: 1;
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -725,8 +706,7 @@ body.keyboard-shortcuts-open {
 }
 
 @media (max-width: 480px) {
-    .markdown-block { grid-template-columns: 1fr 5.25rem; }
-    .action-button { font-size: 0.85rem; padding: 0.2rem 0.3rem; }
+    .markdown-block { padding: 0.5rem 0.75rem 0.8rem 0.75rem; }
 }
 
 @media (max-width: 640px) {
