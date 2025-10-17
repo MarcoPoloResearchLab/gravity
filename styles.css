@@ -491,8 +491,6 @@ html, body {
     transform: translateY(0);
 }
 
-body.${OVERLAY_BODY_LOCK_CLASS} ???
-
 /* Editor toolbar */
 .editor-mode-toolbar {
     grid-column: 1;
