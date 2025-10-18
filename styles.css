@@ -147,6 +147,27 @@ html, body {
     color: #ffffff;
     border-color: rgba(118, 146, 220, 0.7);
 }
+.app-controls {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-left: auto;
+}
+.app-control-button {
+    background: transparent;
+    border: 1px solid #28314a;
+    border-radius: 6px;
+    color: #7aa2ff;
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 0.3rem 0.6rem;
+    transition: border-color 0.12s ease, color 0.12s ease, opacity 0.12s ease;
+}
+.app-control-button:hover {
+    color: #b4c8ff;
+    border-color: #3a4b71;
+}
 
 /* Containers */
 .block-container { display: flex; flex-direction: column; }
