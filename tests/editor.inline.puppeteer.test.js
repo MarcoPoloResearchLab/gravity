@@ -55,6 +55,14 @@ const PIN_SECOND_NOTE_ID = "inline-pin-second";
 const PIN_SECOND_MARKDOWN = "Second note to pin.";
 const FOCUS_SUPPRESSION_NOTE_ID = "inline-focus-suppression";
 const FOCUS_SUPPRESSION_MARKDOWN = "Focus suppression baseline.";
+const BORDER_NOTE_ID = "inline-border-fixture";
+const BORDER_MARKDOWN = "Border baseline.";
+const LAYOUT_NOTE_ID = "inline-layout-fixture";
+const LAYOUT_MARKDOWN = [
+    "# Layout Fixture",
+    "",
+    "This content ensures the editor aligns with rendered markdown."
+].join("\n");
 
 test.describe("Markdown inline editor", () => {
 
@@ -136,6 +144,169 @@ test.describe("Markdown inline editor", () => {
                 return document.activeElement instanceof HTMLTextAreaElement;
             });
             assert.equal(refocusResult, true, "top editor regains focus when the user returns to it");
+        } finally {
+            await teardown();
+        }
+    });
+
+    test("top editor retains compact visual footprint", async () => {
+        const { page, teardown } = await preparePage({
+            records: []
+        });
+
+        try {
+            await page.waitForSelector("#top-editor .markdown-block.top-editor");
+
+            const styleSnapshot = await page.evaluate(() => {
+                const wrapper = document.querySelector("#top-editor .markdown-block.top-editor");
+                if (!(wrapper instanceof HTMLElement)) {
+                    return null;
+                }
+                const computed = window.getComputedStyle(wrapper);
+                const { height } = wrapper.getBoundingClientRect();
+                return {
+                    background: computed.backgroundColor,
+                    paddingTop: computed.paddingTop,
+                    paddingBottom: computed.paddingBottom,
+                    borderBottomWidth: computed.borderBottomWidth,
+                    height
+                };
+            });
+
+            assert.ok(styleSnapshot, "Top editor wrapper should be present");
+            assert.equal(styleSnapshot.background, "rgba(0, 0, 0, 0)", "Top editor stays transparent like baseline notes");
+            assert.equal(styleSnapshot.paddingTop, "0px", "Top editor must not introduce extra top padding");
+            assert.equal(styleSnapshot.paddingBottom, "0px", "Top editor must not introduce extra bottom padding");
+            assert.equal(styleSnapshot.borderBottomWidth, "0px", "Top editor must not draw a separating border");
+            assert.ok(styleSnapshot.height <= 80, `Top editor height should stay compact, received ${styleSnapshot.height}`);
+        } finally {
+            await teardown();
+        }
+    });
+
+    test("inline editor renders without outer border", async () => {
+        const noteRecord = buildNoteRecord({
+            noteId: BORDER_NOTE_ID,
+            markdownText: BORDER_MARKDOWN
+        });
+        const { page, teardown } = await preparePage({
+            records: [noteRecord]
+        });
+        const cardSelector = `.markdown-block[data-note-id="${BORDER_NOTE_ID}"]`;
+
+        try {
+            await page.waitForSelector(cardSelector);
+            await enterCardEditMode(page, cardSelector);
+
+            const borderSnapshot = await page.evaluate((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return null;
+                }
+                const codeMirror = card.querySelector(".CodeMirror");
+                if (!(codeMirror instanceof HTMLElement)) {
+                    return null;
+                }
+                const computed = window.getComputedStyle(codeMirror);
+                return {
+                    top: computed.borderTopWidth,
+                    right: computed.borderRightWidth,
+                    bottom: computed.borderBottomWidth,
+                    left: computed.borderLeftWidth,
+                    topStyle: computed.borderTopStyle,
+                    rightStyle: computed.borderRightStyle,
+                    bottomStyle: computed.borderBottomStyle,
+                    leftStyle: computed.borderLeftStyle
+                };
+            }, cardSelector);
+
+            assert.ok(borderSnapshot, "CodeMirror wrapper should be present while editing");
+            assert.equal(borderSnapshot.top, "0px", "Top border width must be zero");
+            assert.equal(borderSnapshot.right, "0px", "Right border width must be zero");
+            assert.equal(borderSnapshot.bottom, "0px", "Bottom border width must be zero");
+            assert.equal(borderSnapshot.left, "0px", "Left border width must be zero");
+            assert.equal(borderSnapshot.topStyle, "none", "Top border style must be none");
+            assert.equal(borderSnapshot.rightStyle, "none", "Right border style must be none");
+            assert.equal(borderSnapshot.bottomStyle, "none", "Bottom border style must be none");
+            assert.equal(borderSnapshot.leftStyle, "none", "Left border style must be none");
+        } finally {
+            await teardown();
+        }
+    });
+
+    test("inline editing keeps actions column fixed and editor aligned", async () => {
+        const noteRecord = buildNoteRecord({
+            noteId: LAYOUT_NOTE_ID,
+            markdownText: LAYOUT_MARKDOWN
+        });
+        const { page, teardown } = await preparePage({
+            records: [noteRecord]
+        });
+        const cardSelector = `.markdown-block[data-note-id="${LAYOUT_NOTE_ID}"]`;
+
+        try {
+            await page.waitForSelector(cardSelector);
+
+            const baseline = await page.evaluate((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return null;
+                }
+                const actions = card.querySelector(".actions");
+                const content = card.querySelector(".markdown-content");
+                if (!(actions instanceof HTMLElement) || !(content instanceof HTMLElement)) {
+                    return null;
+                }
+                const cardRect = card.getBoundingClientRect();
+                const actionsRect = actions.getBoundingClientRect();
+                const contentRect = content.getBoundingClientRect();
+                return {
+                    cardLeft: cardRect.left,
+                    cardRight: cardRect.right,
+                    actionsLeft: actionsRect.left,
+                    actionsWidth: actionsRect.width,
+                    contentLeft: contentRect.left,
+                    contentRight: contentRect.right
+                };
+            }, cardSelector);
+            assert.ok(baseline, "Baseline layout should be measurable");
+
+            await enterCardEditMode(page, cardSelector);
+
+            const layoutAfterEdit = await page.evaluate((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return null;
+                }
+                const actions = card.querySelector(".actions");
+                const codeMirror = card.querySelector(".CodeMirror");
+                const content = card.querySelector(".markdown-content");
+                if (!(actions instanceof HTMLElement) || !(codeMirror instanceof HTMLElement) || !(content instanceof HTMLElement)) {
+                    return null;
+                }
+                const actionsRect = actions.getBoundingClientRect();
+                const codeMirrorRect = codeMirror.getBoundingClientRect();
+                const cardRect = card.getBoundingClientRect();
+                const contentStyles = window.getComputedStyle(content);
+                return {
+                    actionsLeft: actionsRect.left,
+                    actionsWidth: actionsRect.width,
+                    codeMirrorLeft: codeMirrorRect.left,
+                    codeMirrorRight: codeMirrorRect.right,
+                    cardLeft: cardRect.left,
+                    previewDisplay: contentStyles.display
+                };
+            }, cardSelector);
+            assert.ok(layoutAfterEdit, "Layout after entering edit mode should be measurable");
+
+            assert.ok(Math.abs(layoutAfterEdit.actionsLeft - baseline.actionsLeft) <= 1, "Actions column must stay anchored");
+            assert.ok(Math.abs(layoutAfterEdit.actionsWidth - baseline.actionsWidth) <= 1, "Actions column width must remain unchanged");
+
+            assert.equal(layoutAfterEdit.previewDisplay, "none", "Rendered preview hides when editing");
+            assert.ok(layoutAfterEdit.codeMirrorLeft <= baseline.contentLeft + 1, "Editor should align with original content column");
+            assert.ok(layoutAfterEdit.codeMirrorRight <= baseline.actionsLeft - 4, "Editor must not overlap the actions column");
+            assert.ok(layoutAfterEdit.codeMirrorLeft < layoutAfterEdit.actionsLeft, "Editor must remain left of the actions controls");
+            assert.ok(layoutAfterEdit.codeMirrorLeft <= baseline.cardLeft + 12, "Editor should start near the card's left padding");
         } finally {
             await teardown();
         }
