@@ -241,20 +241,6 @@ export function createMarkdownEditorHost(options) {
     }
 
     function setCaretPosition(position) {
-        if (typeof position === "number" && Number.isFinite(position)) {
-            const safeIndex = Math.max(0, Math.min(Math.floor(position), getValue().length));
-            if (easyMdeInstance) {
-                const doc = easyMdeInstance.codemirror.getDoc();
-                const cursor = doc.posFromIndex(safeIndex);
-                doc.setCursor(cursor);
-                return;
-            }
-            try {
-                textarea.setSelectionRange(safeIndex, safeIndex);
-            } catch {}
-            return;
-        }
-
         const target = position === "end" ? "end" : "start";
         if (easyMdeInstance) {
             const doc = easyMdeInstance.codemirror.getDoc();
@@ -1153,12 +1139,6 @@ function skipExistingClosingBracketTextarea(textarea, closeChar) {
     const start = typeof textarea.selectionStart === "number" ? textarea.selectionStart : textarea.value.length;
     const end = typeof textarea.selectionEnd === "number" ? textarea.selectionEnd : start;
     if (start !== end) return false;
-    if (closeChar === "]" && start >= 3) {
-        const preceding = textarea.value.slice(start - 3, start);
-        if (preceding === " ] ") {
-            return true;
-        }
-    }
     if (textarea.value.charAt(start) !== closeChar) return false;
     const nextCaret = start + 1;
     try {
@@ -1230,14 +1210,6 @@ function skipExistingClosingBracket(cm, closeChar) {
             const isCollapsed = start.line === end.line && start.ch === end.ch;
             if (!isCollapsed) {
                 continue;
-            }
-            if (closeChar === "]" && start.ch >= 3) {
-                const suffixStart = { line: start.line, ch: start.ch - 3 };
-                const preceding = cm.getRange(suffixStart, start);
-                if (preceding === " ] ") {
-                    moved = true;
-                    continue;
-                }
             }
             const nextPosition = { line: start.line, ch: start.ch + 1 };
             const nextChar = cm.getRange(start, nextPosition);
@@ -1493,11 +1465,11 @@ function handleListEnter(textarea, context) {
         ? `${listInfo.leading}${listInfo.number + 1}${listInfo.separator}`
         : `${listInfo.leading}${listInfo.marker} `;
 
-    const selectionStart = typeof textarea.selectionStart === "number" ? textarea.selectionStart : caret;
-    const selectionEnd = typeof textarea.selectionEnd === "number" ? textarea.selectionEnd : selectionStart;
+    const selectionStart = textarea.selectionStart ?? caret;
+    const selectionEnd = textarea.selectionEnd ?? selectionStart;
 
     if (selectionStart === selectionEnd) {
-        const collapsedCaret = Math.max(lineStart, Math.min(selectionStart, lineEnd));
+        const collapsedCaret = selectionStart;
         let caretInLine = collapsedCaret - lineStart;
         if (caretInLine < 0) caretInLine = 0;
         if (caretInLine > lineText.length) caretInLine = lineText.length;
@@ -1531,10 +1503,8 @@ function handleListEnter(textarea, context) {
         return;
     }
 
-    const boundedSelectionStart = Math.max(lineStart, Math.min(selectionStart, lineEnd));
-    const boundedSelectionEnd = Math.max(lineStart, Math.min(selectionEnd, lineEnd));
-    textarea.setRangeText(`\n${nextPrefix}`, boundedSelectionStart, boundedSelectionEnd, "end");
-    let caretIndex = textarea.selectionStart ?? (boundedSelectionStart + nextPrefix.length + 1);
+    textarea.setRangeText(`\n${nextPrefix}`, selectionStart, selectionEnd, "end");
+    let caretIndex = textarea.selectionStart ?? (selectionStart + nextPrefix.length + 1);
 
     if (listInfo.type === "ordered") {
         caretIndex = renumberOrderedListTextarea(textarea, caretIndex);
