@@ -1003,5 +1003,12 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
         Xc https://accounts.google.com/gsi/client:170
     Opening multiple popups was blocked due to lack of user activation. client:80:240
     Storage access automatically granted for origin “https://accounts.google.com” on “http://localhost:8000”.
-  - [x] There are horrendous UI regressions in the front-end, like a giant first note of a different color, or multicolumn editing mode where the markdown is in a narrow column on the right. FIXED: removed the unresolved `body.${OVERLAY_BODY_LOCK_CLASS}` placeholder so browsers parse the full stylesheet and added CSS validity tests to prevent repeats.
+  - [ ] There are horrendous UI regressions in the front-end, like a giant first note of a different color, or multicolumn editing mode where the markdown is in a narrow column on the right. What is really scary that tests are passing. Find the changes introduced to UI and revert them
+    1. The first not must be of a single line heigh as it was in commit, It shall not be tall as it is now
+    2. There shall not be borders and different colors when editing a note, The background stays the same black and has no borders
+    3. The editing markdown shall be editing markdown in the not. It currently creates a tiny column on the right and pushes the mardown there.
+    Do not try to fix rthese issues but find offending changes and revert them as this functionality was working before.
+    Work using the branch `broken-ui-fix`
+    - [ ] CSS matching commit 574c880 re-applied for note layout; pending manual visual confirmation before closing.
+    - [ ] Automated regression tests in `tests/editor.inline.puppeteer.test.js` now fail on height, border, and editor-alignment expectations; fix styling before flipping this entry.
     
