@@ -15,6 +15,7 @@ with bounded previews, and every note edits inline—no modal overlays or contex
   `Tab`/`Shift+Tab` indentation for lists and code blocks.
 * **Always-ready capture:** The sticky blank note beneath the header is the entry point for brand new ideas. Type there,
   click away, or hit `Cmd/Ctrl+Enter` to persist immediately.
+* **Scrollbar-free cards:** Preview panes clamp behind fade masks, and editing surfaces expand vertically so no inner scrollbars appear.
 * **Rich Markdown:** Markdown rendering is powered by [marked.js](https://marked.js.org/) with sanitisation from
   [DOMPurify](https://github.com/cure53/DOMPurify). Inline image pasting is preserved through attachment placeholders.
 * **Organise & share:** Notes retain the existing move, merge, copy, and classification behaviours, and you can import
@@ -206,7 +207,7 @@ Or embed a meta tag when templating the page:
 
 * **marked.js** — rendered via `https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js`.
 * **DOMPurify** — sanitiser loaded from `https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js`.
-* **EasyMDE** — Markdown editor UI delivered through `https://cdn.jsdelivr.net/npm/easymde@2.19.1/dist/easymde.min.js` and its companion stylesheet.
+* **EasyMDE** — Markdown editor UI delivered through `https://cdn.jsdelivr.net/npm/easymde@2.19.0/dist/easymde.min.js` and its companion stylesheet.
 * **Google Identity Services** — the sign-in client loads from `https://accounts.google.com/gsi/client` and uses the
   `156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com` client ID baked into `appConfig`.
 
@@ -219,3 +220,11 @@ Or embed a meta tag when templating the page:
 ## License
 
 Gravity Notes is released under the [MIT License](LICENSE).
+
+## Runtime Versions
+
+- Alpine.js — `https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/module.esm.js`
+- EasyMDE — `2.19.0`
+- marked.js — `12.0.2`
+- DOMPurify — `3.1.7`
+- Google Identity Services — `https://accounts.google.com/gsi/client`

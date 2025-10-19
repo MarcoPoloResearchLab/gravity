@@ -2,7 +2,19 @@
 
 ## Gravity Notes
 
-## Front-End Coding Standards (Browser ES Modules with Alpine.js + Bootstrap)
+## Document Roles
+
+- NOTES.md: Read-only process/journal. Append-only when closing work; do not retroactively edit history.
+- ISSUES.md: Append-only log of newly discovered requests and changes. No instructive sections live here; each entry records what changed or what was discovered.
+- PLAN.md: Working plan for one concrete change/issue; ephemeral and replaced per change.
+
+### Issue Status Terms
+
+- Resolved: Completed and verified; no further action.
+- Unresolved: Needs decision and/or implementation.
+- Blocked: Requires an external dependency or policy decision.
+
+## Front-End Coding Standards (Browser ES Modules with Alpine.js + Vanilla CSS)
 
 ### 1. Naming & Identifiers
 
@@ -46,8 +58,8 @@
 * Layout:
 
   ```
-  /assets/{css,img,audio}
-  /data/*.json
+  /assets/{css,img,audio}  # optional, create when needed
+  /data/*.json             # optional, create when needed
   /js/
     constants.js
     types.d.js
@@ -59,6 +71,15 @@
   ```
 * the MDE editor is used [text](MDE.v2.19.0.md). Follow the documentation to ensure proper API usage and avoid reimplementing the functionality available through MDE API
 * marked.js documentation is available at [text](marked.js.md). Follow the documentation to ensure proper API usage and avoid reimplementing the functionality available through marked.js API
+
+### Dependencies & Versions
+
+- Alpine.js: `3.13.5` via `https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/module.esm.js`
+- EasyMDE: `2.19.0`
+- marked.js: `12.0.2`
+- DOMPurify: `3.1.7`
+- Google Identity Services: `https://accounts.google.com/gsi/client`
+- Loopaware widget: `https://loopaware.mprlab.com/widget.js` (allowed per Security policy below)
 
 ### 7. Testing
 
@@ -72,7 +93,7 @@
 
 * JSDoc required for public functions, Alpine factories.
 * `// @ts-check` at file top.
-* `types.d.js` holds typedefs (`Dish`, `SpinResult`, etc.).
+* `types.d.js` holds typedefs (`Note`, `NoteClassification`, etc.).
 * Each domain module has a `doc.md` or `README.md`.
 
 ### 9. Refactors
@@ -118,7 +139,7 @@
 * No `eval`, no inline `onclick`.
 * CSP-friendly ES modules only.
 * Google Analytics snippet is the only sanctioned inline exception.
-* All external calls go through `core/gateway.js`, mockable in tests.
+* All external calls go through `js/core/backendClient.js` and `js/core/classifier.js` (network boundaries), both mockable in tests. Do not call `fetch` directly from UI components.
 
 ## Backend (Go Language)
 
@@ -140,7 +161,7 @@
 
 ---
 
-### Deliverables
+### Deliverables (for automation)
 
 * Only changed files.
 * No diffs, snippets, or examples.
@@ -210,8 +231,8 @@
 
 * Use Gin for routing.
 * Middleware for CORS, auth, logging.
-* Use Bootstrap built-ins only.
-* Header fixed top; footer fixed bottom via Bootstrap utilities.
+* Vanilla CSS; no Bootstrap.
+* Header fixed top; footer fixed bottom using CSS utilities.
 
 ---
 
@@ -231,6 +252,20 @@
 * Never log secrets or PII.
 * Validate all inputs.
 * Principle of least privilege.
+* CSP-friendly ES modules. Allowed third-party scripts: Google Analytics snippet, Google Identity Services, Loopaware widget. Inline scripts must be limited to GA config or guarded by nonce/hash as per CSP.
+
+#### CSP Template
+
+- HTTP header (preferred):
+  - `Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://accounts.google.com https://www.googletagmanager.com https://loopaware.mprlab.com 'nonce-<nonce-value>'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob:; connect-src 'self' https://llm-proxy.mprlab.com http://localhost:8080; font-src 'self' data:; frame-src https://accounts.google.com; base-uri 'self'; form-action 'self';`
+- Meta tag (static hosting):
+  - `<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://accounts.google.com https://www.googletagmanager.com https://loopaware.mprlab.com 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob:; connect-src 'self' https://llm-proxy.mprlab.com http://localhost:8080; font-src 'self' data:; frame-src https://accounts.google.com; base-uri 'self'; form-action 'self';">`
+- Replace `connect-src` endpoints when running against different backends or proxies. Prefer nonces over `'unsafe-inline'` where a server can inject them.
+
+### CI & Timeouts
+
+- Do not wrap shell commands with `timeout`. The Node test harness (`tests/run-tests.js`) enforces per-test timeouts and kill grace.
+- Longer suites have built-in overrides; tune via runtime options instead of shell-level timeouts.
 
 ---
 

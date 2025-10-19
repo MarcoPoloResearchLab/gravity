@@ -53,3 +53,9 @@ test("styles.css defines keyboard-shortcuts-open exactly once", async () => {
     const matches = cssContent.match(pattern);
     ok(matches !== null && matches.length === 1, `Expected one body.keyboard-shortcuts-open rule, found ${matches?.length ?? 0}`);
 });
+
+test("styles.css keeps markdown editor containers scroll-free", async () => {
+    const cssContent = await readFile(cssPath, "utf-8");
+    const pattern = /\.CodeMirror-scroll\s*\{[^}]*overflow:\s*visible\s*!important;/s;
+    ok(pattern.test(cssContent), "CodeMirror scroll container must force overflow: visible !important to avoid inner scrollbars");
+});

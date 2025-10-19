@@ -201,6 +201,60 @@ test.describe("Markdown inline editor", () => {
         }
     });
 
+    test("editing cards expand without internal scrollbars", async () => {
+        const seededRecords = [
+            buildNoteRecord({
+                noteId: LONG_NOTE_ID,
+                markdownText: LONG_NOTE_MARKDOWN
+            })
+        ];
+        const { page, teardown } = await preparePage({ records: seededRecords });
+        const cardSelector = `[data-note-id="${LONG_NOTE_ID}"]`;
+
+        try {
+            await enterCardEditMode(page, cardSelector);
+
+            const metrics = await page.evaluate((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return null;
+                }
+                const cardStyle = window.getComputedStyle(card);
+                const cmScroll = card.querySelector(".CodeMirror-scroll");
+                const cmStyle = cmScroll instanceof HTMLElement ? window.getComputedStyle(cmScroll) : null;
+
+                return {
+                    cardOverflowY: cardStyle.overflowY,
+                    cardScrollHeight: card.scrollHeight,
+                    cardClientHeight: card.clientHeight,
+                    codeMirrorOverflowY: cmStyle?.overflowY ?? null,
+                    codeMirrorScrollHeight: cmScroll instanceof HTMLElement ? cmScroll.scrollHeight : null,
+                    codeMirrorClientHeight: cmScroll instanceof HTMLElement ? cmScroll.clientHeight : null
+                };
+            }, cardSelector);
+
+            assert.ok(metrics, "expected editing metrics to be captured");
+            assert.notEqual(metrics.cardOverflowY, "auto", "card must not show a vertical scrollbar");
+            assert.notEqual(metrics.cardOverflowY, "scroll", "card must not show a vertical scrollbar");
+            assert.ok(
+                metrics.cardScrollHeight <= metrics.cardClientHeight + 1,
+                `card should grow instead of scrolling (scrollHeight=${metrics.cardScrollHeight}, clientHeight=${metrics.cardClientHeight})`
+            );
+            if (typeof metrics.codeMirrorOverflowY === "string") {
+                assert.notEqual(metrics.codeMirrorOverflowY, "auto", "CodeMirror scroll container must not introduce scrollbars");
+                assert.notEqual(metrics.codeMirrorOverflowY, "scroll", "CodeMirror scroll container must not introduce scrollbars");
+            }
+            if (typeof metrics.codeMirrorScrollHeight === "number" && typeof metrics.codeMirrorClientHeight === "number") {
+                assert.ok(
+                    metrics.codeMirrorScrollHeight <= metrics.codeMirrorClientHeight + 64,
+                    `editor should not rely on large internal scroll areas (scrollHeight=${metrics.codeMirrorScrollHeight}, clientHeight=${metrics.codeMirrorClientHeight})`
+                );
+            }
+        } finally {
+            await teardown();
+        }
+    });
+
     test("top editor retains compact visual footprint", async () => {
         const { page, teardown } = await preparePage({
             records: []

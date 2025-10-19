@@ -1,4 +1,6 @@
-// GN-43 UI regression revert
-- [x] styles.css — remove the unresolved template literal placeholder that stops browsers from parsing the lower half of the stylesheet.
-- [x] tests/css.validity.test.js — add regression tests that fail when placeholders, invalid markers, or unbalanced braces enter the stylesheet.
-- [x] NOTES.md — mark the GN-43 regression as fixed after restoring the stylesheet and tests.
+// GN-45 No scrollers in cards (rendering and editing)
+- [x] tests/preview.bounded.puppeteer.test.js — assert note previews keep overflow hidden; rely on fade mask without scrollbars.
+- [x] tests/editor.inline.puppeteer.test.js — assert editing cards expand and avoid internal scroll areas.
+- [x] tests/css.validity.test.js — pin CodeMirror overflow policy to prevent scrollbars.
+- [x] styles.css — enforce overflow/height rules for preview and editing states to favor container growth over scrollbars.
+- [x] README.md — document the “no inner scrollbars” UX guarantee.

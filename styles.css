@@ -607,6 +607,7 @@ html, body {
     box-sizing: border-box;
     padding: 0 !important;
     margin: 0 !important;
+    overflow: visible !important;
 }
 
 .CodeMirror-hscrollbar,
