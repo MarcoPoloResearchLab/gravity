@@ -57,6 +57,8 @@
     app.js   # composition root
   index.html
   ```
+* the MDE editor is used [text](MDE.v2.19.0.md). Follow the documentation to ensure proper API usage and avoid reimplementing the functionality available through MDE API
+* marked.js documentation is available at [text](marked.js.md). Follow the documentation to ensure proper API usage and avoid reimplementing the functionality available through marked.js API
 
 ### 7. Testing
 
