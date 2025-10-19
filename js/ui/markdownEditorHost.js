@@ -197,8 +197,20 @@ export function createMarkdownEditorHost(options) {
     }
 
     function focusEditPane() {
-        easyMdeInstance.codemirror.focus();
-        easyMdeInstance.codemirror.refresh();
+        const { codemirror } = easyMdeInstance;
+        const inputField = typeof codemirror.getInputField === "function"
+            ? codemirror.getInputField()
+            : null;
+        if (inputField instanceof HTMLElement && typeof inputField.focus === "function") {
+            try {
+                inputField.focus({ preventScroll: true });
+            } catch {
+                inputField.focus();
+            }
+        } else if (typeof codemirror.focus === "function") {
+            codemirror.focus();
+        }
+        codemirror.refresh();
     }
 
     function getValue() {

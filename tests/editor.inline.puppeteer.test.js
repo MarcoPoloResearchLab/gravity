@@ -69,6 +69,21 @@ const DIVIDER_MARKDOWN = [
     "",
     "Ensures border styling stays subtle."
 ].join("\n");
+const GN47_NOTE_ID = "inline-caret-layout-fixture";
+const GN47_TARGET_TEXT = "Caret anchor landing zone ensures mapping works with links inline.";
+const GN47_PADDING_NOTE_ID = "inline-caret-layout-padding";
+const GN47_PADDING_MARKDOWN = Array.from({ length: 12 }, (_, index) => `Padding paragraph ${index + 1} keeps the target card below the fold to stress scroll behavior.`).join("\n\n");
+const GN47_MARKDOWN = [
+    "Introductory paragraph establishes the baseline height before editing.",
+    "",
+    "Caret anchor **landing zone** ensures mapping works with [links](https://example.com) inline.",
+    "",
+    "Follow-up paragraph with extended detail so the preview truncates before editing takes place, including `inline code` and additional emphasis for measurement.",
+    "",
+    "Supporting paragraph three elaborates on measurements and ensures the preview develops a fade-out overlay in view mode.",
+    "",
+    "Closing paragraph adds further depth to guarantee the card must grow downward rather than shifting upward."
+].join("\n");
 
 test.describe("Markdown inline editor", () => {
 
@@ -385,6 +400,186 @@ test.describe("Markdown inline editor", () => {
                 dividerSnapshot.bottomColor,
                 "rgba(32, 35, 43, 0.35)",
                 "Bottom divider color must remain muted"
+            );
+        } finally {
+            await teardown();
+        }
+    });
+
+    test("preview click enters edit mode at click point without shifting card upward", async () => {
+        const noteRecord = buildNoteRecord({
+            noteId: GN47_NOTE_ID,
+            markdownText: GN47_MARKDOWN
+        });
+        const { page, teardown } = await preparePage({
+            records: [
+                buildNoteRecord({
+                    noteId: GN47_PADDING_NOTE_ID,
+                    markdownText: GN47_PADDING_MARKDOWN
+                }),
+                noteRecord
+            ]
+        });
+        const cardSelector = `.markdown-block[data-note-id="${GN47_NOTE_ID}"]`;
+        const targetSubstring = GN47_TARGET_TEXT;
+        try {
+            await page.waitForSelector(cardSelector);
+            await page.evaluate(() => {
+                window.scrollTo(0, 200);
+            });
+            const scrollBefore = await page.evaluate(() => window.scrollY);
+            const maxScrollBefore = await page.evaluate(() => {
+                const element = document.scrollingElement || document.documentElement;
+                if (!(element instanceof Element)) {
+                    return 0;
+                }
+                return Math.max(0, element.scrollHeight - window.innerHeight);
+            });
+            const layoutBefore = await page.$eval(cardSelector, (element) => {
+                if (!(element instanceof HTMLElement)) {
+                    return null;
+                }
+                const rect = element.getBoundingClientRect();
+                return {
+                    top: rect.top,
+                    height: rect.height,
+                    bottom: rect.bottom
+                };
+            });
+            assert.ok(layoutBefore, "Initial layout metrics should be captured for the card");
+
+            const clickPoint = await page.$eval(
+                `${cardSelector} .markdown-content`,
+                (element, substring) => {
+                    if (!(element instanceof HTMLElement)) {
+                        return null;
+                    }
+                    const plainText = element.textContent || "";
+                    const startIndex = plainText.indexOf(substring);
+                    if (startIndex < 0) {
+                        return null;
+                    }
+                    const midpointPlainOffset = startIndex + Math.floor(substring.length / 2);
+                    const walker = element.ownerDocument.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+                    let remaining = midpointPlainOffset;
+                    while (walker.nextNode()) {
+                        const node = walker.currentNode;
+                        const value = typeof node.nodeValue === "string" ? node.nodeValue : "";
+                        if (value.length === 0) {
+                            continue;
+                        }
+                        if (remaining >= value.length) {
+                            remaining -= value.length;
+                            continue;
+                        }
+                        const clamp = Math.min(Math.max(remaining, 0), value.length - 1);
+                        const end = Math.min(clamp + 1, value.length);
+                        const range = element.ownerDocument.createRange();
+                        range.setStart(node, clamp);
+                        range.setEnd(node, end);
+                        const rect = range.getBoundingClientRect();
+                        if (rect.width === 0 && rect.height === 0) {
+                            return null;
+                        }
+                        return {
+                            x: rect.left + rect.width / 2,
+                            y: rect.top + rect.height / 2,
+                            plainOffset: midpointPlainOffset,
+                            plainStart: startIndex,
+                            plainLength: substring.length
+                        };
+                    }
+                    return null;
+                },
+                targetSubstring
+            );
+            if (!clickPoint) {
+                const previewText = await page.$eval(`${cardSelector} .markdown-content`, (element) => {
+                    if (!(element instanceof HTMLElement)) {
+                        return "";
+                    }
+                    return element.textContent || "";
+                });
+                assert.fail(`The preview should expose the target substring for clicking. preview="${previewText}" target="${targetSubstring}"`);
+            }
+
+            await page.mouse.click(clickPoint.x, clickPoint.y);
+            await page.waitForSelector(`${cardSelector}.editing-in-place`);
+            await page.waitForSelector(`${cardSelector} .CodeMirror textarea`);
+
+            const layoutAfter = await page.$eval(cardSelector, (element) => {
+                if (!(element instanceof HTMLElement)) {
+                    return null;
+                }
+                const rect = element.getBoundingClientRect();
+                return {
+                    top: rect.top,
+                    height: rect.height,
+                    bottom: rect.bottom
+                };
+            });
+            assert.ok(layoutAfter, "Layout metrics after entering edit mode should be measurable");
+
+            const scrollAfter = await page.evaluate(() => window.scrollY);
+            const maxScrollAfter = await page.evaluate(() => {
+                const element = document.scrollingElement || document.documentElement;
+                if (!(element instanceof Element)) {
+                    return 0;
+                }
+                return Math.max(0, element.scrollHeight - window.innerHeight);
+            });
+            assert.ok(
+                Math.abs(layoutAfter.top - layoutBefore.top) <= 1,
+                `Card top must stay anchored (before=${layoutBefore.top}, after=${layoutAfter.top}, scrollBefore=${scrollBefore}, scrollAfter=${scrollAfter}, maxBefore=${maxScrollBefore}, maxAfter=${maxScrollAfter})`
+            );
+            assert.ok(
+                layoutAfter.height >= layoutBefore.height + 24,
+                `Card should grow downward instead of shrinking (before=${layoutBefore.height}, after=${layoutAfter.height})`
+            );
+            assert.ok(
+                layoutAfter.bottom >= layoutBefore.bottom + 20,
+                `Bottom edge should extend downward (before=${layoutBefore.bottom}, after=${layoutAfter.bottom})`
+            );
+
+            assert.ok(
+                Math.abs(scrollAfter - scrollBefore) <= 2,
+                `Viewport scroll should remain stable (before=${scrollBefore}, after=${scrollAfter})`
+            );
+
+            const caretState = await page.evaluate((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return null;
+                }
+                const host = Reflect.get(card, "__markdownHost");
+                const codeMirror = card.querySelector(".CodeMirror");
+                if (!host || !codeMirror) {
+                    return null;
+                }
+                const cm = /** @type {any} */ (codeMirror).CodeMirror;
+                if (!cm || typeof cm.getDoc !== "function") {
+                    return null;
+                }
+                const doc = cm.getDoc();
+                const cursor = doc.getCursor();
+                const index = doc.indexFromPos(cursor);
+                return {
+                    index,
+                    value: doc.getValue()
+                };
+            }, cardSelector);
+            assert.ok(caretState, "Caret state should be retrievable from CodeMirror");
+            assert.equal(caretState.value, GN47_MARKDOWN, "Editor value should match the stored markdown");
+
+            const caretPlainOffset = computePlainOffsetForMarkdown(caretState.value, caretState.index);
+            assert.ok(
+                caretPlainOffset >= clickPoint.plainStart
+                && caretPlainOffset <= clickPoint.plainStart + clickPoint.plainLength,
+                `Caret must land within the clicked substring (plainOffset=${caretPlainOffset}, range=[${clickPoint.plainStart}, ${clickPoint.plainStart + clickPoint.plainLength}])`
+            );
+            assert.ok(
+                Math.abs(caretPlainOffset - clickPoint.plainOffset) <= 1,
+                `Caret should stay near the click midpoint (expected≈${clickPoint.plainOffset}, actual=${caretPlainOffset})`
             );
         } finally {
             await teardown();
@@ -852,4 +1047,47 @@ async function pause(page, durationMs) {
     await page.evaluate((ms) => new Promise((resolve) => {
         setTimeout(resolve, typeof ms === "number" ? Math.max(ms, 0) : 0);
     }), durationMs);
+}
+
+function computePlainOffsetForMarkdown(markdown, markdownIndex) {
+    const source = typeof markdown === "string" ? markdown : "";
+    const limit = Math.max(Math.min(typeof markdownIndex === "number" ? markdownIndex : 0, source.length), 0);
+    let plainOffset = 0;
+    let pointer = 0;
+    while (pointer < limit) {
+        const current = source[pointer];
+        const next = source[pointer + 1];
+        if (current === "*" && next === "*") {
+            pointer += 2;
+            continue;
+        }
+        if (current === "_" && next === "_") {
+            pointer += 2;
+            continue;
+        }
+        if (current === "`") {
+            pointer += 1;
+            continue;
+        }
+        if (current === "[") {
+            pointer += 1;
+            continue;
+        }
+        if (current === "]") {
+            pointer += 1;
+            if (source[pointer] === "(") {
+                pointer += 1;
+                while (pointer < source.length && pointer < limit && source[pointer] !== ")") {
+                    pointer += 1;
+                }
+                if (pointer < source.length && source[pointer] === ")") {
+                    pointer += 1;
+                }
+            }
+            continue;
+        }
+        plainOffset += 1;
+        pointer += 1;
+    }
+    return plainOffset;
 }

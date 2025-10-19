@@ -1175,6 +1175,18 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
         bubblePreviousCardToTop = true,
         bubbleSelfToTop = false
     } = options;
+    const shouldRestoreScroll = !bubbleSelfToTop && typeof window !== "undefined" && typeof document !== "undefined";
+    const initialViewportTop = shouldRestoreScroll ? card.getBoundingClientRect().top : 0;
+    const initialScrollY = shouldRestoreScroll ? window.scrollY : 0;
+    const scrollingElement = shouldRestoreScroll
+        ? document.scrollingElement || document.documentElement || document.body
+        : null;
+    const targetScrollY = shouldRestoreScroll ? initialScrollY : 0;
+    const canRestoreScroll = shouldRestoreScroll
+        && scrollingElement instanceof HTMLElement
+        && initialViewportTop >= 0
+        && initialViewportTop <= window.innerHeight;
+
     const wasEditing = card.classList.contains("editing-in-place");
     if (currentEditingCard && currentEditingCard !== card && !mergeInProgress) {
         finalizeCard(currentEditingCard, notesContainer, { bubbleToTop: bubblePreviousCardToTop });
@@ -1222,6 +1234,31 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
     // Focus after paint; then release the height lock
     requestAnimationFrame(() => {
         editorHost?.focus();
+        if (canRestoreScroll) {
+            let remainingAttempts = 6;
+            const applyScrollRestoration = () => {
+                const maxScroll = Math.max(
+                    0,
+                    (scrollingElement?.scrollHeight ?? 0) - window.innerHeight
+                );
+                const clampedScroll = Math.min(Math.max(targetScrollY, 0), maxScroll);
+                window.scrollTo(0, clampedScroll);
+                remainingAttempts -= 1;
+                if (remainingAttempts > 0) {
+                    requestAnimationFrame(applyScrollRestoration);
+                }
+            };
+            const finalizeRestoration = () => {
+                const maxScroll = Math.max(
+                    0,
+                    (scrollingElement?.scrollHeight ?? 0) - window.innerHeight
+                );
+                const clampedScroll = Math.min(Math.max(targetScrollY, 0), maxScroll);
+                window.scrollTo(0, clampedScroll);
+            };
+            requestAnimationFrame(applyScrollRestoration);
+            setTimeout(finalizeRestoration, 0);
+        }
     });
 
     updateActionButtons(notesContainer);

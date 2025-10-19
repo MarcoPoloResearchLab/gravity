@@ -2,7 +2,7 @@
     - Add a Puppeteer assertion that measures rendered `.markdown-block` borders and fails if any side but the bottom uses a visible (>1px) border.
     - Tweak the card and pinned-note CSS so only a 1px subtle bottom divider remains, including sticky variants.
     - Document the border guideline if styling guidance shifts (README or MIGRATION).
-- [ ] [GN-47] Editing layout + caret mapping drift (`tests/editor.inline.puppeteer.test.js`, `js/ui/card.js`)
+- [x] [GN-47] Editing layout + caret mapping drift (`tests/editor.inline.puppeteer.test.js`, `js/ui/card.js`)
     - Add regression coverage ensuring clicking the preview enters edit mode with the caret near the click and the card grows downward while its top position stays fixed.
     - Adjust inline-edit focus/height handling so the card expands with content sans scrollbars and maintains accurate caret translation from preview clicks.
 - [ ] [GN-48] Re-clicking editing cards toggles view (`tests/editor.inline.puppeteer.test.js`, `js/ui/card.js`)
