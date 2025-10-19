@@ -84,6 +84,16 @@ const GN47_MARKDOWN = [
     "",
     "Closing paragraph adds further depth to guarantee the card must grow downward rather than shifting upward."
 ].join("\n");
+const GN48_NOTE_ID = "inline-editing-click-fixture";
+const GN48_MARKDOWN = [
+    "# Editing Click Fixture",
+    "",
+    "This note validates that re-clicking an already-editing card keeps the editor in place without flickering back to preview.",
+    "",
+    "The body includes multiple paragraphs so the editor has height and padding beyond the CodeMirror viewport.",
+    "",
+    "Double clicking different parts of the card should merely reposition the caret."
+].join("\n");
 
 test.describe("Markdown inline editor", () => {
 
@@ -581,6 +591,119 @@ test.describe("Markdown inline editor", () => {
                 Math.abs(caretPlainOffset - clickPoint.plainOffset) <= 1,
                 `Caret should stay near the click midpoint (expected≈${clickPoint.plainOffset}, actual=${caretPlainOffset})`
             );
+        } finally {
+            await teardown();
+        }
+    });
+
+    test("clicking an already editing card keeps edit mode active", async () => {
+        const noteRecord = buildNoteRecord({
+            noteId: GN48_NOTE_ID,
+            markdownText: GN48_MARKDOWN
+        });
+        const { page, teardown } = await preparePage({
+            records: [noteRecord]
+        });
+        const cardSelector = `.markdown-block[data-note-id="${GN48_NOTE_ID}"]`;
+
+        try {
+            await page.waitForSelector(cardSelector);
+            const textareaSelector = await enterCardEditMode(page, cardSelector);
+            await page.waitForSelector(textareaSelector);
+            await page.waitForFunction((selector) => {
+                const card = document.querySelector(selector);
+                return card instanceof HTMLElement && card.classList.contains("editing-in-place");
+            }, {}, cardSelector);
+
+            const baselineState = await page.evaluate((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return null;
+                }
+                const host = Reflect.get(card, "__markdownHost");
+                if (!host || typeof host.getMode !== "function") {
+                    return null;
+                }
+                if (typeof host.on === "function") {
+                    const transitions = [];
+                    host.on("modechange", ({ mode }) => {
+                        transitions.push(mode);
+                    });
+                    Reflect.set(card, "__modeTransitions", transitions);
+                }
+                const transitions = Reflect.get(card, "__modeTransitions");
+                if (Array.isArray(transitions)) {
+                    transitions.length = 0;
+                }
+                if (!Reflect.has(card, "__editClassTransitions")) {
+                    const records = [];
+                    const observer = new MutationObserver(() => {
+                        records.push(card.classList.contains("editing-in-place"));
+                    });
+                    observer.observe(card, { attributes: true, attributeFilter: ["class"] });
+                    Reflect.set(card, "__editClassObserver", observer);
+                    Reflect.set(card, "__editClassTransitions", records);
+                } else {
+                    const records = Reflect.get(card, "__editClassTransitions");
+                    if (Array.isArray(records)) {
+                        records.length = 0;
+                    }
+                }
+                return {
+                    mode: host.getMode(),
+                    hasEditingClass: card.classList.contains("editing-in-place")
+                };
+            }, cardSelector);
+            assert.ok(baselineState, "Expected to capture initial editor state");
+            assert.equal(baselineState.mode, "edit", "Card should begin in edit mode");
+            assert.equal(baselineState.hasEditingClass, true, "Card should carry editing-in-place class");
+
+            const cardClickTarget = await page.$eval(cardSelector, (element) => {
+                const rect = element.getBoundingClientRect();
+                return {
+                    x: rect.right - Math.max(6, Math.min(rect.width / 8, 12)),
+                    y: rect.top + rect.height / 2
+                };
+            });
+            await page.mouse.click(cardClickTarget.x, cardClickTarget.y);
+            await pause(page, 50);
+
+            const postClickState = await page.evaluate((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return null;
+                }
+                const host = Reflect.get(card, "__markdownHost");
+                if (!host || typeof host.getMode !== "function") {
+                    return null;
+                }
+                const modeTransitions = Reflect.get(card, "__modeTransitions");
+                const editClassTransitions = Reflect.get(card, "__editClassTransitions");
+                const observer = Reflect.get(card, "__editClassObserver");
+                if (observer && typeof observer.disconnect === "function") {
+                    observer.disconnect();
+                    Reflect.deleteProperty(card, "__editClassObserver");
+                }
+                return {
+                    mode: host.getMode(),
+                    hasEditingClass: card.classList.contains("editing-in-place"),
+                    modeTransitions: Array.isArray(modeTransitions) ? [...modeTransitions] : [],
+                    editClassTransitions: Array.isArray(editClassTransitions) ? [...editClassTransitions] : []
+                };
+            }, cardSelector);
+            assert.ok(postClickState, "Expected to capture post-click editor state");
+            assert.equal(postClickState.mode, "edit", "Card must remain in edit mode after redundant click");
+            assert.equal(postClickState.hasEditingClass, true, "Card should keep editing-in-place class after redundant click");
+            if (Array.isArray(postClickState.modeTransitions)) {
+                assert.ok(
+                    !postClickState.modeTransitions.includes("view"),
+                    `Mode transitions must not include view: ${postClickState.modeTransitions.join(", ")}`
+                );
+            }
+            if (Array.isArray(postClickState.editClassTransitions) && postClickState.editClassTransitions.length > 0) {
+                const removed = postClickState.editClassTransitions.some((value) => value === false);
+                assert.equal(removed, false, "Editing class should never be removed during redundant click interactions");
+            }
         } finally {
             await teardown();
         }

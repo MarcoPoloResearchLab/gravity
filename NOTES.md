@@ -374,7 +374,7 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
   - [x] [GN-45] Encode in tests that there must be no scrollers in the cards, neither for editing nor for rendering
   - [x] [GN-46] There are thick grey lines under the notes. each not card must not have any thick borders, and shall only have thin bottom borders
   - [x] [GN-47] Expected behaviour: when editied the note, the card extends fully to fill in the text. The cursor is placed in the point where the click was registered in the rendered text. The position of the top of the card doesnt change. The card extends downwards.
-  - [ ] [GN-48] Clicking on a card that is being edited doesnt change anything other than placing the cursor in the new place. There must be no flickering and no switching to rendering.
+  - [x] [GN-48] Clicking on a card that is being edited doesnt change anything other than placing the cursor in the new place. There must be no flickering and no switching to rendering.
   - [ ] [GN-49] Shift-enter finishes editing session and sends card to rendering mode
 
 ### Maintenance

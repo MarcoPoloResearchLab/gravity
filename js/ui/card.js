@@ -88,6 +88,36 @@ const COPY_FEEDBACK_DURATION_MS = 1800;
 const LINE_ENDING_NORMALIZE_PATTERN = /\r\n/g;
 const TRAILING_WHITESPACE_PATTERN = /[ \t]+$/;
 
+let pointerTrackingInitialized = false;
+let lastPointerDownTarget = null;
+
+function initializePointerTracking() {
+    if (pointerTrackingInitialized || typeof document === "undefined") {
+        return;
+    }
+    document.addEventListener("pointerdown", (event) => {
+        lastPointerDownTarget = event && event.target instanceof Node ? event.target : null;
+    }, true);
+    pointerTrackingInitialized = true;
+}
+
+function shouldKeepEditingAfterBlur(card) {
+    if (!(card instanceof HTMLElement) || typeof document === "undefined") {
+        return false;
+    }
+    if (!card.isConnected || !card.classList.contains("editing-in-place")) {
+        return false;
+    }
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement && card.contains(activeElement)) {
+        return true;
+    }
+    if (lastPointerDownTarget instanceof Node && card.contains(lastPointerDownTarget)) {
+        return true;
+    }
+    return false;
+}
+
 function calculatePreviewTextOffset(previewElement, event) {
     if (!(previewElement instanceof HTMLElement)) {
         return null;
@@ -696,6 +726,9 @@ export function renderCard(record, options = {}) {
     if (!notesContainer) {
         throw new Error(ERROR_NOTES_CONTAINER_NOT_FOUND);
     }
+
+    initializePointerTracking();
+
     const card = createElement("div", "markdown-block");
     card.setAttribute("data-note-id", record.noteId);
     const initialPinned = record.pinned === true;
@@ -933,7 +966,24 @@ export function renderCard(record, options = {}) {
         forceBubble: true,
         suppressTopEditorAutofocus: true
     }));
-    editorHost.on("blur", () => finalizeCard(card, notesContainer));
+    editorHost.on("blur", () => {
+        if (typeof window === "undefined") {
+            finalizeCard(card, notesContainer);
+            return;
+        }
+        window.requestAnimationFrame(() => {
+            const maintainEditing = shouldKeepEditingAfterBlur(card);
+            lastPointerDownTarget = null;
+            if (maintainEditing) {
+                if (editorHost.getMode() !== MARKDOWN_MODE_EDIT) {
+                    editorHost.setMode(MARKDOWN_MODE_EDIT);
+                }
+                editorHost.focus();
+                return;
+            }
+            finalizeCard(card, notesContainer);
+        });
+    });
     editorHost.on("navigatePrevious", () => navigateToAdjacentCard(card, DIRECTION_PREVIOUS, notesContainer));
     editorHost.on("navigateNext", () => navigateToAdjacentCard(card, DIRECTION_NEXT, notesContainer));
 
