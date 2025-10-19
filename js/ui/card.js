@@ -1377,21 +1377,25 @@ async function finalizeCard(card, notesContainer, options = {}) {
     const attachmentsChanged = !areAttachmentDictionariesEqual(attachments, previousAttachments);
     const changed = normalizedNext !== normalizedPrevious || attachmentsChanged;
 
-    if (card.classList.contains("editing-in-place")) {
-        card.classList.remove("editing-in-place");
-    }
-    if (currentEditingCard === card) {
-        currentEditingCard = null;
-    }
-    if (editorHost) {
-        editorHost.setMode(MARKDOWN_MODE_VIEW);
-    }
-    if (editor instanceof HTMLTextAreaElement) {
-        editor.style.height = "";
-        editor.style.minHeight = "";
-    }
+    const exitEditingMode = () => {
+        if (card.classList.contains("editing-in-place")) {
+            card.classList.remove("editing-in-place");
+        }
+        if (currentEditingCard === card) {
+            currentEditingCard = null;
+        }
+        if (editorHost) {
+            editorHost.setMode(MARKDOWN_MODE_VIEW);
+        }
+        if (editor instanceof HTMLTextAreaElement) {
+            editor.style.height = "";
+            editor.style.minHeight = "";
+        }
+    };
+
     // If cleared, delete the card entirely
     if (trimmed.length === 0) {
+        exitEditingMode();
         collapseExpandedPreview(card);
         const id = card.getAttribute("data-note-id");
         clearPinnedNoteIfMatches(id);
@@ -1414,6 +1418,7 @@ async function finalizeCard(card, notesContainer, options = {}) {
         } else if (editor instanceof HTMLTextAreaElement) {
             editor.value = previousText;
         }
+        exitEditingMode();
         return;
     }
 
@@ -1423,6 +1428,8 @@ async function finalizeCard(card, notesContainer, options = {}) {
 
     const shouldBubble = forceBubble || bubbleToTop;
     persistCardState(card, notesContainer, text, { bubbleToTop: shouldBubble });
+
+    exitEditingMode();
 
     if (typeof requestAnimationFrame === "function") {
         await new Promise((resolve) => {

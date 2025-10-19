@@ -2,6 +2,8 @@
     - Added Puppeteer coverage that re-clicks an editing card and records mode/class transitions to detect unwanted flicker.
     - Hardened blur handling to keep cards in edit mode when the interaction originated inside the card footprint and refocused the editor without triggering finalize.
     - Re-ran the inline editor suite and the full test harness to confirm the contract and ensure no regressions across preview behaviors.
-- [ ] [GN-49] Shift+Enter submission flicker (`tests/editor.inline.puppeteer.test.js`, `js/ui/card.js`)
-    - Extend Shift+Enter coverage to assert the card stays stable after submission and returns to preview only once edits are committed.
-    - Align finalize flow to avoid transient view toggles or misplaced focus during keyboard submissions.
+- [x] [GN-49] Shift+Enter submission flicker (`tests/editor.inline.puppeteer.test.js`, `js/ui/card.js`)
+    - Add reusable test helpers that track mode transitions and editing class flips so Shift+Enter coverage can fail when the card bounces back into edit mode.
+    - Expand the Shift+Enter puppeteer test to assert a single transition to view mode, no editing-class reattachment, and preview stability.
+    - Adjust `finalizeCard` to keep the card in view mode for keyboard submissions by preventing deferred focus or mode resets from re-entering edit.
+    - Validate with `npm test -- tests/editor.inline.puppeteer.test.js` and the full harness.

@@ -615,45 +615,7 @@ test.describe("Markdown inline editor", () => {
                 return card instanceof HTMLElement && card.classList.contains("editing-in-place");
             }, {}, cardSelector);
 
-            const baselineState = await page.evaluate((selector) => {
-                const card = document.querySelector(selector);
-                if (!(card instanceof HTMLElement)) {
-                    return null;
-                }
-                const host = Reflect.get(card, "__markdownHost");
-                if (!host || typeof host.getMode !== "function") {
-                    return null;
-                }
-                if (typeof host.on === "function") {
-                    const transitions = [];
-                    host.on("modechange", ({ mode }) => {
-                        transitions.push(mode);
-                    });
-                    Reflect.set(card, "__modeTransitions", transitions);
-                }
-                const transitions = Reflect.get(card, "__modeTransitions");
-                if (Array.isArray(transitions)) {
-                    transitions.length = 0;
-                }
-                if (!Reflect.has(card, "__editClassTransitions")) {
-                    const records = [];
-                    const observer = new MutationObserver(() => {
-                        records.push(card.classList.contains("editing-in-place"));
-                    });
-                    observer.observe(card, { attributes: true, attributeFilter: ["class"] });
-                    Reflect.set(card, "__editClassObserver", observer);
-                    Reflect.set(card, "__editClassTransitions", records);
-                } else {
-                    const records = Reflect.get(card, "__editClassTransitions");
-                    if (Array.isArray(records)) {
-                        records.length = 0;
-                    }
-                }
-                return {
-                    mode: host.getMode(),
-                    hasEditingClass: card.classList.contains("editing-in-place")
-                };
-            }, cardSelector);
+            const baselineState = await beginCardEditingTelemetry(page, cardSelector);
             assert.ok(baselineState, "Expected to capture initial editor state");
             assert.equal(baselineState.mode, "edit", "Card should begin in edit mode");
             assert.equal(baselineState.hasEditingClass, true, "Card should carry editing-in-place class");
@@ -668,29 +630,7 @@ test.describe("Markdown inline editor", () => {
             await page.mouse.click(cardClickTarget.x, cardClickTarget.y);
             await pause(page, 50);
 
-            const postClickState = await page.evaluate((selector) => {
-                const card = document.querySelector(selector);
-                if (!(card instanceof HTMLElement)) {
-                    return null;
-                }
-                const host = Reflect.get(card, "__markdownHost");
-                if (!host || typeof host.getMode !== "function") {
-                    return null;
-                }
-                const modeTransitions = Reflect.get(card, "__modeTransitions");
-                const editClassTransitions = Reflect.get(card, "__editClassTransitions");
-                const observer = Reflect.get(card, "__editClassObserver");
-                if (observer && typeof observer.disconnect === "function") {
-                    observer.disconnect();
-                    Reflect.deleteProperty(card, "__editClassObserver");
-                }
-                return {
-                    mode: host.getMode(),
-                    hasEditingClass: card.classList.contains("editing-in-place"),
-                    modeTransitions: Array.isArray(modeTransitions) ? [...modeTransitions] : [],
-                    editClassTransitions: Array.isArray(editClassTransitions) ? [...editClassTransitions] : []
-                };
-            }, cardSelector);
+            const postClickState = await collectCardEditingTelemetry(page, cardSelector);
             assert.ok(postClickState, "Expected to capture post-click editor state");
             assert.equal(postClickState.mode, "edit", "Card must remain in edit mode after redundant click");
             assert.equal(postClickState.hasEditingClass, true, "Card should keep editing-in-place class after redundant click");
@@ -723,6 +663,11 @@ test.describe("Markdown inline editor", () => {
             await page.waitForSelector(cardSelector);
             await enterCardEditMode(page, cardSelector);
             await focusCardEditor(page, cardSelector, "end");
+            const baselineState = await beginCardEditingTelemetry(page, cardSelector);
+            assert.ok(baselineState, "Expected baseline telemetry after entering edit mode");
+            assert.equal(baselineState.mode, "edit", "Shift+Enter baseline should begin in edit mode");
+            assert.equal(baselineState.hasEditingClass, true, "Shift+Enter baseline should carry editing class");
+
             await page.keyboard.type("\nAdditional content line");
 
             await page.keyboard.down("Shift");
@@ -733,6 +678,28 @@ test.describe("Markdown inline editor", () => {
                 const card = document.querySelector(selector);
                 return card instanceof HTMLElement && !card.classList.contains("editing-in-place");
             }, {}, cardSelector);
+            await pause(page, 50);
+
+            const telemetry = await collectCardEditingTelemetry(page, cardSelector);
+            assert.ok(telemetry, "Expected to collect telemetry after Shift+Enter submission");
+            assert.equal(telemetry.mode, "view", "Shift+Enter should leave the card in view mode");
+            assert.equal(telemetry.hasEditingClass, false, "Editing class must remain removed after Shift+Enter");
+            if (Array.isArray(telemetry.modeTransitions)) {
+                const firstViewIndex = telemetry.modeTransitions.indexOf("view");
+                assert.ok(firstViewIndex >= 0, "Shift+Enter should emit a transition to view mode");
+                if (firstViewIndex >= 0) {
+                    const reenteredEdit = telemetry.modeTransitions.slice(firstViewIndex + 1).includes("edit");
+                    assert.equal(reenteredEdit, false, "Card must not re-enter edit mode after Shift+Enter submission");
+                }
+            }
+            if (Array.isArray(telemetry.editClassTransitions) && telemetry.editClassTransitions.length > 0) {
+                const firstRemoval = telemetry.editClassTransitions.indexOf(false);
+                assert.ok(firstRemoval >= 0, "Editing class transitions should record removal after Shift+Enter");
+                if (firstRemoval >= 0) {
+                    const reattached = telemetry.editClassTransitions.slice(firstRemoval + 1).some((value) => value === true);
+                    assert.equal(reattached, false, "Editing class must not be reattached after Shift+Enter finalization");
+                }
+            }
 
             const updatedPreview = await page.$eval(`${cardSelector} .markdown-content`, (element) => element.textContent || "");
             assert.ok(updatedPreview.includes("Additional content line"), "Shift+Enter should submit edits and update the preview");
@@ -1170,6 +1137,84 @@ async function pause(page, durationMs) {
     await page.evaluate((ms) => new Promise((resolve) => {
         setTimeout(resolve, typeof ms === "number" ? Math.max(ms, 0) : 0);
     }), durationMs);
+}
+
+async function beginCardEditingTelemetry(page, cardSelector) {
+    return page.evaluate((selector) => {
+        const card = document.querySelector(selector);
+        if (!(card instanceof HTMLElement)) {
+            return null;
+        }
+        const host = Reflect.get(card, "__markdownHost");
+        if (!host || typeof host.getMode !== "function" || typeof host.on !== "function" || typeof host.off !== "function") {
+            return null;
+        }
+
+        const existingListener = Reflect.get(card, "__modeChangeListener");
+        if (typeof existingListener === "function") {
+            host.off("modechange", existingListener);
+        }
+
+        const modeTransitions = [];
+        const modeListener = ({ mode }) => {
+            modeTransitions.push(mode);
+        };
+        host.on("modechange", modeListener);
+        Reflect.set(card, "__modeTransitions", modeTransitions);
+        Reflect.set(card, "__modeChangeListener", modeListener);
+
+        const priorObserver = Reflect.get(card, "__editClassObserver");
+        if (priorObserver && typeof priorObserver.disconnect === "function") {
+            priorObserver.disconnect();
+        }
+
+        const editClassTransitions = [];
+        const observer = new MutationObserver(() => {
+            editClassTransitions.push(card.classList.contains("editing-in-place"));
+        });
+        observer.observe(card, { attributes: true, attributeFilter: ["class"] });
+        Reflect.set(card, "__editClassObserver", observer);
+        Reflect.set(card, "__editClassTransitions", editClassTransitions);
+
+        return {
+            mode: host.getMode(),
+            hasEditingClass: card.classList.contains("editing-in-place")
+        };
+    }, cardSelector);
+}
+
+async function collectCardEditingTelemetry(page, cardSelector) {
+    return page.evaluate((selector) => {
+        const card = document.querySelector(selector);
+        if (!(card instanceof HTMLElement)) {
+            return null;
+        }
+        const host = Reflect.get(card, "__markdownHost");
+        const listener = Reflect.get(card, "__modeChangeListener");
+        if (host && typeof host.off === "function" && typeof listener === "function") {
+            host.off("modechange", listener);
+        }
+        Reflect.deleteProperty(card, "__modeChangeListener");
+
+        const modeTransitions = Reflect.get(card, "__modeTransitions");
+        Reflect.deleteProperty(card, "__modeTransitions");
+
+        const observer = Reflect.get(card, "__editClassObserver");
+        if (observer && typeof observer.disconnect === "function") {
+            observer.disconnect();
+        }
+        Reflect.deleteProperty(card, "__editClassObserver");
+
+        const editClassTransitions = Reflect.get(card, "__editClassTransitions");
+        Reflect.deleteProperty(card, "__editClassTransitions");
+
+        return {
+            mode: host && typeof host.getMode === "function" ? host.getMode() : null,
+            hasEditingClass: card.classList.contains("editing-in-place"),
+            modeTransitions: Array.isArray(modeTransitions) ? [...modeTransitions] : [],
+            editClassTransitions: Array.isArray(editClassTransitions) ? [...editClassTransitions] : []
+        };
+    }, cardSelector);
 }
 
 function computePlainOffsetForMarkdown(markdown, markdownIndex) {
