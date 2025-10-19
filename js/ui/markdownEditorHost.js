@@ -369,12 +369,22 @@ export function createMarkdownEditorHost(options) {
             forceSync: true,
             autoCloseBrackets: true,
             autoCloseTags: true,
+            minHeight: "2.2rem",
+            previewRender: () => "",
             renderingConfig: { singleLineBreaks: false, codeSyntaxHighlighting: false }
         });
     }
 
     function configureEasyMde(instance, { syncTextareaValue }) {
         const { codemirror } = instance;
+
+        const previewPane = instance?.gui?.preview;
+        if (previewPane instanceof HTMLElement) {
+            previewPane.remove();
+            if (instance.gui) {
+                instance.gui.preview = null;
+            }
+        }
 
         const syncTextareaSelectionFromCodeMirror = () => {
             const doc = codemirror.getDoc();
@@ -470,8 +480,9 @@ export function createMarkdownEditorHost(options) {
             Enter: (cm) => {
                 handleEnter(cm);
             },
-            "Shift-Enter": (cm) => {
-                cm.replaceSelection(SOFT_BREAK, "end");
+            "Shift-Enter": () => {
+                normalizeOrderedLists();
+                emit("submit");
             },
             "Cmd-Enter": () => {
                 normalizeOrderedLists();

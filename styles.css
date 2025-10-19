@@ -172,15 +172,6 @@ html, body {
 /* Containers */
 .block-container { display: flex; flex-direction: column; }
 
-#top-editor {
-    position: sticky;
-    top: 64px;
-    z-index: 8;
-    background: #0b0c0f;
-    border-bottom: 1px solid #20232b;
-    padding: 0.8rem 1rem;
-}
-
 /* Both note cards use the same grid skeleton */
 .markdown-block {
     display: grid;
@@ -439,6 +430,17 @@ html, body {
     padding: 0;
 }
 
+.markdown-block.top-editor .EasyMDEContainer .editor-preview,
+.markdown-block.top-editor .EasyMDEContainer .editor-preview-side {
+    display: none !important;
+    width: 0 !important;
+    max-width: 0 !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+}
+
 .action-button--compact { font-size: 0.72rem; padding: 0.16rem 0.3rem; }
 .action-button--icon {
     font-size: 0.7rem;
@@ -562,17 +564,31 @@ html, body {
 }
 
 /* EasyMDE skin tweaks */
-.CodeMirror {
-    background: #121420;
-    color: #e7e9ee;
-    border: 1px solid #20232b;
-    border-radius: 6px;
-    padding: 0.35rem 0.4rem;
-    line-height: 1.35;
-    min-height: 2.4rem;
+.EasyMDEContainer {
+    grid-column: 1;
+    width: 100%;
+    background: transparent !important;
 }
 
-.CodeMirror-cursor { border-left: 1px solid #e7e9ee; }
+.CodeMirror {
+    grid-column: 1;
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    height: auto !important;
+    background: transparent !important;
+    color: #e7e9ee;
+    border: none !important;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0 !important;
+    line-height: 1.35;
+    min-height: 2.2rem;
+}
+
+.CodeMirror-cursor {
+    border-left: 1px solid #e7e9ee;
+}
 
 .CodeMirror-lines {
     padding: 0;
@@ -581,6 +597,26 @@ html, body {
 .CodeMirror pre {
     padding: 0;
     color: inherit;
+    background: transparent;
+}
+
+.CodeMirror-scroll {
+    width: 100%;
+    height: auto !important;
+    min-height: 2.2rem !important;
+    box-sizing: border-box;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+.CodeMirror-hscrollbar,
+.CodeMirror-scrollbar-filler,
+.CodeMirror-gutter-filler {
+    display: none !important;
+}
+
+.markdown-block.top-editor .CodeMirror {
+    height: auto !important;
 }
 
 .cm-header { color: #9db7ff; }

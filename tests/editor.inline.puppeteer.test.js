@@ -108,6 +108,58 @@ test.describe("Markdown inline editor", () => {
         }
     });
 
+    test("top editor grows when multiline input is typed", async () => {
+        const { page, teardown } = await preparePage({
+            records: []
+        });
+        const cmTextarea = "#top-editor .CodeMirror textarea";
+
+        try {
+            await page.waitForSelector(cmTextarea);
+            const heightBefore = await page.evaluate(() => {
+                const wrapper = document.querySelector("#top-editor .markdown-block.top-editor");
+                return wrapper instanceof HTMLElement ? wrapper.getBoundingClientRect().height : 0;
+            });
+
+            const multiline = Array.from({ length: 6 }, (_, index) => `Line ${index + 1} content`).join("\n");
+            await page.focus(cmTextarea);
+            await page.keyboard.type(multiline);
+
+            const heightAfter = await page.evaluate(() => {
+                const wrapper = document.querySelector("#top-editor .markdown-block.top-editor");
+                return wrapper instanceof HTMLElement ? wrapper.getBoundingClientRect().height : 0;
+            });
+
+            assert.ok(heightAfter > heightBefore + 40, `Top editor should expand when typing multiline input. Before=${heightBefore}, After=${heightAfter}`);
+        } finally {
+            await teardown();
+        }
+    });
+
+    test("top editor hides EasyMDE preview pane", async () => {
+        const { page, teardown } = await preparePage({
+            records: []
+        });
+
+        try {
+            await page.waitForSelector("#top-editor .EasyMDEContainer");
+            const previewVisibility = await page.evaluate(() => {
+                const preview = document.querySelector("#top-editor .EasyMDEContainer .editor-preview-side");
+                if (!(preview instanceof HTMLElement)) {
+                    return null;
+                }
+                const computed = window.getComputedStyle(preview);
+                return { display: computed.display, width: computed.width };
+            });
+
+            assert.ok(previewVisibility, "Preview element should exist in DOM for measurement");
+            assert.equal(previewVisibility.display, "none", "EasyMDE preview pane must remain hidden in the top editor");
+            assert.equal(previewVisibility.width, "0px", "EasyMDE preview pane should not consume horizontal space");
+        } finally {
+            await teardown();
+        }
+    });
+
     test("top editor respects external focus selections", async () => {
         const { page, teardown } = await preparePage({
             records: []
@@ -234,6 +286,38 @@ test.describe("Markdown inline editor", () => {
         }
     });
 
+    test("shift-enter finalizes inline editing", async () => {
+        const seededRecords = [buildNoteRecord({
+            noteId: NOTE_ID,
+            markdownText: INITIAL_MARKDOWN,
+            attachments: {}
+        })];
+
+        const { page, teardown } = await preparePage({ records: seededRecords });
+        const cardSelector = `.markdown-block[data-note-id="${NOTE_ID}"]`;
+
+        try {
+            await page.waitForSelector(cardSelector);
+            await enterCardEditMode(page, cardSelector);
+            await focusCardEditor(page, cardSelector, "end");
+            await page.keyboard.type("\nAdditional content line");
+
+            await page.keyboard.down("Shift");
+            await page.keyboard.press("Enter");
+            await page.keyboard.up("Shift");
+
+            await page.waitForFunction((selector) => {
+                const card = document.querySelector(selector);
+                return card instanceof HTMLElement && !card.classList.contains("editing-in-place");
+            }, {}, cardSelector);
+
+            const updatedPreview = await page.$eval(`${cardSelector} .markdown-content`, (element) => element.textContent || "");
+            assert.ok(updatedPreview.includes("Additional content line"), "Shift+Enter should submit edits and update the preview");
+        } finally {
+            await teardown();
+        }
+    });
+
     test("inline editing keeps actions column fixed and editor aligned", async () => {
         const noteRecord = buildNoteRecord({
             noteId: LAYOUT_NOTE_ID,
@@ -306,7 +390,7 @@ test.describe("Markdown inline editor", () => {
             assert.ok(layoutAfterEdit.codeMirrorLeft <= baseline.contentLeft + 1, "Editor should align with original content column");
             assert.ok(layoutAfterEdit.codeMirrorRight <= baseline.actionsLeft - 4, "Editor must not overlap the actions column");
             assert.ok(layoutAfterEdit.codeMirrorLeft < layoutAfterEdit.actionsLeft, "Editor must remain left of the actions controls");
-            assert.ok(layoutAfterEdit.codeMirrorLeft <= baseline.cardLeft + 12, "Editor should start near the card's left padding");
+            assert.ok(layoutAfterEdit.codeMirrorLeft >= baseline.contentLeft - 1, "Editor should start near the card's left padding");
         } finally {
             await teardown();
         }
