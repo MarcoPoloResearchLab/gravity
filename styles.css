@@ -179,7 +179,8 @@ html, body {
     align-items: start;
     column-gap: 0.75rem;
     row-gap: 0.35rem;
-    border-bottom: 1px solid #20232b;
+    border: 0;
+    border-bottom: 1px solid rgba(32, 35, 43, 0.35);
     padding: 0.6rem 1rem 0.9rem 1rem;
     box-sizing: border-box;
     background: #0b0c0f;
@@ -410,7 +411,8 @@ html, body {
     top: var(--pinned-top-offset, 120px);
     z-index: 4;
     background: #0b0c0f;
-    border-bottom: 2px solid #7aa2ff;
+    border-bottom: 1px solid rgba(122, 162, 255, 0.85);
+    box-shadow: 0 1px 0 rgba(122, 162, 255, 0.4);
 }
 .markdown-block.top-editor {
     position: sticky;

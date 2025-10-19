@@ -1,6 +1,13 @@
-// GN-45 No scrollers in cards (rendering and editing)
-- [x] tests/preview.bounded.puppeteer.test.js — assert note previews keep overflow hidden; rely on fade mask without scrollbars.
-- [x] tests/editor.inline.puppeteer.test.js — assert editing cards expand and avoid internal scroll areas.
-- [x] tests/css.validity.test.js — pin CodeMirror overflow policy to prevent scrollbars.
-- [x] styles.css — enforce overflow/height rules for preview and editing states to favor container growth over scrollbars.
-- [x] README.md — document the “no inner scrollbars” UX guarantee.
+- [x] [GN-46] Thin border regression on note cards (`tests/editor.inline.puppeteer.test.js`, `styles.css`)
+    - Add a Puppeteer assertion that measures rendered `.markdown-block` borders and fails if any side but the bottom uses a visible (>1px) border.
+    - Tweak the card and pinned-note CSS so only a 1px subtle bottom divider remains, including sticky variants.
+    - Document the border guideline if styling guidance shifts (README or MIGRATION).
+- [ ] [GN-47] Editing layout + caret mapping drift (`tests/editor.inline.puppeteer.test.js`, `js/ui/card.js`)
+    - Add regression coverage ensuring clicking the preview enters edit mode with the caret near the click and the card grows downward while its top position stays fixed.
+    - Adjust inline-edit focus/height handling so the card expands with content sans scrollbars and maintains accurate caret translation from preview clicks.
+- [ ] [GN-48] Re-clicking editing cards toggles view (`tests/editor.inline.puppeteer.test.js`, `js/ui/card.js`)
+    - Encode a test that repeatedly clicks an editing card and asserts it remains in edit mode without flicker.
+    - Harden card interaction/blur handlers to ignore redundant clicks and prevent mode flips while editing.
+- [ ] [GN-49] Shift+Enter submission flicker (`tests/editor.inline.puppeteer.test.js`, `js/ui/card.js`)
+    - Extend coverage so Shift+Enter submissions exit edit mode, update previews, and keep the card stable.
+    - Refine submit/finalize flow to avoid transient view toggles or misplaced focus.

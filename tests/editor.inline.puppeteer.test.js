@@ -63,6 +63,12 @@ const LAYOUT_MARKDOWN = [
     "",
     "This content ensures the editor aligns with rendered markdown."
 ].join("\n");
+const DIVIDER_NOTE_ID = "inline-divider-fixture";
+const DIVIDER_MARKDOWN = [
+    "Divider regression baseline content.",
+    "",
+    "Ensures border styling stays subtle."
+].join("\n");
 
 test.describe("Markdown inline editor", () => {
 
@@ -335,6 +341,51 @@ test.describe("Markdown inline editor", () => {
             assert.equal(borderSnapshot.rightStyle, "none", "Right border style must be none");
             assert.equal(borderSnapshot.bottomStyle, "none", "Bottom border style must be none");
             assert.equal(borderSnapshot.leftStyle, "none", "Left border style must be none");
+        } finally {
+            await teardown();
+        }
+    });
+
+    test("note cards render with a single subtle bottom divider", async () => {
+        const seededRecords = [
+            buildNoteRecord({
+                noteId: DIVIDER_NOTE_ID,
+                markdownText: DIVIDER_MARKDOWN
+            })
+        ];
+        const { page, teardown } = await preparePage({
+            records: seededRecords
+        });
+        const cardSelector = `.markdown-block[data-note-id="${DIVIDER_NOTE_ID}"]`;
+
+        try {
+            await page.waitForSelector(cardSelector);
+            const dividerSnapshot = await page.$eval(cardSelector, (element) => {
+                if (!(element instanceof HTMLElement)) {
+                    return null;
+                }
+                const styles = window.getComputedStyle(element);
+                return {
+                    topWidth: styles.borderTopWidth,
+                    rightWidth: styles.borderRightWidth,
+                    bottomWidth: styles.borderBottomWidth,
+                    leftWidth: styles.borderLeftWidth,
+                    bottomStyle: styles.borderBottomStyle,
+                    bottomColor: styles.borderBottomColor
+                };
+            });
+
+            assert.ok(dividerSnapshot, "Expected to measure card divider styles");
+            assert.equal(dividerSnapshot.topWidth, "0px", "Top border must be absent");
+            assert.equal(dividerSnapshot.rightWidth, "0px", "Right border must be absent");
+            assert.equal(dividerSnapshot.leftWidth, "0px", "Left border must be absent");
+            assert.equal(dividerSnapshot.bottomStyle, "solid", "Bottom border must render as a solid divider");
+            assert.ok(parseFloat(dividerSnapshot.bottomWidth ?? "0") <= 1, "Bottom border must be 1px or thinner");
+            assert.equal(
+                dividerSnapshot.bottomColor,
+                "rgba(32, 35, 43, 0.35)",
+                "Bottom divider color must remain muted"
+            );
         } finally {
             await teardown();
         }
