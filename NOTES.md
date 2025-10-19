@@ -433,4 +433,6 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
   - [x] [GN-44] There are horrendous UI regressions in the front-end, like a giant first note of a different color, or multicolumn editing mode where the markdown is in a narrow column on the right. FIXED: realigned the EasyMDE container with the card grid, removed injected borders, and collapsed the top editor to its compact height so inline editing stays within the left column.
     - [x] CSS matching commit 574c880 re-applied for note layout; pending manual visual confirmation before closing.
     - [x] Automated regression tests in `tests/editor.inline.puppeteer.test.js` now enforce height, border, editor-alignment, Shift+Enter submission, and preview suppression expectations and pass with the restored styling.
+  - [x] [GN-45] Tests are failing on the CI (GitHub Actions). Tests pass locally because `tests/ui.styles.regression.puppeteer.test.js` launched its own browser instead of the shared harness.
+    - Captured the failing CI log for reference and rewrote the regression suite to use `createSharedPage`, with resilient assertions against computed pixel dimensions. Full `npm test` now passes and CI no longer reports the multiple-launch guard.
     
