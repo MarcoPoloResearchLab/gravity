@@ -90,6 +90,10 @@ const TRAILING_WHITESPACE_PATTERN = /[ \t]+$/;
 
 let pointerTrackingInitialized = false;
 let lastPointerDownTarget = null;
+const NON_EDITABLE_CARD_SURFACE_SELECTORS = Object.freeze([
+    ".actions",
+    ".note-expand-toggle"
+]);
 
 function initializePointerTracking() {
     if (pointerTrackingInitialized || typeof document === "undefined") {
@@ -113,9 +117,37 @@ function shouldKeepEditingAfterBlur(card) {
         return true;
     }
     if (lastPointerDownTarget instanceof Node && card.contains(lastPointerDownTarget)) {
-        return true;
+        return isPointerWithinInlineEditorSurface(card, lastPointerDownTarget);
     }
     return false;
+}
+
+/**
+ * Determine whether the pointer target resides within the inline editor surface.
+ * @param {HTMLElement} card
+ * @param {Node} pointerTarget
+ * @returns {boolean}
+ */
+function isPointerWithinInlineEditorSurface(card, pointerTarget) {
+    if (!(card instanceof HTMLElement) || !(pointerTarget instanceof Node)) {
+        return false;
+    }
+    if (!card.contains(pointerTarget)) {
+        return false;
+    }
+    if (!(pointerTarget instanceof Element)) {
+        const parentElement = pointerTarget.parentElement;
+        if (!parentElement) {
+            return false;
+        }
+        return isPointerWithinInlineEditorSurface(card, parentElement);
+    }
+    for (const selector of NON_EDITABLE_CARD_SURFACE_SELECTORS) {
+        if (pointerTarget.closest(selector)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 function calculatePreviewTextOffset(previewElement, event) {
@@ -837,6 +869,32 @@ export function renderCard(record, options = {}) {
     btnDelete.dataset.action = "delete";
 
     actions.append(btnPin, btnCopy, btnMergeDown, btnMergeUp, arrowRow, btnDelete);
+    actions.addEventListener("pointerdown", (event) => {
+        if (!card.classList.contains("editing-in-place")) {
+            return;
+        }
+        const target = event.target instanceof Element ? event.target.closest("[data-action]") : null;
+        if (!target) {
+            return;
+        }
+        const actionType = target.getAttribute("data-action");
+        if (actionType === "copy-note") {
+            return;
+        }
+        const scheduleFinalize = typeof queueMicrotask === "function"
+            ? queueMicrotask
+            : (callback) => {
+                Promise.resolve().then(() => {
+                    callback();
+                });
+            };
+        scheduleFinalize(() => {
+            void finalizeCard(card, notesContainer, {
+                bubbleToTop: false,
+                suppressTopEditorAutofocus: true
+            });
+        });
+    }, true);
 
     // Chips + content
     const chips = createElement("div", "meta-chips");

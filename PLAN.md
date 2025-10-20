@@ -1,5 +1,4 @@
-- [x] [GN-45] Restore CI-safe layout regression coverage (`tests/ui.styles.regression.puppeteer.test.js`, `tests/helpers/`)
-    - Audited the prior failure transcript to lock the expectations for top-editor stickiness, grid column widths, and button styling.
-    - Rebuilt `tests/ui.styles.regression.puppeteer.test.js` around `createSharedPage`, including lightweight utilities to capture computed styles without launching a standalone browser.
-    - Tuned the assertions to compare resolved pixel values with tolerant ranges, keeping the suite resilient while guarding the same layout guarantees.
-    - Verified with a focused run and the full `npm test` sweep.
+- [x] [GN-51] Inline editor blur regression causes action buttons to be unusable
+    - Confirmed regression via pointer tracking and crafted a Puppeteer test that verifies pinning while editing finalizes the card.
+    - Scoped blur suppression to editor surfaces and finalized editing on non-copy card actions to keep buttons accessible.
+    - Executed the targeted suite followed by `timeout -k 400s -s SIGKILL 400s npm test` to validate the fix.

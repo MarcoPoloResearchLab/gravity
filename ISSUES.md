@@ -352,7 +352,7 @@ Migrated backlog from NOTES.md to centralized issue log.
   - [x] [GN-48] Clicking on a card that is being edited doesnt change anything other than placing the cursor in the new place. There must be no flickering and no switching to rendering.
   - [x] [GN-49] Shift-enter finishes editing session and sends card to rendering mode
       - Strengthened Puppeteer coverage to track mode/class transitions and keep Shift+Enter submissions locked to a single view transition; updated inline finalize flow to exit edit mode after persistence so cards do not bounce back into edit. Full `npm test` confirms regression-free behavior.
-  - [ ] [GN-51] Codex says that there is a regression: codex/fix-comments-and-ensure-test-coverage. The tests are failing `npm test` on CI. 
+  - [x] [GN-51] Codex says that there is a regression: codex/fix-comments-and-ensure-test-coverage. The tests are failing `npm test` on CI. 
     Limited pointer-based blur suppression to inline editor surfaces so focus can move to card action buttons without reactivating the editor. js/ui/card.jsL111-L128
     ```
     Summary
@@ -451,3 +451,8 @@ Migrated backlog from NOTES.md to centralized issue log.
     - Captured the failing CI log for reference and rewrote the regression suite to use `createSharedPage`, with resilient assertions against computed pixel dimensions. Full `npm test` now passes and CI no longer reports the multiple-launch guard.
   
 
+## 2025-10-21
+
+- Resolved: GN-51 Inline editor blur regression
+  - Added card action regression coverage in `tests/editor.inline.puppeteer.test.js` to lock the expected editing exit when pinning while in edit mode.
+  - Limited blur suppression to inline editor surfaces and finalized editing on non-copy actions so buttons stay accessible without reactivating CodeMirror.
