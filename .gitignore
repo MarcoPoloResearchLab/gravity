@@ -1,5 +1,6 @@
+PLAN.md
 .idea/
 node_modules/
 *.iml
 *.db
-.envPLAN.md
+.env

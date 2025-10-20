@@ -1,9 +1,0 @@
-- [x] [GN-45] Restore CI-safe layout regression coverage (`tests/ui.styles.regression.puppeteer.test.js`, `tests/helpers/`)
-    - Audited the prior failure transcript to lock the expectations for top-editor stickiness, grid column widths, and button styling.
-    - Rebuilt `tests/ui.styles.regression.puppeteer.test.js` around `createSharedPage`, including lightweight utilities to capture computed styles without launching a standalone browser.
-    - Tuned the assertions to compare resolved pixel values with tolerant ranges, keeping the suite resilient while guarding the same layout guarantees.
-    - Verified with a focused run and the full `npm test` sweep.
-- [ ] [GN-50] Provide dev docker-compose that rebuilds backend (`docker-compose.dev.yml`)
-    - Start from the production compose file and duplicate service definitions while swapping the backend image for a local build context (`backend/Dockerfile`).
-    - Preserve environment files, ports, and data volume so the developer stack behaves the same as production.
-    - Document the local failure of `docker compose -f docker-compose.dev.yml config` due to the absent `backend/.env`, noting syntax otherwise validated.
