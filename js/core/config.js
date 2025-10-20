@@ -25,6 +25,7 @@ const staticConfig = {
     defaultPrivacy: { value: "private", enumerable: true },
     storageKey: { value: "gravityNotesData", enumerable: true },
     storageKeyUserPrefix: { value: "gravityNotesData:user", enumerable: true },
+    useMarkdownEditor: { value: false, enumerable: true },
     googleClientId: { value: "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com", enumerable: true },
     backendBaseUrl: {
         enumerable: true,
