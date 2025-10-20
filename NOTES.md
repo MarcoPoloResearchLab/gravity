@@ -85,3 +85,8 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
 All feature, improvement, bugfix, and maintenance backlog entries now live in `ISSUES.md`. This file remains append-only for process notes.
 
 *Use `PLAN.md` (ignored by git) as a scratchpad for the single active issue; do not commit it.*
+
+## Completed
+
+- [x] 2025-10-21 — GN-52 collapsed the LLM proxy configuration to a single `llmProxyUrl` endpoint with updated docs and tests.
+- [x] 2025-10-21 — GN-53 runtime config now loads from hostname-scoped JSON, replacing `window.GRAVITY_CONFIG` overrides.

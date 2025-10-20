@@ -132,11 +132,10 @@ test.describe("Checklist preview interactions", () => {
 });
 
 async function openChecklistPage(records) {
-    const { page, teardown } = await createSharedPage();
-    await page.evaluateOnNewDocument(() => {
-        window.GRAVITY_CONFIG = {
-            llmProxyClassifyUrl: ""
-        };
+    const { page, teardown } = await createSharedPage({
+        development: {
+            llmProxyUrl: ""
+        }
     });
     const serialized = JSON.stringify(Array.isArray(records) ? records : []);
     await page.evaluateOnNewDocument((storageKey, payload) => {

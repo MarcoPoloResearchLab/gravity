@@ -45,7 +45,7 @@ test.describe("Backend persistence", () => {
         const credentialA = backendContext.tokenFactory(TEST_USER_ID);
         const pageA = await prepareFrontendPage(contextA, PAGE_URL, {
             backendBaseUrl: backendContext.baseUrl,
-            llmProxyClassifyUrl: ""
+            llmProxyUrl: ""
         });
 
         let pageB = null;
@@ -77,7 +77,7 @@ test.describe("Backend persistence", () => {
             const credentialB = backendContext.tokenFactory(TEST_USER_ID);
             pageB = await prepareFrontendPage(contextB, PAGE_URL, {
                 backendBaseUrl: backendContext.baseUrl,
-                llmProxyClassifyUrl: ""
+                llmProxyUrl: ""
             });
 
             await dispatchSignIn(pageB, credentialB, TEST_USER_ID);

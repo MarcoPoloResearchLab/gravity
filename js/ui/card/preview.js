@@ -162,8 +162,8 @@ export function setCardExpanded(card, shouldExpand) {
         return;
     }
 
-    const initialScrollY = shouldExpand === true && typeof window !== "undefined" && typeof window.scrollY === "number"
-        ? window.scrollY
+    const beforeViewportTop = shouldExpand === true && typeof window !== "undefined"
+        ? preview.getBoundingClientRect().top
         : null;
 
     if (shouldExpand) {
@@ -188,10 +188,14 @@ export function setCardExpanded(card, shouldExpand) {
     }
     scheduleOverflowCheck(preview, content, toggle);
 
-    if (initialScrollY !== null && typeof window !== "undefined" && typeof window.scrollTo === "function") {
+    if (beforeViewportTop !== null && typeof window !== "undefined" && typeof window.scrollBy === "function") {
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
-                window.scrollTo({ top: initialScrollY, behavior: "auto" });
+                const afterRect = preview.getBoundingClientRect();
+                const delta = afterRect.top - beforeViewportTop;
+                if (Math.abs(delta) > 1) {
+                    window.scrollBy({ top: delta, behavior: "auto" });
+                }
             });
         });
     }

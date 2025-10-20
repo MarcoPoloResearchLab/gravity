@@ -221,11 +221,10 @@ test.describe("Bounded previews", () => {
 });
 
 async function openPreviewHarness(records) {
-    const { page, teardown } = await createSharedPage();
-    await page.evaluateOnNewDocument(() => {
-        window.GRAVITY_CONFIG = {
-            llmProxyClassifyUrl: ""
-        };
+    const { page, teardown } = await createSharedPage({
+        development: {
+            llmProxyUrl: ""
+        }
     });
     await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
     await page.waitForSelector("#top-editor .markdown-editor");

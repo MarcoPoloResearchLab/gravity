@@ -56,7 +56,7 @@ test.describe("Full stack integration", () => {
 
         const page = await prepareFrontendPage(context, PAGE_URL, {
             backendBaseUrl: backendContext.baseUrl,
-            llmProxyClassifyUrl: ""
+            llmProxyUrl: ""
         });
         try {
             await dispatchSignIn(page, credential, userId);
