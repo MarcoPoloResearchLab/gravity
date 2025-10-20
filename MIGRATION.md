@@ -48,12 +48,10 @@ the DOM.
 * `appConfig.backendBaseUrl` reads overrides from `window.GRAVITY_CONFIG.backendBaseUrl` or the
   `<meta name="gravity-backend-base-url">` tag. Absent overrides it falls back to the current origin (or
   `http://localhost:8080` when served from `file://`).
-* `appConfig.llmProxyBaseUrl` follows the same override rules via `window.GRAVITY_CONFIG.llmProxyBaseUrl` or
-  `<meta name="gravity-llm-proxy-base-url">`, defaulting to the current origin or the hosted proxy at
-  `https://llm-proxy.mprlab.com` when unspecified. The full classify endpoint lives in
-  `appConfig.llmProxyClassifyUrl`, resovable via `window.GRAVITY_CONFIG.llmProxyClassifyUrl` or
-  `<meta name="gravity-llm-proxy-classify-url">`; providing an empty string disables remote classification during
-  development.
+* `appConfig.llmProxyUrl` resolves the full classification endpoint using overrides from
+  `window.GRAVITY_CONFIG.llmProxyUrl` or `<meta name="gravity-llm-proxy-url">`. Absent overrides it falls back to the
+  environment default or the hosted proxy at `https://llm-proxy.mprlab.com/v1/gravity/classify`. Supplying an empty
+  string disables remote classification during development.
 * The auth controls hide the Google button once a profile is active and expose the stacked avatar menu (export, import,
   sign out). The sign-out item dispatches `gravity:auth-sign-out`.
 * Successful `gravity:auth-sign-in` handlers now persist `{ user, credential }` in `localStorage` so reloads replay the

@@ -3,28 +3,24 @@
 import {
     GLOBAL_CONFIG_OBJECT_KEY,
     CONFIG_KEY_BACKEND_BASE_URL,
-    CONFIG_KEY_LLM_PROXY_BASE_URL,
-    CONFIG_KEY_LLM_PROXY_CLASSIFY_URL,
+    CONFIG_KEY_LLM_PROXY_URL,
     CONFIG_KEY_ENVIRONMENT,
     META_NAME_BACKEND_BASE_URL,
-    META_NAME_LLM_PROXY_BASE_URL,
-    META_NAME_LLM_PROXY_CLASSIFY_URL,
+    META_NAME_LLM_PROXY_URL,
     META_NAME_ENVIRONMENT
 } from "../constants.js";
 
 const DEFAULT_BACKEND_BASE_URL = "http://localhost:8080";
-const DEFAULT_LLM_PROXY_BASE_URL = "https://llm-proxy.mprlab.com";
-const DEFAULT_LLM_PROXY_CLASSIFY_PATH = "/v1/gravity/classify";
+const DEFAULT_LLM_PROXY_PATH = "/v1/gravity/classify";
+const DEFAULT_LLM_PROXY_URL = `https://llm-proxy.mprlab.com${DEFAULT_LLM_PROXY_PATH}`;
 const KNOWN_ENVIRONMENT_CONFIG = Object.freeze({
     production: Object.freeze({
         backendBaseUrl: "https://gravity-api.mprlab.com",
-        llmProxyBaseUrl: "https://llm-proxy.mprlab.com",
-        llmProxyClassifyUrl: "https://llm-proxy.mprlab.com/v1/gravity/classify"
+        llmProxyUrl: "https://llm-proxy.mprlab.com/v1/gravity/classify"
     }),
     development: Object.freeze({
         backendBaseUrl: "http://localhost:8080",
-        llmProxyBaseUrl: "http://computercat:8081",
-        llmProxyClassifyUrl: "http://computercat:8081/v1/gravity/classify"
+        llmProxyUrl: "http://computercat:8081/v1/gravity/classify"
     })
 });
 
@@ -34,11 +30,6 @@ const staticConfig = {
         enumerable: true,
         get: () => resolveEnvironmentName() ?? null
     },
-    llmProxyBaseUrl: {
-        enumerable: true,
-        get: () => resolveLlmProxyBaseUrl()
-    },
-    classifyPath: { value: DEFAULT_LLM_PROXY_CLASSIFY_PATH, enumerable: true },
     classificationTimeoutMs: { value: 5000, enumerable: true },
     defaultPrivacy: { value: "private", enumerable: true },
     storageKey: { value: "gravityNotesData", enumerable: true },
@@ -48,9 +39,9 @@ const staticConfig = {
         enumerable: true,
         get: () => resolveBackendBaseUrl()
     },
-    llmProxyClassifyUrl: {
+    llmProxyUrl: {
         enumerable: true,
-        get: () => resolveLlmProxyClassifyUrl()
+        get: () => resolveLlmProxyUrl()
     }
 };
 
@@ -238,7 +229,7 @@ function normalizeEnvironmentName(candidate) {
 
 /**
  * @param {("production" | "development" | null)} environmentName
- * @param {"backendBaseUrl" | "llmProxyBaseUrl" | "llmProxyClassifyUrl"} key
+ * @param {"backendBaseUrl" | "llmProxyUrl"} key
  * @returns {string|null}
  */
 function readEnvironmentConfigValue(environmentName, key) {
@@ -262,11 +253,11 @@ function stripTrailingSlashes(baseUrl) {
 }
 
 /**
- * Resolve the LLM proxy base URL using runtime overrides.
+ * Resolve the LLM proxy endpoint using runtime overrides.
  * @param {{ window?: Window, document?: Document, location?: Location }} [environment]
  * @returns {string}
  */
-export function resolveLlmProxyBaseUrl(environment = {}) {
+export function resolveLlmProxyUrl(environment = {}) {
     const runtimeWindow = environment.window
         ?? (typeof globalThis !== "undefined" && typeof globalThis.window !== "undefined" ? globalThis.window : undefined);
     const runtimeDocument = environment.document
@@ -276,117 +267,30 @@ export function resolveLlmProxyBaseUrl(environment = {}) {
         ?? (runtimeWindow && typeof runtimeWindow.location !== "undefined" ? runtimeWindow.location : undefined)
         ?? (typeof globalThis !== "undefined" && typeof globalThis.location !== "undefined" ? globalThis.location : undefined);
 
-    const explicitConfig = readGlobalLlmProxyBaseUrl(runtimeWindow);
-    if (explicitConfig !== null) {
-        return normalizeLlmProxyBaseUrl(explicitConfig, runtimeLocation);
-    }
-
-    const metaConfig = readMetaLlmProxyBaseUrl(runtimeDocument);
-    if (metaConfig !== null) {
-        return normalizeLlmProxyBaseUrl(metaConfig, runtimeLocation);
-    }
-
-    const environmentName = resolveEnvironmentName({ window: runtimeWindow, document: runtimeDocument });
-    const environmentLlmProxyBaseUrl = readEnvironmentConfigValue(environmentName, "llmProxyBaseUrl");
-    if (environmentLlmProxyBaseUrl) {
-        return stripTrailingSlashes(environmentLlmProxyBaseUrl);
-    }
-
-    return normalizeLlmProxyBaseUrl("", runtimeLocation);
-}
-
-/**
- * @param {Window|undefined} runtimeWindow
- * @returns {string|null}
- */
-function readGlobalLlmProxyBaseUrl(runtimeWindow) {
-    if (!runtimeWindow || typeof runtimeWindow !== "object") {
-        return null;
-    }
-    const config = /** @type {Record<string, unknown>|undefined} */ (runtimeWindow?.[GLOBAL_CONFIG_OBJECT_KEY]);
-    if (!config || typeof config !== "object") {
-        return null;
-    }
-    const candidate = config?.[CONFIG_KEY_LLM_PROXY_BASE_URL];
-    return typeof candidate === "string" ? candidate : null;
-}
-
-/**
- * @param {Document|undefined} runtimeDocument
- * @returns {string|null}
- */
-function readMetaLlmProxyBaseUrl(runtimeDocument) {
-    if (!runtimeDocument || typeof runtimeDocument.querySelector !== "function") {
-        return null;
-    }
-    const meta = runtimeDocument.querySelector(`meta[name="${META_NAME_LLM_PROXY_BASE_URL}"]`);
-    if (!meta) {
-        return null;
-    }
-    const content = meta.getAttribute("content");
-    return typeof content === "string" ? content : null;
-}
-
-/**
- * Normalize the proxy base URL with safe fallbacks.
- * @param {string} value
- * @param {Location|undefined} runtimeLocation
- * @returns {string}
- */
-function normalizeLlmProxyBaseUrl(value, runtimeLocation) {
-    const trimmed = typeof value === "string" ? value.trim() : "";
-    if (trimmed.length > 0) {
-        return stripTrailingSlashes(trimmed);
-    }
-    const origin = typeof runtimeLocation?.origin === "string" && runtimeLocation.origin.length > 0
-        ? runtimeLocation.origin
-        : "";
-    if (origin.length > 0) {
-        return stripTrailingSlashes(origin);
-    }
-    return DEFAULT_LLM_PROXY_BASE_URL;
-}
-
-/**
- * Resolve the classify endpoint, allowing full override or default composition.
- * @param {{ window?: Window, document?: Document, location?: Location }} [environment]
- * @returns {string}
- */
-export function resolveLlmProxyClassifyUrl(environment = {}) {
-    const runtimeWindow = environment.window
-        ?? (typeof globalThis !== "undefined" && typeof globalThis.window !== "undefined" ? globalThis.window : undefined);
-    const runtimeDocument = environment.document
-        ?? (runtimeWindow && typeof runtimeWindow.document !== "undefined" ? runtimeWindow.document : undefined)
-        ?? (typeof globalThis !== "undefined" && typeof globalThis.document !== "undefined" ? globalThis.document : undefined);
-    const runtimeLocation = environment.location
-        ?? (runtimeWindow && typeof runtimeWindow.location !== "undefined" ? runtimeWindow.location : undefined)
-        ?? (typeof globalThis !== "undefined" && typeof globalThis.location !== "undefined" ? globalThis.location : undefined);
-
-    const explicitConfig = readGlobalLlmProxyClassifyUrl(runtimeWindow);
+    const explicitConfig = readGlobalLlmProxyUrl(runtimeWindow);
     if (explicitConfig !== null) {
         return explicitConfig;
     }
 
-    const metaConfig = readMetaLlmProxyClassifyUrl(runtimeDocument);
+    const metaConfig = readMetaLlmProxyUrl(runtimeDocument);
     if (metaConfig !== null) {
         return metaConfig;
     }
 
     const environmentName = resolveEnvironmentName({ window: runtimeWindow, document: runtimeDocument });
-    const environmentClassifyUrl = readEnvironmentConfigValue(environmentName, "llmProxyClassifyUrl");
-    if (environmentClassifyUrl) {
-        return environmentClassifyUrl;
+    const environmentUrl = readEnvironmentConfigValue(environmentName, "llmProxyUrl");
+    if (environmentUrl) {
+        return sanitizeLlmProxyUrl(environmentUrl);
     }
 
-    const baseUrl = resolveLlmProxyBaseUrl({ window: runtimeWindow, document: runtimeDocument, location: runtimeLocation });
-    return composeProxyEndpoint(baseUrl, DEFAULT_LLM_PROXY_CLASSIFY_PATH);
+    return inferLlmProxyFromLocation(runtimeLocation);
 }
 
 /**
  * @param {Window|undefined} runtimeWindow
  * @returns {string|null}
  */
-function readGlobalLlmProxyClassifyUrl(runtimeWindow) {
+function readGlobalLlmProxyUrl(runtimeWindow) {
     if (!runtimeWindow || typeof runtimeWindow !== "object") {
         return null;
     }
@@ -394,27 +298,100 @@ function readGlobalLlmProxyClassifyUrl(runtimeWindow) {
     if (!config || typeof config !== "object") {
         return null;
     }
-    const candidate = config?.[CONFIG_KEY_LLM_PROXY_CLASSIFY_URL];
-    if (typeof candidate !== "string") {
-        return null;
+    const direct = config?.[CONFIG_KEY_LLM_PROXY_URL];
+    if (typeof direct === "string") {
+        return sanitizeLlmProxyUrl(direct);
     }
-    return candidate.trim();
+    const legacyClassify = config?.llmProxyClassifyUrl;
+    if (typeof legacyClassify === "string") {
+        return sanitizeLlmProxyUrl(legacyClassify);
+    }
+    const legacyBase = config?.llmProxyBaseUrl;
+    if (typeof legacyBase === "string") {
+        const trimmedBase = stripTrailingSlashes(legacyBase.trim());
+        if (trimmedBase.length === 0) {
+            return "";
+        }
+        return composeProxyEndpoint(trimmedBase, DEFAULT_LLM_PROXY_PATH);
+    }
+    return null;
 }
 
 /**
  * @param {Document|undefined} runtimeDocument
  * @returns {string|null}
  */
-function readMetaLlmProxyClassifyUrl(runtimeDocument) {
+function readMetaLlmProxyUrl(runtimeDocument) {
     if (!runtimeDocument || typeof runtimeDocument.querySelector !== "function") {
         return null;
     }
-    const meta = runtimeDocument.querySelector(`meta[name="${META_NAME_LLM_PROXY_CLASSIFY_URL}"]`);
-    if (!meta) {
-        return null;
+    const direct = runtimeDocument.querySelector(`meta[name="${META_NAME_LLM_PROXY_URL}"]`);
+    if (direct) {
+        const content = direct.getAttribute("content");
+        if (typeof content === "string") {
+            return sanitizeLlmProxyUrl(content);
+        }
     }
-    const content = meta.getAttribute("content");
-    return typeof content === "string" ? content.trim() : null;
+    const legacyClassify = runtimeDocument.querySelector('meta[name="gravity-llm-proxy-classify-url"]');
+    if (legacyClassify) {
+        const content = legacyClassify.getAttribute("content");
+        if (typeof content === "string") {
+            return sanitizeLlmProxyUrl(content);
+        }
+    }
+    const legacyBase = runtimeDocument.querySelector('meta[name="gravity-llm-proxy-base-url"]');
+    if (legacyBase) {
+        const content = legacyBase.getAttribute("content");
+        if (typeof content === "string") {
+            const trimmedBase = stripTrailingSlashes(content.trim());
+            if (trimmedBase.length === 0) {
+                return "";
+            }
+            return composeProxyEndpoint(trimmedBase, DEFAULT_LLM_PROXY_PATH);
+        }
+    }
+    return null;
+}
+
+/**
+ * @param {string} candidate
+ * @returns {string}
+ */
+function sanitizeLlmProxyUrl(candidate) {
+    if (typeof candidate !== "string") {
+        return "";
+    }
+    const trimmed = candidate.trim();
+    if (trimmed.length === 0) {
+        return "";
+    }
+    return trimmed;
+}
+
+/**
+ * @param {Location|undefined} runtimeLocation
+ * @returns {string}
+ */
+function inferLlmProxyFromLocation(runtimeLocation) {
+    if (!runtimeLocation) {
+        return DEFAULT_LLM_PROXY_URL;
+    }
+    const origin = typeof runtimeLocation.origin === "string" && runtimeLocation.origin.length > 0
+        ? runtimeLocation.origin
+        : "";
+    if (origin.length > 0) {
+        return composeProxyEndpoint(origin, DEFAULT_LLM_PROXY_PATH);
+    }
+    const protocol = typeof runtimeLocation.protocol === "string" && runtimeLocation.protocol.length > 0
+        ? runtimeLocation.protocol
+        : "";
+    const host = typeof runtimeLocation.host === "string" && runtimeLocation.host.length > 0
+        ? runtimeLocation.host
+        : "";
+    if (protocol && host) {
+        return composeProxyEndpoint(`${protocol}//${host}`, DEFAULT_LLM_PROXY_PATH);
+    }
+    return DEFAULT_LLM_PROXY_URL;
 }
 
 /**

@@ -18,13 +18,13 @@ const DEFAULT_JWT_AUDIENCE = appConfig.googleClientId;
  * Prepare a new browser page configured for backend synchronization tests.
  * @param {import('puppeteer').Browser | import('puppeteer').BrowserContext} browser
  * @param {string} pageUrl
- * @param {{ backendBaseUrl: string, llmProxyClassifyUrl?: string }} options
+ * @param {{ backendBaseUrl: string, llmProxyUrl?: string }} options
  * @returns {Promise<import('puppeteer').Page>}
  */
 export async function prepareFrontendPage(browser, pageUrl, options) {
     const {
         backendBaseUrl,
-        llmProxyClassifyUrl = "",
+        llmProxyUrl = "",
         beforeNavigate
     } = options;
     const page = await browser.newPage();
@@ -45,7 +45,7 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
         window.GRAVITY_CONFIG = config;
     }, {
         backendBaseUrl,
-        llmProxyClassifyUrl
+        llmProxyUrl
     });
 
     await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
@@ -106,7 +106,7 @@ export async function initializePuppeteerTest(pageUrl = DEFAULT_PAGE_URL) {
     const page = await context.newPage();
     await page.evaluateOnNewDocument(({ config }) => {
         window.GRAVITY_CONFIG = config;
-    }, { config: { backendBaseUrl: backend.baseUrl, llmProxyClassifyUrl: "" } });
+    }, { config: { backendBaseUrl: backend.baseUrl, llmProxyUrl: "" } });
     await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
     await waitForAppReady(page);
 

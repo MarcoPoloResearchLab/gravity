@@ -1,6 +1,6 @@
-- [x] [GN-53] Generate project changelog
-    - Inventoried major commits from October 2025 (GN-50, GN-51, GN-45→GN-49) and summarised outcomes.
-    - Captured infrastructure and harness updates from October 16 (GN-42, GN-31, GN-41) with clear categories.
-    - Consolidated September 2025 editor/navigation enhancements and the April 2025 initial release notes.
-    - Drafted `CHANGELOG.md` using Keep a Changelog structure with dates and issue references.
-    - Updated `ISSUES.md` with a resolved entry and re-ran the full Puppeteer and unit suite (all passed before shell timeout).
+- [x] [GN-52] Collapse llm proxy configuration into a single endpoint
+    - Refactored `js/core/config.js` to expose `resolveLlmProxyUrl`, retaining legacy key support while removing base/classify split.
+    - Updated constants, classifier client, and app config consumers to rely on `llmProxyUrl`.
+    - Adjusted unit + Puppeteer helpers/tests to the new single-endpoint contract and verified blank overrides keep classification disabled.
+    - Revised runtime configuration docs to explain the consolidated proxy URL.
+    - Ran `timeout -k 410s -s SIGKILL 400s npm test` (harness completed all 27 suites before the CLI timeout).

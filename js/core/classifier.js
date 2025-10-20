@@ -42,7 +42,7 @@ export function createClassifierClient(options = {}) {
                 body: bodyText ?? ""
             };
 
-            const classifyEndpointRaw = appConfig.llmProxyClassifyUrl;
+            const classifyEndpointRaw = appConfig.llmProxyUrl;
             const classifyEndpoint = typeof classifyEndpointRaw === "string" ? classifyEndpointRaw.trim() : "";
             if (classifyEndpoint.length === 0) {
                 return buildFallbackClassification(requestBody.now);

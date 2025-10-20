@@ -3,8 +3,7 @@ import test from "node:test";
 
 import {
     resolveBackendBaseUrl,
-    resolveLlmProxyBaseUrl,
-    resolveLlmProxyClassifyUrl,
+    resolveLlmProxyUrl,
     resolveEnvironmentName
 } from "../js/core/config.js";
 
@@ -35,9 +34,7 @@ test("resolveBackendBaseUrl defers to meta tag when global override absent", () 
             return selector === 'meta[name="gravity-backend-base-url"]' ? fakeMeta : null;
         }
     };
-    const resolved = resolveBackendBaseUrl({
-        document: fakeDocument
-    });
+    const resolved = resolveBackendBaseUrl({ document: fakeDocument });
     assert.equal(resolved, "https://meta.example.com/base");
 });
 
@@ -79,87 +76,27 @@ test("resolveBackendBaseUrl honors environment meta tag", () => {
             return selector === 'meta[name="gravity-environment"]' ? fakeMeta : null;
         }
     };
-    const resolved = resolveBackendBaseUrl({
-        document: fakeDocument
-    });
+    const resolved = resolveBackendBaseUrl({ document: fakeDocument });
     assert.equal(resolved, "http://localhost:8080");
 });
 
-test("resolveLlmProxyBaseUrl falls back to default proxy host", () => {
-    const resolved = resolveLlmProxyBaseUrl();
-    assert.equal(resolved, "https://llm-proxy.mprlab.com");
-});
-
-test("resolveLlmProxyBaseUrl respects window.GRAVITY_CONFIG override", () => {
-    const resolved = resolveLlmProxyBaseUrl({
-        window: {
-            GRAVITY_CONFIG: {
-                llmProxyBaseUrl: "http://localhost:5001/v1/"
-            }
-        }
-    });
-    assert.equal(resolved, "http://localhost:5001/v1");
-});
-
-test("resolveLlmProxyBaseUrl defers to meta tag when global override absent", () => {
-    const fakeMeta = {
-        getAttribute(name) {
-            return name === "content" ? "https://meta.llm.example.com/base" : null;
-        }
-    };
-    const fakeDocument = {
-        querySelector(selector) {
-            return selector === 'meta[name="gravity-llm-proxy-base-url"]' ? fakeMeta : null;
-        }
-    };
-    const resolved = resolveLlmProxyBaseUrl({
-        document: fakeDocument
-    });
-    assert.equal(resolved, "https://meta.llm.example.com/base");
-});
-
-test("resolveLlmProxyBaseUrl falls back to origin when overrides blank", () => {
-    const resolved = resolveLlmProxyBaseUrl({
-        window: {
-            GRAVITY_CONFIG: {
-                llmProxyBaseUrl: " "
-            }
-        },
-        location: {
-            origin: "https://notes.dev.local"
-        }
-    });
-    assert.equal(resolved, "https://notes.dev.local");
-});
-
-test("resolveLlmProxyBaseUrl uses development environment mapping", () => {
-    const resolved = resolveLlmProxyBaseUrl({
-        window: {
-            GRAVITY_CONFIG: {
-                environment: "development"
-            }
-        }
-    });
-    assert.equal(resolved, "http://computercat:8081");
-});
-
-test("resolveLlmProxyClassifyUrl composes default endpoint", () => {
-    const resolved = resolveLlmProxyClassifyUrl();
+test("resolveLlmProxyUrl falls back to default endpoint", () => {
+    const resolved = resolveLlmProxyUrl();
     assert.equal(resolved, "https://llm-proxy.mprlab.com/v1/gravity/classify");
 });
 
-test("resolveLlmProxyClassifyUrl respects global override", () => {
-    const resolved = resolveLlmProxyClassifyUrl({
+test("resolveLlmProxyUrl respects window.GRAVITY_CONFIG override", () => {
+    const resolved = resolveLlmProxyUrl({
         window: {
             GRAVITY_CONFIG: {
-                llmProxyClassifyUrl: "http://localhost:5001/api/classify"
+                llmProxyUrl: "  http://localhost:5001/api/classify  "
             }
         }
     });
     assert.equal(resolved, "http://localhost:5001/api/classify");
 });
 
-test("resolveLlmProxyClassifyUrl defers to meta override", () => {
+test("resolveLlmProxyUrl respects meta tag override", () => {
     const fakeMeta = {
         getAttribute(name) {
             return name === "content" ? "https://meta.llm.example.com/api" : null;
@@ -167,28 +104,37 @@ test("resolveLlmProxyClassifyUrl defers to meta override", () => {
     };
     const fakeDocument = {
         querySelector(selector) {
-            return selector === 'meta[name="gravity-llm-proxy-classify-url"]' ? fakeMeta : null;
+            return selector === 'meta[name="gravity-llm-proxy-url"]' ? fakeMeta : null;
         }
     };
-    const resolved = resolveLlmProxyClassifyUrl({
-        document: fakeDocument
-    });
+    const resolved = resolveLlmProxyUrl({ document: fakeDocument });
     assert.equal(resolved, "https://meta.llm.example.com/api");
 });
 
-test("resolveLlmProxyClassifyUrl disables requests when override blank", () => {
-    const resolved = resolveLlmProxyClassifyUrl({
+test("resolveLlmProxyUrl returns blank when override is blank", () => {
+    const resolved = resolveLlmProxyUrl({
         window: {
             GRAVITY_CONFIG: {
-                llmProxyClassifyUrl: "   "
+                llmProxyUrl: "   "
             }
         }
     });
     assert.equal(resolved, "");
 });
 
-test("resolveLlmProxyClassifyUrl composes base overrides", () => {
-    const resolved = resolveLlmProxyClassifyUrl({
+test("resolveLlmProxyUrl honors legacy classify override", () => {
+    const resolved = resolveLlmProxyUrl({
+        window: {
+            GRAVITY_CONFIG: {
+                llmProxyClassifyUrl: "http://localhost:5001/v1/gravity/custom"
+            }
+        }
+    });
+    assert.equal(resolved, "http://localhost:5001/v1/gravity/custom");
+});
+
+test("resolveLlmProxyUrl composes legacy base override", () => {
+    const resolved = resolveLlmProxyUrl({
         window: {
             GRAVITY_CONFIG: {
                 llmProxyBaseUrl: "http://localhost:5001/"
@@ -198,8 +144,8 @@ test("resolveLlmProxyClassifyUrl composes base overrides", () => {
     assert.equal(resolved, "http://localhost:5001/v1/gravity/classify");
 });
 
-test("resolveLlmProxyClassifyUrl uses environment mapping when provided", () => {
-    const resolved = resolveLlmProxyClassifyUrl({
+test("resolveLlmProxyUrl uses development environment mapping", () => {
+    const resolved = resolveLlmProxyUrl({
         window: {
             GRAVITY_CONFIG: {
                 environment: "development"
@@ -207,6 +153,15 @@ test("resolveLlmProxyClassifyUrl uses environment mapping when provided", () => 
         }
     });
     assert.equal(resolved, "http://computercat:8081/v1/gravity/classify");
+});
+
+test("resolveLlmProxyUrl infers endpoint from location when overrides absent", () => {
+    const resolved = resolveLlmProxyUrl({
+        location: {
+            origin: "https://notes.dev.local"
+        }
+    });
+    assert.equal(resolved, "https://notes.dev.local/v1/gravity/classify");
 });
 
 test("resolveEnvironmentName normalizes window config values", () => {

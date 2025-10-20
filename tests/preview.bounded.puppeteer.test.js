@@ -224,7 +224,7 @@ async function openPreviewHarness(records) {
     const { page, teardown } = await createSharedPage();
     await page.evaluateOnNewDocument(() => {
         window.GRAVITY_CONFIG = {
-            llmProxyClassifyUrl: ""
+            llmProxyUrl: ""
         };
     });
     await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });

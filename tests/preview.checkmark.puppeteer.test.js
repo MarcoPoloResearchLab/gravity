@@ -135,7 +135,7 @@ async function openChecklistPage(records) {
     const { page, teardown } = await createSharedPage();
     await page.evaluateOnNewDocument(() => {
         window.GRAVITY_CONFIG = {
-            llmProxyClassifyUrl: ""
+            llmProxyUrl: ""
         };
     });
     const serialized = JSON.stringify(Array.isArray(records) ? records : []);

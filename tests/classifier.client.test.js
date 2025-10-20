@@ -44,7 +44,7 @@ test("createClassifierClient uses injected fetch for classification", async () =
 test("ClassifierClient falls back when endpoint disabled", async () => {
     const originalWindow = globalThis.window;
     try {
-        globalThis.window = { GRAVITY_CONFIG: { llmProxyClassifyUrl: "" } };
+        globalThis.window = { GRAVITY_CONFIG: { llmProxyUrl: "" } };
         const result = await ClassifierClient.classifyOrFallback("Any", "Text");
         assert.equal(result.category, "Journal");
         assert.equal(result.status, "idea");
@@ -64,4 +64,3 @@ test("createClassifierClient returns fallback on fetch error", async () => {
     assert.equal(result.category, "Journal");
     assert.equal(result.status, "idea");
 });
-

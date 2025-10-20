@@ -21,7 +21,7 @@ test.describe("App notifications", () => {
         const { page, teardown } = await createSharedPage();
         try {
             await page.evaluateOnNewDocument(() => {
-                window.GRAVITY_CONFIG = { backendBaseUrl: "", llmProxyClassifyUrl: "" };
+                window.GRAVITY_CONFIG = { backendBaseUrl: "", llmProxyUrl: "" };
             });
             await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
             await page.waitForSelector("#top-editor .markdown-editor");

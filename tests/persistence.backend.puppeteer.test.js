@@ -66,7 +66,7 @@ test.describe("Backend sync integration", () => {
         context = await browserConnection.createBrowserContext();
         page = await raceWithSignal(deadlineSignal, prepareFrontendPage(context, PAGE_URL, {
             backendBaseUrl: backendUrl,
-            llmProxyClassifyUrl: backendUrl
+            llmProxyUrl: backendUrl
         }));
         page.on("console", (message) => {
             if (message.type() === "error") {
