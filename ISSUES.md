@@ -233,7 +233,29 @@ Migrated backlog from NOTES.md to centralized issue log.
         };
     </script>
     ```
-  - [ ] [GN-53] The runtime configuration must be dynamic, so that the same code will work in production and in development without editing index.html. Remove an ability to inject configuration in index.html. There must be only one way of storing configuration as data: some json file that the system loads. If the system is loaded on the localhost, it's development, if the system is loaded on .com domain then it's production
+  - [ ] [GN-53] The runtime configuration must be dynamic, so that the same code will work in production and in development without editing index.html. Remove an ability to inject configuration in index.html. There must be only one way of storing configuration as data: some json file that the system loads. If the system is loaded on the localhost, it's development, if the system is loaded on .com domain then it's production. The general idea is (the script is just a mockup for inspiration)
+  ```js
+    <script>
+  (function () {
+    const hostname = window.location.hostname;
+
+    const configs = {
+      localhost: {
+        apiBaseUrl: "http://localhost:8080/api",
+        authServiceUrl: "http://localhost:7070"
+      },
+      production: {
+        apiBaseUrl: "https://api.example.com/api",
+        authServiceUrl: "https://auth.example.com"
+      }
+    };
+
+    let envKey = hostname === "localhost" ? "localhost" : "production";
+    window.runtimeEnv = configs[envKey];
+  })();
+  </script>
+  <script src="app.js"></script>
+  ```
 
 ### BugFixes
 
