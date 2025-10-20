@@ -122,8 +122,8 @@ function shouldKeepEditingAfterBlur(card) {
     const pointerTarget = lastPointerDownTarget;
     // Preserve edit mode when the most recent pointer interaction occurred inside the card
     // and focus either remained within the card or fell back to the document body.
-    if (pointerTarget instanceof Node && card.contains(pointerTarget) && pointerTarget.isConnected) {
-        return true;
+    if (pointerTarget instanceof Node && pointerTarget.isConnected && card.contains(pointerTarget)) {
+        return isNodeWithinInlineEditor(card, pointerTarget);
     }
     return false;
 }
