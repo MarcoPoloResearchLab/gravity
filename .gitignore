@@ -1,5 +1,7 @@
+PLAN.md
 .idea/
 node_modules/
 *.iml
 *.db
 .env
+client_secret*.json

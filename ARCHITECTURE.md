@@ -93,5 +93,4 @@ Acceptance criteria for the above should be captured in Puppeteer tests under `t
 
 1) Encode GN-45..GN-49 behaviors in black-box tests, then adjust CSS/JS to pass without regressions.
 2) Expand sync tests to include concurrent edits from two clients to validate conflict handling and audit logging.
-3) Add a minimal CSP header in dev/prod hosts and verify with a Puppeteer smoke test (scripts load, GSI initializes, no CSP violations).
-
+3) Optionally add a minimal CSP header later for production hardening (low priority). When enabled, verify with a Puppeteer smoke test (scripts load, GSI initializes, no CSP violations).

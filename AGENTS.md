@@ -137,7 +137,7 @@
 ### 14. Security & Boundaries
 
 * No `eval`, no inline `onclick`.
-* CSP-friendly ES modules only.
+* CSP is optional and low priority for now; recommended for production hardening.
 * Google Analytics snippet is the only sanctioned inline exception.
 * All external calls go through `js/core/backendClient.js` and `js/core/classifier.js` (network boundaries), both mockable in tests. Do not call `fetch` directly from UI components.
 
@@ -252,20 +252,21 @@
 * Never log secrets or PII.
 * Validate all inputs.
 * Principle of least privilege.
-* CSP-friendly ES modules. Allowed third-party scripts: Google Analytics snippet, Google Identity Services, Loopaware widget. Inline scripts must be limited to GA config or guarded by nonce/hash as per CSP.
+* CSP-friendly ES modules. Allowed third-party scripts: Google Analytics snippet, Google Identity Services, Loopaware widget. When CSP is enabled, inline scripts must be limited to GA config or guarded by nonce/hash.
 
-#### CSP Template
+#### CSP Template (optional; use when enabling CSP)
 
 - HTTP header (preferred):
   - `Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://accounts.google.com https://www.googletagmanager.com https://loopaware.mprlab.com 'nonce-<nonce-value>'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob:; connect-src 'self' https://llm-proxy.mprlab.com http://localhost:8080; font-src 'self' data:; frame-src https://accounts.google.com; base-uri 'self'; form-action 'self';`
 - Meta tag (static hosting):
   - `<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://accounts.google.com https://www.googletagmanager.com https://loopaware.mprlab.com 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob:; connect-src 'self' https://llm-proxy.mprlab.com http://localhost:8080; font-src 'self' data:; frame-src https://accounts.google.com; base-uri 'self'; form-action 'self';">`
 - Replace `connect-src` endpoints when running against different backends or proxies. Prefer nonces over `'unsafe-inline'` where a server can inject them.
+- When using a local LLM proxy on a non-default port (e.g., `http://localhost:8081`), include it in `connect-src`.
 
 ### CI & Timeouts
 
-- Do not wrap shell commands with `timeout`. The Node test harness (`tests/run-tests.js`) enforces per-test timeouts and kill grace.
-- Longer suites have built-in overrides; tune via runtime options instead of shell-level timeouts.
+- All CLI commands MUST be invoked with a timeout wrapper: `timeout -k <N>s -s SIGKILL <N>s <command>`. This is mandatory in local development, CI, documentation, and scripts.
+- Choose `<N>` appropriate to the operation and keep budgets strict; avoid indefinite waits. The Node test harness (`tests/run-tests.js`) also enforces per-test budgets, but the shell-level timeout remains required.
 
 ---
 

@@ -4,7 +4,7 @@
 Gravity Notes must provide a Markdown-only editor with stable previews, inline editing, and a no-jump UX. This PRD defines the product behavior, UX principles, and technical constraints.
 
 ## Goals
-- Markdown is the sole editing mode (no quick capture).
+- Markdown is the sole editing mode. No separate quick-capture UI; capture occurs inline via the first blank note.
 - Grid remains visually stable; no layout jumps.
 - Previews are bounded but meaningful.
 - Inline editing must be lightweight and accessible (no modal overlays).
@@ -42,10 +42,10 @@ Gravity Notes must provide a Markdown-only editor with stable previews, inline e
 - No jumping or reflow in view mode or editor.
 - Previews always meaningful (structured truncation, not blind crop).
 - Accessibility: consistent keyboard shortcuts, ARIA live region for save status.
-- Desktop and mobile consistent: on mobile, Enter always newline, explicit Save button.
+- Desktop and mobile consistent: Enter inserts a newline; commits occur on blur or explicit commit chord; no Save button.
 
 ## Non-Goals
-- No quick capture mode.
+- No separate quick-capture UI (no modal or distinct capture widget).
 - No in-card scrolling.
 - No legacy save buttons inside cards.
 

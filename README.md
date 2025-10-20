@@ -153,7 +153,7 @@ Conflict resolution follows the documented `(client_edit_seq, updated_at)` prece
 Configure development endpoints before loading `index.html`:
 
 ```html
-<script>
+<script nonce="<server-generated-nonce>">
     window.GRAVITY_CONFIG = {
         backendBaseUrl: "http://localhost:8000",
         llmProxyBaseUrl: "http://localhost:8081",
@@ -161,6 +161,8 @@ Configure development endpoints before loading `index.html`:
     };
 </script>
 ```
+
+Note: If you enable a Content Security Policy (CSP), include the matching nonce for the inline configuration script, and ensure `connect-src` lists all configured endpoints (e.g., `http://localhost:8080` for the backend and `http://localhost:8081` for the LLM proxy when used). CSP is optional and low priority; you can ignore this if not enforcing CSP.
 
 Or embed a meta tag when templating the page:
 
@@ -175,22 +177,22 @@ Or embed a meta tag when templating the page:
 - `docker-compose.yml` provisions both services required for local development: the Go API (`backend`) pulled from
   `ghcr.io/marcopoloresearchlab/gravity-backend:latest`, and a static web host powered by
   [gHTTP](https://github.com/temirov/ghttp) (`frontend`) that serves the working directory read-only.
-- Run `docker compose pull` to fetch the default backend image (`ghcr.io/marcopoloresearchlab/gravity-backend:master`),
-  then start the stack with `docker compose up`. The UI serves from <http://localhost:8000> while the API listens on
+- Run `timeout -k <N>s -s SIGKILL <N>s docker compose pull` to fetch the default backend image (`ghcr.io/marcopoloresearchlab/gravity-backend:latest`),
+  then start the stack with `timeout -k <N>s -s SIGKILL <N>s docker compose up`. The UI serves from <http://localhost:8000> while the API listens on
   <http://localhost:8080>. The backend service
   automatically sources secrets from `backend/.env`.
-- To tail application output run `docker compose logs -f backend`, and stop the stack with `docker compose down` when
+- To tail application output run `timeout -k <N>s -s SIGKILL <N>s docker compose logs -f backend`, and stop the stack with `timeout -k <N>s -s SIGKILL <N>s docker compose down` when
   finished.
 
 ## Testing
 
-- The test harness (`node tests/run-tests.js`) executes each suite in isolation with a 30 s watchdog and renders a
+- The test harness (`timeout -k <N>s -s SIGKILL <N>s node tests/run-tests.js`) executes each suite in isolation with a 30 s watchdog and renders a
   coloured summary. Adjust the default timeout or kill grace via `GRAVITY_TEST_TIMEOUT_MS` and
-  `GRAVITY_TEST_KILL_GRACE_MS`, narrow the run with `GRAVITY_TEST_PATTERN="editor.inline" npm test`, or provide
+  `GRAVITY_TEST_KILL_GRACE_MS`, narrow the run with `GRAVITY_TEST_PATTERN="editor.inline" timeout -k <N>s -s SIGKILL <N>s npm test`, or provide
   per-file overrides using `GRAVITY_TEST_TIMEOUT_OVERRIDES` /
   `GRAVITY_TEST_KILL_GRACE_OVERRIDES` (comma-separated `file=testTimeoutMs`). The harness already relaxes the budget
   for `persistence.backend`, `sync.endtoend`, and `fullstack.endtoend` suites so they can bootstrap the Go backend.
-- `npm test` drives the Node test suite, including Puppeteer coverage for the inline editor, bounded previews, and
+- `timeout -k <N>s -s SIGKILL <N>s npm test` drives the Node test suite, including Puppeteer coverage for the inline editor, bounded previews, and
   the notification flow.
 - `tests/preview.bounded.puppeteer.test.js` now guards the viewport anchoring behaviour—expanding a rendered note keeps
   the card in place even if the browser attempts to scroll to the bottom of the preview.
@@ -198,7 +200,7 @@ Or embed a meta tag when templating the page:
   that operations propagate through `createSyncManager` to the server snapshot.
 - `tests/auth.sessionPersistence.puppeteer.test.js` signs in via the event bridge, reloads the page, and verifies the
   persisted auth state restores the user scope without a second Google prompt.
-- Run `npx puppeteer browsers install chrome` once to download the Chromium binary that Puppeteer uses during the
+- Run `timeout -k <N>s -s SIGKILL <N>s npx puppeteer browsers install chrome` once to download the Chromium binary that Puppeteer uses during the
   end-to-end tests.
 - GitHub Actions executes the same test command on every push and pull request, validating the inline editing workflow and
   preview truncation remain stable.
