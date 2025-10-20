@@ -1,7 +1,7 @@
 // @ts-check
 
 import { nowIso } from "../utils/datetime.js";
-import { createElement } from "../utils/dom.js";
+import { createElement, autoResize } from "../utils/dom.js";
 import { copyToClipboard } from "../utils/clipboard.js";
 import { isNonBlankString } from "../utils/string.js";
 import { updateActionButtons, insertCardRespectingPinned } from "./card/listControls.js";
@@ -871,6 +871,7 @@ export function renderCard(record, options = {}) {
     const editor  = createElement("textarea", "markdown-editor");
     editor.value  = record.markdownText;
     editor.setAttribute("rows", "1");
+    autoResize(editor);
 
     registerInitialAttachments(editor, initialAttachments);
     enableClipboardImagePaste(editor);
@@ -890,20 +891,8 @@ export function renderCard(record, options = {}) {
             return;
         }
 
-        let caretPlacement = CARET_PLACEMENT_END;
-        const previewElement = card.querySelector(".markdown-content");
-        const host = editorHosts.get(card);
-
-        if (previewElement instanceof HTMLElement && host && previewElement.contains(target)) {
-            const offset = calculatePreviewTextOffset(previewElement, event);
-            if (offset !== null) {
-                const markdownValue = host.getValue();
-                caretPlacement = mapPlainTextOffsetToMarkdown(markdownValue, offset);
-            }
-        }
-
         focusCardEditor(card, notesContainer, {
-            caretPlacement,
+            caretPlacement: CARET_PLACEMENT_END,
             bubblePreviousCardToTop: true
         });
     };
@@ -923,7 +912,6 @@ export function renderCard(record, options = {}) {
     editorHosts.set(card, editorHost);
     card.__markdownHost = editorHost;
     card.dataset.initialValue = record.markdownText;
-    card.dataset.attachmentsSignature = createAttachmentSignature(initialAttachments);
     if (isNonBlankString(record.createdAtIso)) {
         card.dataset.createdAtIso = record.createdAtIso;
     }
@@ -942,6 +930,9 @@ export function renderCard(record, options = {}) {
         applyPreviewBadges(badges, nextMeta);
         restorePreviewFocus(card);
         scheduleOverflowCheck(previewWrapper, preview, expandToggle);
+        if (!editorHost.isEnhanced()) {
+            autoResize(editor);
+        }
     };
 
     const updateModeControls = () => {
@@ -1020,10 +1011,8 @@ export function renderCard(record, options = {}) {
         queuePreviewFocus(card, { type: "checkbox", taskIndex, remaining: 2 });
         host.setValue(nextMarkdown);
         refreshPreview();
-        const persisted = persistCardState(card, notesContainer, nextMarkdown, { bubbleToTop: false });
-        if (persisted) {
-            schedulePreviewBubble(card, notesContainer);
-        }
+        persistCardState(card, notesContainer, nextMarkdown, { bubbleToTop: false });
+        schedulePreviewBubble(card, notesContainer);
     }
 }
 
@@ -1122,31 +1111,19 @@ function showClipboardFeedback(container, message) {
 function persistCardState(card, notesContainer, markdownText, options = {}) {
     const { bubbleToTop = true } = options;
     if (!(card instanceof HTMLElement) || typeof markdownText !== "string") {
-        return false;
+        return;
     }
     const noteId = card.getAttribute("data-note-id");
-    if (!isNonBlankString(noteId)) {
-        return false;
+    if (!noteId) {
+        return;
     }
     const editor = /** @type {HTMLTextAreaElement|null} */ (card.querySelector(".markdown-editor"));
     if (!(editor instanceof HTMLTextAreaElement)) {
-        return false;
-    }
-
-    const attachments = collectReferencedAttachments(editor);
-    const normalizedNext = normalizeMarkdownForComparison(markdownText);
-    const previousValue = typeof card.dataset.initialValue === "string" ? card.dataset.initialValue : "";
-    const normalizedPrevious = normalizeMarkdownForComparison(previousValue);
-    const nextAttachmentsSignature = createAttachmentSignature(attachments);
-    const previousAttachmentsSignature = typeof card.dataset.attachmentsSignature === "string"
-        ? card.dataset.attachmentsSignature
-        : "";
-
-    if (normalizedNext === normalizedPrevious && nextAttachmentsSignature === previousAttachmentsSignature) {
-        return false;
+        return;
     }
 
     const timestamp = nowIso();
+    const attachments = collectReferencedAttachments(editor);
 
     const createdAtIso = isNonBlankString(card.dataset.createdAtIso)
         ? card.dataset.createdAtIso
@@ -1165,7 +1142,6 @@ function persistCardState(card, notesContainer, markdownText, options = {}) {
     card.dataset.createdAtIso = createdAtIso;
     card.dataset.updatedAtIso = timestamp;
     card.dataset.lastActivityIso = timestamp;
-    card.dataset.attachmentsSignature = nextAttachmentsSignature;
 
     if (notesContainer instanceof HTMLElement) {
         if (bubbleToTop) {
@@ -1186,7 +1162,6 @@ function persistCardState(card, notesContainer, markdownText, options = {}) {
     const toggle = card.querySelector(".note-expand-toggle");
     scheduleOverflowCheck(previewWrapper, preview, toggle);
     dispatchNoteUpdate(card, record, { storeUpdated: true, shouldRender: false });
-    return true;
 }
 
 function toggleTaskAtIndex(markdown, targetIndex) {
@@ -1269,8 +1244,18 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
     const initialValue = editorHost ? editorHost.getValue() : editor?.value ?? "";
     card.dataset.initialValue = initialValue;
 
+    if (!wasEditing && editorHost && !editorHost.isEnhanced() && editor) {
+        const h = Math.max(preview.offsetHeight, 36);
+        editor.style.height = `${h}px`;
+        editor.style.minHeight = `${h}px`;
+    }
+
     card.classList.add("editing-in-place");
     editorHost?.setMode(MARKDOWN_MODE_EDIT);
+
+    if (editorHost && !editorHost.isEnhanced() && editor) {
+        autoResize(editor);
+    }
 
     if (bubbleSelfToTop) {
         const firstCard = notesContainer.firstElementChild;
@@ -1500,6 +1485,9 @@ function mergeDown(card, notesContainer) {
     registerInitialAttachments(editorBelow, mergedAttachments);
     const mergedMarkdown = transformMarkdownWithAttachments(merged, mergedAttachments);
     renderSanitizedMarkdown(previewBelow, mergedMarkdown);
+    if (!hostBelow || !hostBelow.isEnhanced()) {
+        autoResize(editorBelow);
+    }
 
     const idHere = card.getAttribute("data-note-id");
     if (idHere) {
@@ -1573,6 +1561,9 @@ function mergeUp(card, notesContainer) {
     registerInitialAttachments(editorAbove, mergedAttachments);
     const mergedMarkdown = transformMarkdownWithAttachments(merged, mergedAttachments);
     renderSanitizedMarkdown(previewAbove, mergedMarkdown);
+    if (!hostAbove || !hostAbove.isEnhanced()) {
+        autoResize(editorAbove);
+    }
 
     const idHere = card.getAttribute("data-note-id");
     if (idHere) {
@@ -1639,7 +1630,7 @@ function navigateToAdjacentCard(card, direction, notesContainer) {
  * Focus the editor for a specific card.
  * @param {HTMLElement} card
  * @param {HTMLElement} notesContainer
- * @param {{ caretPlacement?: typeof CARET_PLACEMENT_START | typeof CARET_PLACEMENT_END | number, bubblePreviousCardToTop?: boolean }} [options]
+ * @param {{ caretPlacement?: typeof CARET_PLACEMENT_START | typeof CARET_PLACEMENT_END, bubblePreviousCardToTop?: boolean }} [options]
  * @returns {boolean}
  */
 export function focusCardEditor(card, notesContainer, options = {}) {
@@ -1657,40 +1648,27 @@ export function focusCardEditor(card, notesContainer, options = {}) {
         if (!host) return;
 
         const textarea = typeof host.getTextarea === "function" ? host.getTextarea() : null;
-        const isNumericPlacement = typeof caretPlacement === "number" && Number.isFinite(caretPlacement);
-        const currentValue = typeof textarea?.value === "string" ? textarea.value : host.getValue();
-        const valueLength = typeof currentValue === "string" ? currentValue.length : 0;
-        const desiredIndex = isNumericPlacement
-            ? Math.max(0, Math.min(Math.floor(caretPlacement), valueLength))
-            : caretPlacement === CARET_PLACEMENT_END
-                ? valueLength
-                : 0;
         const selectionStart = textarea && typeof textarea.selectionStart === "number"
             ? textarea.selectionStart
             : null;
         const selectionEnd = textarea && typeof textarea.selectionEnd === "number"
             ? textarea.selectionEnd
             : null;
+        const targetPosition = caretPlacement === CARET_PLACEMENT_END ? "end" : "start";
+        const expectedDefaultIndex = caretPlacement === CARET_PLACEMENT_END
+            ? 0
+            : (textarea?.value.length ?? 0);
         const selectionDefined = selectionStart !== null && selectionEnd !== null;
-        const expectedDefaultIndex = isNumericPlacement
-            ? desiredIndex
-            : caretPlacement === CARET_PLACEMENT_END
-                ? 0
-                : valueLength;
         const selectionAtDefault = selectionDefined
             && selectionStart === selectionEnd
             && selectionStart === expectedDefaultIndex;
-        const shouldRespectExistingCaret = !isNumericPlacement && selectionDefined && !selectionAtDefault;
+        const shouldRespectExistingCaret = selectionDefined && !selectionAtDefault;
 
         host.setMode(MARKDOWN_MODE_EDIT);
         host.focus();
         // Respect caret adjustments made before this frame (e.g. user repositioning the cursor)
         if (!shouldRespectExistingCaret) {
-            if (isNumericPlacement) {
-                host.setCaretPosition(desiredIndex);
-            } else {
-                host.setCaretPosition(caretPlacement === CARET_PLACEMENT_END ? "end" : "start");
-            }
+            host.setCaretPosition(targetPosition);
         }
     });
 
@@ -1766,26 +1744,6 @@ function areAttachmentDictionariesEqual(current, previous) {
     }
 
     return true;
-}
-
-/**
- * Create a stable signature for attachments to detect content changes.
- * @param {Record<string, import("../types.d.js").AttachmentRecord>} attachments
- * @returns {string}
- */
-function createAttachmentSignature(attachments) {
-    const entries = Object.entries(attachments || {});
-    if (entries.length === 0) {
-        return "";
-    }
-    entries.sort(([a], [b]) => a.localeCompare(b));
-    return entries
-        .map(([key, record]) => {
-            const dataLength = record && typeof record.dataUrl === "string" ? record.dataUrl.length : 0;
-            const altText = record && typeof record.altText === "string" ? record.altText : "";
-            return `${key}:${dataLength}:${altText}`;
-        })
-        .join("|");
 }
 
 /* ---------- Chips & classification ---------- */
