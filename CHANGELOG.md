@@ -7,6 +7,21 @@ and are grouped by the date the work landed on `master`.
 
 ### Added
 - Change log scaffolding and historical backlog capture (GN-53).
+- Python utility `tools/ensure_plan_untracked.py` and a test guard to keep `PLAN.md` untracked (GN-54).
+
+### Documentation
+- Folded `MIGRATION.md` into `ARCHITECTURE.md`, clarifying event contracts and module guidance (GN-54).
+- Tightened `NOTES.md` instructions so coding agents only touch `ISSUES.md`, `PLAN.md`, and `CHANGELOG.md` (GN-54).
+
+### Removed
+- Deleted the legacy `MIGRATION.md` now that the architecture guide houses the relevant details (GN-54).
+
+### Documentation
+- Folded `MIGRATION.md` into `ARCHITECTURE.md`, clarifying event contracts, module guidance, and third-party reading expectations (GN-54).
+- Tightened `NOTES.md` instructions so coding agents only touch `ISSUES.md`, `PLAN.md`, and `CHANGELOG.md`, including guidance to use `git filter-repo` if `PLAN.md` ever re-enters history (GN-54).
+
+### Removed
+- Deleted the legacy `MIGRATION.md` now that the architecture guide houses the relevant details (GN-54).
 
 ## 2025-10-20
 

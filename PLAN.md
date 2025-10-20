@@ -1,6 +1,0 @@
-- [x] [GN-53] Load runtime configuration based on host domain
-    - Added environment JSON profiles under `data/` and a loader that selects the file via hostname before Alpine boot.
-    - Replaced `window.GRAVITY_CONFIG` / meta tag overrides with `setRuntimeConfig` helpers in `js/core/config.js`, plus test reset hooks.
-    - Deferred app bootstrap until the config promise resolves and wired classifier/backend clients to the injected values.
-    - Updated Node + Puppeteer suites to stub config fetches and refreshed docs to describe the new mechanism.
-    - Verified with `timeout -k 410s -s SIGKILL 400s npm test` (harness reported 27/27 passing suites before the wrapper timeout).
