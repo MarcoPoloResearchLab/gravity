@@ -485,11 +485,11 @@ Migrated backlog from NOTES.md to centralized issue log.
   - [ ] [GN-54] We need to encode the rules of engagement for coding agents
     - PLAN.md must be untracked as it's of no interest to the code. Use a python utility to ensure it is removed from git history and is not tracked
     - NOTES.md must be read-only and the agent can never write anything there. These very changes to the process need to be encoded in NOTES.md :-)
-    - MIGRATION.md belongs to ARCHITECTURE.md. Fold in all MIGRATION.md content into ARCHITECTURE.md. also, remove any minutia from ARCHITECTURE and focus on the app architecture
+    - MIGRATION.md belongs to ARCHITECTURE.md. Fold in all MIGRATION.md content into ARCHITECTURE.md and delete MIGRATION.md. also, remove any minutia from ARCHITECTURE.md and focus on the app architecture as the content of the file. it's ok to document implementation details there.
     - There are only 3 markdown files that coding agents can write to working on issues: 
       1. ISSUES.md to read the tasks and mark issues as complete or add newly discovered one. 
       2. PLAN.md for planning on working on a single issue, 
-      3. CHANGELOG.md to track progress, and  
+      3. CHANGELOG.md to track progress of completed tasks  
 
 ## 2025-10-21
 
