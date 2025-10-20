@@ -143,6 +143,10 @@ Conflict resolution follows the documented `(client_edit_seq, updated_at)` prece
 
 - `appConfig.backendBaseUrl` resolves at runtime from `window.GRAVITY_CONFIG.backendBaseUrl` or a `<meta name="gravity-backend-base-url">` tag. When neither is provided it falls back to the current origin (or `http://localhost:8080` when served from `file://`).
 - `appConfig.llmProxyBaseUrl` resolves from `window.GRAVITY_CONFIG.llmProxyBaseUrl` or a `<meta name="gravity-llm-proxy-base-url">` tag. When unset it falls back to the current origin or the default hosted proxy at `https://llm-proxy.mprlab.com`.  The full classify endpoint lives in `appConfig.llmProxyClassifyUrl`, which accepts overrides via `window.GRAVITY_CONFIG.llmProxyClassifyUrl` or `<meta name="gravity-llm-proxy-classify-url">`; providing an empty string disables remote classification during local development.
+- `appConfig.environment` exposes the normalized environment name (either `production` or `development`) when provided via `window.GRAVITY_CONFIG.environment` or `<meta name="gravity-environment">`. Each environment preloads endpoints:
+    - `production` → backend `https://gravity-api.mprlab.com`, LLM proxy `https://llm-proxy.mprlab.com`, classify `https://llm-proxy.mprlab.com/v1/gravity/classify`
+    - `development` → backend `http://localhost:8080`, LLM proxy `http://computercat:8081`, classify `http://computercat:8081/v1/gravity/classify`
+  Explicit URL overrides still take precedence over the environment defaults.
 - The UI keeps persisting to `localStorage` for offline usage while enqueuing operations for the backend.
 - On sign-in the client exchanges the Google credential for a backend token, flushes the queue, and reconciles a fresh snapshot so additional tabs/devices pick up the latest state.
 - Pin toggles, imports, and deletions immediately enqueue operations; failed sync attempts remain queued until connectivity returns.
@@ -150,7 +154,17 @@ Conflict resolution follows the documented `(client_edit_seq, updated_at)` prece
 
 #### Runtime configuration
 
-Configure development endpoints before loading `index.html`:
+Select an environment or provide explicit endpoints before loading `index.html`. Setting an environment applies the defaults listed above:
+
+```html
+<script nonce="<server-generated-nonce>">
+    window.GRAVITY_CONFIG = {
+        environment: "development"
+    };
+</script>
+```
+
+Override individual URLs as needed:
 
 ```html
 <script nonce="<server-generated-nonce>">
@@ -164,9 +178,10 @@ Configure development endpoints before loading `index.html`:
 
 Note: If you enable a Content Security Policy (CSP), include the matching nonce for the inline configuration script, and ensure `connect-src` lists all configured endpoints (e.g., `http://localhost:8080` for the backend and `http://localhost:8081` for the LLM proxy when used). CSP is optional and low priority; you can ignore this if not enforcing CSP.
 
-Or embed a meta tag when templating the page:
+Or embed meta tags when templating the page:
 
 ```html
+<meta name="gravity-environment" content="production">
 <meta name="gravity-backend-base-url" content="https://gravity-notes.example.com/api">
 <meta name="gravity-llm-proxy-base-url" content="https://proxy.example.com">
 <meta name="gravity-llm-proxy-classify-url" content="https://proxy.example.com/v1/gravity/classify">

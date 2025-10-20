@@ -1,5 +1,5 @@
-- [x] [GN-45] Restore CI-safe layout regression coverage (`tests/ui.styles.regression.puppeteer.test.js`, `tests/helpers/`)
-    - Audited the prior failure transcript to lock the expectations for top-editor stickiness, grid column widths, and button styling.
-    - Rebuilt `tests/ui.styles.regression.puppeteer.test.js` around `createSharedPage`, including lightweight utilities to capture computed styles without launching a standalone browser.
-    - Tuned the assertions to compare resolved pixel values with tolerant ranges, keeping the suite resilient while guarding the same layout guarantees.
-    - Verified with a focused run and the full `npm test` sweep.
+- [x] [GN-50] Environment-specific endpoint configuration
+    - Added environment mapping and detection to `js/core/config.js`, returning production or development defaults when specified.
+    - Expanded `tests/config.runtime.test.js` to cover environment-driven resolutions and normalization behavior.
+    - Documented configuration flows and the new `<meta name="gravity-environment">` option in `README.md`.
+    - Verified the change set with `timeout -k 400s -s SIGKILL 400s npm test`.

@@ -649,6 +649,73 @@ test.describe("Markdown inline editor", () => {
         }
     });
 
+    test("card actions finalize editing and remain clickable", async () => {
+        const seededRecords = [buildNoteRecord({
+            noteId: PIN_FIRST_NOTE_ID,
+            markdownText: PIN_FIRST_MARKDOWN
+        })];
+        const { page, teardown } = await preparePage({
+            records: seededRecords
+        });
+        const cardSelector = `.markdown-block[data-note-id="${PIN_FIRST_NOTE_ID}"]`;
+        const pinButtonSelector = `${cardSelector} .actions [data-action="toggle-pin"]`;
+
+        try {
+            await page.waitForSelector(cardSelector);
+            const textareaSelector = await enterCardEditMode(page, cardSelector);
+            await page.waitForSelector(textareaSelector);
+            await page.waitForFunction((selector) => {
+                const card = document.querySelector(selector);
+                return card instanceof HTMLElement && card.classList.contains("editing-in-place");
+            }, {}, cardSelector);
+
+            const baselineTelemetry = await beginCardEditingTelemetry(page, cardSelector);
+            assert.ok(baselineTelemetry, "Expected to capture baseline telemetry while editing");
+            assert.equal(baselineTelemetry.mode, "edit", "Card should be in edit mode before interacting with actions");
+            assert.equal(baselineTelemetry.hasEditingClass, true, "Editing class must be present before interacting with actions");
+
+            const initialPinnedState = await page.$eval(cardSelector, (card) => card.getAttribute("data-pinned"));
+            assert.equal(initialPinnedState, "false", "Card should begin unpinned for the regression scenario");
+
+            await page.waitForSelector(pinButtonSelector);
+            await page.click(pinButtonSelector);
+
+            await page.waitForFunction((selector) => {
+                const card = document.querySelector(selector);
+                return card instanceof HTMLElement && card.dataset.pinned === "true";
+            }, {}, cardSelector);
+
+            await page.waitForFunction((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return false;
+                }
+                const host = Reflect.get(card, "__markdownHost");
+                const mode = host && typeof host.getMode === "function" ? host.getMode() : null;
+                return !card.classList.contains("editing-in-place") && mode === "view";
+            }, {}, cardSelector);
+
+            const finalTelemetry = await collectCardEditingTelemetry(page, cardSelector);
+            assert.ok(finalTelemetry, "Expected to collect telemetry after clicking actions while editing");
+            assert.equal(finalTelemetry.mode, "view", "Card must exit edit mode after action click");
+            assert.equal(finalTelemetry.hasEditingClass, false, "Editing class must be removed after action click");
+            if (Array.isArray(finalTelemetry.modeTransitions)) {
+                const viewIndex = finalTelemetry.modeTransitions.indexOf("view");
+                assert.ok(viewIndex >= 0, "Mode transitions should include a shift to view mode");
+                const revertedToEdit = finalTelemetry.modeTransitions.slice(viewIndex + 1).includes("edit");
+                assert.equal(revertedToEdit, false, "Card must not fall back to edit mode after the action finishes");
+            }
+            if (Array.isArray(finalTelemetry.editClassTransitions) && finalTelemetry.editClassTransitions.length > 0) {
+                const removalIndex = finalTelemetry.editClassTransitions.indexOf(false);
+                assert.ok(removalIndex >= 0, "Editing class transitions should record removal after the action click");
+                const reattached = finalTelemetry.editClassTransitions.slice(removalIndex + 1).some((value) => value === true);
+                assert.equal(reattached, false, "Editing class must remain removed after the action click");
+            }
+        } finally {
+            await teardown();
+        }
+    });
+
     test("shift-enter finalizes inline editing", async () => {
         const seededRecords = [buildNoteRecord({
             noteId: NOTE_ID,

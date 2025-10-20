@@ -4,7 +4,8 @@ import test from "node:test";
 import {
     resolveBackendBaseUrl,
     resolveLlmProxyBaseUrl,
-    resolveLlmProxyClassifyUrl
+    resolveLlmProxyClassifyUrl,
+    resolveEnvironmentName
 } from "../js/core/config.js";
 
 test("resolveBackendBaseUrl falls back to default without environment", () => {
@@ -56,6 +57,34 @@ test("resolveBackendBaseUrl infers from location when override empty", () => {
     assert.equal(resolved, "https://notes.example.com");
 });
 
+test("resolveBackendBaseUrl uses production environment mapping", () => {
+    const resolved = resolveBackendBaseUrl({
+        window: {
+            GRAVITY_CONFIG: {
+                environment: "production"
+            }
+        }
+    });
+    assert.equal(resolved, "https://gravity-api.mprlab.com");
+});
+
+test("resolveBackendBaseUrl honors environment meta tag", () => {
+    const fakeMeta = {
+        getAttribute(name) {
+            return name === "content" ? "development" : null;
+        }
+    };
+    const fakeDocument = {
+        querySelector(selector) {
+            return selector === 'meta[name="gravity-environment"]' ? fakeMeta : null;
+        }
+    };
+    const resolved = resolveBackendBaseUrl({
+        document: fakeDocument
+    });
+    assert.equal(resolved, "http://localhost:8080");
+});
+
 test("resolveLlmProxyBaseUrl falls back to default proxy host", () => {
     const resolved = resolveLlmProxyBaseUrl();
     assert.equal(resolved, "https://llm-proxy.mprlab.com");
@@ -101,6 +130,17 @@ test("resolveLlmProxyBaseUrl falls back to origin when overrides blank", () => {
         }
     });
     assert.equal(resolved, "https://notes.dev.local");
+});
+
+test("resolveLlmProxyBaseUrl uses development environment mapping", () => {
+    const resolved = resolveLlmProxyBaseUrl({
+        window: {
+            GRAVITY_CONFIG: {
+                environment: "development"
+            }
+        }
+    });
+    assert.equal(resolved, "http://computercat:8081");
 });
 
 test("resolveLlmProxyClassifyUrl composes default endpoint", () => {
@@ -156,4 +196,53 @@ test("resolveLlmProxyClassifyUrl composes base overrides", () => {
         }
     });
     assert.equal(resolved, "http://localhost:5001/v1/gravity/classify");
+});
+
+test("resolveLlmProxyClassifyUrl uses environment mapping when provided", () => {
+    const resolved = resolveLlmProxyClassifyUrl({
+        window: {
+            GRAVITY_CONFIG: {
+                environment: "development"
+            }
+        }
+    });
+    assert.equal(resolved, "http://computercat:8081/v1/gravity/classify");
+});
+
+test("resolveEnvironmentName normalizes window config values", () => {
+    const resolved = resolveEnvironmentName({
+        window: {
+            GRAVITY_CONFIG: {
+                environment: " Production "
+            }
+        }
+    });
+    assert.equal(resolved, "production");
+});
+
+test("resolveEnvironmentName defers to meta tag when window absent", () => {
+    const fakeMeta = {
+        getAttribute(name) {
+            if (name === "content") return "development";
+            return null;
+        }
+    };
+    const fakeDocument = {
+        querySelector(selector) {
+            return selector === 'meta[name="gravity-environment"]' ? fakeMeta : null;
+        }
+    };
+    const resolved = resolveEnvironmentName({ document: fakeDocument });
+    assert.equal(resolved, "development");
+});
+
+test("resolveEnvironmentName returns null for unknown environment values", () => {
+    const resolved = resolveEnvironmentName({
+        window: {
+            GRAVITY_CONFIG: {
+                environment: "staging"
+            }
+        }
+    });
+    assert.equal(resolved, null);
 });
