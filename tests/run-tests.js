@@ -18,7 +18,6 @@ import {
   closeSharedBrowser,
   toImportSpecifier
 } from "./helpers/browserHarness.js";
-import { RUNTIME_CONTEXT_PATH } from "./helpers/runtimeContext.js";
 
 const CURRENT_FILE = fileURLToPath(import.meta.url);
 const TESTS_ROOT = path.dirname(CURRENT_FILE);
@@ -173,6 +172,7 @@ async function main() {
 
   let sharedBrowserContext = null;
   let backendHandle = null;
+  let runtimeContextPayload = null;
 
   const sectionHeading = (label) => `\n${cliColors.symbols.section} ${cliColors.bold(label)}`;
   const formatCount = (count, label, format) => {
@@ -188,6 +188,8 @@ async function main() {
   let failCount = 0;
   let timeoutCount = 0;
 
+  const previousRuntimeContextEnv = process.env.GRAVITY_RUNTIME_CONTEXT;
+
   try {
     if (!minimal && !raw) {
       sharedBrowserContext = await launchSharedBrowser();
@@ -196,22 +198,18 @@ async function main() {
       if (!backendHandle.signingKeyPem || !backendHandle.signingKeyId) {
         throw new Error("Shared backend did not expose signing metadata.");
       }
-      // Write runtime context for browser-using tests
-      await fs.writeFile(
-        RUNTIME_CONTEXT_PATH,
-        JSON.stringify({
-          backend: {
-            baseUrl: backendHandle.baseUrl,
-            googleClientId: backendHandle.googleClientId,
-            signingKeyPem: backendHandle.signingKeyPem,
-            signingKeyId: backendHandle.signingKeyId
-          },
-          browser: {
-            wsEndpoint: sharedBrowserContext.wsEndpoint
-          }
-        }),
-        "utf8"
-      );
+      runtimeContextPayload = JSON.stringify({
+        backend: {
+          baseUrl: backendHandle.baseUrl,
+          googleClientId: backendHandle.googleClientId,
+          signingKeyPem: backendHandle.signingKeyPem,
+          signingKeyId: backendHandle.signingKeyId
+        },
+        browser: {
+          wsEndpoint: sharedBrowserContext.wsEndpoint
+        }
+      });
+      process.env.GRAVITY_RUNTIME_CONTEXT = runtimeContextPayload;
     }
 
     for (const relative of files) {
@@ -239,6 +237,9 @@ async function main() {
         args,
         timeoutMs: effectiveTimeout,
         killGraceMs: effectiveKillGrace,
+        env: runtimeContextPayload
+          ? { GRAVITY_RUNTIME_CONTEXT: runtimeContextPayload }
+          : undefined,
         onStdout: (chunk) => process.stdout.write(chunk),
         onStderr: (chunk) => process.stderr.write(chunk)
       });
@@ -272,7 +273,11 @@ async function main() {
       }
     }
   } finally {
-    await fs.rm(RUNTIME_CONTEXT_PATH, { force: true }).catch(() => {});
+    if (typeof previousRuntimeContextEnv === "string") {
+      process.env.GRAVITY_RUNTIME_CONTEXT = previousRuntimeContextEnv;
+    } else {
+      delete process.env.GRAVITY_RUNTIME_CONTEXT;
+    }
     if (backendHandle) await backendHandle.close().catch(() => {});
     if (sharedBrowserContext) await closeSharedBrowser().catch(() => {});
   }

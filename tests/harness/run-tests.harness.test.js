@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
+import process from "node:process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import { harnessDefaults, runTestProcess } from "../helpers/testHarness.js";
-import { RUNTIME_CONTEXT_PATH } from "../helpers/runtimeContext.js";
 
 const CURRENT_FILE = fileURLToPath(import.meta.url);
 const TESTS_DIRECTORY = path.resolve(path.dirname(CURRENT_FILE), "..");
@@ -22,20 +22,15 @@ function stripAnsi(value) {
 }
 
 async function readContextSnapshot() {
-  try {
-    return await fs.readFile(RUNTIME_CONTEXT_PATH, "utf8");
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
-    throw error;
-  }
+  return process.env.GRAVITY_RUNTIME_CONTEXT ?? null;
 }
 
 async function restoreContextSnapshot(snapshot) {
-  if (snapshot === null) {
-    await fs.rm(RUNTIME_CONTEXT_PATH, { force: true }).catch(() => {});
+  if (snapshot === null || snapshot === undefined) {
+    delete process.env.GRAVITY_RUNTIME_CONTEXT;
     return;
   }
-  await fs.writeFile(RUNTIME_CONTEXT_PATH, snapshot, "utf8").catch(() => {});
+  process.env.GRAVITY_RUNTIME_CONTEXT = snapshot;
 }
 
 async function runHarnessWithOptions(options) {

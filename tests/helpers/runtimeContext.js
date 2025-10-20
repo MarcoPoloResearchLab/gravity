@@ -1,27 +1,24 @@
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-const CURRENT_FILE = fileURLToPath(import.meta.url);
-const TESTS_ROOT = path.resolve(path.dirname(CURRENT_FILE), "..");
-
-export const RUNTIME_CONTEXT_PATH = path.join(TESTS_ROOT, "runtime-context.json");
+import process from "node:process";
 
 let cachedContext = null;
+let cachedSerialized = null;
+
+export function clearRuntimeContextCache() {
+    cachedContext = null;
+    cachedSerialized = null;
+}
 
 export function readRuntimeContext() {
-    if (cachedContext) {
-        return cachedContext;
+    const raw = process.env.GRAVITY_RUNTIME_CONTEXT;
+    if (typeof raw !== "string" || raw.trim().length === 0) {
+        throw new Error("Runtime context unavailable: GRAVITY_RUNTIME_CONTEXT is not set.");
     }
-    let raw;
-    try {
-        raw = fs.readFileSync(RUNTIME_CONTEXT_PATH, "utf8");
-    } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
-        throw new Error(`Runtime context unavailable at ${RUNTIME_CONTEXT_PATH}: ${reason}`);
+    if (cachedContext && cachedSerialized === raw) {
+        return cachedContext;
     }
     try {
         cachedContext = JSON.parse(raw);
+        cachedSerialized = raw;
         return cachedContext;
     } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
