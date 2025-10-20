@@ -10,31 +10,68 @@
 
 ## Current Architecture
 
-- Frontend
-  - Alpine.js composition root (`js/app.js`) wires stores, event bridges, and DOM-scoped listeners.
-  - Event-driven UI: components communicate via `$dispatch`/`$listen`; local state in `x-data`.
-  - Editor: EasyMDE (2.19.0) for inline Markdown; top editor is structural and does not persist.
-  - Rendering: marked.js + DOMPurify; code detection adds a lightweight `code` badge.
-  - Network clients: `js/core/backendClient.js` and `js/core/classifier.js` (injectable for tests).
-  - Runtime config: `appConfig` resolves via `window.GRAVITY_CONFIG` or `<meta>` tags (backend base URL, LLM proxy endpoints).
-  - Storage: `localStorage` remains the offline source of truth; server reconciliation applies snapshots on sign-in.
+### Frontend
 
-- Backend (Go)
-  - HTTP API (Gin): `/auth/google` (GSI credential exchange), `/notes` (snapshot), `/notes/sync` (ops queue).
-  - Auth: verify Google ID token; issue backend JWT (HS256) with `sub` (user), `aud` and `iss`; TTL configurable with Viper.
-  - Data: GORM + SQLite (CGO-free driver); tables `notes` and append-only `note_changes` for idempotency and audit.
-  - Conflict strategy: `(client_edit_seq, updated_at)` precedence; server `version` monotonic per note.
-  - Layout: Cobra CLI under `cmd/`, domain packages in `internal/`; zap for logging; configuration via Viper.
+Gravity boots through the Alpine composition root in `js/app.js`. The root wires stores, event bridges, and DOM-scoped
+listeners so every surface keeps its own `x-data` state while shared behaviour flows through `$dispatch` / `$listen`.
+Network boundaries (`js/core/backendClient.js`, `js/core/classifier.js`) remain injectable so tests can stub effects.
 
-- Sync Semantics (Client)
-  - Queue `upsert`/`delete` operations with `client_edit_seq`, `client_time_s`, `updated_at_s`, payload.
-  - On sign-in: exchange GSI credential for backend token, flush queue, fetch snapshot, apply and re-render.
-  - Classification: call proxy with timeouts; if disabled or failing, produce conservative local defaults.
+**Event Contracts**
 
-- Testing & Tooling
-  - Node test harness orchestrates per-file timeouts and a kill grace; backend harness spins up the Go API for E2E.
-  - Puppeteer suites exercise inline editor, preview bounds, auth session persistence, and backend sync.
-  - Runtime config injection ensures tests run against ephemeral endpoints without fragile global state.
+| Event | Detail payload | Purpose |
+| --- | --- | --- |
+| `gravity:note-create` | `{ record, storeUpdated, shouldRender }` | Upsert freshly composed note records. |
+| `gravity:note-update` | `{ record, noteId, storeUpdated, shouldRender }` | Persist inline edits, merges, and reorder side effects emitted from cards. |
+| `gravity:note-delete` | `{ noteId, storeUpdated, shouldRender }` | Remove notes that were cleared or merged away. |
+| `gravity:note-pin-toggle` | `{ noteId, storeUpdated, shouldRender }` | Keep a single pinned note while the DOM reorders locally. |
+| `gravity:notes-imported` | `{ records, storeUpdated, shouldRender }` | Rehydrate the UI after JSON imports append unique records. |
+| `gravity:notify` | `{ message, durationMs }` | Surface toast notifications without blocking dialogs. |
+| `gravity:auth-sign-in` | `{ user: { id, email, name, pictureUrl }, credential }` | Namespace `GravityStore` to the authenticated user and refresh the notebook. |
+| `gravity:auth-sign-out` | `{ reason }` | Return to the anonymous notebook and hide the profile controls. |
+| `gravity:auth-error` | `{ reason, error }` | Surface authentication failures via the toast pipeline without crashing the app. |
+| `gravity:sync-snapshot-applied` | `{ records, source }` | Rehydrate the grid after backend reconciliation updates the persisted notes. |
+
+**Module Guidelines**
+
+- `js/ui/topEditor.js` composes new note records and dispatches `gravity:note-create`; it never mutates storage directly.
+- `js/ui/card.js` emits update, delete, and pin events while delegating persistence to `syncStoreFromDom`.
+- `js/ui/importExport.js` translates JSON flows into `gravity:notes-imported` events and raises `gravity:notify` feedback.
+- `js/ui/authControls.js` renders Google Identity Services, proxies sign-out requests, and raises the auth events.
+- `js/ui/menu/avatarMenu.js` encapsulates dropdown presentation, outside-click dismissal, and focus hand-off.
+
+**Rendering & Editing**
+
+- EasyMDE (2.19.0) powers inline Markdown editing with cursor positioning lifted from rendered previews.
+- Markdown rendering leverages marked.js alongside DOMPurify; detecting code blocks surfaces a `code` badge on cards.
+- Cards clamp previews without inner scrollbars, and expanding a note keeps the grid anchored in place.
+
+**Storage, Configuration, and Auth**
+
+- `GravityStore` persists notes in `localStorage` for offline-first behaviour; reconciliation applies backend snapshots.
+- `GravityStore.setUserScope(userId)` switches the storage namespace so each Google account receives an isolated notebook.
+- Runtime configuration loads from environment-specific JSON files under `data/`, selected according to the active hostname.
+- Authentication flows through Google Identity Services with `appConfig.googleClientId`, replaying sessions on reload.
+
+### Backend (Go)
+
+- HTTP API (Gin): `/auth/google` (GSI credential exchange), `/notes` (snapshot), `/notes/sync` (ops queue).
+- Auth: verify Google ID tokens, then issue backend JWTs (HS256) with configurable TTL via Viper.
+- Data: GORM + SQLite (CGO-free driver) with `notes` and append-only `note_changes` tables for idempotency and audit.
+- Conflict strategy: `(client_edit_seq, updated_at)` precedence; server `version` remains monotonic per note.
+- Layout: Cobra CLI under `cmd/`, domain packages in `internal/`, zap for logging, configuration via Viper.
+
+### Client Sync Semantics
+
+- Queue `upsert` / `delete` operations with `client_edit_seq`, `client_time_s`, `updated_at_s`, and payload metadata.
+- On sign-in: exchange the Google credential for a backend token, flush the queue, fetch the snapshot, and re-render.
+- Classification flows through the proxy client with timeouts; when disabled or failing, conservative local defaults win.
+
+### Testing & Tooling
+
+- The Node harness (`tests/run-tests.js`) orchestrates per-file timeouts, shared Chromium instances, and coloured output.
+- Puppeteer suites cover inline editing, bounded previews, notifications, auth persistence, and backend sync flows.
+- Runtime config injection keeps tests deterministic by mocking `fetch` for `data/runtime.config.*.json` lookups.
+- Backend integration tests spin up the Go API to validate credential exchange and conflict resolution end-to-end.
 
 ## Evolution by Theme (GN-IDs)
 
