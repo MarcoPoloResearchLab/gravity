@@ -2,14 +2,39 @@
 
 import { setRuntimeConfig } from "./config.js";
 
-const CONFIG_PATHS = Object.freeze({
-    production: "data/runtime.config.production.json",
-    development: "data/runtime.config.development.json"
+const ENVIRONMENT_LABELS = Object.freeze({
+    PRODUCTION: "production",
+    DEVELOPMENT: "development"
+});
+
+const LOOPBACK_HOSTNAMES = Object.freeze(["localhost", "127.0.0.1", "[::1]"]);
+
+const DEVELOPMENT_TLDS = Object.freeze([".local", ".test"]);
+
+const PRODUCTION_TLDS = Object.freeze([".com"]);
+
+const RUNTIME_CONFIG_PATHS = Object.freeze({
+    [ENVIRONMENT_LABELS.PRODUCTION]: "data/runtime.config.production.json",
+    [ENVIRONMENT_LABELS.DEVELOPMENT]: "data/runtime.config.development.json"
 });
 
 const FETCH_TIMEOUT_MS = 5000;
 const FETCH_RETRY_ATTEMPTS = 2;
 const FETCH_RETRY_DELAY_MS = 250;
+
+const FETCH_CONFIGURATION = Object.freeze({
+    CACHE_DIRECTIVE: "no-store",
+    CREDENTIAL_POLICY: "same-origin"
+});
+
+const ERROR_MESSAGES = Object.freeze({
+    UNKNOWN_FETCH_FAILURE: "Unknown error during runtime config fetch",
+    TIMEOUT_FETCH_FAILURE: "Timed out while fetching runtime configuration",
+    FINAL_FETCH_FAILURE: "Failed to fetch runtime configuration",
+    HTTP_FAILURE_PREFIX: "Failed to load runtime config: HTTP"
+});
+
+const ABORT_ERROR_NAME = "AbortError";
 
 /**
  * Delay execution for a specified amount of milliseconds.
@@ -70,16 +95,16 @@ async function fetchRuntimeConfig(fetchImplementation, resource) {
                 fetchImplementation,
                 resource,
                 {
-                    cache: "no-store",
-                    credentials: "same-origin"
+                    cache: FETCH_CONFIGURATION.CACHE_DIRECTIVE,
+                    credentials: FETCH_CONFIGURATION.CREDENTIAL_POLICY
                 },
                 FETCH_TIMEOUT_MS
             );
             return response;
         } catch (error) {
-            const normalizedError = error instanceof Error ? error : new Error("Unknown error during runtime config fetch");
-            if (normalizedError.name === "AbortError") {
-                const timeoutError = new Error("Timed out while fetching runtime configuration");
+            const normalizedError = error instanceof Error ? error : new Error(ERROR_MESSAGES.UNKNOWN_FETCH_FAILURE);
+            if (normalizedError.name === ABORT_ERROR_NAME) {
+                const timeoutError = new Error(ERROR_MESSAGES.TIMEOUT_FETCH_FAILURE);
                 /** @type {Error & { cause?: unknown }} */ (timeoutError).cause = normalizedError;
                 lastError = timeoutError;
             } else {
@@ -90,7 +115,7 @@ async function fetchRuntimeConfig(fetchImplementation, resource) {
             }
         }
     }
-    throw lastError instanceof Error ? lastError : new Error("Failed to fetch runtime configuration");
+    throw lastError instanceof Error ? lastError : new Error(ERROR_MESSAGES.FINAL_FETCH_FAILURE);
 }
 
 /**
@@ -100,19 +125,19 @@ async function fetchRuntimeConfig(fetchImplementation, resource) {
  */
 function detectEnvironment(runtimeLocation) {
     if (!runtimeLocation) {
-        return "development";
+        return ENVIRONMENT_LABELS.DEVELOPMENT;
     }
     const hostname = typeof runtimeLocation.hostname === "string" ? runtimeLocation.hostname.toLowerCase() : "";
-    if (!hostname || hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]") {
-        return "development";
+    if (!hostname || LOOPBACK_HOSTNAMES.includes(hostname)) {
+        return ENVIRONMENT_LABELS.DEVELOPMENT;
     }
-    if (hostname.endsWith(".local") || hostname.endsWith(".test")) {
-        return "development";
+    if (DEVELOPMENT_TLDS.some((suffix) => hostname.endsWith(suffix))) {
+        return ENVIRONMENT_LABELS.DEVELOPMENT;
     }
-    if (hostname.endsWith(".com")) {
-        return "production";
+    if (PRODUCTION_TLDS.some((suffix) => hostname.endsWith(suffix))) {
+        return ENVIRONMENT_LABELS.PRODUCTION;
     }
-    return "development";
+    return ENVIRONMENT_LABELS.DEVELOPMENT;
 }
 
 /**
@@ -127,11 +152,11 @@ export async function initializeRuntimeConfig(options = {}) {
         return;
     }
     const environment = detectEnvironment(location);
-    const targetPath = CONFIG_PATHS[environment] ?? CONFIG_PATHS.development;
+    const targetPath = RUNTIME_CONFIG_PATHS[environment] ?? RUNTIME_CONFIG_PATHS[ENVIRONMENT_LABELS.DEVELOPMENT];
     try {
         const response = await fetchRuntimeConfig(fetchImplementation, targetPath);
         if (!response.ok) {
-            throw new Error(`Failed to load runtime config: HTTP ${response.status}`);
+            throw new Error(`${ERROR_MESSAGES.HTTP_FAILURE_PREFIX} ${response.status}`);
         }
         const payload = await response.json();
         setRuntimeConfig({
