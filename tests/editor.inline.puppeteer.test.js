@@ -772,6 +772,64 @@ test.describe("Markdown inline editor", () => {
         }
     });
 
+    test("inline editor preserves edit mode when blur follows pointer inside card", async () => {
+        const seededRecords = [buildNoteRecord({
+            noteId: NOTE_ID,
+            markdownText: INITIAL_MARKDOWN,
+            attachments: {}
+        })];
+
+        const { page, teardown } = await preparePage({ records: seededRecords });
+        const cardSelector = `.markdown-block[data-note-id="${NOTE_ID}"]`;
+
+        try {
+            await page.waitForSelector(cardSelector);
+            await enterCardEditMode(page, cardSelector);
+            await focusCardEditor(page, cardSelector, "end");
+
+            const stateAfterBlur = await page.evaluate(async (selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return null;
+                }
+
+                const host = /** @type {any} */ (card).__markdownHost;
+                if (!host || typeof host.getTextarea !== "function") {
+                    return null;
+                }
+
+                const textarea = host.getTextarea();
+                if (!(textarea instanceof HTMLElement)) {
+                    return null;
+                }
+
+                const pointerDownEvent = new PointerEvent("pointerdown", {
+                    bubbles: true,
+                    pointerId: 1,
+                    pointerType: "mouse"
+                });
+                textarea.dispatchEvent(pointerDownEvent);
+                textarea.blur();
+
+                await new Promise((resolve) => window.requestAnimationFrame(resolve));
+
+                const activeElement = document.activeElement;
+                return {
+                    hasEditingClass: card.classList.contains("editing-in-place"),
+                    mode: host && typeof host.getMode === "function" ? host.getMode() : null,
+                    activeTagName: activeElement ? activeElement.tagName : null
+                };
+            }, cardSelector);
+
+            assert.ok(stateAfterBlur, "Expected to capture card state after pointer-driven blur");
+            assert.equal(stateAfterBlur.hasEditingClass, true, "Card should remain in inline edit mode after pointer blur");
+            assert.equal(stateAfterBlur.mode, "edit", "Editor host should maintain edit mode after pointer blur");
+            assert.notEqual(stateAfterBlur.activeTagName, "BODY", "Focus should return to an inline editor element");
+        } finally {
+            await teardown();
+        }
+    });
+
     test("inline editing keeps actions column fixed and editor aligned", async () => {
         const noteRecord = buildNoteRecord({
             noteId: LAYOUT_NOTE_ID,
