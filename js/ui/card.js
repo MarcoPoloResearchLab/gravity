@@ -138,9 +138,7 @@ function isNodeWithinInlineEditor(card, node) {
     if (!(card instanceof HTMLElement) || !(node instanceof Node)) {
         return false;
     }
-    if (!card.contains(node)) {
-        return false;
-    }
+
     /** @type {Element|null} */
     let element = null;
     if (node instanceof Element) {
@@ -154,24 +152,35 @@ function isNodeWithinInlineEditor(card, node) {
     if (element.closest(".actions")) {
         return false;
     }
-    if (element.closest(".editor-mode-toolbar")) {
-        return true;
-    }
-    if (element.classList.contains("markdown-editor")) {
-        return true;
-    }
+
+    const inlineRegions = [];
     const host = editorHosts.get(card);
     const textarea = host?.getTextarea();
-    if (textarea && element === textarea) {
-        return true;
+    if (textarea instanceof HTMLElement) {
+        inlineRegions.push(textarea);
     }
-    if (element.closest(".EasyMDEContainer")) {
-        return true;
+
+    const markdownEditor = card.querySelector(".markdown-editor");
+    if (markdownEditor instanceof HTMLElement) {
+        inlineRegions.push(markdownEditor);
     }
-    if (element.closest(".CodeMirror")) {
-        return true;
+
+    const easyMdeContainer = card.querySelector(".EasyMDEContainer");
+    if (easyMdeContainer instanceof HTMLElement) {
+        inlineRegions.push(easyMdeContainer);
     }
-    return false;
+
+    const codeMirrorRoot = card.querySelector(".CodeMirror");
+    if (codeMirrorRoot instanceof HTMLElement) {
+        inlineRegions.push(codeMirrorRoot);
+    }
+
+    const toolbar = card.querySelector(".editor-mode-toolbar");
+    if (toolbar instanceof HTMLElement) {
+        inlineRegions.push(toolbar);
+    }
+
+    return inlineRegions.some((region) => region === element || region.contains(element));
 }
 
 function calculatePreviewTextOffset(previewElement, event) {
