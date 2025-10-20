@@ -3,5 +3,5 @@ PLAN.md
 node_modules/
 *.iml
 *.db
-.env
-client_secret*.json
+.env*
+client_secret*json
