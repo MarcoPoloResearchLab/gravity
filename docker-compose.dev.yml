@@ -12,8 +12,9 @@ services:
     restart: unless-stopped
 
   backend:
-    image: ghcr.io/marcopoloresearchlab/gravity-backend:latest
-    pull_policy: always
+    build:
+      context: backend
+      dockerfile: Dockerfile
     env_file:
       - backend/.env
     ports:
