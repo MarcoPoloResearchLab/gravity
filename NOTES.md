@@ -47,27 +47,28 @@ You are a staff level full stack engineer. Your task is to **re-evaluate and ref
 Review the NOTES.md. Make a plan for autonomously fixing every item under Features, BugFixes, Improvements, Maintenance. Ensure no regressions. Ensure adding tests. Lean into integration tests. Fix every issue. Document the changes.
 
 Fix issues one by one, working sequentially. 
-1. Create a new git bracnh with descriptive name, for example `feature/LA-56-widget-defer` or `bugfix/LA-11-alpine-rehydration`. Use the taxonomy of issues as prefixes: improvement/, feature/, bugfix/, maintenace/, issue ID and a short descriptive. Respect the name limits.
-2. Describe an issue through tests. 
-2a. Ensure that the tests are comprehensive and failing to begin with. 
-2b. Ensure AGENTS.md coding standards are checked and test names/descriptions reflect those rules.
-3. Fix the issue
-4. Rerun the tests
-5. Repeat pp 2-4 untill the issue is fixed: 
-5a. old and new comprehensive tests are passing
-5b. Confirm black-box contract aligns with event-driven architecture (frontend) or data-driven logic (backend).
-5c. If an issue can not be resolved after 3 carefull iterations, 
+1. The production git branch is called `master`. The `main` branch does not exist.
+2. Create a new git bracnh with descriptive name, for example `feature/LA-56-widget-defer` or `bugfix/LA-11-alpine-rehydration`. Use the taxonomy of issues as prefixes: improvement/, feature/, bugfix/, maintenace/, issue ID and a short descriptive. Respect the name limits.
+3. Describe an issue through tests. 
+3a. Ensure that the tests are comprehensive and failing to begin with. 
+3b. Ensure AGENTS.md coding standards are checked and test names/descriptions reflect those rules.
+4. Fix the issue
+5. Rerun the tests
+6. Repeat pp 2-4 untill the issue is fixed: 
+6a. old and new comprehensive tests are passing
+6b. Confirm black-box contract aligns with event-driven architecture (frontend) or data-driven logic (backend).
+6c. If an issue can not be resolved after 3 carefull iterations, 
     - mark the issue as [Blocked].
     - document the reason for the bockage.
     - commit the changes into a separate branch called "blocked/<issue-id>".
     - work on the next issue from the divergence point of the previous issue.
-6. Write a nice comprehensive commit message AFTER EACH issue is fixed and tested and covered with tests.
-7. Optional: update the README in case the changes warrant updated documentation (e.g. have user-facing consequences)
-8. Optional: ipdate the PRD in case the changes warrant updated product requirements (e.g. change product undestanding)
-9. Optional: update the code examples in case the changes warrant updated code examples
-10. Mark an issue as done ([X])in the NOTES.md after the issue is fixed: New and existing tests are passing without regressions
-11. Commit and push the changes to the remote branch.
-12. Repeat till all issues are fixed, and commits abd branches are stacked up (one starts from another).
+7. Write a nice comprehensive commit message AFTER EACH issue is fixed and tested and covered with tests.
+8. Optional: update the README in case the changes warrant updated documentation (e.g. have user-facing consequences)
+9. Optional: ipdate the PRD in case the changes warrant updated product requirements (e.g. change product undestanding)
+10. Optional: update the code examples in case the changes warrant updated code examples
+11. Mark an issue as done ([X])in the NOTES.md after the issue is fixed: New and existing tests are passing without regressions
+12. Commit and push the changes to the remote branch.
+13. Repeat till all issues are fixed, and commits abd branches are stacked up (one starts from another).
 
 Do not work on all issues at once. Work at one issue at a time sequntially.
 
