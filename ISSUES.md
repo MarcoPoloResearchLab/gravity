@@ -150,6 +150,11 @@ Migrated backlog from NOTES.md to centralized issue log.
               * `idx_changes_user_time` on `(user_id, applied_at_s)`.
 
   - [x] [GN-19] Prepare frontend integration with the Go backend to allow Notes to be saved and restored based on the logged in user across mutliple clients. Review [GN-18] for backecnd details. have intgeration tests that allow verification of the end-2-end flow
+  - [ ] [GN-50] Develop and document the front-end system that allows to configure endpoints depending on the enviornment.
+    1. production backend: https://gravity-api.mprlab.com
+    2. development backend: http://localhost:8080
+    3. production llm-proxy: https://llm-proxy.mprlab.com
+    4. development llm-proxy: http://computercat:8081
 
 ### Improvements
 
@@ -347,37 +352,45 @@ Migrated backlog from NOTES.md to centralized issue log.
   - [x] [GN-48] Clicking on a card that is being edited doesnt change anything other than placing the cursor in the new place. There must be no flickering and no switching to rendering.
   - [x] [GN-49] Shift-enter finishes editing session and sends card to rendering mode
       - Strengthened Puppeteer coverage to track mode/class transitions and keep Shift+Enter submissions locked to a single view transition; updated inline finalize flow to exit edit mode after persistence so cards do not bounce back into edit. Full `npm test` confirms regression-free behavior.
-  - [ ] The tests are failing `npm test`. The tests were passing in branch just a few hours ago and there were no features or bugfixes requested since. Methodically analyze the tests -- I suspect that there were code regressions and omissions. Check git history, namely 62c8d99ccb5633084cbbae8914408d66495bfaf2 which seemd to be working fine.
-  ```
-    ✔ app.notifications.puppeteer.test.js (1049ms)
-  ✖ auth.avatarMenu.puppeteer.test.js exit=1 (1238ms)
-  ✔ auth.google.test.js (434ms)
-  ✔ auth.sessionPersistence.offline.puppeteer.test.js (2024ms)
-  ✔ auth.sessionPersistence.puppeteer.test.js (1165ms)
-  ✔ auth.status.puppeteer.test.js (1144ms)
-  ✔ backend.sqlite.driver.test.js (425ms)
-  ✔ classifier.client.test.js (413ms)
-  ✔ config.runtime.test.js (418ms)
-  ✔ copy.plaintext.test.js (406ms)
-  ✔ css.validity.test.js (408ms)
-  ✔ docker.packaging.test.js (396ms)
-  ✖ editor.enhanced.puppeteer.test.js exit=1 (4262ms)
-  ✖ editor.inline.puppeteer.test.js exit=1 (13018ms)
-  ✔ fullstack.endtoend.puppeteer.test.js (1025ms)
-  ✔ harness/browser.singleton.test.js (444ms)
-  ✔ harness/run-tests.harness.test.js (1037ms)
-  ✔ helpers/testHarness.test.js (1074ms)
-  ✔ markdownPreview.test.js (447ms)
-  ✔ persistence.backend.puppeteer.test.js (1028ms)
-  ✔ persistence.sync.puppeteer.test.js (1545ms)
-  ✖ preview.bounded.puppeteer.test.js exit=1 (2326ms)
-  ✔ preview.checkmark.puppeteer.test.js (2961ms)
-  ✔ store.test.js (461ms)
-  ✔ sync.endtoend.puppeteer.test.js (1396ms)
-  ✔ sync.manager.test.js (463ms)
-  ✔ ui.styles.regression.puppeteer.test.js (3130ms)
-  Totals: 23 passed | 4 failed | 0 timed out
-  ```
+  - [ ] [GN-51] Codex says that there is a regression: codex/fix-comments-and-ensure-test-coverage. The tests are failing `npm test` on CI. 
+    Limited pointer-based blur suppression to inline editor surfaces so focus can move to card action buttons without reactivating the editor. js/ui/card.jsL111-L128
+    ```
+    Summary
+      ✔ app.notifications.puppeteer.test.js (801ms)
+      ⏱ auth.avatarMenu.puppeteer.test.js timeout (30006ms)
+      ✔ auth.google.test.js (253ms)
+      ✔ auth.sessionPersistence.offline.puppeteer.test.js (1872ms)
+      ⏱ auth.sessionPersistence.puppeteer.test.js timeout (30008ms)
+      ⏱ auth.status.puppeteer.test.js timeout (30007ms)
+      ✔ backend.sqlite.driver.test.js (248ms)
+      ✔ classifier.client.test.js (255ms)
+      ✔ config.runtime.test.js (271ms)
+      ✔ copy.plaintext.test.js (249ms)
+      ✔ css.validity.test.js (251ms)
+      ✔ docker.packaging.test.js (250ms)
+      ✖ editor.enhanced.puppeteer.test.js exit=1 (3524ms)
+      ✖ editor.inline.puppeteer.test.js exit=1 (10394ms)
+      ✔ fullstack.endtoend.puppeteer.test.js (745ms)
+      ✔ harness/browser.singleton.test.js (239ms)
+      ✔ harness/run-tests.harness.test.js (647ms)
+      ✔ helpers/testHarness.test.js (831ms)
+      ✔ markdownPreview.test.js (245ms)
+      ✔ persistence.backend.puppeteer.test.js (732ms)
+      ⏱ persistence.sync.puppeteer.test.js timeout (30011ms)
+      ✖ preview.bounded.puppeteer.test.js exit=1 (1611ms)
+      ✔ preview.checkmark.puppeteer.test.js (2395ms)
+      ✔ store.test.js (263ms)
+      ✔ sync.endtoend.puppeteer.test.js (1067ms)
+      ✔ sync.manager.test.js (250ms)
+      ✔ ui.styles.regression.puppeteer.test.js (2241ms)
+      Totals: 20 passed | 3 failed | 4 timed out
+      Duration: 149665ms
+    ```
+    1. switch to codex/fix-comments-and-ensure-test-coverage
+    2. analyze the changes and their significance. If this is an imaginary regression report as such and abort
+    3. add a failing test for the case the PR is supposed to fix
+    4. Develop a fix
+    5. Push the changes back to codex/fix-comments-and-ensure-test-coverage
 
 ### Maintenance
 
@@ -436,6 +449,5 @@ Migrated backlog from NOTES.md to centralized issue log.
     - [x] Automated regression tests in `tests/editor.inline.puppeteer.test.js` now enforce height, border, editor-alignment, Shift+Enter submission, and preview suppression expectations and pass with the restored styling.
   - [x] [GN-45] Tests are failing on the CI (GitHub Actions). Tests pass locally because `tests/ui.styles.regression.puppeteer.test.js` launched its own browser instead of the shared harness.
     - Captured the failing CI log for reference and rewrote the regression suite to use `createSharedPage`, with resilient assertions against computed pixel dimensions. Full `npm test` now passes and CI no longer reports the multiple-launch guard.
-  - [ ] [GN-50] Provide a development docker compose that rebuilds the backend image on launch. 
-    - The `.env` files required for docker compose were accidentally deleted. recreate both .env and .env sample and document its usage. use [text](backend/client_secret_2_156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com.json) to extract the actual values in the .env file (check the code and temirov/GAuss package for the details of authentication)
+  
 
