@@ -86,3 +86,4 @@ All feature, improvement, bugfix, and maintenance backlog entries now live in `I
 ## Completed
 
 - [x] 2025-10-21 — GN-52 collapsed the LLM proxy configuration to a single `llmProxyUrl` endpoint with updated docs and tests.
+- [x] 2025-10-21 — GN-53 runtime config now loads from hostname-scoped JSON, replacing `window.GRAVITY_CONFIG` overrides.

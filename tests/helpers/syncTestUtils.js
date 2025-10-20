@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { appConfig } from "../../js/core/config.js";
 import { EVENT_AUTH_SIGN_IN } from "../../js/constants.js";
 import { startTestBackend } from "./backendHarness.js";
-import { connectSharedBrowser } from "./browserHarness.js";
+import { connectSharedBrowser, injectRuntimeConfig } from "./browserHarness.js";
 
 const APP_BOOTSTRAP_SELECTOR = "#top-editor .markdown-editor";
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -31,6 +31,12 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
     if (typeof beforeNavigate === "function") {
         await beforeNavigate(page);
     }
+    await injectRuntimeConfig(page, {
+        development: {
+            backendBaseUrl,
+            llmProxyUrl
+        }
+    });
     await page.evaluateOnNewDocument((storageKey) => {
         const initialized = window.sessionStorage.getItem("__gravityTestInitialized") === "true";
         if (!initialized) {
@@ -41,12 +47,6 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
             window.localStorage.setItem(storageKey, "[]");
         }
     }, appConfig.storageKey);
-    await page.evaluateOnNewDocument((config) => {
-        window.GRAVITY_CONFIG = config;
-    }, {
-        backendBaseUrl,
-        llmProxyUrl
-    });
 
     await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
     await waitForAppReady(page);
@@ -104,9 +104,12 @@ export async function initializePuppeteerTest(pageUrl = DEFAULT_PAGE_URL) {
     const browser = await connectSharedBrowser();
     const context = await browser.createBrowserContext();
     const page = await context.newPage();
-    await page.evaluateOnNewDocument(({ config }) => {
-        window.GRAVITY_CONFIG = config;
-    }, { config: { backendBaseUrl: backend.baseUrl, llmProxyUrl: "" } });
+    await injectRuntimeConfig(page, {
+        development: {
+            backendBaseUrl: backend.baseUrl,
+            llmProxyUrl: ""
+        }
+    });
     await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
     await waitForAppReady(page);
 

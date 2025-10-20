@@ -59,14 +59,6 @@ export const CLIPBOARD_METADATA_DATA_URL_PREFIX = `data:${CLIPBOARD_MIME_NOTE};b
 export const MESSAGE_NOTE_COPIED = "Copied to clipboard";
 export const PASTED_IMAGE_ALT_TEXT_PREFIX = "Pasted image";
 
-export const GLOBAL_CONFIG_OBJECT_KEY = "GRAVITY_CONFIG";
-export const CONFIG_KEY_BACKEND_BASE_URL = "backendBaseUrl";
-export const CONFIG_KEY_LLM_PROXY_URL = "llmProxyUrl";
-export const CONFIG_KEY_ENVIRONMENT = "environment";
-export const META_NAME_BACKEND_BASE_URL = "gravity-backend-base-url";
-export const META_NAME_LLM_PROXY_URL = "gravity-llm-proxy-url";
-export const META_NAME_ENVIRONMENT = "gravity-environment";
-
 export const CLASSIFIER_ALLOWED_HANDLES = Object.freeze(["@self", "@alice", "@peter", "@nat"]);
 export const CLASSIFIER_KNOWN_PROJECTS = Object.freeze(["Moving Maps", "Blanket"]);
 export const CLASSIFIER_KNOWN_AREAS = Object.freeze(["Finance", "Infra", "Health", "Family Ops"]);

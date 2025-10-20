@@ -45,13 +45,9 @@ the DOM.
   `gravity:auth-sign-out` events by rehydrating the card grid via `initializeNotes()`.
 * Google Identity Services loads from `https://accounts.google.com/gsi/client`; the client ID lives in
   `appConfig.googleClientId` and should be reused across environments.
-* `appConfig.backendBaseUrl` reads overrides from `window.GRAVITY_CONFIG.backendBaseUrl` or the
-  `<meta name="gravity-backend-base-url">` tag. Absent overrides it falls back to the current origin (or
-  `http://localhost:8080` when served from `file://`).
-* `appConfig.llmProxyUrl` resolves the full classification endpoint using overrides from
-  `window.GRAVITY_CONFIG.llmProxyUrl` or `<meta name="gravity-llm-proxy-url">`. Absent overrides it falls back to the
-  environment default or the hosted proxy at `https://llm-proxy.mprlab.com/v1/gravity/classify`. Supplying an empty
-  string disables remote classification during development.
+* `appConfig.backendBaseUrl` and `appConfig.llmProxyUrl` now load from `data/runtime.config.<environment>.json`, picked
+  automatically based on the current hostname. The repository ships with development and production JSON files; edit
+  these to point at custom backends or proxies.
 * The auth controls hide the Google button once a profile is active and expose the stacked avatar menu (export, import,
   sign out). The sign-out item dispatches `gravity:auth-sign-out`.
 * Successful `gravity:auth-sign-in` handlers now persist `{ user, credential }` in `localStorage` so reloads replay the

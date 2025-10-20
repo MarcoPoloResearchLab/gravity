@@ -16,7 +16,7 @@
   - Editor: EasyMDE (2.19.0) for inline Markdown; top editor is structural and does not persist.
   - Rendering: marked.js + DOMPurify; code detection adds a lightweight `code` badge.
   - Network clients: `js/core/backendClient.js` and `js/core/classifier.js` (injectable for tests).
-  - Runtime config: `appConfig` resolves via `window.GRAVITY_CONFIG` or `<meta>` tags (backend base URL, LLM proxy endpoints).
+  - Runtime config: `appConfig` loads from environment-specific JSON files under `data/`, selected according to the active hostname.
   - Storage: `localStorage` remains the offline source of truth; server reconciliation applies snapshots on sign-in.
 
 - Backend (Go)

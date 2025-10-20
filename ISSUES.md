@@ -232,7 +232,7 @@ Migrated backlog from NOTES.md to centralized issue log.
         };
     </script>
     ```
-  - [ ] [GN-53] The runtime configuration must be dynamic, so that the same code will work in production and in development without editing index.html. Remove an ability to inject configuration in index.html. There must be only one way of storing configuration as data: some json file that the system loads. If the system is loaded on the localhost, it's development, if the system is loaded on .com domain then it's production. The general idea is (the script is just a mockup for inspiration)
+  - [x] [GN-53] The runtime configuration must be dynamic, so that the same code will work in production and in development without editing index.html. Remove an ability to inject configuration in index.html. There must be only one way of storing configuration as data: some json file that the system loads. If the system is loaded on the localhost, it's development, if the system is loaded on .com domain then it's production. The general idea is (the script is just a mockup for inspiration)
   ```js
     <script>
   (function () {
@@ -505,3 +505,6 @@ Migrated backlog from NOTES.md to centralized issue log.
 - Resolved: GN-52 Redesign llmProxy configuration
   - Collapsed the proxy settings to a single `llmProxyUrl` value with legacy key support during the transition.
   - Updated docs and automation to reference the consolidated endpoint while keeping blank overrides to disable classification in development.
+- Resolved: GN-53 Runtime configuration loader
+  - Added environment-driven JSON configs under `data/` and a runtime loader that selects the profile based on the active hostname before bootstrapping Alpine.
+  - Removed `window.GRAVITY_CONFIG` / meta tag overrides, updated tests to intercept config fetches, and refreshed documentation to describe the new flow.

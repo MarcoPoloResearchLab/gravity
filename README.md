@@ -141,9 +141,8 @@ Conflict resolution follows the documented `(client_edit_seq, updated_at)` prece
 
 ### Frontend Sync
 
-- `appConfig.backendBaseUrl` resolves at runtime from `window.GRAVITY_CONFIG.backendBaseUrl` or a `<meta name="gravity-backend-base-url">` tag. When neither is provided it falls back to the current origin (or `http://localhost:8080` when served from `file://`).
-- `appConfig.llmProxyUrl` resolves a single classification endpoint. Provide overrides via `window.GRAVITY_CONFIG.llmProxyUrl` or `<meta name="gravity-llm-proxy-url">`; supplying an empty string disables remote classification during local development. When no override is present the endpoint falls back to the environment defaults or the hosted proxy at `https://llm-proxy.mprlab.com/v1/gravity/classify`.
-- `appConfig.environment` exposes the normalized environment name (either `production` or `development`) when provided via `window.GRAVITY_CONFIG.environment` or `<meta name="gravity-environment">`. Each environment preloads endpoints:
+- `appConfig.backendBaseUrl` and `appConfig.llmProxyUrl` load from `data/runtime.config.<environment>.json`, selected automatically according to `location.hostname`. When the host ends with `.com` the production profile is used; localhost and other domains default to the development profile. Each JSON entry can still disable classification by setting `"llmProxyUrl": ""`.
+- `appConfig.environment` reflects the environment declared in the loaded JSON file. The repository ships with:
     - `production` → backend `https://gravity-api.mprlab.com`, LLM proxy `https://llm-proxy.mprlab.com/v1/gravity/classify`
     - `development` → backend `http://localhost:8080`, LLM proxy `http://computercat:8081/v1/gravity/classify`
   Explicit URL overrides still take precedence over the environment defaults.
@@ -154,36 +153,27 @@ Conflict resolution follows the documented `(client_edit_seq, updated_at)` prece
 
 #### Runtime configuration
 
-Select an environment or provide explicit endpoints before loading `index.html`. Setting an environment applies the defaults listed above:
+Select the desired profile by editing the JSON files under `data/`:
 
-```html
-<script nonce="<server-generated-nonce>">
-    window.GRAVITY_CONFIG = {
-        environment: "development"
-    };
-</script>
+```jsonc
+// data/runtime.config.development.json
+{
+    "environment": "development",
+    "backendBaseUrl": "http://localhost:8080",
+    "llmProxyUrl": "http://localhost:8081/v1/gravity/classify"
+}
 ```
 
-Override individual URLs as needed:
-
-```html
-<script nonce="<server-generated-nonce>">
-    window.GRAVITY_CONFIG = {
-        backendBaseUrl: "http://localhost:8000",
-        llmProxyUrl: "http://localhost:8081/v1/gravity/classify"
-    };
-</script>
+```jsonc
+// data/runtime.config.production.json
+{
+    "environment": "production",
+    "backendBaseUrl": "https://gravity-api.mprlab.com",
+    "llmProxyUrl": "https://llm-proxy.mprlab.com/v1/gravity/classify"
+}
 ```
 
-Note: If you enable a Content Security Policy (CSP), include the matching nonce for the inline configuration script, and ensure `connect-src` lists all configured endpoints (e.g., `http://localhost:8080` for the backend and `http://localhost:8081` for the LLM proxy when used). CSP is optional and low priority; you can ignore this if not enforcing CSP.
-
-Or embed meta tags when templating the page:
-
-```html
-<meta name="gravity-environment" content="production">
-<meta name="gravity-backend-base-url" content="https://gravity-notes.example.com/api">
-<meta name="gravity-llm-proxy-url" content="https://proxy.example.com/v1/gravity/classify">
-```
+Note: When serving the app from a custom domain, ensure the hostname detection resolves to the intended profile (e.g., `.com` for production). Adjust the JSON files or extend the detection logic if additional environments are required.
 
 ## Development with Docker
 
