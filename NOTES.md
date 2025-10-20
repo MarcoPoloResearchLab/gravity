@@ -38,6 +38,9 @@ You are a staff level full stack engineer. Your task is to **re-evaluate and ref
 * Always follow AGENTS.md rules (do not restate them, do not invent new ones).
 * Output a **PLAN.md** first, then refactor step-by-step.
 * Only modify necessary files.
+* Treat `NOTES.md` as read-only; never edit it during an implementation cycle.
+* Only touch the following markdown files while delivering work: `ISSUES.md` (append-only status log), `PLAN.md` (local, untracked scratchpad), and `CHANGELOG.md` (post-completion history).
+* If `PLAN.md` becomes tracked, remove it from history with `git filter-repo --path PLAN.md --invert-paths` before continuing.
 * Descriptive identifiers, no single-letter names.
 * End with a short summary of changed files and new event contracts.
 

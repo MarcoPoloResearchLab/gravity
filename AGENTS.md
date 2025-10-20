@@ -95,6 +95,7 @@
 * `// @ts-check` at file top.
 * `types.d.js` holds typedefs (`Note`, `NoteClassification`, etc.).
 * Each domain module has a `doc.md` or `README.md`.
+* Before changing integrations with third-party libraries (EasyMDE, marked.js, DOMPurify, etc.), read the companion docs in-repo (`MDE.v2.19.0.md`, `marked.js.md`, …) to ensure we're using the supported APIs instead of re-implementing them.
 
 ### 9. Refactors
 

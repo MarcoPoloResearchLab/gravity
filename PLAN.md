@@ -1,6 +1,0 @@
-- [x] [GN-53] Generate project changelog
-    - Inventoried major commits from October 2025 (GN-50, GN-51, GN-45→GN-49) and summarised outcomes.
-    - Captured infrastructure and harness updates from October 16 (GN-42, GN-31, GN-41) with clear categories.
-    - Consolidated September 2025 editor/navigation enhancements and the April 2025 initial release notes.
-    - Drafted `CHANGELOG.md` using Keep a Changelog structure with dates and issue references.
-    - Updated `ISSUES.md` with a resolved entry and re-ran the full Puppeteer and unit suite (all passed before shell timeout).
