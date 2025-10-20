@@ -109,10 +109,20 @@ function shouldKeepEditingAfterBlur(card) {
         return false;
     }
     const activeElement = document.activeElement;
-    if (activeElement instanceof HTMLElement && card.contains(activeElement)) {
-        return true;
+    if (activeElement instanceof HTMLElement) {
+        if (card.contains(activeElement)) {
+            return true;
+        }
+        if (activeElement !== document.body) {
+            return false;
+        }
+    } else if (activeElement !== null) {
+        return false;
     }
-    if (lastPointerDownTarget instanceof Node && card.contains(lastPointerDownTarget)) {
+    const pointerTarget = lastPointerDownTarget;
+    // Preserve edit mode when the most recent pointer interaction occurred inside the card
+    // and focus either remained within the card or fell back to the document body.
+    if (pointerTarget instanceof Node && card.contains(pointerTarget) && pointerTarget.isConnected) {
         return true;
     }
     return false;

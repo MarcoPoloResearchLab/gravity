@@ -708,6 +708,70 @@ test.describe("Markdown inline editor", () => {
         }
     });
 
+    test("inline editor releases focus when card action receives focus", async () => {
+        const seededRecords = [buildNoteRecord({
+            noteId: NOTE_ID,
+            markdownText: INITIAL_MARKDOWN,
+            attachments: {}
+        })];
+
+        const { page, teardown } = await preparePage({ records: seededRecords });
+        const cardSelector = `.markdown-block[data-note-id="${NOTE_ID}"]`;
+
+        try {
+            await page.waitForSelector(cardSelector);
+            await enterCardEditMode(page, cardSelector);
+            await focusCardEditor(page, cardSelector, "end");
+
+            const focusResult = await page.evaluate((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return { focused: false, action: null };
+                }
+                const button = card.querySelector(".actions .action-button");
+                if (!(button instanceof HTMLElement)) {
+                    return { focused: false, action: null };
+                }
+                if (typeof button.focus === "function") {
+                    button.focus();
+                }
+                return {
+                    focused: document.activeElement === button,
+                    action: button.dataset.action || null
+                };
+            }, cardSelector);
+            assert.equal(focusResult.focused, true, "Card action button should receive focus");
+
+            await page.waitForFunction((selector) => {
+                const card = document.querySelector(selector);
+                return card instanceof HTMLElement && !card.classList.contains("editing-in-place");
+            }, {}, cardSelector);
+
+            const finalState = await page.evaluate((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return null;
+                }
+                const host = /** @type {any} */ (card).__markdownHost;
+                const activeElement = document.activeElement;
+                return {
+                    hasEditingClass: card.classList.contains("editing-in-place"),
+                    mode: host && typeof host.getMode === "function" ? host.getMode() : null,
+                    activeTagName: activeElement ? activeElement.tagName : null,
+                    activeAction: activeElement instanceof HTMLElement ? (activeElement.dataset.action || null) : null
+                };
+            }, cardSelector);
+
+            assert.ok(finalState, "Expected to capture final editor state");
+            assert.equal(finalState.hasEditingClass, false, "Card should exit inline editing after focus leaves");
+            assert.equal(finalState.mode, "view", "Editor host should return to view mode after focus leaves");
+            assert.equal(finalState.activeTagName, "BUTTON", "Focus should remain on the action button after blur");
+            assert.equal(finalState.activeAction, focusResult.action, "Focused action should remain active after blur");
+        } finally {
+            await teardown();
+        }
+    });
+
     test("inline editing keeps actions column fixed and editor aligned", async () => {
         const noteRecord = buildNoteRecord({
             noteId: LAYOUT_NOTE_ID,
