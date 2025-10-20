@@ -470,3 +470,6 @@ Migrated backlog from NOTES.md to centralized issue log.
 - Resolved: GN-50 Environment-aware endpoint configuration
   - Added normalized environment detection with production/development defaults for backend and LLM URLs in `js/core/config.js`.
   - Documented usage in `README.md` and extended `tests/config.runtime.test.js` to cover environment cases.
+- Resolved: GN-53 Generate a CHANGELOG.md
+  - Added `CHANGELOG.md` capturing historical milestones across April, September, and October 2025 using the Keep a Changelog format.
+  - Noted empowered infrastructure, UI polish, and configuration work so future contributions can reference a single canonical history.
