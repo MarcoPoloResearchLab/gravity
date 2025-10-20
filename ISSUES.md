@@ -423,6 +423,39 @@ Migrated backlog from NOTES.md to centralized issue log.
     3. add a failing test for the case the PR is supposed to fix
     4. Develop a fix
     5. Push the changes back to codex/fix-comments-and-ensure-test-coverage
+  - [ ] [GN-56] There is no visual deliniator between the notes. add a thin visual deliniator between the notes
+  - [ ] [GN-57] There are various issues logged by JS Console. Analyze each, develop a plan to address it and deliver a fix
+    ```
+    Cookie warnings 2
+    The value of the attribute “expires” for the cookie “_ga_WYL7PDVTHN” has been overwritten. localhost:8000
+    The value of the attribute “expires” for the cookie “_ga_WYL7PDVTHN” has been overwritten. localhost:8000
+    Feature Policy: Skipping unsupported feature name “identity-credentials-get”. client:270:37
+    Feature Policy: Skipping unsupported feature name “identity-credentials-get”. client:271:336
+    GET
+    https://accounts.google.com/gsi/button?theme=outline&size=small&shape=pill&text=signin_with&is_fedcm_supported=false&client_id=156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com&iframe_id=gsi_797939_130691&cas=itY6hAE+jQe797Ft4XPD4xNL9LIm9tlWDUgVDynSwmo
+    [HTTP/3 403  75ms]
+
+    XHRGET
+    https://accounts.google.com/gsi/status?client_id=156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com&cas=itY6hAE+jQe797Ft4XPD4xNL9LIm9tlWDUgVDynSwmo&is_itp=true
+    [HTTP/3 403  76ms]
+
+    Content-Security-Policy warnings 5
+    Content-Security-Policy: Ignoring “'unsafe-inline'” within script-src: ‘strict-dynamic’ specified button
+    Content-Security-Policy: Ignoring “https:” within script-src: ‘strict-dynamic’ specified button
+    Content-Security-Policy: Ignoring “http:” within script-src: ‘strict-dynamic’ specified button
+    Content-Security-Policy: Ignoring “'unsafe-inline'” within script-src: nonce-source or hash-source specified button
+    Content-Security-Policy: Couldn’t process unknown directive ‘require-trusted-types-for’ button
+    [GSI_LOGGER]: The given origin is not allowed for the given client ID. client:74:89
+    [GSI_LOGGER]: The given origin is not allowed for the given client ID. m=credential_button_library:74:89
+    ```
+  - [ ] [GN-58] The editor is broken: it duplicates the editing text. For example, the note containing this text shows markdown twice
+    ```
+    - [ ] No lines separating the first card from the next
+    - [ ] 
+    ```
+    Dilligently investigate why such double markdown representation is possible. radically simplify the implementation leaning into the MDE amd marked.js. Ensure we have tests that guratee that we dont perform any operations twice and that we dont show markdown twice. This is the most critical issue, spend a liot of compute to get it right.
+  - [ ] [GN-59] Change mouse behaviour: single click on a note expands it in the rendered mode if needed. Double click opens note for editing
+
 
 ### Maintenance
 
@@ -482,6 +515,11 @@ Migrated backlog from NOTES.md to centralized issue log.
   - [x] [GN-45] Tests are failing on the CI (GitHub Actions). Tests pass locally because `tests/ui.styles.regression.puppeteer.test.js` launched its own browser instead of the shared harness.
     - Captured the failing CI log for reference and rewrote the regression suite to use `createSharedPage`, with resilient assertions against computed pixel dimensions. Full `npm test` now passes and CI no longer reports the multiple-launch guard.
   -[x] [GN-53] Generate a CHANGELOG.md and track changes over there. Populate it with historical changes based on git history.
+
+### Planning (do not work on these, not ready)
+
+- [ ] [GN-55] The current llm-proxy URL is wrong -- there is no such path as https://llm-proxy.mprlab.com/v1/gravity/
+  classify. There is only https://llm-proxy.mprlab.com/, and we need to be sending a system prompt to it to get classification. I have copied llm-proxy codebase under the tools folder. Prepare a system prompt for classification of the notes and send it to llm-proxy service. 
 
 ## 2025-10-21
 
