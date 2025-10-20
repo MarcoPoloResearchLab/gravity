@@ -110,7 +110,7 @@ function shouldKeepEditingAfterBlur(card) {
     }
     const activeElement = document.activeElement;
     if (activeElement instanceof HTMLElement) {
-        if (card.contains(activeElement)) {
+        if (isNodeWithinInlineEditor(card, activeElement)) {
             return true;
         }
         if (activeElement !== document.body) {
@@ -123,6 +123,52 @@ function shouldKeepEditingAfterBlur(card) {
     // Preserve edit mode when the most recent pointer interaction occurred inside the card
     // and focus either remained within the card or fell back to the document body.
     if (pointerTarget instanceof Node && card.contains(pointerTarget) && pointerTarget.isConnected) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Determine whether a node resides inside the inline editor region for the provided card.
+ * @param {HTMLElement} card
+ * @param {Node|null} node
+ * @returns {boolean}
+ */
+function isNodeWithinInlineEditor(card, node) {
+    if (!(card instanceof HTMLElement) || !(node instanceof Node)) {
+        return false;
+    }
+    if (!card.contains(node)) {
+        return false;
+    }
+    /** @type {Element|null} */
+    let element = null;
+    if (node instanceof Element) {
+        element = node;
+    } else if ("parentElement" in node) {
+        element = node.parentElement;
+    }
+    if (!(element instanceof Element)) {
+        return false;
+    }
+    if (element.closest(".actions")) {
+        return false;
+    }
+    if (element.closest(".editor-mode-toolbar")) {
+        return true;
+    }
+    if (element.classList.contains("markdown-editor")) {
+        return true;
+    }
+    const host = editorHosts.get(card);
+    const textarea = host?.getTextarea();
+    if (textarea && element === textarea) {
+        return true;
+    }
+    if (element.closest(".EasyMDEContainer")) {
+        return true;
+    }
+    if (element.closest(".CodeMirror")) {
         return true;
     }
     return false;
