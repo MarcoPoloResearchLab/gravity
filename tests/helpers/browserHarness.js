@@ -10,6 +10,12 @@ import {
 import { readRuntimeContext } from "./runtimeContext.js";
 
 let sharedLaunchContext = null;
+const CONFIG_ROUTE_PATTERN = /\/data\/runtime\.config\.(development|production)\.json$/u;
+const DEFAULT_TEST_RUNTIME_CONFIG = Object.freeze({
+    backendBaseUrl: "",
+    llmProxyUrl: ""
+});
+const RUNTIME_CONFIG_SYMBOL = Symbol("gravityRuntimeConfigOverrides");
 
 /**
  * Launch the shared Puppeteer browser for the entire test run.
@@ -68,16 +74,81 @@ export async function connectSharedBrowser() {
  * Create an isolated page scoped to its own incognito browser context.
  * @returns {Promise<{ browser: import("puppeteer").Browser, context: import("puppeteer").BrowserContext, page: import("puppeteer").Page, teardown: () => Promise<void> }>}
  */
-export async function createSharedPage() {
+export async function createSharedPage(runtimeConfigOverrides = {}) {
     const browser = await connectSharedBrowser();
     const context = await browser.createBrowserContext();
     const page = await context.newPage();
+    await injectRuntimeConfig(page, runtimeConfigOverrides);
     const teardown = async () => {
         await page.close().catch(() => {});
         await context.close().catch(() => {});
         browser.disconnect();
     };
     return { browser, context, page, teardown };
+}
+
+/**
+ * Intercept runtime config fetches and respond with deterministic payloads.
+ * @param {import('puppeteer').Page} page
+ * @param {Record<string, any>} overrides
+ * @returns {Promise<void>}
+ */
+export async function injectRuntimeConfig(page, overrides = {}) {
+    if (!page[RUNTIME_CONFIG_SYMBOL]) {
+        page[RUNTIME_CONFIG_SYMBOL] = overrides;
+        await page.setRequestInterception(true);
+        page.on("request", (request) => {
+            const url = request.url();
+            if (CONFIG_ROUTE_PATTERN.test(url)) {
+                const match = url.match(CONFIG_ROUTE_PATTERN);
+                const environment = match && match[1] ? match[1] : "development";
+                const resolvedOverrides = resolveRuntimeConfigOverrides(page[RUNTIME_CONFIG_SYMBOL], environment);
+                const body = JSON.stringify({
+                    environment,
+                    backendBaseUrl: resolvedOverrides.backendBaseUrl,
+                    llmProxyUrl: resolvedOverrides.llmProxyUrl
+                });
+                request.respond({ status: 200, contentType: "application/json", body }).catch(() => {});
+                return;
+            }
+            request.continue().catch(() => {});
+        });
+        return;
+    }
+    page[RUNTIME_CONFIG_SYMBOL] = overrides;
+}
+
+/**
+ * @param {Record<string, any>} overrides
+ * @param {"development" | "production"} environment
+ * @returns {{ backendBaseUrl: string, llmProxyUrl: string }}
+ */
+function resolveRuntimeConfigOverrides(overrides, environment) {
+    if (!overrides || typeof overrides !== "object") {
+        return { ...DEFAULT_TEST_RUNTIME_CONFIG };
+    }
+    const scoped = typeof overrides[environment] === "object" && overrides[environment] !== null
+        ? overrides[environment]
+        : null;
+    const backendBaseUrl = normalizeTestUrl(scoped?.backendBaseUrl ?? overrides.backendBaseUrl ?? DEFAULT_TEST_RUNTIME_CONFIG.backendBaseUrl);
+    const llmProxyUrl = normalizeTestUrl(scoped?.llmProxyUrl ?? overrides.llmProxyUrl ?? DEFAULT_TEST_RUNTIME_CONFIG.llmProxyUrl, true);
+    return { backendBaseUrl, llmProxyUrl };
+}
+
+/**
+ * @param {unknown} value
+ * @param {boolean} allowBlank
+ * @returns {string}
+ */
+function normalizeTestUrl(value, allowBlank = false) {
+    if (typeof value !== "string") {
+        return allowBlank ? "" : DEFAULT_TEST_RUNTIME_CONFIG.backendBaseUrl;
+    }
+    const trimmed = value.trim();
+    if (trimmed.length === 0) {
+        return allowBlank ? "" : DEFAULT_TEST_RUNTIME_CONFIG.backendBaseUrl;
+    }
+    return trimmed.replace(/\/+$/u, "");
 }
 
 /**

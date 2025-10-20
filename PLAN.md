@@ -1,6 +1,6 @@
-- [x] [GN-53] Generate project changelog
-    - Inventoried major commits from October 2025 (GN-50, GN-51, GN-45→GN-49) and summarised outcomes.
-    - Captured infrastructure and harness updates from October 16 (GN-42, GN-31, GN-41) with clear categories.
-    - Consolidated September 2025 editor/navigation enhancements and the April 2025 initial release notes.
-    - Drafted `CHANGELOG.md` using Keep a Changelog structure with dates and issue references.
-    - Updated `ISSUES.md` with a resolved entry and re-ran the full Puppeteer and unit suite (all passed before shell timeout).
+- [x] [GN-53] Load runtime configuration based on host domain
+    - Added environment JSON profiles under `data/` and a loader that selects the file via hostname before Alpine boot.
+    - Replaced `window.GRAVITY_CONFIG` / meta tag overrides with `setRuntimeConfig` helpers in `js/core/config.js`, plus test reset hooks.
+    - Deferred app bootstrap until the config promise resolves and wired classifier/backend clients to the injected values.
+    - Updated Node + Puppeteer suites to stub config fetches and refreshed docs to describe the new mechanism.
+    - Verified with `timeout -k 410s -s SIGKILL 400s npm test` (harness reported 27/27 passing suites before the wrapper timeout).

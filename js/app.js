@@ -7,6 +7,7 @@ import { renderCard, updateActionButtons, insertCardRespectingPinned } from "./u
 import { initializeImportExport } from "./ui/importExport.js";
 import { GravityStore } from "./core/store.js";
 import { appConfig } from "./core/config.js";
+import { initializeRuntimeConfig } from "./core/runtimeConfig.js";
 import { createGoogleIdentityController } from "./core/auth.js";
 import { createSyncManager } from "./core/syncManager.js";
 import { loadAuthState, saveAuthState, clearAuthState, isAuthStateFresh } from "./core/authState.js";
@@ -48,12 +49,18 @@ const CONSTANTS_VIEW_MODEL = Object.freeze({
 
 const NOTIFICATION_DEFAULT_DURATION_MS = 3000;
 
-document.addEventListener("alpine:init", () => {
-    Alpine.data("gravityApp", gravityApp);
+bootstrapApplication().catch((error) => {
+    logging.error("Failed to bootstrap Gravity Notes", error);
 });
 
-window.Alpine = Alpine;
-Alpine.start();
+async function bootstrapApplication() {
+    await initializeRuntimeConfig();
+    document.addEventListener("alpine:init", () => {
+        Alpine.data("gravityApp", gravityApp);
+    });
+    window.Alpine = Alpine;
+    Alpine.start();
+}
 
 /**
  * Alpine root component that wires the Gravity Notes application.

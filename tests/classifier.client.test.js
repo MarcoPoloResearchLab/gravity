@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createClassifierClient, ClassifierClient } from "../js/core/classifier.js";
+import { clearRuntimeConfigForTesting, setRuntimeConfig } from "../js/core/config.js";
+
+test.beforeEach(() => {
+    clearRuntimeConfigForTesting();
+});
 
 test("createClassifierClient uses injected fetch for classification", async () => {
     const mockResponse = {
@@ -42,18 +47,13 @@ test("createClassifierClient uses injected fetch for classification", async () =
 });
 
 test("ClassifierClient falls back when endpoint disabled", async () => {
-    const originalWindow = globalThis.window;
-    try {
-        globalThis.window = { GRAVITY_CONFIG: { llmProxyClassifyUrl: "" } };
-        const result = await ClassifierClient.classifyOrFallback("Any", "Text");
-        assert.equal(result.category, "Journal");
-        assert.equal(result.status, "idea");
-        assert.equal(typeof result.occurred_at, "string");
-        assert.equal(result.privacy, "private");
-        assert.deepEqual(result.tags, []);
-    } finally {
-        globalThis.window = originalWindow;
-    }
+    setRuntimeConfig({ llmProxyUrl: "" });
+    const result = await ClassifierClient.classifyOrFallback("Any", "Text");
+    assert.equal(result.category, "Journal");
+    assert.equal(result.status, "idea");
+    assert.equal(typeof result.occurred_at, "string");
+    assert.equal(result.privacy, "private");
+    assert.deepEqual(result.tags, []);
 });
 
 test("createClassifierClient returns fallback on fetch error", async () => {
@@ -64,4 +64,3 @@ test("createClassifierClient returns fallback on fetch error", async () => {
     assert.equal(result.category, "Journal");
     assert.equal(result.status, "idea");
 });
-
