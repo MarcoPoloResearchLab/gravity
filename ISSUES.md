@@ -233,7 +233,7 @@ Migrated backlog from NOTES.md to centralized issue log.
         };
     </script>
     ```
-    Use 
+  - [ ] [GN-53] The runtime configuration must be dynamic, so that the same code will work in production and in development without editing index.html. Remove an ability to inject configuration in index.html. There must be only one way of storing configuration as data: some json file that the system loads. If the system is loaded on the localhost, it's development, if the system is loaded on .com domain then it's production
 
 ### BugFixes
 
@@ -460,7 +460,7 @@ Migrated backlog from NOTES.md to centralized issue log.
     - [x] Automated regression tests in `tests/editor.inline.puppeteer.test.js` now enforce height, border, editor-alignment, Shift+Enter submission, and preview suppression expectations and pass with the restored styling.
   - [x] [GN-45] Tests are failing on the CI (GitHub Actions). Tests pass locally because `tests/ui.styles.regression.puppeteer.test.js` launched its own browser instead of the shared harness.
     - Captured the failing CI log for reference and rewrote the regression suite to use `createSharedPage`, with resilient assertions against computed pixel dimensions. Full `npm test` now passes and CI no longer reports the multiple-launch guard.
-  
+  -[ ] [GN-53] Generate a CHANGELOG.md and track changes over there. Populate it with historical changes based on git history.
 
 ## 2025-10-21
 

@@ -3,7 +3,7 @@
 ## Role
 
 You are a staff level full stack engineer. Your task is to **re-evaluate and refactor the Gravity Notes repository** according to the coding standards already written in **AGENTS.md**.  
-**Read-only:** Keep operational notes only. Record all issues in `ISSUES.md`.
+**Read-only:** Keep operational notes only. Record all issues in `ISSUES.md`. Track changes in the `CHANGELOG.md`
 
 ## Context
 
@@ -30,7 +30,7 @@ You are a staff level full stack engineer. Your task is to **re-evaluate and ref
     * Prioritize data-driven solutions over imperative approach
     * Design and use shared components
 5. **Tests** → Add/adjust Puppeteer tests for key flows (button → event → notification; cross-panel isolation). Prioritize end-2-end and integration tests.
-6. **Docs** → Update README and MIGRATION.md with new event contracts, removed globals, and developer instructions.
+6. **Docs** → Update README and CHANGELOG.md with new event contracts, removed globals, and developer instructions.
 7. **Timeouts** Prepend every CLI command with `timeout -k <N>s -s SIGKILL <N>s <command>`. This is mandatory for all commands (local dev, CI, docs, scripts). Pick `<N>` appropriate to the operation; avoid indefinite waits. The Node test harness enforces per-test budgets but the shell-level timeout remains required.
 
 ## Output requirements
