@@ -1,4 +1,5 @@
-- [x] [GN-51] Inline editor blur regression causes action buttons to be unusable
-    - Confirmed regression via pointer tracking and crafted a Puppeteer test that verifies pinning while editing finalizes the card.
-    - Scoped blur suppression to editor surfaces and finalized editing on non-copy card actions to keep buttons accessible.
-    - Executed the targeted suite followed by `timeout -k 400s -s SIGKILL 400s npm test` to validate the fix.
+- [x] [GN-50] Environment-specific endpoint configuration
+    - Added environment mapping and detection to `js/core/config.js`, returning production or development defaults when specified.
+    - Expanded `tests/config.runtime.test.js` to cover environment-driven resolutions and normalization behavior.
+    - Documented configuration flows and the new `<meta name="gravity-environment">` option in `README.md`.
+    - Verified the change set with `timeout -k 400s -s SIGKILL 400s npm test`.

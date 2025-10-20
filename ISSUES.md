@@ -150,7 +150,7 @@ Migrated backlog from NOTES.md to centralized issue log.
               * `idx_changes_user_time` on `(user_id, applied_at_s)`.
 
   - [x] [GN-19] Prepare frontend integration with the Go backend to allow Notes to be saved and restored based on the logged in user across mutliple clients. Review [GN-18] for backecnd details. have intgeration tests that allow verification of the end-2-end flow
-  - [ ] [GN-50] Develop and document the front-end system that allows to configure endpoints depending on the enviornment.
+  - [x] [GN-50] Develop and document the front-end system that allows to configure endpoints depending on the enviornment.
     1. production backend: https://gravity-api.mprlab.com
     2. development backend: http://localhost:8080
     3. production llm-proxy: https://llm-proxy.mprlab.com
@@ -456,3 +456,6 @@ Migrated backlog from NOTES.md to centralized issue log.
 - Resolved: GN-51 Inline editor blur regression
   - Added card action regression coverage in `tests/editor.inline.puppeteer.test.js` to lock the expected editing exit when pinning while in edit mode.
   - Limited blur suppression to inline editor surfaces and finalized editing on non-copy actions so buttons stay accessible without reactivating CodeMirror.
+- Resolved: GN-50 Environment-aware endpoint configuration
+  - Added normalized environment detection with production/development defaults for backend and LLM URLs in `js/core/config.js`.
+  - Documented usage in `README.md` and extended `tests/config.runtime.test.js` to cover environment cases.

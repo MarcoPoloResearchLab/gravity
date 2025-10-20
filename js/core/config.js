@@ -5,17 +5,35 @@ import {
     CONFIG_KEY_BACKEND_BASE_URL,
     CONFIG_KEY_LLM_PROXY_BASE_URL,
     CONFIG_KEY_LLM_PROXY_CLASSIFY_URL,
+    CONFIG_KEY_ENVIRONMENT,
     META_NAME_BACKEND_BASE_URL,
     META_NAME_LLM_PROXY_BASE_URL,
-    META_NAME_LLM_PROXY_CLASSIFY_URL
+    META_NAME_LLM_PROXY_CLASSIFY_URL,
+    META_NAME_ENVIRONMENT
 } from "../constants.js";
 
 const DEFAULT_BACKEND_BASE_URL = "http://localhost:8080";
 const DEFAULT_LLM_PROXY_BASE_URL = "https://llm-proxy.mprlab.com";
 const DEFAULT_LLM_PROXY_CLASSIFY_PATH = "/v1/gravity/classify";
+const KNOWN_ENVIRONMENT_CONFIG = Object.freeze({
+    production: Object.freeze({
+        backendBaseUrl: "https://gravity-api.mprlab.com",
+        llmProxyBaseUrl: "https://llm-proxy.mprlab.com",
+        llmProxyClassifyUrl: "https://llm-proxy.mprlab.com/v1/gravity/classify"
+    }),
+    development: Object.freeze({
+        backendBaseUrl: "http://localhost:8080",
+        llmProxyBaseUrl: "http://computercat:8081",
+        llmProxyClassifyUrl: "http://computercat:8081/v1/gravity/classify"
+    })
+});
 
 const staticConfig = {
     timezone: { value: "America/Los_Angeles", enumerable: true },
+    environment: {
+        enumerable: true,
+        get: () => resolveEnvironmentName() ?? null
+    },
     llmProxyBaseUrl: {
         enumerable: true,
         get: () => resolveLlmProxyBaseUrl()
@@ -62,8 +80,14 @@ export function resolveBackendBaseUrl(environment = {}) {
     }
 
     const metaConfig = readMetaBackendBaseUrl(runtimeDocument);
-    if (metaConfig !== null) {
-        return normalizeBackendBaseUrl(metaConfig, runtimeLocation);
+   if (metaConfig !== null) {
+       return normalizeBackendBaseUrl(metaConfig, runtimeLocation);
+   }
+
+    const environmentName = resolveEnvironmentName({ window: runtimeWindow, document: runtimeDocument });
+    const environmentBackendBaseUrl = readEnvironmentConfigValue(environmentName, "backendBaseUrl");
+    if (environmentBackendBaseUrl) {
+        return stripTrailingSlashes(environmentBackendBaseUrl);
     }
 
     return normalizeBackendBaseUrl("", runtimeLocation);
@@ -144,6 +168,92 @@ function inferBackendFromLocation(runtimeLocation) {
 }
 
 /**
+ * Resolve the named environment configured for the current runtime.
+ * @param {{ window?: Window, document?: Document }} [environment]
+ * @returns {("production" | "development" | null)}
+ */
+export function resolveEnvironmentName(environment = {}) {
+    const runtimeWindow = environment.window ?? (typeof globalThis !== "undefined" && typeof globalThis.window !== "undefined" ? globalThis.window : undefined);
+    const runtimeDocument = environment.document
+        ?? (runtimeWindow && typeof runtimeWindow.document !== "undefined" ? runtimeWindow.document : undefined)
+        ?? (typeof globalThis !== "undefined" && typeof globalThis.document !== "undefined" ? globalThis.document : undefined);
+
+    const explicitEnvironment = readGlobalEnvironment(runtimeWindow);
+    if (explicitEnvironment) {
+        return explicitEnvironment;
+    }
+    const metaEnvironment = readMetaEnvironment(runtimeDocument);
+    if (metaEnvironment) {
+        return metaEnvironment;
+    }
+    return null;
+}
+
+/**
+ * @param {Window|undefined} runtimeWindow
+ * @returns {("production" | "development" | null)}
+ */
+function readGlobalEnvironment(runtimeWindow) {
+    if (!runtimeWindow || typeof runtimeWindow !== "object") {
+        return null;
+    }
+    const config = /** @type {Record<string, unknown>|undefined} */ (runtimeWindow?.[GLOBAL_CONFIG_OBJECT_KEY]);
+    if (!config || typeof config !== "object") {
+        return null;
+    }
+    const candidate = config?.[CONFIG_KEY_ENVIRONMENT];
+    return normalizeEnvironmentName(candidate);
+}
+
+/**
+ * @param {Document|undefined} runtimeDocument
+ * @returns {("production" | "development" | null)}
+ */
+function readMetaEnvironment(runtimeDocument) {
+    if (!runtimeDocument || typeof runtimeDocument.querySelector !== "function") {
+        return null;
+    }
+    const meta = runtimeDocument.querySelector(`meta[name="${META_NAME_ENVIRONMENT}"]`);
+    if (!meta) {
+        return null;
+    }
+    const content = meta.getAttribute("content");
+    return normalizeEnvironmentName(content);
+}
+
+/**
+ * @param {unknown} candidate
+ * @returns {("production" | "development" | null)}
+ */
+function normalizeEnvironmentName(candidate) {
+    if (typeof candidate !== "string") {
+        return null;
+    }
+    const normalized = candidate.trim().toLowerCase();
+    if (Object.prototype.hasOwnProperty.call(KNOWN_ENVIRONMENT_CONFIG, normalized)) {
+        return /** @type {("production" | "development")} */ (normalized);
+    }
+    return null;
+}
+
+/**
+ * @param {("production" | "development" | null)} environmentName
+ * @param {"backendBaseUrl" | "llmProxyBaseUrl" | "llmProxyClassifyUrl"} key
+ * @returns {string|null}
+ */
+function readEnvironmentConfigValue(environmentName, key) {
+    if (!environmentName) {
+        return null;
+    }
+    const config = KNOWN_ENVIRONMENT_CONFIG[environmentName];
+    if (!config) {
+        return null;
+    }
+    const value = config[key];
+    return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+/**
  * @param {string} baseUrl
  * @returns {string}
  */
@@ -174,6 +284,12 @@ export function resolveLlmProxyBaseUrl(environment = {}) {
     const metaConfig = readMetaLlmProxyBaseUrl(runtimeDocument);
     if (metaConfig !== null) {
         return normalizeLlmProxyBaseUrl(metaConfig, runtimeLocation);
+    }
+
+    const environmentName = resolveEnvironmentName({ window: runtimeWindow, document: runtimeDocument });
+    const environmentLlmProxyBaseUrl = readEnvironmentConfigValue(environmentName, "llmProxyBaseUrl");
+    if (environmentLlmProxyBaseUrl) {
+        return stripTrailingSlashes(environmentLlmProxyBaseUrl);
     }
 
     return normalizeLlmProxyBaseUrl("", runtimeLocation);
@@ -254,6 +370,12 @@ export function resolveLlmProxyClassifyUrl(environment = {}) {
     const metaConfig = readMetaLlmProxyClassifyUrl(runtimeDocument);
     if (metaConfig !== null) {
         return metaConfig;
+    }
+
+    const environmentName = resolveEnvironmentName({ window: runtimeWindow, document: runtimeDocument });
+    const environmentClassifyUrl = readEnvironmentConfigValue(environmentName, "llmProxyClassifyUrl");
+    if (environmentClassifyUrl) {
+        return environmentClassifyUrl;
     }
 
     const baseUrl = resolveLlmProxyBaseUrl({ window: runtimeWindow, document: runtimeDocument, location: runtimeLocation });
