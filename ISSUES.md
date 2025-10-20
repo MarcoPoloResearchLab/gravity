@@ -481,7 +481,15 @@ Migrated backlog from NOTES.md to centralized issue log.
     - [x] Automated regression tests in `tests/editor.inline.puppeteer.test.js` now enforce height, border, editor-alignment, Shift+Enter submission, and preview suppression expectations and pass with the restored styling.
   - [x] [GN-45] Tests are failing on the CI (GitHub Actions). Tests pass locally because `tests/ui.styles.regression.puppeteer.test.js` launched its own browser instead of the shared harness.
     - Captured the failing CI log for reference and rewrote the regression suite to use `createSharedPage`, with resilient assertions against computed pixel dimensions. Full `npm test` now passes and CI no longer reports the multiple-launch guard.
-  -[ ] [GN-53] Generate a CHANGELOG.md and track changes over there. Populate it with historical changes based on git history.
+  - [x] [GN-53] Generate a CHANGELOG.md and track changes over there. Populate it with historical changes based on git history.
+  - [ ] [GN-54] We need to encode the rules of engagement for coding agents
+    - PLAN.md must be untracked as it's of no interest to the code. Use a python utility to ensure it is removed from git history and is not tracked
+    - NOTES.md must be read-only and the agent can never write anything there. These very changes to the process need to be encoded in NOTES.md :-)
+    - MIGRATION.md belongs to ARCHITECTURE.md. Fold in all MIGRATION.md content into ARCHITECTURE.md. also, remove any minutia from ARCHITECTURE and focus on the app architecture
+    - There are only 3 markdown files that coding agents can write to working on issues: 
+      1. ISSUES.md to read the tasks and mark issues as complete or add newly discovered one. 
+      2. PLAN.md for planning on working on a single issue, 
+      3. CHANGELOG.md to track progress, and  
 
 ## 2025-10-21
 
