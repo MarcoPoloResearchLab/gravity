@@ -223,13 +223,12 @@ Migrated backlog from NOTES.md to centralized issue log.
   - [x] [GN-37] Check if the enter is pressed at the first line of a list (whether numeric or pointed) and do not add a list item, just use normal enter. Consult MDE documentation
   - [x] [GN-38] Check if a list is a checkmarked list `- [ ]` and add a checkmark item on continuation. Consult MDE documentation.
   - [x] [GN-39] Check if Google Sign In offers a different, minimized styling (small button) so that Google login buttom allows for better rendering on narrow screens.
-  - [ ] [GN-52] Redesign llmProxy configuration. The current one is poorly designed and redundant. We only need one url to talk to  llmProxy, not two
+  - [x] [GN-52] Redesign llmProxy configuration. The current one is poorly designed and redundant. We only need one url to talk to  llmProxy, not two
     ```html
     <script nonce="<server-generated-nonce>">
         window.GRAVITY_CONFIG = {
             backendBaseUrl: "http://localhost:8000",
-            llmProxyBaseUrl: "http://localhost:8081",
-            llmProxyClassifyUrl: "http://localhost:8081/v1/gravity/classify"
+            llmProxyUrl: "http://localhost:8081/v1/gravity/classify"
         };
     </script>
     ```
@@ -495,3 +494,6 @@ Migrated backlog from NOTES.md to centralized issue log.
 - Resolved: GN-53 Generate a CHANGELOG.md
   - Added `CHANGELOG.md` capturing historical milestones across April, September, and October 2025 using the Keep a Changelog format.
   - Noted empowered infrastructure, UI polish, and configuration work so future contributions can reference a single canonical history.
+- Resolved: GN-52 Redesign llmProxy configuration
+  - Collapsed the proxy settings to a single `llmProxyUrl` value with legacy key support during the transition.
+  - Updated docs and automation to reference the consolidated endpoint while keeping blank overrides to disable classification in development.
