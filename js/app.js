@@ -8,7 +8,8 @@ import { initializeImportExport } from "./ui/importExport.js";
 import { GravityStore } from "./core/store.js";
 import { appConfig } from "./core/config.js";
 import { initializeRuntimeConfig } from "./core/runtimeConfig.js";
-import { createGoogleIdentityController } from "./core/auth.js";
+import { createGoogleIdentityController, isGoogleIdentitySupportedOrigin } from "./core/auth.js";
+import { initializeAnalytics } from "./core/analytics.js";
 import { createSyncManager } from "./core/syncManager.js";
 import { loadAuthState, saveAuthState, clearAuthState, isAuthStateFresh } from "./core/authState.js";
 import { mountTopEditor } from "./ui/topEditor.js";
@@ -55,6 +56,7 @@ bootstrapApplication().catch((error) => {
 
 async function bootstrapApplication() {
     await initializeRuntimeConfig();
+    initializeAnalytics();
     document.addEventListener("alpine:init", () => {
         Alpine.data("gravityApp", gravityApp);
     });
@@ -226,6 +228,10 @@ function gravityApp() {
             if (typeof window === "undefined") {
                 return;
             }
+            if (!isGoogleIdentitySupportedOrigin(window.location)) {
+                this.stopGoogleIdentityPolling();
+                return;
+            }
             const google = /** @type {any} */ (window.google);
             const hasIdentity = Boolean(google?.accounts?.id);
             if (!hasIdentity) {
@@ -253,6 +259,9 @@ function gravityApp() {
                 return;
             }
             if (typeof window === "undefined") {
+                return;
+            }
+            if (!isGoogleIdentitySupportedOrigin(window.location)) {
                 return;
             }
             const poll = () => {
