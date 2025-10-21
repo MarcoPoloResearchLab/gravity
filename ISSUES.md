@@ -557,3 +557,7 @@ Migrated backlog from NOTES.md to centralized issue log.
   - Stopped loading Google Analytics outside production and gated Google Identity initialization to supported origins, eliminating the 403/auth-origin noise in local and test runs.
   - Added a console quietness Puppeteer test and unit coverage for the new origin guard to prevent regressions.
   - Verified the stack with `npm test` to confirm a clean console across the suite.
+- Resolved: GN-59 Click behaviour adjustments
+  - Updated card interactions so a single click toggles preview expansion while a double click enters inline edit mode with caret mapping preserved.
+  - Refreshed Puppeteer helpers/tests to double click into editing and added coverage that verifies the new expansion flow.
+  - `npm test` now confirms the interaction shift without regressions.

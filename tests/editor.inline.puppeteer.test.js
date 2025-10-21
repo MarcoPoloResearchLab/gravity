@@ -323,6 +323,50 @@ test.describe("Markdown inline editor", () => {
         }
     });
 
+    test("single click expands an overflowing preview without starting edit mode", async () => {
+        const expandNoteId = "inline-expand-behaviour";
+        const noteRecord = buildNoteRecord({
+            noteId: expandNoteId,
+            markdownText: LONG_NOTE_MARKDOWN
+        });
+        const { page, teardown } = await preparePage({
+            records: [noteRecord]
+        });
+        const cardSelector = `.markdown-block[data-note-id="${expandNoteId}"]`;
+        const previewSelector = `${cardSelector} .note-preview`;
+
+        try {
+            await page.waitForSelector(cardSelector);
+
+            const initialState = await page.$eval(previewSelector, (element) => {
+                if (!(element instanceof HTMLElement)) {
+                    return null;
+                }
+                return {
+                    overflow: element.classList.contains("note-preview--overflow"),
+                    expanded: element.classList.contains("note-preview--expanded")
+                };
+            });
+            assert.ok(initialState);
+            assert.equal(initialState.overflow, true, "fixture should overflow to require expansion");
+            assert.equal(initialState.expanded, false, "preview must start collapsed");
+
+            await page.click(previewSelector);
+            await page.waitForSelector(`${previewSelector}.note-preview--expanded`);
+
+            const editingAfterClick = await page.$(`${cardSelector}.editing-in-place`);
+            assert.equal(editingAfterClick, null, "single click must not start editing");
+
+            await page.click(previewSelector);
+            await page.waitForFunction((selector) => {
+                const element = document.querySelector(selector);
+                return element instanceof HTMLElement && !element.classList.contains("note-preview--expanded");
+            }, {}, previewSelector);
+        } finally {
+            await teardown();
+        }
+    });
+
     test("inline editor renders without outer border", async () => {
         const noteRecord = buildNoteRecord({
             noteId: BORDER_NOTE_ID,
@@ -516,7 +560,7 @@ test.describe("Markdown inline editor", () => {
                 assert.fail(`The preview should expose the target substring for clicking. preview="${previewText}" target="${targetSubstring}"`);
             }
 
-            await page.mouse.click(clickPoint.x, clickPoint.y);
+            await page.mouse.click(clickPoint.x, clickPoint.y, { clickCount: 2 });
             await page.waitForSelector(`${cardSelector}.editing-in-place`);
             await page.waitForSelector(`${cardSelector} .CodeMirror textarea`);
 
@@ -630,7 +674,7 @@ test.describe("Markdown inline editor", () => {
                     y: rect.top + rect.height / 2
                 };
             });
-            await page.mouse.click(cardClickTarget.x, cardClickTarget.y);
+            await page.mouse.click(cardClickTarget.x, cardClickTarget.y, { clickCount: 2 });
             await pause(page, 50);
 
             const postClickState = await collectCardEditingTelemetry(page, cardSelector);
@@ -1111,7 +1155,7 @@ test.describe("Markdown inline editor", () => {
 
 
 async function enterCardEditMode(page, cardSelector) {
-    await page.click(`${cardSelector} .note-preview`);
+    await page.click(`${cardSelector} .note-preview`, { clickCount: 2 });
     await page.waitForSelector(`${cardSelector}.editing-in-place`);
     const codeMirrorTextarea = `${cardSelector} .CodeMirror textarea`;
     await page.waitForSelector(codeMirrorTextarea);

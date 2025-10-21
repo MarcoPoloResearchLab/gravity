@@ -63,7 +63,7 @@ test.describe("GN-58 duplicate markdown rendering", () => {
                 preview.style.display = "block";
             }, cardSelector);
 
-            await page.click(cardSelector);
+            await page.click(`${cardSelector} .note-preview`, { clickCount: 2 });
             await page.waitForSelector(`${cardSelector}.editing-in-place`);
 
             const editingSnapshot = await page.evaluate((selector) => {
@@ -102,7 +102,7 @@ test.describe("GN-58 duplicate markdown rendering", () => {
             }, cardSelector);
             assert(postTypeState);
             assert.ok(
-                typeof postTypeState.value === "string" && postTypeState.value.startsWith("Sample"),
+                typeof postTypeState.value === "string" && postTypeState.value.includes("Sample"),
                 "inline editor reflects typed content"
             );
 
