@@ -1396,6 +1396,7 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
         if (candidateHost && candidateHost.getMode() === MARKDOWN_MODE_EDIT) {
             candidateHost.setMode(MARKDOWN_MODE_VIEW);
         }
+        restorePreviewAfterEditing(candidate);
     });
 
     const editor  = card.querySelector(".markdown-editor");
