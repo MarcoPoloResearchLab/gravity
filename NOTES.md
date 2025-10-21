@@ -48,11 +48,11 @@ You are a staff level full stack engineer. Your task is to **re-evaluate and ref
 
 ## Rules of engagement
 
-Review the NOTES.md. Make a plan for autonomously fixing every item under Features, BugFixes, Improvements, Maintenance. Ensure no regressions. Ensure adding tests. Lean into integration tests. Fix every issue. Document the changes.
+Review the backlog in `ISSUES.md`. Make a plan for autonomously fixing every item under Features, BugFixes, Improvements, Maintenance. Ensure no regressions. Ensure adding tests. Lean into integration tests. Fix every issue. Document the changes directly in `ISSUES.md`. Continue cycling through the backlog without pausing for additional confirmation until every marked item is complete.
 
 Fix issues one by one, working sequentially. 
 1. The production git branch is called `master`. The `main` branch does not exist.
-2. Before making any changes, create a new git branch with a descriptive name, for example `feature/LA-56-widget-defer` or `bugfix/LA-11-alpine-rehydration`. Use the taxonomy of issues as prefixes: improvement/, feature/, bugfix/, maintenace/, issue ID and a short descriptive. Respect the name limits.
+2. Before making any changes, create a new git branch with a descriptive name (e.g., `bugfix/GN-58-editor-duplicate-preview`). Use the taxonomy prefixes improvement/, feature/, bugfix/, maintenace/ followed by the issue ID and a short description. Respect branch name limits.
 3. On that branch, describe the issue through tests.
 3a. Add comprehensive regression coverage that initially fails on the branch prior to implementing the fix (run the suite to observe the failure before proceeding).
 3b. Ensure AGENTS.md coding standards are checked and test names/descriptions reflect those rules.
@@ -71,8 +71,8 @@ Fix issues one by one, working sequentially.
 9. Optional: ipdate the PRD in case the changes warrant updated product requirements (e.g. change product undestanding)
 10. Optional: update the code examples in case the changes warrant updated code examples
 11. Mark an issue as done ([X]) in `ISSUES.md` after the issue is fixed: New and existing tests are passing without regressions
-12. Commit and push the changes to the remote branch.
-13. Repeat till all issues are fixed, and commits abd branches are stacked up (one starts from another).
+12. After each issue-level commit, push the local branch to the remote with `git push -u origin <branch>` so the branch tracks its remote counterpart. Subsequent pushes should use `git push` only. Never push to arbitrary remotes or untracked branch names.
+13. Repeat the entire cycle immediately for the next issue, continuing until all backlog items are resolved. Do not wait for additional prompts between issues.
 
 Do not work on all issues at once. Work at one issue at a time sequntially.
 
