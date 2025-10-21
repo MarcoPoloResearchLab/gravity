@@ -84,6 +84,7 @@ const editorHosts = new WeakMap();
 const finalizeSuppression = new WeakMap();
 const suppressionState = new WeakMap();
 const copyFeedbackTimers = new WeakMap();
+const previewVisibilityState = new WeakMap();
 const COPY_FEEDBACK_DURATION_MS = 1800;
 const LINE_ENDING_NORMALIZE_PATTERN = /\r\n/g;
 const TRAILING_WHITESPACE_PATTERN = /[ \t]+$/;
@@ -1148,6 +1149,84 @@ function restoreSuppressedState(card) {
     }
 }
 
+function suppressPreviewDuringEditing(card) {
+    if (!(card instanceof HTMLElement)) {
+        return;
+    }
+    const previewWrapper = card.querySelector(".note-preview");
+    const preview = previewWrapper?.querySelector(".markdown-content");
+    const expandToggle = previewWrapper?.querySelector(".note-expand-toggle");
+    if (!previewVisibilityState.has(card)) {
+        const state = {
+            preview: preview instanceof HTMLElement ? preview : null,
+            previewHidden: preview instanceof HTMLElement ? preview.hidden : null,
+            previewDisplay: preview instanceof HTMLElement ? preview.style.display : null,
+            wrapper: previewWrapper instanceof HTMLElement ? previewWrapper : null,
+            wrapperHidden: previewWrapper instanceof HTMLElement ? previewWrapper.hidden : null,
+            wrapperDisplay: previewWrapper instanceof HTMLElement ? previewWrapper.style.display : null,
+            expandToggle: expandToggle instanceof HTMLElement ? expandToggle : null,
+            expandHidden: expandToggle instanceof HTMLElement ? expandToggle.hidden : null,
+            expandDisplay: expandToggle instanceof HTMLElement ? expandToggle.style.display : null
+        };
+        previewVisibilityState.set(card, state);
+    }
+    if (preview instanceof HTMLElement) {
+        preview.hidden = true;
+        preview.style.display = "none";
+    }
+    if (previewWrapper instanceof HTMLElement) {
+        previewWrapper.hidden = true;
+        previewWrapper.style.display = "none";
+    }
+    if (expandToggle instanceof HTMLElement) {
+        expandToggle.hidden = true;
+    }
+}
+
+function restorePreviewAfterEditing(card) {
+    const state = previewVisibilityState.get(card);
+    if (!state) {
+        return;
+    }
+    previewVisibilityState.delete(card);
+    const {
+        preview,
+        previewHidden,
+        previewDisplay,
+        wrapper,
+        wrapperHidden,
+        wrapperDisplay,
+        expandToggle,
+        expandHidden,
+        expandDisplay
+    } = state;
+
+    if (preview instanceof HTMLElement) {
+        preview.hidden = previewHidden === true;
+        if (typeof previewDisplay === "string" && previewDisplay.length > 0) {
+            preview.style.display = previewDisplay;
+        } else {
+            preview.style.removeProperty("display");
+        }
+    }
+    if (wrapper instanceof HTMLElement) {
+        wrapper.hidden = wrapperHidden === true;
+        if (typeof wrapperDisplay === "string" && wrapperDisplay.length > 0) {
+            wrapper.style.display = wrapperDisplay;
+        } else {
+            wrapper.style.removeProperty("display");
+        }
+    }
+    if (expandToggle instanceof HTMLElement) {
+        expandToggle.hidden = expandHidden === true;
+        if (typeof expandDisplay === "string" && expandDisplay.length > 0) {
+            expandToggle.style.display = expandDisplay;
+        } else {
+            expandToggle.style.removeProperty("display");
+        }
+    }
+}
+
 function showClipboardFeedback(container, message) {
     if (!container || typeof message !== "string") return;
     let feedback = container.querySelector(".clipboard-feedback");
@@ -1328,6 +1407,7 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
     card.dataset.initialValue = initialValue;
 
     card.classList.add("editing-in-place");
+    suppressPreviewDuringEditing(card);
     editorHost?.setMode(MARKDOWN_MODE_EDIT);
 
     if (bubbleSelfToTop) {
@@ -1439,6 +1519,7 @@ async function finalizeCard(card, notesContainer, options = {}) {
         if (card.classList.contains("editing-in-place")) {
             card.classList.remove("editing-in-place");
         }
+        restorePreviewAfterEditing(card);
         if (currentEditingCard === card) {
             currentEditingCard = null;
         }
@@ -1570,6 +1651,7 @@ function mergeDown(card, notesContainer) {
     }
     card.remove();
     editorHosts.delete(card);
+    previewVisibilityState.delete(card);
 
     const idBelow = below.getAttribute("data-note-id");
     const ts = nowIso();
