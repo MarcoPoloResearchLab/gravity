@@ -423,8 +423,8 @@ Migrated backlog from NOTES.md to centralized issue log.
     3. add a failing test for the case the PR is supposed to fix
     4. Develop a fix
     5. Push the changes back to codex/fix-comments-and-ensure-test-coverage
-  - [ ] [GN-56] There is no visual deliniator between the notes. add a thin visual deliniator between the notes
-  - [ ] [GN-57] There are various issues logged by JS Console. Analyze each, develop a plan to address it and deliver a fix
+  - [x] [GN-56] There is no visual deliniator between the notes. add a thin visual deliniator between the notes
+  - [x] [GN-57] There are various issues logged by JS Console. Analyze each, develop a plan to address it and deliver a fix
     ```
     Cookie warnings 2
     The value of the attribute “expires” for the cookie “_ga_WYL7PDVTHN” has been overwritten. localhost:8000
@@ -448,13 +448,13 @@ Migrated backlog from NOTES.md to centralized issue log.
     [GSI_LOGGER]: The given origin is not allowed for the given client ID. client:74:89
     [GSI_LOGGER]: The given origin is not allowed for the given client ID. m=credential_button_library:74:89
     ```
-  - [ ] [GN-58] The editor is broken: it duplicates the editing text. For example, the note containing this text shows markdown twice
+  - [x] [GN-58] The editor is broken: it duplicates the editing text. For example, the note containing this text shows markdown twice
     ```
     - [ ] No lines separating the first card from the next
     - [ ] 
     ```
     Dilligently investigate why such double markdown representation is possible. radically simplify the implementation leaning into the MDE amd marked.js. Ensure we have tests that guratee that we dont perform any operations twice and that we dont show markdown twice. This is the most critical issue, spend a liot of compute to get it right.
-  - [ ] [GN-59] Change mouse behaviour: single click on a note expands it in the rendered mode if needed. Double click opens note for editing
+  - [x] [GN-59] Change mouse behaviour: single click on a note expands it in the rendered mode if needed. Double click opens note for editing
 
 
 ### Maintenance
