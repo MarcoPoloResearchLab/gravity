@@ -33,6 +33,7 @@ test("top editor keeps sticky positioning and compact padding", async () => {
             "padding-bottom",
             "padding-left",
             "border-bottom-width",
+            "border-bottom-color",
             "background-color",
             "z-index"
         ]);
@@ -44,7 +45,8 @@ test("top editor keeps sticky positioning and compact padding", async () => {
         assert.equal(metrics["padding-right"], "0px");
         assert.equal(metrics["padding-bottom"], "0px");
         assert.equal(metrics["padding-left"], "0px");
-        assert.ok(parseFloat(metrics["border-bottom-width"]) < 0.5, "Top editor should not render a visible bottom border");
+        assert.ok(parseFloat(metrics["border-bottom-width"]) >= 0.9 && parseFloat(metrics["border-bottom-width"]) <= 1.2, "Top editor should render a one-pixel delineator");
+        assert.equal(metrics["border-bottom-color"], "rgba(58, 68, 94, 0.7)");
         assert.equal(metrics["background-color"], "rgba(0, 0, 0, 0)");
         assert.equal(metrics["z-index"], "5");
     } finally {
@@ -64,7 +66,8 @@ test("note cards preserve grid columns for content and actions", async () => {
             "align-items",
             "padding-left",
             "padding-right",
-            "border-bottom-width"
+            "border-bottom-width",
+            "border-bottom-color"
         ]);
         assert.equal(metrics.display, "grid");
         const columns = metrics["grid-template-columns"].trim().split(/\s+/).filter(Boolean);
@@ -81,6 +84,7 @@ test("note cards preserve grid columns for content and actions", async () => {
         assert.ok(parseFloat(metrics["padding-left"]) >= 15 && parseFloat(metrics["padding-left"]) <= 18);
         assert.ok(parseFloat(metrics["padding-right"]) >= 15 && parseFloat(metrics["padding-right"]) <= 18);
         assert.ok(parseFloat(metrics["border-bottom-width"]) >= 1 && parseFloat(metrics["border-bottom-width"]) <= 1.5);
+        assert.equal(metrics["border-bottom-color"], "rgba(58, 68, 94, 0.7)");
     } finally {
         await teardown();
     }

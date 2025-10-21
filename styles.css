@@ -180,7 +180,7 @@ html, body {
     column-gap: 0.75rem;
     row-gap: 0.35rem;
     border: 0;
-    border-bottom: 1px solid rgba(32, 35, 43, 0.35);
+    border-bottom: 1px solid rgba(58, 68, 94, 0.7);
     padding: 0.6rem 1rem 0.9rem 1rem;
     box-sizing: border-box;
     background: #0b0c0f;
@@ -420,7 +420,7 @@ html, body {
     z-index: 5;
     grid-template-columns: 1fr;
     padding: 0;
-    border-bottom: none;
+    border-bottom: 1px solid rgba(58, 68, 94, 0.7);
     background: transparent;
 }
 

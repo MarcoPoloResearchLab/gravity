@@ -549,3 +549,7 @@ Migrated backlog from NOTES.md to centralized issue log.
   - Replayed the reported checkbox note in Puppeteer to confirm only one editing surface is visible and previews hide while CodeMirror is active.
   - Spot-checked the top editor path and confirmed preview suppression remains active during typing; no residual duplication surfaced.
   - Ran `npm test` (29 suites) to ensure `tests/editor.duplicateRendering.puppeteer.test.js` and companions still cover the regression with a clean pass.
+- Resolved: GN-56 Thin card delineator
+  - Applied a shared 1px divider color across persisted cards and the top editor so consecutive notes have a visible separation.
+  - Updated `tests/ui.styles.regression.puppeteer.test.js` and `tests/editor.inline.puppeteer.test.js` to lock the new border color/width expectations.
+  - Re-ran `npm test` to confirm the visual regression suites cover the delineator change without regressions.

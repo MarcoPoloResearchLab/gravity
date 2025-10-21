@@ -306,6 +306,7 @@ test.describe("Markdown inline editor", () => {
                     paddingTop: computed.paddingTop,
                     paddingBottom: computed.paddingBottom,
                     borderBottomWidth: computed.borderBottomWidth,
+                    borderBottomColor: computed.borderBottomColor,
                     height
                 };
             });
@@ -314,7 +315,8 @@ test.describe("Markdown inline editor", () => {
             assert.equal(styleSnapshot.background, "rgba(0, 0, 0, 0)", "Top editor stays transparent like baseline notes");
             assert.equal(styleSnapshot.paddingTop, "0px", "Top editor must not introduce extra top padding");
             assert.equal(styleSnapshot.paddingBottom, "0px", "Top editor must not introduce extra bottom padding");
-            assert.equal(styleSnapshot.borderBottomWidth, "0px", "Top editor must not draw a separating border");
+            assert.equal(styleSnapshot.borderBottomWidth, "1px", "Top editor delineator must remain one pixel tall");
+            assert.equal(styleSnapshot.borderBottomColor, "rgba(58, 68, 94, 0.7)", "Top editor delineator must reuse the shared divider color");
             assert.ok(styleSnapshot.height <= 80, `Top editor height should stay compact, received ${styleSnapshot.height}`);
         } finally {
             await teardown();
@@ -405,11 +407,12 @@ test.describe("Markdown inline editor", () => {
             assert.equal(dividerSnapshot.rightWidth, "0px", "Right border must be absent");
             assert.equal(dividerSnapshot.leftWidth, "0px", "Left border must be absent");
             assert.equal(dividerSnapshot.bottomStyle, "solid", "Bottom border must render as a solid divider");
-            assert.ok(parseFloat(dividerSnapshot.bottomWidth ?? "0") <= 1, "Bottom border must be 1px or thinner");
+            const computedWidth = parseFloat(dividerSnapshot.bottomWidth ?? "0");
+            assert.ok(computedWidth >= 0.9 && computedWidth <= 1.1, `Bottom border must remain a single pixel (received ${dividerSnapshot.bottomWidth})`);
             assert.equal(
                 dividerSnapshot.bottomColor,
-                "rgba(32, 35, 43, 0.35)",
-                "Bottom divider color must remain muted"
+                "rgba(58, 68, 94, 0.7)",
+                "Bottom divider color must use the shared delineator tone"
             );
         } finally {
             await teardown();
