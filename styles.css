@@ -380,6 +380,13 @@ html, body {
     padding: 0.25rem 0; /* match preview padding */
 }
 
+.markdown-editor--enhanced {
+    opacity: 0;
+    color: transparent;
+    caret-color: transparent;
+    pointer-events: none;
+}
+
 /* Mode toggles */
 .edit-mode .markdown-content,
 .editing-in-place .markdown-content,

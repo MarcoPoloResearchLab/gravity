@@ -994,6 +994,7 @@ export function renderCard(record, options = {}) {
         initialMode: MARKDOWN_MODE_VIEW,
         showToolbar: false
     });
+    editor.classList.add("markdown-editor--enhanced");
     editor.style.removeProperty("display");
     editorHostRef = editorHost;
     editorHosts.set(card, editorHost);
