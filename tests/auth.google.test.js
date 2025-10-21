@@ -6,7 +6,7 @@ import {
     EVENT_AUTH_SIGN_IN,
     EVENT_AUTH_SIGN_OUT
 } from "../js/constants.js";
-import { createGoogleIdentityController } from "../js/core/auth.js";
+import { createGoogleIdentityController, isGoogleIdentitySupportedOrigin } from "../js/core/auth.js";
 
 const SAMPLE_USER = {
     sub: "demo-user-123",
@@ -98,4 +98,56 @@ function base64UrlEncode(value) {
     const json = JSON.stringify(value);
     const raw = Buffer.from(json, "utf8").toString("base64");
     return raw.replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+
+test("isGoogleIdentitySupportedOrigin filters unsupported protocols", () => {
+    assert.equal(isGoogleIdentitySupportedOrigin(null), true);
+    assert.equal(isGoogleIdentitySupportedOrigin(undefined), true);
+    assert.equal(isGoogleIdentitySupportedOrigin(mockLocation("file:", "")), false);
+    assert.equal(isGoogleIdentitySupportedOrigin(mockLocation("about:", "")), false);
+    assert.equal(isGoogleIdentitySupportedOrigin(mockLocation("https:", "gravity.mprlab.com")), true);
+    assert.equal(isGoogleIdentitySupportedOrigin(mockLocation("http:", "localhost")), true);
+    assert.equal(isGoogleIdentitySupportedOrigin(mockLocation("http:", "127.0.0.1")), true);
+    assert.equal(isGoogleIdentitySupportedOrigin(mockLocation("http:", "example.com")), false);
+});
+
+test("createGoogleIdentityController skips initialization on unsupported origin", () => {
+    let initializeCalled = false;
+    const googleStub = {
+        accounts: {
+            id: {
+                initialize() {
+                    initializeCalled = true;
+                },
+                renderButton() {},
+                prompt() {},
+                disableAutoSelect() {}
+            }
+        }
+    };
+
+    const controller = createGoogleIdentityController({
+        clientId: appConfig.googleClientId,
+        google: googleStub,
+        buttonElement: { nodeType: 1, dataset: {} },
+        eventTarget: new EventTarget(),
+        autoPrompt: true,
+        location: mockLocation("file:", "")
+    });
+
+    assert.equal(initializeCalled, false);
+    assert.ok(controller, "controller should still provide noop methods");
+    assert.doesNotThrow(() => controller.signOut());
+});
+
+/**
+ * @param {string} protocol
+ * @param {string} hostname
+ * @returns {Location}
+ */
+function mockLocation(protocol, hostname) {
+    return /** @type {Location} */ ({
+        protocol,
+        hostname
+    });
 }

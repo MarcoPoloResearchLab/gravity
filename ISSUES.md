@@ -553,3 +553,7 @@ Migrated backlog from NOTES.md to centralized issue log.
   - Applied a shared 1px divider color across persisted cards and the top editor so consecutive notes have a visible separation.
   - Updated `tests/ui.styles.regression.puppeteer.test.js` and `tests/editor.inline.puppeteer.test.js` to lock the new border color/width expectations.
   - Re-ran `npm test` to confirm the visual regression suites cover the delineator change without regressions.
+- Resolved: GN-57 Console warnings
+  - Stopped loading Google Analytics outside production and gated Google Identity initialization to supported origins, eliminating the 403/auth-origin noise in local and test runs.
+  - Added a console quietness Puppeteer test and unit coverage for the new origin guard to prevent regressions.
+  - Verified the stack with `npm test` to confirm a clean console across the suite.

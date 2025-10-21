@@ -34,6 +34,7 @@ export const LABEL_SHORTCUT_DELETE_LINE = "Delete current line";
 export const LABEL_SHORTCUT_DUPLICATE_LINE = "Duplicate current line";
 export const ARIA_LABEL_PIN_NOTE = "Pin note";
 export const ARIA_LABEL_UNPIN_NOTE = "Unpin note";
+export const GOOGLE_ANALYTICS_MEASUREMENT_ID = "G-WYL7PDVTHN";
 
 export const MESSAGE_NOTE_SAVED = "Saved";
 export const MESSAGE_NOTES_IMPORTED = "Notes imported";

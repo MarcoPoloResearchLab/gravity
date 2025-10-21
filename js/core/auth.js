@@ -13,7 +13,8 @@ import { logging } from "../utils/logging.js";
  *   google?: typeof globalThis.google,
  *   buttonElement?: Element | null,
  *   eventTarget?: EventTarget,
- *   autoPrompt?: boolean
+ *   autoPrompt?: boolean,
+ *   location?: Location | null
  * }} GoogleIdentityOptions
  */
 
@@ -28,7 +29,8 @@ export function createGoogleIdentityController(options) {
         google = typeof globalThis !== "undefined" ? /** @type {any} */ (globalThis.google) : undefined,
         buttonElement = null,
         eventTarget = typeof document !== "undefined" ? document : undefined,
-        autoPrompt = true
+        autoPrompt = true,
+        location = typeof window !== "undefined" ? window.location : undefined
     } = options || {};
 
     if (!isNonEmptyString(clientId)) {
@@ -41,6 +43,14 @@ export function createGoogleIdentityController(options) {
     }
 
     const identity = google.accounts.id;
+
+    if (!isGoogleIdentitySupportedOrigin(location ?? undefined)) {
+        if (isElementLike(buttonElement)) {
+            buttonElement.dataset.googleSignIn = "unavailable";
+        }
+        return createNoopController(eventTarget);
+    }
+
     let disposed = false;
     let currentUser = null;
 
@@ -265,4 +275,46 @@ function createNoopController(eventTarget) {
  */
 function isNonEmptyString(value) {
     return typeof value === "string" && value.trim().length > 0;
+}
+
+/**
+ * @param {unknown} candidate
+ * @returns {candidate is { dataset: Record<string, string> }}
+ */
+function isElementLike(candidate) {
+    if (!candidate || typeof candidate !== "object") {
+        return false;
+    }
+    return Object.prototype.hasOwnProperty.call(candidate, "dataset") && typeof /** @type {any} */ (candidate).dataset === "object";
+}
+
+/**
+ * Determine whether Google Identity Services should initialize for the provided location.
+ * @param {Location|undefined|null} runtimeLocation
+ * @returns {boolean}
+ */
+export function isGoogleIdentitySupportedOrigin(runtimeLocation) {
+    if (!runtimeLocation) {
+        return true;
+    }
+    const protocol = typeof runtimeLocation.protocol === "string" ? runtimeLocation.protocol.toLowerCase() : "";
+    const hostname = typeof runtimeLocation.hostname === "string" ? runtimeLocation.hostname.toLowerCase() : "";
+    if (!protocol) {
+        return false;
+    }
+    if (protocol === "file:" || protocol === "about:") {
+        return false;
+    }
+    if (protocol === "https:") {
+        return true;
+    }
+    if (protocol === "http:" && hostname) {
+        if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]") {
+            return true;
+        }
+        if (hostname.endsWith(".local") || hostname.endsWith(".test")) {
+            return true;
+        }
+    }
+    return false;
 }
