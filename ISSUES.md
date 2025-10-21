@@ -2,49 +2,6 @@
 
 Entries record newly discovered requests or changes, with their outcomes. No instructive content lives here.
 
-## 2025-10-19
-
-- Resolved: DOC-001 Define document roles and ownership
-  - Moved guidance to AGENTS.md (Document Roles; Issue Status Terms). ISSUES.md now append-only.
-
-- Resolved: FE-001 Bootstrap requirement vs. actual stack
-  - AGENTS.md updated to Alpine.js + Vanilla CSS.
-
-- Resolved: FE-002 Network boundary naming
-  - AGENTS.md now names `js/core/backendClient.js` and `js/core/classifier.js` as official clients.
-
-- Resolved: FE-003 EasyMDE version drift
-  - Unified to 2.19.0; README versions matrix added.
-
-- Resolved: FE-005 Classifier client injection
-  - Added `createClassifierClient({ fetchImplementation })`; tests in `tests/classifier.client.test.js`.
-
-- Resolved: FE-006 Directory layout guidance
-  - AGENTS.md marks `/assets` and `/data` as optional.
-
-- Resolved: DOC-003 Project-specific examples
-  - AGENTS.md examples updated to `Note` and `NoteClassification`.
-
-- Resolved: DOC-004 Deliverables scope
-  - Clarified applies to automation.
-
-- Resolved: FE-004 / SEC-001 External script policy and CSP
-  - AGENTS.md enumerates allowed third-party scripts and includes a CSP template.
-
-- Resolved: PROC-001 Test timeouts policy
-  - AGENTS.md documents harness-managed timeouts; no shell-level `timeout` wrapping.
-
-## 2025-10-19 (later)
-
-- Resolved: DOC-005 Architecture synthesis document
-  - Created `ARCHITECTURE.md` capturing product vision, current architecture, themed evolution across GN-IDs, and open items/roadmap.
-- Resolved: GN-45 No scrollers in cards
-  - Added CSS and automated tests to keep previews and editing surfaces free of inner scrollbars (`styles.css`, `tests/editor.inline.puppeteer.test.js`, `tests/css.validity.test.js`).
-
-## 2025-10-20
-
-Migrated backlog from NOTES.md to centralized issue log.
-
 ### Features
 
   - [x] [GN-11] Add logging using Google Login SDK (frontend only). Employ the GSI approach you can find in the countodwn folder [text](countdown/app.js). use Google Client ID "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com"
@@ -255,6 +212,7 @@ Migrated backlog from NOTES.md to centralized issue log.
   </script>
   <script src="app.js"></script>
   ```
+  - [ ] [GN-60] Tests must take screenshots of the areas they address. We currently have 30 tests, a run of the tests must produce 30 screenshots demonstrating the scenarios and their resolutions 
 
 ### BugFixes
 
@@ -448,12 +406,16 @@ Migrated backlog from NOTES.md to centralized issue log.
     [GSI_LOGGER]: The given origin is not allowed for the given client ID. client:74:89
     [GSI_LOGGER]: The given origin is not allowed for the given client ID. m=credential_button_library:74:89
     ```
-  - [x] [GN-58] The editor is broken: it duplicates the editing text. For example, the note containing this text shows markdown twice
+  - [ ] [GN-58] The editor is broken: it duplicates the editing text. For example, the note containing this text shows markdown twice
     ```
     - [ ] No lines separating the first card from the next
     - [ ] 
     ```
     Dilligently investigate why such double markdown representation is possible. radically simplify the implementation leaning into the MDE amd marked.js. Ensure we have tests that guratee that we dont perform any operations twice and that we dont show markdown twice. This is the most critical issue, spend a liot of compute to get it right.
+
+    There is ![alt text](image.png) that demonstrates the bug
+      1. There is a scroller on the screen -- and we must never have a scroller in the system
+      2. The mardown is double-rendered
   - [x] [GN-59] Change mouse behaviour: single click on a note expands it in the rendered mode if needed. Double click opens note for editing
 
 
