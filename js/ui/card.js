@@ -123,6 +123,19 @@ function shouldKeepEditingAfterBlur(card) {
     return false;
 }
 
+function shouldIgnoreCardPointerTarget(target) {
+    if (!(target instanceof HTMLElement)) {
+        return false;
+    }
+    if (target.closest(".actions")) {
+        return true;
+    }
+    if (target.closest(".note-task-checkbox")) {
+        return true;
+    }
+    return false;
+}
+
 /**
  * Determine whether the pointer target resides within the inline editor surface.
  * @param {HTMLElement} card
@@ -939,12 +952,32 @@ export function renderCard(record, options = {}) {
     configurePinnedLayout(notesContainer);
     applyPinnedState(card, initialPinned, notesContainer, { setPinnedButtonState: updatePinButtonState });
 
-    const handleCardInteraction = (event) => {
+    const handleCardClick = (event) => {
         const target = /** @type {HTMLElement} */ (event.target);
-        if (target.closest && target.closest(".actions")) {
+        if (shouldIgnoreCardPointerTarget(target)) {
             return;
         }
+        if (card.classList.contains("editing-in-place")) {
+            return;
+        }
+        const previewWrapper = card.querySelector(".note-preview");
+        if (!(previewWrapper instanceof HTMLElement)) {
+            return;
+        }
+        const shouldToggleExpansion = previewWrapper.classList.contains("note-preview--overflow")
+            || previewWrapper.classList.contains("note-preview--expanded");
+        if (!shouldToggleExpansion) {
+            return;
+        }
+        const expandNext = !previewWrapper.classList.contains("note-preview--expanded");
+        setCardExpanded(card, expandNext);
+    };
 
+    const handleCardDoubleClick = (event) => {
+        const target = /** @type {HTMLElement} */ (event.target);
+        if (shouldIgnoreCardPointerTarget(target)) {
+            return;
+        }
         if (card.classList.contains("editing-in-place")) {
             return;
         }
@@ -953,7 +986,7 @@ export function renderCard(record, options = {}) {
         const previewElement = card.querySelector(".markdown-content");
         const host = editorHosts.get(card);
 
-        if (previewElement instanceof HTMLElement && host && previewElement.contains(target)) {
+        if (previewElement instanceof HTMLElement && host) {
             const offset = calculatePreviewTextOffset(previewElement, event);
             if (offset !== null) {
                 const markdownValue = host.getValue();
@@ -967,7 +1000,8 @@ export function renderCard(record, options = {}) {
         });
     };
 
-    card.addEventListener("click", handleCardInteraction);
+    card.addEventListener("click", handleCardClick);
+    card.addEventListener("dblclick", handleCardDoubleClick);
     preview.addEventListener("click", handlePreviewInteraction);
 
     const editorHost = createMarkdownEditorHost({
