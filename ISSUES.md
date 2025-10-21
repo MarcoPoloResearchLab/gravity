@@ -213,6 +213,13 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   <script src="app.js"></script>
   ```
   - [ ] [GN-60] Tests must take screenshots of the areas they address. We currently have 30 tests, a run of the tests must produce 30 screenshots demonstrating the scenarios and their resolutions 
+  - [ ] [GN-62] The changes in the notes height only happen in response to user actions. If a note was clicked on and extended in height, it stays so untill the user clicks and folds the note back in. The note does not auto resizes back when the user clicks or edits another note. Apply the logc to thwe UI: only users actions change the height of the cards containing notes:
+    1. Clicking expands the note
+    2. Clicking an expanded note returns it to its original height
+    3. Doubleclicking switches the note to editing -- markdown
+    4. Shift-enter finishes editing
+    5. Clicking outside of the note finishes editing 
+    6. The height of expanded rendered note and the height of markedown not must be identical. Work on the stling that gurantees that the size of markdown and rendered note are the same.
 
 ### BugFixes
 
@@ -413,10 +420,12 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
     ```
     Dilligently investigate why such double markdown representation is possible. radically simplify the implementation leaning into the MDE amd marked.js. Ensure we have tests that guratee that we dont perform any operations twice and that we dont show markdown twice. This is the most critical issue, spend a liot of compute to get it right.
 
-    There is ![alt text](image.png) that demonstrates the bug
+    There is ![the screenshot](image.png) that demonstrates the bug
       1. There is a scroller on the screen -- and we must never have a scroller in the system
-      2. The mardown is double-rendered
+      2. The markdown is double-rendered
   - [x] [GN-59] Change mouse behaviour: single click on a note expands it in the rendered mode if needed. Double click opens note for editing
+  - [ ] [GN-61] Double-clicking opens a wrong note. Adjust the code to 1) identify the card that was clicked on 2) identify the position in the rendered card that the click as made 3) find the closest word or character to the clicking point in this card 4) open markdown editing and place the cursor on the identified position
+
 
 
 ### Maintenance
