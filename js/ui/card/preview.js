@@ -6,7 +6,10 @@ import {
     BADGE_LABEL_CODE
 } from "../../constants.js";
 import { createElement } from "../../utils/dom.js";
-import { renderSanitizedMarkdown } from "../markdownPreview.js";
+import {
+    buildDeterministicPreview,
+    renderSanitizedMarkdown
+} from "../markdownPreview.js";
 import {
     collectReferencedAttachments,
     transformMarkdownWithAttachments
@@ -15,6 +18,18 @@ import { placeCardRespectingPinned } from "./layout.js";
 import { updateActionButtons } from "./listControls.js";
 import { syncStoreFromDom } from "../storeSync.js";
 
+/**
+ * HTML view lifecycle is intentionally atomic:
+ *  - `createHTMLView(card, …)` removes any existing preview DOM and rebuilds it
+ *    from the supplied markdown source, wiring up the expand toggle and badges.
+ *  - `deleteHTMLView(card)` tears the preview out of the DOM entirely. Edit mode
+ *    always calls this so the editor surface is the only visible state.
+ *  No incremental refresh helpers remain; callers choose one of these two
+ *  operations based on the card mode.
+ */
+// HTML view lifecycle helpers – cards rebuild their visible HTML from markdown
+// on demand (create) and tear it down entirely when switching to markdown view
+// (delete). No refresh helpers remain by design.
 const previewBubbleTimers = new WeakMap();
 const previewFocusTargets = new WeakMap();
 let expandedPreviewCard = /** @type {HTMLElement|null} */ (null);
@@ -68,37 +83,89 @@ export function bubbleCardToTop(card, notesContainer, markdownOverride, override
         : undefined;
     syncStoreFromDom(notesContainer, overrides);
     updateActionButtons(notesContainer);
-    refreshCardPreview(card, markdownOverride);
+    const badgesTarget = card.querySelector(".note-badges");
+    let previewSource = markdownOverride;
+    if (typeof previewSource !== "string") {
+        const host = card.__markdownHost;
+        const textarea = host && typeof host.getTextarea === "function"
+            ? host.getTextarea()
+            : /** @type {HTMLTextAreaElement|null} */ (card.querySelector(".markdown-editor"));
+        const markdownValue = host && typeof host.getValue === "function"
+            ? host.getValue()
+            : textarea?.value ?? "";
+        const attachments = textarea instanceof HTMLTextAreaElement ? collectReferencedAttachments(textarea) : {};
+        previewSource = transformMarkdownWithAttachments(markdownValue, attachments);
+    }
+    createHTMLView(card, { markdownSource: previewSource, badgesTarget });
 }
 
 /**
- * Re-render a card's preview portion from its markdown.
+ * Build a fresh HTML view for a card from the provided markdown source. Any
+ * existing HTML view is removed first so only one rendered copy exists.
+ *
  * @param {HTMLElement} card
- * @param {string} [markdownOverride]
- * @returns {void}
+ * @param {{ markdownSource: string, badgesTarget?: HTMLElement|null }} options
+ * @returns {HTMLElement|null}
  */
-export function refreshCardPreview(card, markdownOverride) {
+export function createHTMLView(card, { markdownSource, badgesTarget }) {
+    if (!(card instanceof HTMLElement) || typeof markdownSource !== "string") {
+        return null;
+    }
+    deleteHTMLView(card);
+    const { previewMarkdown, meta } = buildDeterministicPreview(markdownSource);
+    const wrapper = createElement("div", "note-preview");
+    const content = createElement("div", "markdown-content");
+    const expandToggle = createExpandToggle(card, wrapper);
+    wrapper.append(content, expandToggle);
+    insertPreviewWrapper(card, wrapper);
+    renderSanitizedMarkdown(content, previewMarkdown);
+    restorePreviewFocus(card);
+    if (badgesTarget instanceof HTMLElement) {
+        applyPreviewBadges(badgesTarget, meta);
+    }
+    scheduleOverflowCheck(wrapper, content, expandToggle);
+    return wrapper;
+}
+
+/**
+ * Remove the current HTML view for a card (no-op if none exists).
+ * @param {HTMLElement} card
+ */
+export function deleteHTMLView(card) {
     if (!(card instanceof HTMLElement)) {
         return;
     }
-    const preview = card.querySelector(".markdown-content");
-    if (!(preview instanceof HTMLElement)) {
+    const wrapper = card.querySelector(".note-preview");
+    if (!(wrapper instanceof HTMLElement)) {
         return;
     }
-    const editor = /** @type {HTMLTextAreaElement|null} */ (card.querySelector(".markdown-editor"));
-    const editorHost = card.__markdownHost;
-    const markdownValue = typeof markdownOverride === "string"
-        ? markdownOverride
-        : editorHost
-            ? editorHost.getValue()
-            : editor?.value ?? "";
-    const attachments = editor instanceof HTMLTextAreaElement ? collectReferencedAttachments(editor) : {};
-    const markdownWithAttachments = transformMarkdownWithAttachments(markdownValue, attachments);
-    renderSanitizedMarkdown(preview, markdownWithAttachments);
-    restorePreviewFocus(card);
-    const previewWrapper = card.querySelector(".note-preview");
-    const expandToggle = card.querySelector(".note-expand-toggle");
-    scheduleOverflowCheck(previewWrapper, preview, expandToggle);
+    if (expandedPreviewCard === card) {
+        expandedPreviewCard = null;
+    }
+    wrapper.remove();
+}
+
+function insertPreviewWrapper(card, wrapper) {
+    const textarea = card.querySelector(".markdown-editor");
+    if (textarea instanceof HTMLElement && textarea.parentElement === card) {
+        card.insertBefore(wrapper, textarea);
+    } else {
+        card.appendChild(wrapper);
+    }
+}
+
+function createExpandToggle(card, wrapper) {
+    const toggle = createElement("button", "note-expand-toggle", "»");
+    toggle.type = "button";
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.setAttribute("aria-label", LABEL_EXPAND_NOTE);
+    toggle.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const isExpanded = wrapper.classList.contains("note-preview--expanded");
+        setCardExpanded(card, !isExpanded);
+    });
+    return toggle;
 }
 
 /**

@@ -868,21 +868,23 @@ test.describe("Markdown inline editor", () => {
                 }
                 const actions = card.querySelector(".actions");
                 const codeMirror = card.querySelector(".CodeMirror");
-                const content = card.querySelector(".markdown-content");
-                if (!(actions instanceof HTMLElement) || !(codeMirror instanceof HTMLElement) || !(content instanceof HTMLElement)) {
+                if (!(actions instanceof HTMLElement) || !(codeMirror instanceof HTMLElement)) {
                     return null;
                 }
                 const actionsRect = actions.getBoundingClientRect();
                 const codeMirrorRect = codeMirror.getBoundingClientRect();
                 const cardRect = card.getBoundingClientRect();
-                const contentStyles = window.getComputedStyle(content);
+                const content = card.querySelector(".markdown-content");
+                const previewDisplay = content instanceof HTMLElement
+                    ? window.getComputedStyle(content).display
+                    : "none";
                 return {
                     actionsLeft: actionsRect.left,
                     actionsWidth: actionsRect.width,
                     codeMirrorLeft: codeMirrorRect.left,
                     codeMirrorRight: codeMirrorRect.right,
                     cardLeft: cardRect.left,
-                    previewDisplay: contentStyles.display
+                    previewDisplay
                 };
             }, cardSelector);
             assert.ok(layoutAfterEdit, "Layout after entering edit mode should be measurable");

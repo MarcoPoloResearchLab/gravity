@@ -101,6 +101,30 @@ function decorateTaskCheckboxes(previewElement) {
     if (!(previewElement instanceof HTMLElement)) {
         return;
     }
+    const listItems = previewElement.querySelectorAll("li");
+    listItems.forEach((item) => {
+        if (!(item instanceof HTMLElement)) {
+            return;
+        }
+        const existingCheckbox = item.querySelector("input[type=\"checkbox\"]");
+        if (existingCheckbox) {
+            return;
+        }
+        const rawText = (item.textContent || "").trim();
+        if (rawText !== "[ ]" && rawText.toLowerCase() !== "[x]") {
+            return;
+        }
+        const checkbox = item.ownerDocument?.createElement("input");
+        if (!(checkbox instanceof HTMLInputElement)) {
+            return;
+        }
+        checkbox.type = "checkbox";
+        if (rawText.toLowerCase() === "[x]") {
+            checkbox.checked = true;
+        }
+        item.textContent = "";
+        item.appendChild(checkbox);
+    });
     const checkboxNodes = previewElement.querySelectorAll("input");
     let taskIndex = 0;
     checkboxNodes.forEach((node) => {

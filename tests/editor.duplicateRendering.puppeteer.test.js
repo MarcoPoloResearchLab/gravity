@@ -3,6 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
+import { PNG } from "pngjs";
+
 import { appConfig } from "../js/core/config.js";
 import { createSharedPage } from "./helpers/browserHarness.js";
 
@@ -11,17 +13,26 @@ const PROJECT_ROOT = path.resolve(__dirname, "..");
 const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
 
 const GN58_NOTE_ID = "gn58-duplicate-preview";
-const GN58_MARKDOWN = [
-    "- [ ] No lines separating the first card from the next",
-    "- [ ] "
+const INITIAL_MARKDOWN_LINES = [
+    "- [ ] unique1",
+    "- [ ]"
+];
+const INITIAL_MARKDOWN = INITIAL_MARKDOWN_LINES.join("\n");
+const FIRST_TOGGLE_MARKDOWN = [
+    "- [x] unique1",
+    "- [ ]"
+].join("\n");
+const SECOND_TOGGLE_MARKDOWN = [
+    "- [x] unique1",
+    "- [x]"
 ].join("\n");
 
 test.describe("GN-58 duplicate markdown rendering", () => {
-    test("inline editor renders a single editing surface per card", async () => {
+    test("checklist preview and editor remain singular with persistent checkbox state", async () => {
         const seededRecords = [
             buildNoteRecord({
                 noteId: GN58_NOTE_ID,
-                markdownText: GN58_MARKDOWN
+                markdownText: INITIAL_MARKDOWN
             })
         ];
         const { page, teardown } = await openPageWithRecords(seededRecords);
@@ -29,114 +40,77 @@ test.describe("GN-58 duplicate markdown rendering", () => {
             const cardSelector = `.markdown-block[data-note-id="${GN58_NOTE_ID}"]`;
             await page.waitForSelector(cardSelector);
 
-            const viewSnapshot = await page.evaluate((selector) => {
-                const card = document.querySelector(selector);
-                if (!(card instanceof HTMLElement)) {
-                    return null;
-                }
-                const preview = card.querySelector(".markdown-content");
-                return {
-                    classes: [...card.classList.values()],
-                    previewHtml: preview ? preview.innerHTML : null
-                };
-            }, cardSelector);
-            assert(viewSnapshot);
-            assert.ok(
-                Array.isArray(viewSnapshot.classes) && viewSnapshot.classes.includes("markdown-editor-host--view"),
-                "card remains in view mode before editing"
-            );
-            assert.ok(
-                typeof viewSnapshot.previewHtml === "string" && viewSnapshot.previewHtml.includes("<ul>"),
-                "preview renders sanitized checklist HTML"
-            );
-
-            await page.evaluate((selector) => {
-                const card = document.querySelector(selector);
-                if (!(card instanceof HTMLElement)) {
-                    return;
-                }
-                const preview = card.querySelector(".markdown-content");
-                if (!(preview instanceof HTMLElement)) {
-                    return;
-                }
-                preview.hidden = false;
-                preview.style.display = "block";
-            }, cardSelector);
-
-            await page.click(`${cardSelector} .note-preview`, { clickCount: 2 });
-            await page.waitForSelector(`${cardSelector}.editing-in-place`);
-
-            const editingSnapshot = await page.evaluate((selector) => {
-                const card = document.querySelector(selector);
-                if (!(card instanceof HTMLElement)) {
-                    return { codeMirrorCount: 0, markdownEditorCount: 0, previewDisplay: null };
-                }
-                const preview = card.querySelector(".markdown-content");
-                return {
-                    codeMirrorCount: card.querySelectorAll(".CodeMirror").length,
-                    markdownEditorCount: card.querySelectorAll("textarea.markdown-editor").length,
-                    previewDisplay: preview ? window.getComputedStyle(preview).display : null
-                };
-            }, cardSelector);
-            assert.equal(editingSnapshot.codeMirrorCount, 1, "only one CodeMirror instance mounts");
-            assert.equal(editingSnapshot.markdownEditorCount, 1, "only one markdown textarea remains");
-            assert.equal(editingSnapshot.previewDisplay, "none", "preview hides while editing");
-
-            const codeMirrorTextarea = `${cardSelector} .CodeMirror textarea`;
-            await page.waitForSelector(codeMirrorTextarea);
-            await page.focus(codeMirrorTextarea);
-            await page.keyboard.type("Sample");
-
-            const postTypeState = await page.evaluate((selector) => {
-                const card = document.querySelector(selector);
-                if (!(card instanceof HTMLElement)) {
-                    return null;
-                }
-                const host = /** @type {any} */ (card).__markdownHost;
-                const codeMirror = card.querySelector(".CodeMirror");
-                return {
-                    value: host && typeof host.getValue === "function" ? host.getValue() : null,
-                    codeMirrorText: codeMirror ? codeMirror.textContent : null,
-                    codeMirrorHtml: codeMirror ? codeMirror.innerHTML : null
-                };
-            }, cardSelector);
-            assert(postTypeState);
-            assert.ok(
-                typeof postTypeState.value === "string" && postTypeState.value.includes("Sample"),
-                "inline editor reflects typed content"
-            );
-
-            await page.keyboard.down("Shift");
-            await page.keyboard.press("Enter");
-            await page.keyboard.up("Shift");
-            await page.waitForSelector(`${cardSelector}:not(.editing-in-place)`);
-
-            const postFinalizeSnapshot = await page.evaluate((selector) => {
-                const card = document.querySelector(selector);
-                if (!(card instanceof HTMLElement)) {
-                    return null;
-                }
-                const preview = card.querySelector(".markdown-content");
-                return {
-                    classes: [...card.classList.values()],
-                    previewHtml: preview ? preview.innerHTML : null,
-                    previewDisplay: preview ? window.getComputedStyle(preview).display : null
-                };
-            }, cardSelector);
-            assert(postFinalizeSnapshot);
-            assert.ok(
-                Array.isArray(postFinalizeSnapshot.classes) && postFinalizeSnapshot.classes.includes("markdown-editor-host--view"),
-                "card returns to view mode after finalize"
-            );
-            assert.ok(
-                typeof postFinalizeSnapshot.previewHtml === "string" && postFinalizeSnapshot.previewHtml.includes("Sample"),
-                "preview reflects saved markdown after finalize"
-            );
+            await highlightRenderedCheckboxes(page, cardSelector);
+            const previewHtmlSnapshot = await getPreviewHtml(page, cardSelector);
+            const screenshotBuffer = await captureCardScreenshot(page, cardSelector);
+            const checkboxClusterCount = countHighlightedCheckboxClusters(screenshotBuffer);
             assert.equal(
-                postFinalizeSnapshot.previewDisplay,
-                "block",
-                "preview becomes visible again after editing"
+                checkboxClusterCount,
+                2,
+                `rendered preview screenshot shows exactly two highlighted checkboxes: ${previewHtmlSnapshot}`
             );
+
+            const previewOccurrences = await countPreviewOccurrences(page, cardSelector, "unique1");
+            assert.equal(previewOccurrences, 1, "preview renders unique1 exactly once");
+
+            const previewCheckboxCount = await countPreviewCheckboxes(page, cardSelector);
+            assert.equal(previewCheckboxCount, 2, "preview exposes two checklist inputs");
+
+            await enterEditMode(page, cardSelector);
+
+            const previewDuringEditCount = await countPreviewWrappers(page, cardSelector);
+            assert.equal(previewDuringEditCount, 0, "entering edit mode removes preview wrapper");
+
+            const initialMarkdownValue = await getMarkdownValue(page, cardSelector);
+            assert.equal(
+                initialMarkdownValue,
+                INITIAL_MARKDOWN,
+                "editing surface loads the original markdown including trailing empty task"
+            );
+
+            await finalizeEditing(page, cardSelector);
+            const previewAfterFinalize = await countPreviewWrappers(page, cardSelector);
+            assert.equal(previewAfterFinalize, 1, "preview wrapper reattaches after finalizing edit");
+
+            await page.click(`${cardSelector} input[data-task-index="0"]`);
+            await waitForMarkdownValue(page, cardSelector, FIRST_TOGGLE_MARKDOWN);
+
+            const firstToggleMarkdown = await getMarkdownValue(page, cardSelector);
+            assert.equal(firstToggleMarkdown, FIRST_TOGGLE_MARKDOWN, "toggling first checkbox persists markdown state");
+
+            const firstCheckboxChecked = await isCheckboxChecked(page, cardSelector, 0);
+            assert.equal(firstCheckboxChecked, true, "first preview checkbox reflects the toggled state");
+
+            await enterEditMode(page, cardSelector);
+            const previewDuringFirstToggleEdit = await countPreviewWrappers(page, cardSelector);
+            assert.equal(previewDuringFirstToggleEdit, 0, "preview remains destroyed while editing after toggle");
+
+            const markdownInFirstToggleEdit = await getMarkdownValue(page, cardSelector);
+            assert.equal(markdownInFirstToggleEdit, FIRST_TOGGLE_MARKDOWN, "editor reflects first toggle markdown");
+            await finalizeEditing(page, cardSelector);
+
+            await page.click(`${cardSelector} input[data-task-index="1"]`);
+            await waitForMarkdownValue(page, cardSelector, SECOND_TOGGLE_MARKDOWN);
+
+            const secondToggleMarkdown = await getMarkdownValue(page, cardSelector);
+            assert.equal(secondToggleMarkdown, SECOND_TOGGLE_MARKDOWN, "toggling second checkbox persists markdown state");
+
+            const secondCheckboxChecked = await isCheckboxChecked(page, cardSelector, 1);
+            assert.equal(secondCheckboxChecked, true, "second preview checkbox reflects the toggled state");
+
+            await enterEditMode(page, cardSelector);
+            const previewDuringSecondToggleEdit = await countPreviewWrappers(page, cardSelector);
+            assert.equal(previewDuringSecondToggleEdit, 0, "preview does not reappear in edit mode after second toggle");
+
+            const markdownInSecondToggleEdit = await getMarkdownValue(page, cardSelector);
+            assert.equal(markdownInSecondToggleEdit, SECOND_TOGGLE_MARKDOWN, "editor reflects fully toggled markdown");
+            await finalizeEditing(page, cardSelector);
+
+            const finalCheckboxCount = await countPreviewCheckboxes(page, cardSelector);
+            assert.equal(finalCheckboxCount, 2, "preview retains two interactive checkboxes after edits");
+
+            const finalPreviewOccurrences = await countPreviewOccurrences(page, cardSelector, "unique1");
+            assert.equal(finalPreviewOccurrences, 1, "final preview renders unique1 once without duplication");
         } finally {
             await teardown();
         }
@@ -166,4 +140,195 @@ async function openPageWithRecords(records) {
     }, appConfig.storageKey, serialized);
     await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
     return { page, teardown };
+}
+
+async function highlightRenderedCheckboxes(page, cardSelector) {
+    await page.evaluate((selector) => {
+        const card = document.querySelector(selector);
+        if (!(card instanceof HTMLElement)) {
+            return;
+        }
+        const checkboxes = card.querySelectorAll(".note-task-checkbox");
+        checkboxes.forEach((checkbox) => {
+            if (!(checkbox instanceof HTMLInputElement)) {
+                return;
+            }
+            checkbox.style.appearance = "none";
+            checkbox.style.width = "18px";
+            checkbox.style.height = "18px";
+            checkbox.style.backgroundColor = "rgb(220, 0, 0)";
+            checkbox.style.border = "2px solid rgb(220, 0, 0)";
+        });
+    }, cardSelector);
+    await page.evaluate(() => new Promise((resolve) => {
+        requestAnimationFrame(() => {
+            requestAnimationFrame(resolve);
+        });
+    }));
+}
+
+async function captureCardScreenshot(page, cardSelector) {
+    const handle = await page.$(cardSelector);
+    if (!handle) {
+        throw new Error(`Unable to capture screenshot for selector: ${cardSelector}`);
+    }
+    try {
+        const result = await handle.screenshot({ type: "png" });
+        return Buffer.isBuffer(result) ? result : Buffer.from(result);
+    } finally {
+        await handle.dispose();
+    }
+}
+
+function countHighlightedCheckboxClusters(buffer) {
+    const png = PNG.sync.read(buffer);
+    const columnWeights = new Map();
+    const rowWeights = new Map();
+    const width = png.width;
+    const height = png.height;
+    const data = png.data;
+    for (let y = 0; y < height; y += 1) {
+        for (let x = 0; x < width; x += 1) {
+            const index = (y * width + x) * 4;
+            const red = data[index];
+            const green = data[index + 1];
+            const blue = data[index + 2];
+            const alpha = data[index + 3];
+            const isHighlighted = alpha > 200 && red > 200 && green < 80 && blue < 80;
+            if (!isHighlighted) {
+                continue;
+            }
+            columnWeights.set(x, (columnWeights.get(x) ?? 0) + 1);
+            rowWeights.set(y, (rowWeights.get(y) ?? 0) + 1);
+        }
+    }
+    const columnClusters = resolveSignificantClusters(columnWeights, 3, 120);
+    const rowClusters = resolveSignificantClusters(rowWeights, 3, 40);
+    return Math.max(columnClusters, rowClusters);
+}
+
+function resolveSignificantClusters(weightMap, gapThreshold, weightThreshold) {
+    if (!(weightMap instanceof Map) || weightMap.size === 0) {
+        return 0;
+    }
+    const sortedIndexes = Array.from(weightMap.keys()).sort((a, b) => a - b);
+    const clusters = [];
+    let previousIndex = null;
+    let activeCluster = null;
+    for (const index of sortedIndexes) {
+        if (previousIndex === null || index - previousIndex > gapThreshold) {
+            if (activeCluster) {
+                clusters.push(activeCluster);
+            }
+            activeCluster = {
+                start: index,
+                end: index,
+                weight: weightMap.get(index) ?? 0
+            };
+        } else if (activeCluster) {
+            activeCluster.end = index;
+            activeCluster.weight += weightMap.get(index) ?? 0;
+        }
+        previousIndex = index;
+    }
+    if (activeCluster) {
+        clusters.push(activeCluster);
+    }
+    return clusters.filter((cluster) => cluster.weight >= weightThreshold).length;
+}
+
+async function enterEditMode(page, cardSelector) {
+    await page.click(`${cardSelector} .note-preview`, { clickCount: 2 });
+    await page.waitForSelector(`${cardSelector}.editing-in-place`);
+    await page.waitForSelector(`${cardSelector} .CodeMirror textarea`);
+}
+
+async function finalizeEditing(page, cardSelector) {
+    const codeMirrorTextarea = `${cardSelector} .CodeMirror textarea`;
+    await page.waitForSelector(codeMirrorTextarea);
+    await page.focus(codeMirrorTextarea);
+    await page.keyboard.down("Shift");
+    await page.keyboard.press("Enter");
+    await page.keyboard.up("Shift");
+    await page.waitForSelector(`${cardSelector}:not(.editing-in-place)`);
+}
+
+async function getMarkdownValue(page, cardSelector) {
+    return page.evaluate((selector) => {
+        const card = document.querySelector(selector);
+        const host = card && typeof card === "object" ? card.__markdownHost : null;
+        if (!host || typeof host.getValue !== "function") {
+            return null;
+        }
+        return host.getValue();
+    }, cardSelector);
+}
+
+async function waitForMarkdownValue(page, cardSelector, expected) {
+    await page.waitForFunction((selector, targetValue) => {
+        const card = document.querySelector(selector);
+        const host = card && typeof card === "object" ? card.__markdownHost : null;
+        if (!host || typeof host.getValue !== "function") {
+            return false;
+        }
+        return host.getValue() === targetValue;
+    }, {}, cardSelector, expected);
+}
+
+async function countPreviewOccurrences(page, cardSelector, term) {
+    return page.evaluate((selector, searchTerm) => {
+        const card = document.querySelector(selector);
+        if (!(card instanceof HTMLElement)) {
+            return 0;
+        }
+        const preview = card.querySelector(".markdown-content");
+        if (!(preview instanceof HTMLElement)) {
+            return 0;
+        }
+        const content = preview.innerText ?? "";
+        const matches = content.match(new RegExp(searchTerm, "g")) ?? [];
+        return matches.length;
+    }, cardSelector, term);
+}
+
+async function countPreviewCheckboxes(page, cardSelector) {
+    return page.evaluate((selector) => {
+        const card = document.querySelector(selector);
+        if (!(card instanceof HTMLElement)) {
+            return 0;
+        }
+        return card.querySelectorAll(".note-preview input.note-task-checkbox").length;
+    }, cardSelector);
+}
+
+async function countPreviewWrappers(page, cardSelector) {
+    return page.evaluate((selector) => {
+        const card = document.querySelector(selector);
+        if (!(card instanceof HTMLElement)) {
+            return 0;
+        }
+        return card.querySelectorAll(".note-preview").length;
+    }, cardSelector);
+}
+
+async function isCheckboxChecked(page, cardSelector, index) {
+    return page.evaluate((selector, targetIndex) => {
+        const card = document.querySelector(selector);
+        if (!(card instanceof HTMLElement)) {
+            return false;
+        }
+        const checkbox = card.querySelectorAll("input.note-task-checkbox")[targetIndex];
+        return checkbox instanceof HTMLInputElement ? checkbox.checked : false;
+    }, cardSelector, index);
+}
+
+async function getPreviewHtml(page, cardSelector) {
+    return page.evaluate((selector) => {
+        const card = document.querySelector(selector);
+        if (!(card instanceof HTMLElement)) {
+            return "";
+        }
+        const preview = card.querySelector(".markdown-content");
+        return preview instanceof HTMLElement ? preview.innerHTML : "";
+    }, cardSelector);
 }

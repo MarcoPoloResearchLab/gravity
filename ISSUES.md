@@ -413,7 +413,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
     [GSI_LOGGER]: The given origin is not allowed for the given client ID. client:74:89
     [GSI_LOGGER]: The given origin is not allowed for the given client ID. m=credential_button_library:74:89
     ```
-  - [ ] [GN-58] The editor is broken: it duplicates the editing text. For example, the note containing this text shows markdown twice
+› Document the code flow when each card calls createHTMLView when it's loaded into view and deleteHTMLView when it's unloaded from the view or is getting edited  - [x] [GN-58] The editor is broken: it duplicates the editing text. For example, the note containing this text shows markdown twice
     ```
     - [ ] No lines separating the first card from the next
     - [ ] 
@@ -423,6 +423,9 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
     There is ![the screenshot](image.png) that demonstrates the bug
       1. There is a scroller on the screen -- and we must never have a scroller in the system
       2. The markdown is double-rendered
+
+    Document the code flow when each card calls createHTMLView when it's loaded into view and deleteHTMLView when it's unloaded from the view or is getting edited.  we do not refresh anything, we have simple atomic operations and must remove all the code that introduced this tangled mess and complexity. the card's text can create an HTML view, delete the HTML view, and be edited. Getting into editing always calls deleteHTMLView, these are the properties of the card's text
+    Resolved 2025-10-22: Cards now delete the existing HTML view when editing begins (`deleteHTMLView`) and rebuild it from markdown via `createHTMLView` when returning to view mode, ensuring only one rendered copy while the markdown remains authoritative. Automated screenshot comparison in `tests/editor.duplicateRendering.puppeteer.test.js` confirms the single-render flow.
   - [x] [GN-59] Change mouse behaviour: single click on a note expands it in the rendered mode if needed. Double click opens note for editing
   - [ ] [GN-61] Double-clicking opens a wrong note. Adjust the code to 1) identify the card that was clicked on 2) identify the position in the rendered card that the click as made 3) find the closest word or character to the clicking point in this card 4) open markdown editing and place the cursor on the identified position
 

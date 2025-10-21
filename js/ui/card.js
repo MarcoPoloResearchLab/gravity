@@ -42,22 +42,19 @@ import {
 import {
     schedulePreviewBubble,
     bubbleCardToTop,
-    refreshCardPreview,
+    createHTMLView as createHTMLViewBase,
+    deleteHTMLView as deleteHTMLViewBase,
     queuePreviewFocus,
     restorePreviewFocus,
     setCardExpanded,
     collapseExpandedPreview,
     collapseActivePreview,
-    getExpandedPreviewCard,
-    scheduleOverflowCheck,
-    applyPreviewBadges
+    getExpandedPreviewCard
 } from "./card/preview.js";
 export { updateActionButtons, insertCardRespectingPinned } from "./card/listControls.js";
 import {
-    renderSanitizedMarkdown,
     getSanitizedRenderedHtml,
-    getRenderedPlainText,
-    buildDeterministicPreview
+    getRenderedPlainText
 } from "./markdownPreview.js";
 import {
     enableClipboardImagePaste,
@@ -84,7 +81,6 @@ const editorHosts = new WeakMap();
 const finalizeSuppression = new WeakMap();
 const suppressionState = new WeakMap();
 const copyFeedbackTimers = new WeakMap();
-const previewVisibilityState = new WeakMap();
 const COPY_FEEDBACK_DURATION_MS = 1800;
 const LINE_ENDING_NORMALIZE_PATTERN = /\r\n/g;
 const TRAILING_WHITESPACE_PATTERN = /[ \t]+$/;
@@ -916,29 +912,7 @@ export function renderCard(record, options = {}) {
 
     const badges = createElement("div", "note-badges");
 
-    const previewWrapper = createElement("div", "note-preview");
-    const preview = createElement("div", "markdown-content");
-    previewWrapper.appendChild(preview);
-
-    const expandToggle = createElement("button", "note-expand-toggle", "»");
-    expandToggle.type = "button";
-    expandToggle.setAttribute("aria-expanded", "false");
-    expandToggle.setAttribute("aria-label", LABEL_EXPAND_NOTE);
-    expandToggle.hidden = true;
-    expandToggle.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        const isExpanded = previewWrapper.classList.contains("note-preview--expanded");
-        setCardExpanded(card, isExpanded ? false : true);
-    });
-    previewWrapper.appendChild(expandToggle);
-
     const initialAttachments = record.attachments || {};
-    const initialPreviewMarkdown = transformMarkdownWithAttachments(record.markdownText, initialAttachments);
-    const { previewMarkdown, meta } = buildDeterministicPreview(initialPreviewMarkdown);
-    renderSanitizedMarkdown(preview, previewMarkdown);
-    scheduleOverflowCheck(previewWrapper, preview, expandToggle);
-    applyPreviewBadges(badges, meta);
 
     const editor  = createElement("textarea", "markdown-editor");
     editor.value  = record.markdownText;
@@ -947,7 +921,14 @@ export function renderCard(record, options = {}) {
     registerInitialAttachments(editor, initialAttachments);
     enableClipboardImagePaste(editor);
 
-    card.append(chips, badges, previewWrapper, editor, actions);
+    card.append(chips, badges, editor, actions);
+
+    const initialMarkdownWithAttachments = transformMarkdownWithAttachments(record.markdownText, initialAttachments);
+    // Always build the preview from scratch when the card enters view mode.
+    createHTMLView(card, {
+        markdownSource: initialMarkdownWithAttachments,
+        badgesTarget: badges
+    });
 
     configurePinnedLayout(notesContainer);
     applyPinnedState(card, initialPinned, notesContainer, { setPinnedButtonState: updatePinButtonState });
@@ -1002,12 +983,14 @@ export function renderCard(record, options = {}) {
 
     card.addEventListener("click", handleCardClick);
     card.addEventListener("dblclick", handleCardDoubleClick);
-    preview.addEventListener("click", handlePreviewInteraction);
+    card.addEventListener("click", handlePreviewInteraction);
+
+    const previewPlaceholder = createElement("div");
 
     const editorHost = createMarkdownEditorHost({
         container: card,
         textarea: editor,
-        previewElement: preview,
+        previewElement: previewPlaceholder,
         initialMode: MARKDOWN_MODE_VIEW,
         showToolbar: false
     });
@@ -1027,16 +1010,6 @@ export function renderCard(record, options = {}) {
         card.dataset.lastActivityIso = record.lastActivityIso;
     }
 
-    const refreshPreview = () => {
-        const attachments = getAllAttachments(editor);
-        const markdownWithAttachments = transformMarkdownWithAttachments(editorHost.getValue(), attachments);
-        const { previewMarkdown: nextPreviewMarkdown, meta: nextMeta } = buildDeterministicPreview(markdownWithAttachments);
-        renderSanitizedMarkdown(preview, nextPreviewMarkdown);
-        applyPreviewBadges(badges, nextMeta);
-        restorePreviewFocus(card);
-        scheduleOverflowCheck(previewWrapper, preview, expandToggle);
-    };
-
     const updateModeControls = () => {
         const mode = editorHost.getMode();
         if (mode === MARKDOWN_MODE_EDIT) {
@@ -1048,11 +1021,21 @@ export function renderCard(record, options = {}) {
         }
     };
 
-    editorHost.on("change", refreshPreview);
     editorHost.on("modechange", ({ mode }) => {
         updateModeControls();
-        if (mode === MARKDOWN_MODE_VIEW) {
+        if (mode === MARKDOWN_MODE_EDIT) {
+            deleteHTMLView(card);
+            card.classList.add("editing-in-place");
+            createMarkdownView(editorHost);
+        } else {
             card.classList.remove("editing-in-place");
+            deleteMarkdownView(editorHost);
+            const attachments = getAllAttachments(editor);
+            const markdownWithAttachments = transformMarkdownWithAttachments(editorHost.getValue(), attachments);
+            createHTMLView(card, {
+                markdownSource: markdownWithAttachments,
+                badgesTarget: badges
+            });
         }
     });
     editorHost.on("submit", () => finalizeCard(card, notesContainer, {
@@ -1080,7 +1063,6 @@ export function renderCard(record, options = {}) {
     editorHost.on("navigatePrevious", () => navigateToAdjacentCard(card, DIRECTION_PREVIOUS, notesContainer));
     editorHost.on("navigateNext", () => navigateToAdjacentCard(card, DIRECTION_NEXT, notesContainer));
 
-    refreshPreview();
     updateModeControls();
 
     return card;
@@ -1112,7 +1094,12 @@ export function renderCard(record, options = {}) {
 
         queuePreviewFocus(card, { type: "checkbox", taskIndex, remaining: 2 });
         host.setValue(nextMarkdown);
-        refreshPreview();
+        const toggledAttachments = getAllAttachments(editor);
+        const toggledPreviewSource = transformMarkdownWithAttachments(nextMarkdown, toggledAttachments);
+        createHTMLView(card, {
+            markdownSource: toggledPreviewSource,
+            badgesTarget: badges
+        });
         const persisted = persistCardState(card, notesContainer, nextMarkdown, { bubbleToTop: false });
         if (persisted) {
             schedulePreviewBubble(card, notesContainer);
@@ -1180,84 +1167,6 @@ function restoreSuppressedState(card) {
     }
     if (state.wasEditing) {
         card.classList.add("editing-in-place");
-    }
-}
-
-function suppressPreviewDuringEditing(card) {
-    if (!(card instanceof HTMLElement)) {
-        return;
-    }
-    const previewWrapper = card.querySelector(".note-preview");
-    const preview = previewWrapper?.querySelector(".markdown-content");
-    const expandToggle = previewWrapper?.querySelector(".note-expand-toggle");
-    if (!previewVisibilityState.has(card)) {
-        const state = {
-            preview: preview instanceof HTMLElement ? preview : null,
-            previewHidden: preview instanceof HTMLElement ? preview.hidden : null,
-            previewDisplay: preview instanceof HTMLElement ? preview.style.display : null,
-            wrapper: previewWrapper instanceof HTMLElement ? previewWrapper : null,
-            wrapperHidden: previewWrapper instanceof HTMLElement ? previewWrapper.hidden : null,
-            wrapperDisplay: previewWrapper instanceof HTMLElement ? previewWrapper.style.display : null,
-            expandToggle: expandToggle instanceof HTMLElement ? expandToggle : null,
-            expandHidden: expandToggle instanceof HTMLElement ? expandToggle.hidden : null,
-            expandDisplay: expandToggle instanceof HTMLElement ? expandToggle.style.display : null
-        };
-        previewVisibilityState.set(card, state);
-    }
-    if (preview instanceof HTMLElement) {
-        preview.hidden = true;
-        preview.style.display = "none";
-    }
-    if (previewWrapper instanceof HTMLElement) {
-        previewWrapper.hidden = true;
-        previewWrapper.style.display = "none";
-    }
-    if (expandToggle instanceof HTMLElement) {
-        expandToggle.hidden = true;
-    }
-}
-
-function restorePreviewAfterEditing(card) {
-    const state = previewVisibilityState.get(card);
-    if (!state) {
-        return;
-    }
-    previewVisibilityState.delete(card);
-    const {
-        preview,
-        previewHidden,
-        previewDisplay,
-        wrapper,
-        wrapperHidden,
-        wrapperDisplay,
-        expandToggle,
-        expandHidden,
-        expandDisplay
-    } = state;
-
-    if (preview instanceof HTMLElement) {
-        preview.hidden = previewHidden === true;
-        if (typeof previewDisplay === "string" && previewDisplay.length > 0) {
-            preview.style.display = previewDisplay;
-        } else {
-            preview.style.removeProperty("display");
-        }
-    }
-    if (wrapper instanceof HTMLElement) {
-        wrapper.hidden = wrapperHidden === true;
-        if (typeof wrapperDisplay === "string" && wrapperDisplay.length > 0) {
-            wrapper.style.display = wrapperDisplay;
-        } else {
-            wrapper.style.removeProperty("display");
-        }
-    }
-    if (expandToggle instanceof HTMLElement) {
-        expandToggle.hidden = expandHidden === true;
-        if (typeof expandDisplay === "string" && expandDisplay.length > 0) {
-            expandToggle.style.display = expandDisplay;
-        } else {
-            expandToggle.style.removeProperty("display");
-        }
     }
 }
 
@@ -1338,24 +1247,31 @@ function persistCardState(card, notesContainer, markdownText, options = {}) {
     card.dataset.lastActivityIso = timestamp;
     card.dataset.attachmentsSignature = nextAttachmentsSignature;
 
+    const badgesElement = card.querySelector(".note-badges");
+
     if (notesContainer instanceof HTMLElement) {
         if (bubbleToTop) {
-            bubbleCardToTop(card, notesContainer, markdownText, record);
+            const previewSource = transformMarkdownWithAttachments(markdownText, attachments);
+            bubbleCardToTop(card, notesContainer, previewSource, record);
         } else {
-            refreshCardPreview(card, markdownText);
+            const previewSource = transformMarkdownWithAttachments(markdownText, attachments);
+            createHTMLView(card, {
+                markdownSource: previewSource,
+                badgesTarget: badgesElement
+            });
             syncStoreFromDom(notesContainer, { [noteId]: record });
             updateActionButtons(notesContainer);
         }
     } else {
-        refreshCardPreview(card, markdownText);
+        const previewSource = transformMarkdownWithAttachments(markdownText, attachments);
+        createHTMLView(card, {
+            markdownSource: previewSource,
+            badgesTarget: badgesElement
+        });
     }
 
     triggerClassificationForCard(noteId, markdownText, notesContainer);
     showSaveFeedback();
-    const preview = card.querySelector(".markdown-content");
-    const previewWrapper = card.querySelector(".note-preview");
-    const toggle = card.querySelector(".note-expand-toggle");
-    scheduleOverflowCheck(previewWrapper, preview, toggle);
     dispatchNoteUpdate(card, record, { storeUpdated: true, shouldRender: false });
     return true;
 }
@@ -1427,23 +1343,34 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
         }
         candidate.classList.remove("editing-in-place");
         const candidateHost = editorHosts.get(candidate);
-        if (candidateHost && candidateHost.getMode() === MARKDOWN_MODE_EDIT) {
+        if (candidateHost && candidateHost.getMode() !== MARKDOWN_MODE_VIEW) {
             candidateHost.setMode(MARKDOWN_MODE_VIEW);
         }
-        restorePreviewAfterEditing(candidate);
+        const candidateTextarea = candidateHost && typeof candidateHost.getTextarea === "function"
+            ? candidateHost.getTextarea()
+            : /** @type {HTMLTextAreaElement|null} */ (candidate.querySelector(".markdown-editor"));
+        const candidateMarkdown = candidateHost && typeof candidateHost.getValue === "function"
+            ? candidateHost.getValue()
+            : candidateTextarea?.value ?? "";
+        const candidateAttachments = candidateTextarea instanceof HTMLTextAreaElement ? collectReferencedAttachments(candidateTextarea) : {};
+        const candidatePreviewSource = transformMarkdownWithAttachments(candidateMarkdown, candidateAttachments);
+        createHTMLView(candidate, {
+            markdownSource: candidatePreviewSource,
+            badgesTarget: candidate.querySelector(".note-badges")
+        });
     });
 
     const editor  = card.querySelector(".markdown-editor");
-    const preview = card.querySelector(".markdown-content");
+    const badges  = card.querySelector(".note-badges");
     const editorHost = editorHosts.get(card);
 
     // Remember original text so we can detect "no changes"
     const initialValue = editorHost ? editorHost.getValue() : editor?.value ?? "";
     card.dataset.initialValue = initialValue;
 
+    deleteHTMLView(card);
     card.classList.add("editing-in-place");
-    suppressPreviewDuringEditing(card);
-    editorHost?.setMode(MARKDOWN_MODE_EDIT);
+    createMarkdownView(editorHost);
 
     if (bubbleSelfToTop) {
         const firstCard = notesContainer.firstElementChild;
@@ -1492,6 +1419,47 @@ function stripMarkdownImages(markdown) {
     return markdown.replace(/!\[[^\]]*\]\((data:[^)]+)\)/g, "$1");
 }
 
+/**
+ * Create the HTML representation for a card by delegating to the base helper.
+ * @param {HTMLElement} card
+ * @param {{ markdownSource: string, badgesTarget?: HTMLElement|null }} options
+ * @returns {HTMLElement|null}
+ */
+function createHTMLView(card, options) {
+    return createHTMLViewBase(card, options);
+}
+
+/**
+ * Cards never hide HTML views with styling; entering markdown mode must delete
+ * the rendered HTML entirely so only the editor remains. Returning to HTML
+ * view recreates it from the note's markdown via `createHTMLView`.
+ * @param {HTMLElement} card
+ */
+function deleteHTMLView(card) {
+    deleteHTMLViewBase(card);
+}
+
+/**
+ * Switch the card into markdown view by ensuring the EasyMDE host is in edit
+ * mode before calling callers-run operations.
+ * @param {import("./markdownEditorHost.js").MarkdownEditorHost} host
+ */
+function createMarkdownView(host) {
+    if (host && host.getMode() !== MARKDOWN_MODE_EDIT) {
+        host.setMode(MARKDOWN_MODE_EDIT);
+    }
+}
+
+/**
+ * Return the card to HTML mode by placing the host in view mode.
+ * @param {import("./markdownEditorHost.js").MarkdownEditorHost} host
+ */
+function deleteMarkdownView(host) {
+    if (host && host.getMode() !== MARKDOWN_MODE_VIEW) {
+        host.setMode(MARKDOWN_MODE_VIEW);
+    }
+}
+
 async function finalizeCard(card, notesContainer, options = {}) {
     const {
         bubbleToTop = true,
@@ -1534,7 +1502,6 @@ async function finalizeCard(card, notesContainer, options = {}) {
     }
 
     const editor  = card.querySelector(".markdown-editor");
-    const preview = card.querySelector(".markdown-content");
     await (editorHost ? editorHost.waitForPendingImages() : waitForPendingImagePastes(editor));
     const text    = editorHost ? editorHost.getValue() : editor.value;
     const trimmed = text.trim();
@@ -1551,16 +1518,11 @@ async function finalizeCard(card, notesContainer, options = {}) {
     const changed = normalizedNext !== normalizedPrevious || attachmentsChanged;
 
     const exitEditingMode = () => {
-        if (card.classList.contains("editing-in-place")) {
-            card.classList.remove("editing-in-place");
-        }
-        restorePreviewAfterEditing(card);
+        card.classList.remove("editing-in-place");
         if (currentEditingCard === card) {
             currentEditingCard = null;
         }
-        if (editorHost) {
-            editorHost.setMode(MARKDOWN_MODE_VIEW);
-        }
+        deleteMarkdownView(editorHost);
         if (editor instanceof HTMLTextAreaElement) {
             editor.style.height = "";
             editor.style.minHeight = "";
@@ -1581,29 +1543,30 @@ async function finalizeCard(card, notesContainer, options = {}) {
         return;
     }
 
-    const previewWrapper = card.querySelector(".note-preview");
-    const expandToggle = card.querySelector(".note-expand-toggle");
     if (!changed) {
-        const baselineMarkdown = transformMarkdownWithAttachments(previousText, attachments);
-        renderSanitizedMarkdown(preview, baselineMarkdown);
-        scheduleOverflowCheck(previewWrapper, preview, expandToggle);
+        const baselineTransformed = transformMarkdownWithAttachments(previousText, attachments);
         if (editorHost) {
             editorHost.setValue(previousText);
         } else if (editor instanceof HTMLTextAreaElement) {
             editor.value = previousText;
         }
         exitEditingMode();
+        createHTMLView(card, {
+            markdownSource: baselineTransformed,
+            badgesTarget: badges
+        });
         return;
     }
 
     const markdownWithAttachments = transformMarkdownWithAttachments(text, attachments);
-    renderSanitizedMarkdown(preview, markdownWithAttachments);
-    scheduleOverflowCheck(previewWrapper, preview, expandToggle);
-
     const shouldBubble = forceBubble || bubbleToTop;
     persistCardState(card, notesContainer, text, { bubbleToTop: shouldBubble });
 
     exitEditingMode();
+    createHTMLView(card, {
+        markdownSource: markdownWithAttachments,
+        badgesTarget: badges
+    });
 
     if (typeof requestAnimationFrame === "function") {
         await new Promise((resolve) => {
@@ -1649,17 +1612,13 @@ function move(card, direction, notesContainer) {
 
 function mergeDown(card, notesContainer) {
     const below = card.nextElementSibling;
-    if (!below) return;
+    if (!(below instanceof HTMLElement)) return;
 
     collapseExpandedPreview(card);
-    if (below instanceof HTMLElement) {
-        collapseExpandedPreview(below);
-    }
+    collapseExpandedPreview(below);
 
     const editorHere  = card.querySelector(".markdown-editor");
     const editorBelow = below.querySelector(".markdown-editor");
-    const previewBelow = below.querySelector(".markdown-content");
-
     const a = editorHere.value.trim();
     const b = editorBelow.value.trim();
     const merged = a && b ? `${a}\n\n${b}` : (a || b);
@@ -1672,8 +1631,11 @@ function mergeDown(card, notesContainer) {
     const hostBelow = editorHosts.get(below);
     hostBelow?.setValue(merged);
     registerInitialAttachments(editorBelow, mergedAttachments);
-    const mergedMarkdown = transformMarkdownWithAttachments(merged, mergedAttachments);
-    renderSanitizedMarkdown(previewBelow, mergedMarkdown);
+    const mergedPreviewSource = transformMarkdownWithAttachments(merged, mergedAttachments);
+    createHTMLView(below, {
+        markdownSource: mergedPreviewSource,
+        badgesTarget: below.querySelector(".note-badges")
+    });
 
     const idHere = card.getAttribute("data-note-id");
     if (idHere) {
@@ -1686,7 +1648,6 @@ function mergeDown(card, notesContainer) {
     }
     card.remove();
     editorHosts.delete(card);
-    previewVisibilityState.delete(card);
 
     const idBelow = below.getAttribute("data-note-id");
     const ts = nowIso();
@@ -1725,14 +1686,11 @@ function mergeUp(card, notesContainer) {
     if (card !== notesContainer.lastElementChild || notesContainer.children.length < 2) return;
 
     const above = card.previousElementSibling;
+    if (!(above instanceof HTMLElement)) return;
     const editorAbove  = above.querySelector(".markdown-editor");
     const editorHere   = card.querySelector(".markdown-editor");
-    const previewAbove = above.querySelector(".markdown-content");
-
     collapseExpandedPreview(card);
-    if (above instanceof HTMLElement) {
-        collapseExpandedPreview(above);
-    }
+    collapseExpandedPreview(above);
 
     const a = editorAbove.value.trim();
     const b = editorHere.value.trim();
@@ -1746,8 +1704,11 @@ function mergeUp(card, notesContainer) {
     const hostAbove = editorHosts.get(above);
     hostAbove?.setValue(merged);
     registerInitialAttachments(editorAbove, mergedAttachments);
-    const mergedMarkdown = transformMarkdownWithAttachments(merged, mergedAttachments);
-    renderSanitizedMarkdown(previewAbove, mergedMarkdown);
+    const mergedPreviewSource = transformMarkdownWithAttachments(merged, mergedAttachments);
+    createHTMLView(above, {
+        markdownSource: mergedPreviewSource,
+        badgesTarget: above.querySelector(".note-badges")
+    });
 
     const idHere = card.getAttribute("data-note-id");
     if (idHere) {
