@@ -264,13 +264,6 @@
 - Replace `connect-src` endpoints when running against different backends or proxies. Prefer nonces over `'unsafe-inline'` where a server can inject them.
 - When using a local LLM proxy on a non-default port (e.g., `http://localhost:8081`), include it in `connect-src`.
 
-### CI & Timeouts
-
-- All CLI commands MUST be invoked with a timeout wrapper: `timeout -k <N>s -s SIGKILL <N>s <command>`. This is mandatory in local development, CI, documentation, and scripts.
-- Choose `<N>` appropriate to the operation and keep budgets strict; avoid indefinite waits. The Node test harness (`tests/run-tests.js`) also enforces per-test budgets, but the shell-level timeout remains required.
-
----
-
 ### Assistant Workflow
 
 * Read repo and scan existing code.
