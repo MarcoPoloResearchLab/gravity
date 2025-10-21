@@ -220,6 +220,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
     4. Shift-enter finishes editing
     5. Clicking outside of the note finishes editing 
     6. The height of expanded rendered note and the height of markedown not must be identical. Work on the stling that gurantees that the size of markdown and rendered note are the same.
+    7. There maybe cases I am missing, analyze this behaviour and add cases if I am forgetting any.
 
 ### BugFixes
 
@@ -413,7 +414,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
     [GSI_LOGGER]: The given origin is not allowed for the given client ID. client:74:89
     [GSI_LOGGER]: The given origin is not allowed for the given client ID. m=credential_button_library:74:89
     ```
-  - [ ] [GN-58] The editor is broken: it duplicates the editing text. For example, the note containing this text shows markdown twice
+  - [x] [GN-58] The editor is broken: it duplicates the editing text. For example, the note containing this text shows markdown twice
     ```
     - [ ] No lines separating the first card from the next
     - [ ] 
@@ -423,6 +424,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
     There is ![the screenshot](image.png) that demonstrates the bug
       1. There is a scroller on the screen -- and we must never have a scroller in the system
       2. The markdown is double-rendered
+    Resolution: Disabled the custom EasyMDE auto-complete for `[` so task checkboxes rely on native typing, preventing the extra bracket injection that doubled checklist lines. Added a top-editor regression test to cover manual checklist entry and updated existing bracket tests. Captured failing state in `artifacts/gn-58-editing-before-doubled.png`.
   - [x] [GN-59] Change mouse behaviour: single click on a note expands it in the rendered mode if needed. Double click opens note for editing
   - [ ] [GN-61] Double-clicking opens a wrong note. Adjust the code to 1) identify the card that was clicked on 2) identify the position in the rendered card that the click as made 3) find the closest word or character to the clicking point in this card 4) open markdown editing and place the cursor on the identified position
 
