@@ -12,6 +12,14 @@ You are a staff level full stack engineer. Your task is to **re-evaluate and ref
 * Event-scoped architecture: components communicate via `$dispatch`/`$listen`; prefer DOM-scoped events; `Alpine.store` only for true shared domain state.
 * The backend uses Go language ecosystem
 
+## Pre-finish Checklist
+
+1. Update `PLAN.md` for the active issue, then clear or archive it before starting the next task.
+2. Ensure the issue entry in `ISSUES.md` is marked `[x]` and includes an appended resolution note.
+3. Run `npm test` (or the relevant suite) and resolve all failures.
+4. Commit only the intended changes and push the branch to origin.
+5. Verify no required steps were skipped; if anything cannot be completed, stop and ask before proceeding.
+
 ## Your tasks
 
 1. **Read AGENTS.md first** → treat it as the *authoritative style guide*.
