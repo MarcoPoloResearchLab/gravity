@@ -428,6 +428,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
     Resolved 2025-10-22: Cards now delete the existing HTML view when editing begins (`deleteHTMLView`) and rebuild it from markdown via `createHTMLView` when returning to view mode, ensuring only one rendered copy while the markdown remains authoritative. Automated screenshot comparison in `tests/editor.duplicateRendering.puppeteer.test.js` confirms the single-render flow.
   - [x] [GN-59] Change mouse behaviour: single click on a note expands it in the rendered mode if needed. Double click opens note for editing
   - [ ] [GN-61] Double-clicking opens a wrong note. Adjust the code to 1) identify the card that was clicked on 2) identify the position in the rendered card that the click as made 3) find the closest word or character to the clicking point in this card 4) open markdown editing and place the cursor on the identified position
+  - [ ] [GN-67] Editing starts in a very different position than rendered preview. work on aligning these positions so that editing and rendered screens would be in different places visually,
 
 
 
@@ -517,7 +518,12 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Folded `MIGRATION.md` into `ARCHITECTURE.md`, trimming redundant detail and deleting the legacy document.
   - Clarified `NOTES.md` to lock its read-only status and restrict markdown edits to `ISSUES.md`, `PLAN.md`, and `CHANGELOG.md`.
 
-## 2025-10-23
+## 2025-10-24
+
+- Resolved: GN-58 Duplicate Markdown Rendering (card double rendering regression)
+  - Hid the EasyMDE backing textarea when enhanced editors are active via the new `markdown-editor--enhanced` class so only the CodeMirror surface renders while preserving layout metrics.
+  - Rebuilt `tests/editor.duplicateRendering.puppeteer.test.js` to capture screenshots, colour-tag duplicate surfaces, and assert checkbox toggles, edit state, and no-scroll guarantees; the test now fails before the fix and passes afterward.
+  - Verified that pinning actions still finalize edits by rerunning the full Puppeteer suite (`npm test`) with the updated handler logic.
 
 - Resolved: GN-58 Duplicate Markdown Rendering
   - Replayed the reported checkbox note in Puppeteer to confirm only one editing surface is visible and previews hide while CodeMirror is active.
