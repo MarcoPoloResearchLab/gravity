@@ -18,7 +18,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
 ### BugFixes
 
-  - [ ] [GN-80] There are various issues logged by JS Console. The errors are from a browser console when everything is served through http. Analyze each, develop a plan to address it and deliver a fix. I expect a lit of stacked up open PRs as a deliverable
+  - [ ] [GN-80] There are various issues logged by JS Console. The errors are from a browser console when everything is served through http. Analyze each, develop a plan to address it and deliver a fix. I expect a list of  open PRs , stacked up on top of each other, as a deliverable
     ```
     Feature Policy: Skipping unsupported feature name “identity-credentials-get”. client:270:37
     Feature Policy: Skipping unsupported feature name “identity-credentials-get”. client:271:336
