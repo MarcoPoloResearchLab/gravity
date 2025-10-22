@@ -817,8 +817,9 @@ export function renderCard(record, options = {}) {
             const markdownValue = host.getValue();
             const attachments = getAllAttachments(editor);
             const markdownWithAttachments = transformMarkdownWithAttachments(markdownValue, attachments);
-            const renderedHtml = renderHtmlViewToString(markdownWithAttachments);
-            const renderedText = htmlViewElement ? getHtmlViewPlainText(htmlViewElement) : "";
+            const hasHtmlView = htmlViewElement instanceof HTMLElement;
+            const renderedHtml = hasHtmlView ? renderHtmlViewToString(markdownWithAttachments) : undefined;
+            const renderedText = hasHtmlView ? getHtmlViewPlainText(htmlViewElement) : "";
             const attachmentDataUrls = Object.values(attachments)
                 .map((value) => value?.dataUrl)
                 .filter((value) => typeof value === "string" && value.length > 0);
