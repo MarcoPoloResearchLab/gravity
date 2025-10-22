@@ -18,7 +18,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
 ### BugFixes
 
-  - [ ] [GN-80] There are various issues logged by JS Console. Analyze each, develop a plan to address it and deliver a fix. I expect a lit of stacked up open PRs as a deliverable
+  - [ ] [GN-80] There are various issues logged by JS Console. The errors are from a browser console when everything is served through http. Analyze each, develop a plan to address it and deliver a fix. I expect a list of  open PRs , stacked up on top of each other, as a deliverable
     ```
     Feature Policy: Skipping unsupported feature name “identity-credentials-get”. client:270:37
     Feature Policy: Skipping unsupported feature name “identity-credentials-get”. client:271:336
@@ -81,6 +81,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
         <anonymous> https://accounts.google.com/gsi/button?theme=outline&size=small&shape=pill&text=signin_with&is_fedcm_supported=false&client_id=156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com&iframe_id=gsi_451133_914081&cas=/nrGSe6oSqBoygrIHC3O6DYcFNuiHkz6MfGe2WCWWOY:1
 
     ```
+    The google console screenshot is here ![Google console](<Google Console.png>)
 
   - [ ] [GN-81] Double-clicking opens a wrong note. Adjust the code to 
     1. identify the card that was clicked on 
@@ -91,6 +92,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - [ ] [GN-82] Editing starts in a very different position than rendered HTML. Work on aligning these positions so that markdown and rendered HTML would be in the same places visually. Work on [ST-72] prior to this one.
 
   - [ ] [GN-83] Logging in on two browsers (sessions) does not synchronize notes. As a logged in user I can create a new note on Browser A and never see it on browser B despite being logged in. Develop an SSE notification system for logged in users only which sends a notification when a new edit occurs, so that front end will synchronize the changes. Develop the system that allows automated note conflict resolution and works in a background thread on browser. The expectation is for two sessions/browsers to synchronize the moment there is a change introduced to the underlying data of the notes.
+
+  - [ ] [GN-84] ![Card control bug](<card control bug.png>) The card control is not aligned to the top right corner of the cards, as specified in GN-72, in it instead aligned to the bottom right corner of the card. Fix the bug abnd align card controls to the top right corner of the card
 
 ### Maintenance
 
