@@ -87,6 +87,19 @@ test.describe("GN-71 note expansion persistence", () => {
                 editorHeight >= firstExpandedHeight - 16,
                 `editor height (${editorHeight}) should not shrink appreciably from preview height (${firstExpandedHeight})`
             );
+            const editingInlineSizing = await getInlineCardSizing(page, firstCardSelector);
+            assert.ok(
+                editingInlineSizing.minHeight.endsWith("px"),
+                `card must carry an inline minHeight lock during editing (${editingInlineSizing.minHeight})`
+            );
+            assert.ok(
+                editingInlineSizing.maxHeight.endsWith("px"),
+                `card must carry an inline maxHeight lock during editing (${editingInlineSizing.maxHeight})`
+            );
+            assert.ok(
+                editingInlineSizing.cssVariable.endsWith("px"),
+                `card must expose the CSS variable height lock during editing (${editingInlineSizing.cssVariable})`
+            );
 
             await page.keyboard.down("Shift");
             await page.keyboard.press("Enter");
@@ -102,6 +115,33 @@ test.describe("GN-71 note expansion persistence", () => {
             assert.ok(
                 Math.abs(postEditCardHeight - firstExpandedCardHeight) <= 2,
                 `card height should remain stable after editing (${postEditCardHeight} vs ${firstExpandedCardHeight})`
+            );
+            await page.waitForFunction((selector) => {
+                const element = document.querySelector(selector);
+                if (!(element instanceof HTMLElement)) {
+                    return false;
+                }
+                return (
+                    element.style.minHeight === "" &&
+                    element.style.maxHeight === "" &&
+                    element.style.getPropertyValue("--note-expanded-edit-height") === ""
+                );
+            }, {}, firstCardSelector);
+            const releasedInlineSizing = await getInlineCardSizing(page, firstCardSelector);
+            assert.equal(
+                releasedInlineSizing.minHeight,
+                "",
+                "card minHeight lock must be cleared after exiting edit mode"
+            );
+            assert.equal(
+                releasedInlineSizing.maxHeight,
+                "",
+                "card maxHeight lock must be cleared after exiting edit mode"
+            );
+            assert.equal(
+                releasedInlineSizing.cssVariable,
+                "",
+                "CSS variable height lock must be cleared after exiting edit mode"
             );
 
             const secondStillExpanded = await isPreviewExpanded(page, secondPreviewSelector);
@@ -164,4 +204,17 @@ async function isPreviewExpanded(page, selector) {
         }
         return element.classList.contains("note-preview--expanded");
     }).catch(() => false);
+}
+
+async function getInlineCardSizing(page, selector) {
+    return page.$eval(selector, (element) => {
+        if (!(element instanceof HTMLElement)) {
+            return { minHeight: "", maxHeight: "", cssVariable: "" };
+        }
+        return {
+            minHeight: element.style.minHeight,
+            maxHeight: element.style.maxHeight,
+            cssVariable: element.style.getPropertyValue("--note-expanded-edit-height")
+        };
+    });
 }

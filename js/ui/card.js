@@ -1483,26 +1483,26 @@ function releaseEditingSurfaceHeight(card) {
         return;
     }
     card.style.removeProperty("--note-expanded-edit-height");
-    card.style.removeProperty("minHeight");
-    card.style.removeProperty("maxHeight");
+    card.style.minHeight = "";
+    card.style.maxHeight = "";
     const codeMirrorScroll = card.querySelector(".CodeMirror-scroll");
     if (codeMirrorScroll instanceof HTMLElement) {
-        codeMirrorScroll.style.removeProperty("minHeight");
-        codeMirrorScroll.style.removeProperty("maxHeight");
-        codeMirrorScroll.style.removeProperty("height");
-        codeMirrorScroll.style.removeProperty("overflowY");
+        codeMirrorScroll.style.minHeight = "";
+        codeMirrorScroll.style.maxHeight = "";
+        codeMirrorScroll.style.height = "";
+        codeMirrorScroll.style.overflowY = "";
     }
     const codeMirror = card.querySelector(".CodeMirror");
     if (codeMirror instanceof HTMLElement) {
-        codeMirror.style.removeProperty("minHeight");
-        codeMirror.style.removeProperty("maxHeight");
-        codeMirror.style.removeProperty("height");
+        codeMirror.style.minHeight = "";
+        codeMirror.style.maxHeight = "";
+        codeMirror.style.height = "";
     }
     const textarea = card.querySelector(".markdown-editor");
     if (textarea instanceof HTMLElement) {
-        textarea.style.removeProperty("minHeight");
-        textarea.style.removeProperty("maxHeight");
-        textarea.style.removeProperty("height");
+        textarea.style.minHeight = "";
+        textarea.style.maxHeight = "";
+        textarea.style.height = "";
     }
 }
 
