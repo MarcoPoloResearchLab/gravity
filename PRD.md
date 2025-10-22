@@ -1,24 +1,24 @@
 # PRD – Gravity Notes Editor
 
 ## Overview
-Gravity Notes must provide a Markdown-only editor with stable previews, inline editing, and a no-jump UX. This PRD defines the product behavior, UX principles, and technical constraints.
+Gravity Notes must provide a Markdown-only editor with stable HTML views, inline editing, and a no-jump UX. This PRD defines the product behavior, UX principles, and technical constraints.
 
 ## Goals
 - Markdown is the sole editing mode. No separate quick-capture UI; capture occurs inline via the first blank note.
 - Grid remains visually stable; no layout jumps.
-- Previews are bounded but meaningful.
+- HTML Views are bounded but meaningful.
 - Inline editing must be lightweight and accessible (no modal overlays).
 
 ## Requirements
 
-### 1. View Mode (Grid Preview)
+### 1. View Mode (Grid HTML View)
 - [x] Render the full note content with sanitised Markdown
   - [x] Cards clamp at ≈18vh with a fade mask; shorter content shrinks naturally
   - [x] No inner scrollbars inside cards
 - [x] Inline media respects Markdown order; images display from the top of the rendered content
 - [x] Surface a badge when code is present in the note body
-- [x] Overflowing previews expose a downward expand control that grows the card without shifting the surrounding layout
-  - [x] Control remains hidden for previews that fit within the bounded viewport
+- [x] Overflowing HTML views expose a downward expand control that grows the card without shifting the surrounding layout
+  - [x] Control remains hidden for HTML views that fit within the bounded viewport
   - [x] Click target stays accessible without covering adjacent notes and remains visible after edits or refreshes when content still overflows
 - [x] Clicking rendered checklist items toggles their Markdown state and persists immediately
 - [x] Grid never reflows after render
@@ -40,7 +40,7 @@ Gravity Notes must provide a Markdown-only editor with stable previews, inline e
 
 ### 4. UX Principles
 - No jumping or reflow in view mode or editor.
-- Previews always meaningful (structured truncation, not blind crop).
+- HTML Views always meaningful (structured truncation, not blind crop).
 - Accessibility: consistent keyboard shortcuts, ARIA live region for save status.
 - Desktop and mobile consistent: Enter inserts a newline; commits occur on blur or explicit commit chord; no Save button.
 

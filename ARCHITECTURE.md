@@ -3,7 +3,7 @@
 ## Product Vision
 
 - Capture ideas instantly with inline Markdown editing; no modals or navigation context switches.
-- Keep previews readable and stable in a card grid; expand in place without reflowing the viewport.
+- Keep HTML views readable and stable in a card grid; expand in place without reflowing the viewport.
 - Work offline by default and sync seamlessly when signed in; each Google account has an isolated notebook.
 - Classify notes with a remote LLM proxy when available; fall back locally without blocking the UX.
 - Be secure, testable, and easy to run: CDN-only frontend, single binary backend, and deterministic tests.
@@ -41,9 +41,9 @@ Network boundaries (`js/core/backendClient.js`, `js/core/classifier.js`) remain 
 
 **Rendering & Editing**
 
-- EasyMDE (2.19.0) powers inline Markdown editing with cursor positioning lifted from rendered previews.
+- EasyMDE (2.19.0) powers inline Markdown editing with cursor positioning lifted from rendered HTML views.
 - Markdown rendering leverages marked.js alongside DOMPurify; detecting code blocks surfaces a `code` badge on cards.
-- Cards clamp previews without inner scrollbars, and expanding a note keeps the grid anchored in place.
+- Cards clamp HTML views without inner scrollbars, and expanding a note keeps the grid anchored in place.
 
 **Storage, Configuration, and Auth**
 
@@ -69,7 +69,7 @@ Network boundaries (`js/core/backendClient.js`, `js/core/classifier.js`) remain 
 ### Testing & Tooling
 
 - The Node harness (`tests/run-tests.js`) orchestrates per-file timeouts, shared Chromium instances, and coloured output.
-- Puppeteer suites cover inline editing, bounded previews, notifications, auth persistence, and backend sync flows.
+- Puppeteer suites cover inline editing, bounded HTML views, notifications, auth persistence, and backend sync flows.
 - Runtime config injection keeps tests deterministic by mocking `fetch` for `data/runtime.config.*.json` lookups.
 - Backend integration tests spin up the Go API to validate credential exchange and conflict resolution end-to-end.
 
@@ -86,9 +86,9 @@ Network boundaries (`js/core/backendClient.js`, `js/core/classifier.js`) remain 
   - GN-27, GN-29: Environment-resolved backends and LLM proxy endpoints; CORS-friendly configuration.
 
 - Editor UX
-  - GN-22, GN-26, GN-28: Cursor maps from preview click to exact editor position; tests confirm behavior.
+  - GN-22, GN-26, GN-28: Cursor maps from HTML view click to exact editor position; tests confirm behavior.
   - GN-37, GN-38: Leverage EasyMDE for list continuation and checklist behavior; remove fallback editor paths.
-  - GN-10: Expand preview without auto-scrolling to bottom; viewport remains anchored.
+  - GN-10: Expand HTML view without auto-scrolling to bottom; viewport remains anchored.
   - GN-23: Skip duplicate closing brackets; covered by enhanced editor tests.
 
 - UI & Navigation

@@ -11,20 +11,20 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
 
-const VIEW_MODE_NOTE_ID = "copy-preview-fixture";
-const VIEW_MODE_MARKDOWN = "Preview **bold** payload.";
+const VIEW_MODE_NOTE_ID = "copy-htmlView-fixture";
+const VIEW_MODE_MARKDOWN = "HtmlView **bold** payload.";
 const EDIT_MODE_NOTE_ID = "copy-edit-fixture";
 const EDIT_MODE_MARKDOWN = "Edit mode copy baseline.";
 
 test.describe("Card clipboard actions", () => {
-    test("copy action uses rendered preview when available", async () => {
+    test("copy action uses rendered htmlView when available", async () => {
         const seededRecords = [
             buildNoteRecord({ noteId: VIEW_MODE_NOTE_ID, markdownText: VIEW_MODE_MARKDOWN })
         ];
         const { page, teardown } = await prepareClipboardPage({ records: seededRecords });
         const cardSelector = `.markdown-block[data-note-id="${VIEW_MODE_NOTE_ID}"]`;
         try {
-            await page.waitForSelector(`${cardSelector} .note-preview .markdown-content`);
+            await page.waitForSelector(`${cardSelector} .note-html-view .markdown-content`);
             await page.click(`${cardSelector} [data-action="copy-note"]`);
             await waitForClipboardWrites(page);
             const payload = await readLatestClipboardPayload(page);
@@ -41,7 +41,7 @@ test.describe("Card clipboard actions", () => {
         }
     });
 
-    test("copy action resolves preview dynamically in edit mode", async () => {
+    test("copy action resolves htmlView dynamically in edit mode", async () => {
         const seededRecords = [
             buildNoteRecord({ noteId: EDIT_MODE_NOTE_ID, markdownText: EDIT_MODE_MARKDOWN })
         ];
@@ -65,7 +65,7 @@ test.describe("Card clipboard actions", () => {
                 if (!(card instanceof HTMLElement)) {
                     return false;
                 }
-                return !card.querySelector(".note-preview");
+                return !card.querySelector(".note-html-view");
             }, {}, cardSelector);
             await page.click(`${cardSelector} [data-action="copy-note"]`);
             await waitForClipboardWrites(page);

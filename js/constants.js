@@ -67,7 +67,6 @@ export const CLASSIFIER_CATEGORIES = Object.freeze(["Projects", "Areas", "Knowle
 export const CLASSIFIER_STATUSES = Object.freeze(["idea", "draft", "final", "published", "blocked"]);
 export const CLASSIFIER_PRIVACY = Object.freeze(["private", "shareable", "public"]);
 
-export const DATA_ATTRIBUTE_RENDERED_HTML = "renderedHtml";
 export const DATA_URL_PREFIX = "data:";
 
 export const EVENT_NOTE_CREATE = "gravity:note-create";

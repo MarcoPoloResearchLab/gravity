@@ -10,24 +10,24 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
 
-const SHORT_NOTE_ID = "preview-short-note";
-const MEDIUM_NOTE_ID = "preview-medium-note";
-const LONG_NOTE_ID = "preview-long-note";
-const TRAILING_IMAGE_NOTE_ID = "preview-trailing-img";
+const SHORT_NOTE_ID = "htmlView-short-note";
+const MEDIUM_NOTE_ID = "htmlView-medium-note";
+const LONG_NOTE_ID = "htmlView-long-note";
+const TRAILING_IMAGE_NOTE_ID = "htmlView-trailing-img";
 
 const SAMPLE_IMAGE_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAHUlEQVQoU2NkYGD4z0AEYBxVSFcwCiA5GgYAAP//AwBh0CY6AAAAAElFTkSuQmCC";
 const LARGE_IMAGE_DATA_URL = SAMPLE_IMAGE_DATA_URL;
 
-test.describe("Bounded previews", () => {
-    test("preview clamps content with fade, continuation marker, and code badge", async () => {
-        const { page, teardown } = await openPreviewHarness(createBaselineRecords());
+test.describe("Bounded htmlViews", () => {
+    test("htmlView clamps content with fade, continuation marker, and code badge", async () => {
+        const { page, teardown } = await openHtmlViewHarness(createBaselineRecords());
         try {
-            await collapseAllPreviews(page);
+            await collapseAllHtmlViews(page);
 
-            const previewSelector = `[data-note-id="${LONG_NOTE_ID}"] .note-preview`;
-            await page.waitForSelector(previewSelector);
+            const htmlViewSelector = `[data-note-id="${LONG_NOTE_ID}"] .note-html-view`;
+            await page.waitForSelector(htmlViewSelector);
 
-            const { overflowY, offsetHeight, scrollHeight } = await page.$eval(previewSelector, (element) => {
+            const { overflowY, offsetHeight, scrollHeight } = await page.$eval(htmlViewSelector, (element) => {
                 const computed = window.getComputedStyle(element);
                 return {
                     overflowY: computed.overflowY,
@@ -38,14 +38,14 @@ test.describe("Bounded previews", () => {
             assert.equal(overflowY, "hidden");
             const viewportHeight = await page.evaluate(() => window.innerHeight);
             const maxHeightPx = viewportHeight * 0.18;
-            assert.ok(offsetHeight <= maxHeightPx + 4, "preview should remain within 18vh");
+            assert.ok(offsetHeight <= maxHeightPx + 4, "htmlView should remain within 18vh");
             assert.ok(scrollHeight > offsetHeight, "long note should overflow and rely on fade");
 
-            const continuationHtml = await page.$eval(previewSelector, (element) => element.innerHTML || "");
-            assert.ok(!/…continues/.test(continuationHtml), "preview should not inject continuation marker text");
+            const continuationHtml = await page.$eval(htmlViewSelector, (element) => element.innerHTML || "");
+            assert.ok(!/…continues/.test(continuationHtml), "htmlView should not inject continuation marker text");
 
             const fadeBackground = await page.$eval(
-                previewSelector,
+                htmlViewSelector,
                 (element) => window.getComputedStyle(element, "::after").backgroundImage || ""
             );
             assert.ok(fadeBackground.includes("linear-gradient"));
@@ -59,23 +59,23 @@ test.describe("Bounded previews", () => {
             const toggleSelector = `[data-note-id="${LONG_NOTE_ID}"] .note-expand-toggle`;
             await page.waitForSelector(toggleSelector);
             const toggleVisible = await page.$eval(toggleSelector, (button) => button instanceof HTMLElement && button.hidden === false);
-            assert.equal(toggleVisible, true, "expand toggle should appear for overflowing previews");
+            assert.equal(toggleVisible, true, "expand toggle should appear for overflowing htmlViews");
 
             const shortToggleHidden = await page.$eval(
                 `[data-note-id="${SHORT_NOTE_ID}"] .note-expand-toggle`,
                 (button) => button.hidden
             );
-            assert.equal(shortToggleHidden, true, "chevron toggle should stay hidden on short previews");
+            assert.equal(shortToggleHidden, true, "chevron toggle should stay hidden on short htmlViews");
 
             const { mediumOverflow, mediumToggleHidden } = await page.$eval(
                 `[data-note-id="${MEDIUM_NOTE_ID}"]`,
                 (card) => {
-                    const preview = card.querySelector(".note-preview");
+                    const htmlView = card.querySelector(".note-html-view");
                     const toggle = card.querySelector(".note-expand-toggle");
-                    if (!(preview instanceof HTMLElement) || !(toggle instanceof HTMLElement)) {
+                    if (!(htmlView instanceof HTMLElement) || !(toggle instanceof HTMLElement)) {
                         return { mediumOverflow: false, mediumToggleHidden: true };
                     }
-                    const overflow = preview.scrollHeight - preview.clientHeight > 0.5;
+                    const overflow = htmlView.scrollHeight - htmlView.clientHeight > 0.5;
                     return {
                         mediumOverflow: overflow,
                         mediumToggleHidden: toggle.hidden
@@ -83,28 +83,28 @@ test.describe("Bounded previews", () => {
                 }
             );
             if (mediumOverflow) {
-                assert.equal(mediumToggleHidden, false, "chevron toggle should appear when medium previews overflow");
+                assert.equal(mediumToggleHidden, false, "chevron toggle should appear when medium htmlViews overflow");
             } else {
-                assert.equal(mediumToggleHidden, true, "chevron toggle should stay hidden when medium previews fit within bounds");
+                assert.equal(mediumToggleHidden, true, "chevron toggle should stay hidden when medium htmlViews fit within bounds");
             }
 
             const toggleAlignment = await page.$eval(
                 `[data-note-id="${LONG_NOTE_ID}"]`,
                 (card) => {
-                    const preview = card.querySelector(".note-preview");
+                    const htmlView = card.querySelector(".note-html-view");
                     const toggle = card.querySelector(".note-expand-toggle");
-                    if (!(preview instanceof HTMLElement) || !(toggle instanceof HTMLElement)) {
+                    if (!(htmlView instanceof HTMLElement) || !(toggle instanceof HTMLElement)) {
                         return null;
                     }
-                    const previewRect = preview.getBoundingClientRect();
+                    const htmlViewRect = htmlView.getBoundingClientRect();
                     const toggleRect = toggle.getBoundingClientRect();
                     return {
-                        bottomDelta: Math.abs(previewRect.bottom - toggleRect.bottom),
-                        rightDelta: Math.abs(previewRect.right - toggleRect.right)
+                        bottomDelta: Math.abs(htmlViewRect.bottom - toggleRect.bottom),
+                        rightDelta: Math.abs(htmlViewRect.right - toggleRect.right)
                     };
                 }
             );
-            assert.ok(toggleAlignment, "expand toggle should render alongside the preview");
+            assert.ok(toggleAlignment, "expand toggle should render alongside the htmlView");
             assert.ok(
                 toggleAlignment.bottomDelta <= 4,
                 `expand toggle should align with the bottom edge of the text column (delta=${toggleAlignment?.bottomDelta ?? "n/a"})`
@@ -114,17 +114,17 @@ test.describe("Bounded previews", () => {
             await page.keyboard.press("Enter");
             await page.waitForFunction((selector) => {
                 const node = document.querySelector(selector);
-                return node?.classList.contains("note-preview--expanded") ?? false;
-            }, {}, previewSelector);
+                return node?.classList.contains("note-html-view--expanded") ?? false;
+            }, {}, htmlViewSelector);
 
-            const imagePreviewHtml = await page.$eval(
-                `[data-note-id="image-only"] .note-preview`,
+            const imageHtmlViewHtml = await page.$eval(
+                `[data-note-id="image-only"] .note-html-view`,
                 (element) => element.innerHTML
             );
-            assert.ok(/<img/i.test(imagePreviewHtml), "image-only note should render inline <img>");
+            assert.ok(/<img/i.test(imageHtmlViewHtml), "image-only note should render inline <img>");
 
             const imageMetrics = await page.$eval(
-                `[data-note-id="image-only"] .note-preview img`,
+                `[data-note-id="image-only"] .note-html-view img`,
                 (img) => {
                     const style = window.getComputedStyle(img);
                     return {
@@ -135,30 +135,30 @@ test.describe("Bounded previews", () => {
                     };
                 }
             );
-            assert.equal(imageMetrics.objectFit, "contain", "preview images should preserve aspect ratio inside container");
-            assert.ok(/^(0%|left)/i.test(imageMetrics.objectPosition), "preview image should anchor to the top");
-            assert.notEqual(imageMetrics.clientHeight, 120, "preview image height must not be hard-coded to 120px");
+            assert.equal(imageMetrics.objectFit, "contain", "htmlView images should preserve aspect ratio inside container");
+            assert.ok(/^(0%|left)/i.test(imageMetrics.objectPosition), "htmlView image should anchor to the top");
+            assert.notEqual(imageMetrics.clientHeight, 120, "htmlView image height must not be hard-coded to 120px");
 
             const trailingImageMetrics = await page.$eval(
-                `[data-note-id="${TRAILING_IMAGE_NOTE_ID}"] .note-preview`,
-                (preview) => {
-                    const img = preview.querySelector("img");
+                `[data-note-id="${TRAILING_IMAGE_NOTE_ID}"] .note-html-view`,
+                (htmlView) => {
+                    const img = htmlView.querySelector("img");
                     if (!img) {
                         return null;
                     }
-                    const previewRect = preview.getBoundingClientRect();
+                    const htmlViewRect = htmlView.getBoundingClientRect();
                     const imgRect = img.getBoundingClientRect();
                     return {
-                        imgRelativeTop: imgRect.top - previewRect.top,
-                        previewHeight: previewRect.height
+                        imgRelativeTop: imgRect.top - htmlViewRect.top,
+                        htmlViewHeight: htmlViewRect.height
                     };
                 }
             );
             assert.ok(trailingImageMetrics, "trailing image should exist in rendered markup");
             if (trailingImageMetrics) {
                 assert.ok(
-                    trailingImageMetrics.imgRelativeTop >= trailingImageMetrics.previewHeight,
-                    "trailing image should fall below the visible preview window"
+                    trailingImageMetrics.imgRelativeTop >= trailingImageMetrics.htmlViewHeight,
+                    "trailing image should fall below the visible htmlView window"
                 );
             }
 
@@ -167,47 +167,47 @@ test.describe("Bounded previews", () => {
         }
     });
 
-    test("expanding preview preserves viewport position", async () => {
-        const { page, teardown } = await openPreviewHarness(createBaselineRecords());
+    test("expanding htmlView preserves viewport position", async () => {
+        const { page, teardown } = await openHtmlViewHarness(createBaselineRecords());
         try {
-            await collapseAllPreviews(page);
+            await collapseAllHtmlViews(page);
 
-            const previewSelector = `[data-note-id="${LONG_NOTE_ID}"] .note-preview`;
+            const htmlViewSelector = `[data-note-id="${LONG_NOTE_ID}"] .note-html-view`;
             const toggleSelector = `[data-note-id="${LONG_NOTE_ID}"] .note-expand-toggle`;
 
-            await page.waitForSelector(previewSelector);
+            await page.waitForSelector(htmlViewSelector);
 
-            const beforeMetrics = await page.evaluate(({ previewSelector }) => {
-                const preview = document.querySelector(previewSelector);
+            const beforeMetrics = await page.evaluate(({ htmlViewSelector }) => {
+                const htmlView = document.querySelector(htmlViewSelector);
                 return {
                     scrollY: window.scrollY,
-                    previewScrollTop: preview?.scrollTop ?? null
+                    htmlViewScrollTop: htmlView?.scrollTop ?? null
                 };
-            }, { previewSelector });
+            }, { htmlViewSelector });
 
             await page.focus(toggleSelector);
             await page.keyboard.press("Enter");
             await page.waitForFunction((selector) => {
                 const node = document.querySelector(selector);
-                return node?.classList.contains("note-preview--expanded") ?? false;
-            }, {}, previewSelector);
+                return node?.classList.contains("note-html-view--expanded") ?? false;
+            }, {}, htmlViewSelector);
             await page.evaluate(() => new Promise((resolve) => {
                 requestAnimationFrame(() => requestAnimationFrame(resolve));
             }));
 
-            const afterMetrics = await page.evaluate(({ previewSelector }) => {
-                const preview = document.querySelector(previewSelector);
+            const afterMetrics = await page.evaluate(({ htmlViewSelector }) => {
+                const htmlView = document.querySelector(htmlViewSelector);
                 return {
                     scrollY: window.scrollY,
-                    previewScrollTop: preview?.scrollTop ?? null
+                    htmlViewScrollTop: htmlView?.scrollTop ?? null
                 };
-            }, { previewSelector });
+            }, { htmlViewSelector });
 
-            if (typeof beforeMetrics?.previewScrollTop === "number" && typeof afterMetrics?.previewScrollTop === "number") {
-                assert.ok(afterMetrics.previewScrollTop <= 1, "expanded preview should maintain top scroll position");
+            if (typeof beforeMetrics?.htmlViewScrollTop === "number" && typeof afterMetrics?.htmlViewScrollTop === "number") {
+                assert.ok(afterMetrics.htmlViewScrollTop <= 1, "expanded htmlView should maintain top scroll position");
             }
 
-            const previewViewport = await page.$eval(previewSelector, (node) => {
+            const htmlViewViewport = await page.$eval(htmlViewSelector, (node) => {
                 const rect = node.getBoundingClientRect();
                 return {
                     top: rect.top,
@@ -216,37 +216,37 @@ test.describe("Bounded previews", () => {
                 };
             });
             assert.ok(
-                previewViewport.top >= -4 && previewViewport.top <= previewViewport.viewportHeight * 0.5,
-                `expanded preview top ${previewViewport.top} should remain within the upper half of the viewport`
+                htmlViewViewport.top >= -4 && htmlViewViewport.top <= htmlViewViewport.viewportHeight * 0.5,
+                `expanded htmlView top ${htmlViewViewport.top} should remain within the upper half of the viewport`
             );
-            assert.ok(previewViewport.bottom > previewViewport.top, "expanded preview should have non-zero height");
+            assert.ok(htmlViewViewport.bottom > htmlViewViewport.top, "expanded htmlView should have non-zero height");
         } finally {
             await teardown();
         }
     });
 
-    test("short previews hide the expand toggle and medium previews follow overflow state", async () => {
-        const { page, teardown } = await openPreviewHarness(createShortMediumRecords());
+    test("short htmlViews hide the expand toggle and medium htmlViews follow overflow state", async () => {
+        const { page, teardown } = await openHtmlViewHarness(createShortMediumRecords());
         try {
-            await collapseAllPreviews(page);
+            await collapseAllHtmlViews(page);
             await page.waitForSelector(`[data-note-id="${SHORT_NOTE_ID}"]`);
 
             const shortToggleDisplay = await page.$eval(
                 `[data-note-id="${SHORT_NOTE_ID}"] .note-expand-toggle`,
                 (button) => window.getComputedStyle(button).display
             );
-            assert.equal(shortToggleDisplay, "none", "short previews must not render the expand toggle");
+            assert.equal(shortToggleDisplay, "none", "short htmlViews must not render the expand toggle");
 
             const mediumToggleState = await page.$eval(
                 `[data-note-id="${MEDIUM_NOTE_ID}"]`,
                 (card) => {
-                    const preview = card.querySelector(".note-preview");
+                    const htmlView = card.querySelector(".note-html-view");
                     const toggle = card.querySelector(".note-expand-toggle");
-                    if (!(preview instanceof HTMLElement) || !(toggle instanceof HTMLElement)) {
+                    if (!(htmlView instanceof HTMLElement) || !(toggle instanceof HTMLElement)) {
                         return { display: "none", overflow: false };
                     }
                     const style = window.getComputedStyle(toggle);
-                    const overflow = preview.scrollHeight - preview.clientHeight > 0.5;
+                    const overflow = htmlView.scrollHeight - htmlView.clientHeight > 0.5;
                     return {
                         display: style.display,
                         overflow
@@ -254,9 +254,9 @@ test.describe("Bounded previews", () => {
                 }
             );
             if (mediumToggleState.overflow) {
-                assert.notEqual(mediumToggleState.display, "none", "medium previews that overflow must render the expand toggle");
+                assert.notEqual(mediumToggleState.display, "none", "medium htmlViews that overflow must render the expand toggle");
             } else {
-                assert.equal(mediumToggleState.display, "none", "medium previews that fit must not render the expand toggle");
+                assert.equal(mediumToggleState.display, "none", "medium htmlViews that fit must not render the expand toggle");
             }
         } finally {
             await teardown();
@@ -264,7 +264,7 @@ test.describe("Bounded previews", () => {
     });
 });
 
-async function openPreviewHarness(records) {
+async function openHtmlViewHarness(records) {
     const { page, teardown } = await createSharedPage({
         development: {
             llmProxyUrl: ""
@@ -272,7 +272,7 @@ async function openPreviewHarness(records) {
     });
     await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
     await page.waitForSelector("#top-editor .markdown-editor");
-    await ensurePreviewRecords(page, records);
+    await ensureHtmlViewRecords(page, records);
     return { page, teardown };
 }
 
@@ -309,7 +309,7 @@ function createShortMediumRecords() {
 function buildLongMarkdown() {
     const paragraph = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed posuere viverra urna, vitae convallis turpis.";
     const repeated = Array.from({ length: 6 }, () => paragraph).join(" \n\n");
-    return `# Long Preview Fixture\n\n${repeated}\n\n![first-image](${SAMPLE_IMAGE_DATA_URL})\n\n![second-image](${SAMPLE_IMAGE_DATA_URL})\n\n\n\`\`\`js\nconsole.log('line1');\nconsole.log('line2');\nconsole.log('line3');\nconsole.log('line4');\nconsole.log('line5');\nconsole.log('line6');\n\`\`\``;
+    return `# Long HtmlView Fixture\n\n${repeated}\n\n![first-image](${SAMPLE_IMAGE_DATA_URL})\n\n![second-image](${SAMPLE_IMAGE_DATA_URL})\n\n\n\`\`\`js\nconsole.log('line1');\nconsole.log('line2');\nconsole.log('line3');\nconsole.log('line4');\nconsole.log('line5');\nconsole.log('line6');\n\`\`\``;
 }
 
 function buildImageOnlyMarkdown() {
@@ -331,7 +331,7 @@ function buildMediumMarkdown() {
     return Array.from({ length: 3 }, () => sentence).join(" \n");
 }
 
-async function ensurePreviewRecords(page, records) {
+async function ensureHtmlViewRecords(page, records) {
     const shouldReload = await page.evaluate(
         ({ storageKey, records }) => {
             const serialized = JSON.stringify(records);
@@ -363,16 +363,16 @@ async function ensurePreviewRecords(page, records) {
         await page.waitForNavigation({ waitUntil: "domcontentloaded" });
     }
 
-    await page.waitForSelector(`[data-note-id="${LONG_NOTE_ID}"] .note-preview`);
+    await page.waitForSelector(`[data-note-id="${LONG_NOTE_ID}"] .note-html-view`);
     await page.evaluate(() => {
         window.scrollTo({ top: 0, behavior: "instant" });
     });
 }
 
-async function collapseAllPreviews(page) {
+async function collapseAllHtmlViews(page) {
     await page.evaluate(() => {
-        document.querySelectorAll(".note-preview--expanded").forEach((node) => {
-            node.classList.remove("note-preview--expanded");
+        document.querySelectorAll(".note-html-view--expanded").forEach((node) => {
+            node.classList.remove("note-html-view--expanded");
         });
         document.querySelectorAll(".note-expand-toggle").forEach((button) => {
             if (button instanceof HTMLElement) {

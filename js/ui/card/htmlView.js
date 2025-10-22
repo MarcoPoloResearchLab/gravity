@@ -7,9 +7,9 @@ import {
 } from "../../constants.js";
 import { createElement } from "../../utils/dom.js";
 import {
-    buildDeterministicPreview,
-    renderSanitizedMarkdown
-} from "../markdownPreview.js";
+    buildHtmlViewSource,
+    renderHtmlView
+} from "../htmlView.js";
 import {
     collectReferencedAttachments,
     transformMarkdownWithAttachments
@@ -20,9 +20,9 @@ import { syncStoreFromDom } from "../storeSync.js";
 
 /**
  * HTML view lifecycle is intentionally atomic:
- *  - `createHTMLView(card, …)` removes any existing preview DOM and rebuilds it
+ *  - `createHtmlView(card, …)` removes any existing HTML view DOM and rebuilds it
  *    from the supplied markdown source, wiring up the expand toggle and badges.
- *  - `deleteHTMLView(card)` tears the preview out of the DOM entirely. Edit mode
+ *  - `deleteHtmlView(card)` tears the HTML view out of the DOM entirely. Edit mode
  *    always calls this so the editor surface is the only visible state.
  *  No incremental refresh helpers remain; callers choose one of these two
  *  operations based on the card mode.
@@ -30,33 +30,33 @@ import { syncStoreFromDom } from "../storeSync.js";
 // HTML view lifecycle helpers – cards rebuild their visible HTML from markdown
 // on demand (create) and tear it down entirely when switching to markdown view
 // (delete). No refresh helpers remain by design.
-const previewBubbleTimers = new WeakMap();
-const previewFocusTargets = new WeakMap();
+const htmlViewBubbleTimers = new WeakMap();
+const htmlViewFocusTargets = new WeakMap();
 
 /**
- * Queue a preview bubble after a checkbox interaction.
+ * Queue an HTML view bubble after a checkbox interaction.
  * @param {HTMLElement} card
  * @param {HTMLElement} notesContainer
  * @returns {void}
  */
-export function schedulePreviewBubble(card, notesContainer) {
+export function scheduleHtmlViewBubble(card, notesContainer) {
     if (!(card instanceof HTMLElement) || !(notesContainer instanceof HTMLElement)) {
         return;
     }
-    const existing = previewBubbleTimers.get(card);
+    const existing = htmlViewBubbleTimers.get(card);
     if (existing) {
         clearTimeout(existing);
     }
-    const delay = getPreviewCheckboxBubbleDelayMs();
+    const delay = getHtmlViewCheckboxBubbleDelayMs();
     if (delay <= 0) {
         bubbleCardToTop(card, notesContainer);
         return;
     }
     const timer = setTimeout(() => {
-        previewBubbleTimers.delete(card);
+        htmlViewBubbleTimers.delete(card);
         bubbleCardToTop(card, notesContainer);
     }, delay);
-    previewBubbleTimers.set(card, timer);
+    htmlViewBubbleTimers.set(card, timer);
 }
 
 /**
@@ -71,10 +71,10 @@ export function bubbleCardToTop(card, notesContainer, markdownOverride, override
     if (!(card instanceof HTMLElement) || !(notesContainer instanceof HTMLElement)) {
         return;
     }
-    const pending = previewBubbleTimers.get(card);
+    const pending = htmlViewBubbleTimers.get(card);
     if (pending) {
         clearTimeout(pending);
-        previewBubbleTimers.delete(card);
+        htmlViewBubbleTimers.delete(card);
     }
     placeCardRespectingPinned(card, notesContainer, { forcePinnedPosition: card.dataset.pinned === "true" });
     const overrides = overrideRecord && overrideRecord.noteId
@@ -83,8 +83,8 @@ export function bubbleCardToTop(card, notesContainer, markdownOverride, override
     syncStoreFromDom(notesContainer, overrides);
     updateActionButtons(notesContainer);
     const badgesTarget = card.querySelector(".note-badges");
-    let previewSource = markdownOverride;
-    if (typeof previewSource !== "string") {
+    let htmlViewSource = markdownOverride;
+    if (typeof htmlViewSource !== "string") {
         const host = card.__markdownHost;
         const textarea = host && typeof host.getTextarea === "function"
             ? host.getTextarea()
@@ -93,9 +93,9 @@ export function bubbleCardToTop(card, notesContainer, markdownOverride, override
             ? host.getValue()
             : textarea?.value ?? "";
         const attachments = textarea instanceof HTMLTextAreaElement ? collectReferencedAttachments(textarea) : {};
-        previewSource = transformMarkdownWithAttachments(markdownValue, attachments);
+        htmlViewSource = transformMarkdownWithAttachments(markdownValue, attachments);
     }
-    createHTMLView(card, { markdownSource: previewSource, badgesTarget });
+    createHtmlView(card, { markdownSource: htmlViewSource, badgesTarget });
 }
 
 /**
@@ -106,29 +106,29 @@ export function bubbleCardToTop(card, notesContainer, markdownOverride, override
  * @param {{ markdownSource: string, badgesTarget?: HTMLElement|null }} options
  * @returns {HTMLElement|null}
  */
-export function createHTMLView(card, { markdownSource, badgesTarget }) {
+export function createHtmlView(card, { markdownSource, badgesTarget }) {
     if (!(card instanceof HTMLElement) || typeof markdownSource !== "string") {
         return null;
     }
-    deleteHTMLView(card);
-    if (card.dataset.previewExpanded !== "true") {
-        card.dataset.previewExpanded = "false";
+    deleteHtmlView(card);
+    if (card.dataset.htmlViewExpanded !== "true") {
+        card.dataset.htmlViewExpanded = "false";
     }
-    const { previewMarkdown, meta } = buildDeterministicPreview(markdownSource);
-    const wrapper = createElement("div", "note-preview");
+    const { htmlViewMarkdown, meta } = buildHtmlViewSource(markdownSource);
+    const wrapper = createElement("div", "note-html-view");
     const content = createElement("div", "markdown-content");
     const expandToggle = createExpandToggle(card, wrapper);
     wrapper.append(content, expandToggle);
-    insertPreviewWrapper(card, wrapper);
-    renderSanitizedMarkdown(content, previewMarkdown);
-    restorePreviewFocus(card);
+    insertHtmlViewWrapper(card, wrapper);
+    renderHtmlView(content, htmlViewMarkdown);
+    restoreHtmlViewFocus(card);
     if (badgesTarget instanceof HTMLElement) {
-        applyPreviewBadges(badgesTarget, meta);
+        applyHtmlViewBadges(badgesTarget, meta);
     }
-    scheduleOverflowCheck(wrapper, content, expandToggle);
-    if (card.dataset.previewExpanded === "true") {
+    scheduleHtmlViewOverflowCheck(wrapper, content, expandToggle);
+    if (card.dataset.htmlViewExpanded === "true") {
         requestAnimationFrame(() => {
-            setCardExpanded(card, true);
+            setHtmlViewExpanded(card, true);
         });
     }
     return wrapper;
@@ -138,18 +138,18 @@ export function createHTMLView(card, { markdownSource, badgesTarget }) {
  * Remove the current HTML view for a card (no-op if none exists).
  * @param {HTMLElement} card
  */
-export function deleteHTMLView(card) {
+export function deleteHtmlView(card) {
     if (!(card instanceof HTMLElement)) {
         return;
     }
-    const wrapper = card.querySelector(".note-preview");
+    const wrapper = card.querySelector(".note-html-view");
     if (!(wrapper instanceof HTMLElement)) {
         return;
     }
     wrapper.remove();
 }
 
-function insertPreviewWrapper(card, wrapper) {
+function insertHtmlViewWrapper(card, wrapper) {
     const textarea = card.querySelector(".markdown-editor");
     if (textarea instanceof HTMLElement && textarea.parentElement === card) {
         card.insertBefore(wrapper, textarea);
@@ -166,8 +166,8 @@ function createExpandToggle(card, wrapper) {
     toggle.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        const isExpanded = wrapper.classList.contains("note-preview--expanded");
-        setCardExpanded(card, !isExpanded);
+        const isExpanded = wrapper.classList.contains("note-html-view--expanded");
+        setHtmlViewExpanded(card, !isExpanded);
     });
     return toggle;
 }
@@ -178,28 +178,28 @@ function createExpandToggle(card, wrapper) {
  * @param {{ type: "checkbox", taskIndex: number, remaining: number }} spec
  * @returns {void}
  */
-export function queuePreviewFocus(card, spec) {
+export function queueHtmlViewFocus(card, spec) {
     if (!(card instanceof HTMLElement)) {
         return;
     }
-    previewFocusTargets.set(card, spec);
+    htmlViewFocusTargets.set(card, spec);
 }
 
 /**
- * Attempt to restore focus to a preview element after re-rendering.
+ * Attempt to restore focus to the HTML view element after re-rendering.
  * @param {HTMLElement} card
  * @returns {void}
  */
-export function restorePreviewFocus(card) {
-    const focusSpec = previewFocusTargets.get(card);
+export function restoreHtmlViewFocus(card) {
+    const focusSpec = htmlViewFocusTargets.get(card);
     if (!focusSpec) {
         return;
     }
     const nextRemaining = typeof focusSpec.remaining === "number" ? focusSpec.remaining - 1 : 0;
     if (nextRemaining <= 0) {
-        previewFocusTargets.delete(card);
+        htmlViewFocusTargets.delete(card);
     } else {
-        previewFocusTargets.set(card, { ...focusSpec, remaining: nextRemaining });
+        htmlViewFocusTargets.set(card, { ...focusSpec, remaining: nextRemaining });
     }
     if (focusSpec.type === "checkbox" && typeof focusSpec.taskIndex === "number") {
         requestAnimationFrame(() => {
@@ -217,47 +217,47 @@ export function restorePreviewFocus(card) {
 }
 
 /**
- * Expand or collapse a preview, ensuring only one card is expanded at a time.
+ * Expand or collapse the HTML view, ensuring only one card is expanded at a time.
  * @param {HTMLElement} card
  * @param {boolean} shouldExpand
  * @returns {void}
  */
-export function setCardExpanded(card, shouldExpand) {
+export function setHtmlViewExpanded(card, shouldExpand) {
     if (!(card instanceof HTMLElement)) {
         return;
     }
-    const preview = /** @type {HTMLElement|null} */ (card.querySelector(".note-preview"));
-    const content = /** @type {HTMLElement|null} */ (card.querySelector(".note-preview .markdown-content"));
+    const viewElement = /** @type {HTMLElement|null} */ (card.querySelector(".note-html-view"));
+    const content = /** @type {HTMLElement|null} */ (card.querySelector(".note-html-view .markdown-content"));
     const toggle = /** @type {HTMLElement|null} */ (card.querySelector(".note-expand-toggle"));
-    if (!preview || !content) {
+    if (!viewElement || !content) {
         return;
     }
 
     const beforeViewportTop = shouldExpand === true && typeof window !== "undefined"
-        ? preview.getBoundingClientRect().top
+        ? viewElement.getBoundingClientRect().top
         : null;
 
     if (shouldExpand) {
-        preview.classList.add("note-preview--expanded");
-        card.dataset.previewExpanded = "true";
+        viewElement.classList.add("note-html-view--expanded");
+        card.dataset.htmlViewExpanded = "true";
         if (toggle) {
             toggle.setAttribute("aria-expanded", "true");
             toggle.setAttribute("aria-label", LABEL_COLLAPSE_NOTE);
         }
     } else {
-        preview.classList.remove("note-preview--expanded");
-        card.dataset.previewExpanded = "false";
+        viewElement.classList.remove("note-html-view--expanded");
+        card.dataset.htmlViewExpanded = "false";
         if (toggle) {
             toggle.setAttribute("aria-expanded", "false");
             toggle.setAttribute("aria-label", LABEL_EXPAND_NOTE);
         }
     }
-    scheduleOverflowCheck(preview, content, toggle);
+    scheduleHtmlViewOverflowCheck(viewElement, content, toggle);
 
     if (beforeViewportTop !== null && typeof window !== "undefined" && typeof window.scrollBy === "function") {
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
-                const afterRect = preview.getBoundingClientRect();
+                const afterRect = viewElement.getBoundingClientRect();
                 const delta = afterRect.top - beforeViewportTop;
                 if (Math.abs(delta) > 1) {
                     window.scrollBy({ top: delta, behavior: "auto" });
@@ -268,15 +268,15 @@ export function setCardExpanded(card, shouldExpand) {
 }
 
 /**
- * Collapse the preview for a specific card.
+ * Collapse the HTML view for a specific card.
  * @param {HTMLElement} card
  * @returns {void}
  */
-export function collapseExpandedPreview(card) {
+export function collapseExpandedHtmlView(card) {
     if (!(card instanceof HTMLElement)) {
         return;
     }
-    setCardExpanded(card, false);
+    setHtmlViewExpanded(card, false);
 }
 
 /**
@@ -286,7 +286,7 @@ export function collapseExpandedPreview(card) {
  * @param {HTMLElement|null} toggle
  * @returns {void}
  */
-export function scheduleOverflowCheck(wrapper, content, toggle) {
+export function scheduleHtmlViewOverflowCheck(wrapper, content, toggle) {
     if (!(wrapper instanceof HTMLElement) || !(content instanceof HTMLElement)) {
         if (toggle instanceof HTMLElement) {
             toggle.hidden = true;
@@ -297,10 +297,10 @@ export function scheduleOverflowCheck(wrapper, content, toggle) {
     const card = /** @type {HTMLElement|null} */ (wrapper.closest(".markdown-block"));
 
     const applyMeasurements = () => {
-        const isExpanded = wrapper.classList.contains("note-preview--expanded");
+        const isExpanded = wrapper.classList.contains("note-html-view--expanded");
         const overflowDelta = content.scrollHeight - wrapper.clientHeight;
         const overflowing = isExpanded || overflowDelta > 0.5;
-        wrapper.classList.toggle("note-preview--overflow", overflowing && !isExpanded);
+        wrapper.classList.toggle("note-html-view--overflow", overflowing && !isExpanded);
 
         if (toggle instanceof HTMLElement) {
             toggle.hidden = !overflowing;
@@ -318,9 +318,9 @@ export function scheduleOverflowCheck(wrapper, content, toggle) {
         }
 
         if (!overflowing && isExpanded) {
-            wrapper.classList.remove("note-preview--expanded");
+            wrapper.classList.remove("note-html-view--expanded");
             if (card instanceof HTMLElement) {
-                card.dataset.previewExpanded = "false";
+                card.dataset.htmlViewExpanded = "false";
             }
             if (toggle instanceof HTMLElement) {
                 toggle.setAttribute("aria-expanded", "false");
@@ -329,8 +329,8 @@ export function scheduleOverflowCheck(wrapper, content, toggle) {
             }
         }
 
-        if (overflowing && card instanceof HTMLElement && card.dataset.previewExpanded === "true") {
-            wrapper.classList.add("note-preview--expanded");
+        if (overflowing && card instanceof HTMLElement && card.dataset.htmlViewExpanded === "true") {
+            wrapper.classList.add("note-html-view--expanded");
             if (toggle instanceof HTMLElement) {
                 toggle.setAttribute("aria-expanded", "true");
                 toggle.setAttribute("aria-label", LABEL_COLLAPSE_NOTE);
@@ -356,12 +356,12 @@ export function scheduleOverflowCheck(wrapper, content, toggle) {
 }
 
 /**
- * Apply badges to a preview container based on markdown metadata.
+ * Apply badges to an HTML view container based on markdown metadata.
  * @param {HTMLElement|null} container
  * @param {{ hasCode?: boolean }|null} meta
  * @returns {void}
  */
-export function applyPreviewBadges(container, meta) {
+export function applyHtmlViewBadges(container, meta) {
     if (!(container instanceof HTMLElement)) {
         return;
     }
@@ -376,9 +376,9 @@ export function applyPreviewBadges(container, meta) {
     }
 }
 
-function getPreviewCheckboxBubbleDelayMs() {
+function getHtmlViewCheckboxBubbleDelayMs() {
     if (typeof globalThis !== "undefined") {
-        const override = globalThis.__gravityPreviewBubbleDelayMs;
+        const override = globalThis.__gravityHtmlViewBubbleDelayMs;
         const numeric = typeof override === "number" ? override : Number(override);
         if (Number.isFinite(numeric) && numeric >= 0) {
             return numeric;
