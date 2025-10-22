@@ -9,7 +9,6 @@ import {
     waitForSyncManagerUser,
     resetToSignedOut
 } from "./helpers/syncTestUtils.js";
-import { MESSAGE_AUTH_UNAVAILABLE_ORIGIN } from "../js/constants.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
@@ -48,7 +47,7 @@ if (!puppeteerAvailable) {
             harness = null;
         });
 
-        test("signed-out view surfaces unavailable status when GIS disabled", async () => {
+        test("signed-out view omits status banner", async () => {
             if (!harness) {
                 test.skip(launchError ? launchError.message : "Puppeteer harness unavailable");
                 return;
@@ -58,16 +57,8 @@ if (!puppeteerAvailable) {
             await resetToSignedOut(page);
 
             await page.waitForSelector(".auth-status");
-            const statusContent = await page.$eval(".auth-status", (element) => ({
-                hidden: element.hidden,
-                ariaHidden: element.getAttribute("aria-hidden"),
-                text: element.textContent?.trim() ?? "",
-                datasetStatus: element.dataset.status ?? null
-            }));
-            assert.equal(statusContent.hidden, false);
-            assert.equal(statusContent.ariaHidden, "false");
-            assert.equal(statusContent.datasetStatus, "unavailable");
-            assert.equal(statusContent.text, MESSAGE_AUTH_UNAVAILABLE_ORIGIN);
+            const statusContent = await page.$eval(".auth-status", (element) => element.textContent?.trim() ?? "");
+            assert.equal(statusContent.length, 0);
         });
 
         test("signed-in view keeps status hidden", async () => {
@@ -87,13 +78,11 @@ if (!puppeteerAvailable) {
             const statusMetrics = await page.$eval(".auth-status", (element) => ({
                 hidden: element.hidden,
                 ariaHidden: element.getAttribute("aria-hidden"),
-                text: element.textContent?.trim() ?? "",
-                datasetStatus: element.dataset.status ?? null
+                text: element.textContent?.trim() ?? ""
             }));
             assert.equal(statusMetrics.hidden, true);
             assert.equal(statusMetrics.ariaHidden, "true");
             assert.equal(statusMetrics.text.length, 0);
-            assert.equal(statusMetrics.datasetStatus, null);
         });
     });
 }

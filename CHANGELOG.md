@@ -12,7 +12,6 @@ and are grouped by the date the work landed on `master`.
 
 ### Fixed
 - Note preview expansion now persists until manually collapsed, and inline editing preserves the expanded height envelope (GN-71).
-- Suppressed Google Identity console noise on unsupported origins by gating script injection and surfacing explicit availability messaging while keeping localhost development sign-in available (GN-80).
 
 ### Documentation
 - Folded `MIGRATION.md` into `ARCHITECTURE.md`, clarifying event contracts and module guidance (GN-54).

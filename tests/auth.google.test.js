@@ -111,22 +111,6 @@ test("isGoogleIdentitySupportedOrigin filters unsupported protocols", () => {
     assert.equal(isGoogleIdentitySupportedOrigin(mockLocation("http:", "example.com")), false);
 });
 
-test("isGoogleIdentitySupportedOrigin enforces allowed origin list", () => {
-    const allowedOrigins = ["https://gravity.mprlab.com"];
-    assert.equal(isGoogleIdentitySupportedOrigin(mockLocation("https:", "gravity.mprlab.com"), allowedOrigins), true);
-    assert.equal(isGoogleIdentitySupportedOrigin(mockLocation("https:", "gravity.mprlab.com", "443"), allowedOrigins), true);
-    assert.equal(isGoogleIdentitySupportedOrigin(mockLocation("https:", "gravity-dev.mprlab.com"), allowedOrigins), false);
-    assert.equal(isGoogleIdentitySupportedOrigin(mockLocation("http:", "localhost"), allowedOrigins), false);
-    assert.equal(isGoogleIdentitySupportedOrigin(mockLocation("http:", "example.com"), allowedOrigins), false);
-});
-
-test("isGoogleIdentitySupportedOrigin permits configured localhost origins", () => {
-    const allowedOrigins = ["http://localhost:8000", "http://127.0.0.1:8080"];
-    assert.equal(isGoogleIdentitySupportedOrigin(mockLocation("http:", "localhost", "8000"), allowedOrigins), true);
-    assert.equal(isGoogleIdentitySupportedOrigin(mockLocation("http:", "127.0.0.1", "8080"), allowedOrigins), true);
-    assert.equal(isGoogleIdentitySupportedOrigin(mockLocation("http:", "localhost", "8080"), allowedOrigins), false);
-});
-
 test("createGoogleIdentityController skips initialization on unsupported origin", () => {
     let initializeCalled = false;
     const googleStub = {
@@ -156,46 +140,14 @@ test("createGoogleIdentityController skips initialization on unsupported origin"
     assert.doesNotThrow(() => controller.signOut());
 });
 
-test("createGoogleIdentityController flags button when origin not allowed", () => {
-    let initializeCalled = false;
-    const googleStub = {
-        accounts: {
-            id: {
-                initialize() {
-                    initializeCalled = true;
-                },
-                renderButton() {},
-                prompt() {},
-                disableAutoSelect() {}
-            }
-        }
-    };
-
-    const buttonElement = { nodeType: 1, dataset: {} };
-    const controller = createGoogleIdentityController({
-        clientId: appConfig.googleClientId,
-        google: googleStub,
-        buttonElement,
-        eventTarget: new EventTarget(),
-        autoPrompt: true,
-        location: mockLocation("https:", "gravity-dev.mprlab.com"),
-        allowedOrigins: ["https://gravity.mprlab.com"]
-    });
-
-    assert.equal(initializeCalled, false);
-    assert.equal(buttonElement.dataset.googleSignIn, "unavailable");
-    assert.ok(controller, "controller should provide noop methods on disallowed origin");
-});
-
 /**
  * @param {string} protocol
  * @param {string} hostname
  * @returns {Location}
  */
-function mockLocation(protocol, hostname, port = "") {
+function mockLocation(protocol, hostname) {
     return /** @type {Location} */ ({
         protocol,
-        hostname,
-        port
+        hostname
     });
 }

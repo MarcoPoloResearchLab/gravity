@@ -83,6 +83,3 @@ export const EVENT_SYNC_SNAPSHOT_APPLIED = "gravity:sync-snapshot-applied";
 
 export const LABEL_SIGN_IN_WITH_GOOGLE = "Sign in with Google";
 export const LABEL_SIGN_OUT = "Sign out";
-export const MESSAGE_AUTH_UNAVAILABLE_ORIGIN = "Google sign-in is disabled for this origin.";
-export const MESSAGE_AUTH_UNAVAILABLE_TEMPORARY = "Google sign-in is temporarily unavailable. Please try again later.";
-export const GOOGLE_IDENTITY_SCRIPT_URL = "https://accounts.google.com/gsi/client";
