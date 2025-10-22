@@ -797,6 +797,8 @@ export function renderCard(record, options = {}) {
     const handleCopy = async () => {
         const host = editorHostRef;
         if (!host) return;
+        const previewCandidate = card.querySelector(".markdown-content");
+        const previewElement = previewCandidate instanceof HTMLElement ? previewCandidate : null;
         const suppressedCards = new Set();
         const protectCard = (candidate) => {
             if (!candidate) return;
@@ -817,8 +819,8 @@ export function renderCard(record, options = {}) {
             const markdownValue = host.getValue();
             const attachments = getAllAttachments(editor);
             const markdownWithAttachments = transformMarkdownWithAttachments(markdownValue, attachments);
-            const renderedHtml = getSanitizedRenderedHtml(preview);
-            const renderedText = getRenderedPlainText(preview);
+            const renderedHtml = previewElement ? getSanitizedRenderedHtml(previewElement) : "";
+            const renderedText = previewElement ? getRenderedPlainText(previewElement) : "";
             const attachmentDataUrls = Object.values(attachments)
                 .map((value) => value?.dataUrl)
                 .filter((value) => typeof value === "string" && value.length > 0);
