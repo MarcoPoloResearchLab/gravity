@@ -4,13 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/MarcoPoloResearchLab/gravity/backend/internal/auth"
 	"github.com/MarcoPoloResearchLab/gravity/backend/internal/notes"
 	"github.com/gin-contrib/cors"
+	"github.com/gin-contrib/sse"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -38,6 +41,7 @@ type Dependencies struct {
 	TokenManager   BackendTokenManager
 	NotesService   *notes.Service
 	Logger         *zap.Logger
+	Realtime       *RealtimeDispatcher
 }
 
 func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
@@ -56,6 +60,11 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		logger = zap.NewNop()
 	}
 
+	realtime := deps.Realtime
+	if realtime == nil {
+		realtime = NewRealtimeDispatcher()
+	}
+
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(cors.New(cors.Config{
@@ -70,6 +79,7 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		tokens:       deps.TokenManager,
 		notesService: deps.NotesService,
 		logger:       logger,
+		realtime:     realtime,
 	}
 
 	router.POST("/auth/google", handler.handleGoogleAuth)
@@ -78,6 +88,7 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 	protected.Use(handler.authorizeRequest)
 	protected.POST("/notes/sync", handler.handleNotesSync)
 	protected.GET("/notes", handler.handleListNotes)
+	protected.GET("/notes/stream", handler.handleNotesStream)
 
 	return router, nil
 }
@@ -87,6 +98,7 @@ type httpHandler struct {
 	tokens       BackendTokenManager
 	notesService *notes.Service
 	logger       *zap.Logger
+	realtime     *RealtimeDispatcher
 }
 
 type authRequestPayload struct {
@@ -230,7 +242,29 @@ func (h *httpHandler) handleNotesSync(c *gin.Context) {
 		})
 	}
 
+	h.broadcastNoteChanges(userID, result)
 	c.JSON(http.StatusOK, response)
+}
+
+func (h *httpHandler) broadcastNoteChanges(userID string, result notes.SyncResult) {
+	if h.realtime == nil {
+		return
+	}
+	if userID == "" {
+		return
+	}
+	noteIDs := collectAcceptedNoteIDs(result.ChangeOutcomes)
+	if len(noteIDs) == 0 {
+		return
+	}
+	h.logger.Info("broadcasting realtime note change", zap.String("user_id", userID), zap.Strings("note_ids", noteIDs))
+	timestamp := time.Now().UTC()
+	h.realtime.Publish(RealtimeMessage{
+		UserID:    userID,
+		EventType: RealtimeEventNoteChanged,
+		NoteIDs:   noteIDs,
+		Timestamp: timestamp,
+	})
 }
 
 func (h *httpHandler) handleListNotes(c *gin.Context) {
@@ -265,6 +299,70 @@ func (h *httpHandler) handleListNotes(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
+func (h *httpHandler) handleNotesStream(c *gin.Context) {
+	if h.realtime == nil {
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "stream_unavailable"})
+		return
+	}
+	userID := c.GetString(userIDContextKey)
+	if userID == "" {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	ctx := c.Request.Context()
+	stream, dispose := h.realtime.Subscribe(ctx, userID)
+	defer dispose()
+	h.logger.Info("realtime stream subscribed", zap.String("user_id", userID))
+
+	writer := c.Writer
+	writer.Header().Set("Content-Type", "text/event-stream")
+	writer.Header().Set("Cache-Control", "no-cache")
+	writer.Header().Set("Connection", "keep-alive")
+	flusher, _ := writer.(http.Flusher)
+
+	heartbeat := time.NewTicker(25 * time.Second)
+	defer heartbeat.Stop()
+
+	c.Stream(func(w io.Writer) bool {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-heartbeat.C:
+			c.Render(-1, sse.Event{
+				Event: realtimeEventHeartbeat,
+				Data: gin.H{
+					"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
+					"source":    realtimeSourceBackend,
+				},
+			})
+			if flusher != nil {
+				flusher.Flush()
+			}
+			return true
+		case message, ok := <-stream:
+			if !ok {
+				return false
+			}
+			timestamp := message.Timestamp
+			if timestamp.IsZero() {
+				timestamp = time.Now().UTC()
+			}
+			c.Render(-1, sse.Event{
+				Event: message.EventType,
+				Data: gin.H{
+					"noteIds":   append([]string(nil), message.NoteIDs...),
+					"timestamp": timestamp.UTC().Format(time.RFC3339Nano),
+					"source":    realtimeSourceBackend,
+				},
+			})
+			if flusher != nil {
+				flusher.Flush()
+			}
+			return true
+		}
+	})
+}
+
 func encodePayload(raw string) json.RawMessage {
 	if strings.TrimSpace(raw) == "" {
 		return json.RawMessage("null")
@@ -274,11 +372,13 @@ func encodePayload(raw string) json.RawMessage {
 
 func (h *httpHandler) authorizeRequest(c *gin.Context) {
 	header := c.GetHeader("Authorization")
-	if !strings.HasPrefix(header, "Bearer ") {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": errInvalidAuthorization.Error()})
-		return
+	token := ""
+	if strings.HasPrefix(header, "Bearer ") {
+		token = strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
 	}
-	token := strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
+	if token == "" {
+		token = strings.TrimSpace(c.Query("access_token"))
+	}
 	if token == "" {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": errInvalidAuthorization.Error()})
 		return
@@ -302,4 +402,34 @@ func parseOperation(value string) (notes.OperationType, error) {
 	default:
 		return "", errors.New("unknown operation")
 	}
+}
+
+func collectAcceptedNoteIDs(outcomes []notes.ChangeOutcome) []string {
+	if len(outcomes) == 0 {
+		return nil
+	}
+	unique := make(map[string]struct{}, len(outcomes))
+	for _, outcome := range outcomes {
+		if !outcome.Outcome.Accepted {
+			continue
+		}
+		note := outcome.Outcome.UpdatedNote
+		if note == nil {
+			continue
+		}
+		noteID := strings.TrimSpace(note.NoteID)
+		if noteID == "" {
+			continue
+		}
+		unique[noteID] = struct{}{}
+	}
+	if len(unique) == 0 {
+		return nil
+	}
+	identifiers := make([]string, 0, len(unique))
+	for id := range unique {
+		identifiers = append(identifiers, id)
+	}
+	sort.Strings(identifiers)
+	return identifiers
 }
