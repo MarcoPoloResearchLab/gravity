@@ -104,28 +104,48 @@ func TestRealtimeStreamEmitsNoteChangeEvents(t *testing.T) {
 		NoteIDs []string `json:"noteIds"`
 	}
 
-	timeout := time.After(2 * time.Second)
+	currentEventType := ""
+	deadline := time.After(5 * time.Second)
+	type readResult struct {
+		line string
+		err  error
+	}
 	for {
-		select {
-		case <-timeout:
-			t.Fatal("timed out waiting for realtime event")
-		default:
+		resultCh := make(chan readResult, 1)
+		go func() {
 			line, err := streamReader.ReadString('\n')
-			if err != nil {
-				t.Fatalf("failed to read stream: %v", err)
+			resultCh <- readResult{line: line, err: err}
+		}()
+		select {
+		case <-deadline:
+			t.Fatal("timed out waiting for realtime event")
+		case res := <-resultCh:
+			if res.err != nil {
+				t.Fatalf("failed to read stream: %v", res.err)
 			}
-			line = strings.TrimSpace(line)
-			if strings.HasPrefix(line, "data:") {
-				dataJSON := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-				var payload eventPayload
-				if err := json.Unmarshal([]byte(dataJSON), &payload); err != nil {
-					t.Fatalf("failed to decode event payload: %v", err)
-				}
-				if len(payload.NoteIDs) == 0 || payload.NoteIDs[0] != "note-1" {
-					t.Fatalf("unexpected note identifiers: %#v", payload.NoteIDs)
-				}
-				return
+			line := strings.TrimSpace(res.line)
+			if line == "" {
+				continue
 			}
+			if strings.HasPrefix(line, "event:") {
+				currentEventType = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+				continue
+			}
+			if !strings.HasPrefix(line, "data:") {
+				continue
+			}
+			if currentEventType != RealtimeEventNoteChanged {
+				continue
+			}
+			dataJSON := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			var payload eventPayload
+			if err := json.Unmarshal([]byte(dataJSON), &payload); err != nil {
+				t.Fatalf("failed to decode event payload: %v", err)
+			}
+			if len(payload.NoteIDs) == 0 || payload.NoteIDs[0] != "note-1" {
+				t.Fatalf("unexpected note identifiers: %#v", payload.NoteIDs)
+			}
+			return
 		}
 	}
 }

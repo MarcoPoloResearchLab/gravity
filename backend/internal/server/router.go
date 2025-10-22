@@ -320,45 +320,89 @@ func (h *httpHandler) handleNotesStream(c *gin.Context) {
 	writer.Header().Set("Connection", "keep-alive")
 	flusher, _ := writer.(http.Flusher)
 
-	heartbeat := time.NewTicker(25 * time.Second)
+	const heartbeatInterval = 25 * time.Second
+	heartbeat := time.NewTimer(heartbeatInterval)
 	defer heartbeat.Stop()
+
+	resetHeartbeat := func() {
+		if !heartbeat.Stop() {
+			select {
+			case <-heartbeat.C:
+			default:
+			}
+		}
+		heartbeat.Reset(heartbeatInterval)
+	}
+
+	sendHeartbeat := func() bool {
+		c.Render(-1, sse.Event{
+			Event: realtimeEventHeartbeat,
+			Data: gin.H{
+				"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
+				"source":    realtimeSourceBackend,
+			},
+		})
+		if flusher != nil {
+			flusher.Flush()
+		}
+		resetHeartbeat()
+		return true
+	}
+
+	sendMessage := func(message RealtimeMessage) bool {
+		timestamp := message.Timestamp
+		if timestamp.IsZero() {
+			timestamp = time.Now().UTC()
+		}
+		c.Render(-1, sse.Event{
+			Event: message.EventType,
+			Data: gin.H{
+				"noteIds":   append([]string(nil), message.NoteIDs...),
+				"timestamp": timestamp.UTC().Format(time.RFC3339Nano),
+				"source":    realtimeSourceBackend,
+			},
+		})
+		if flusher != nil {
+			flusher.Flush()
+		}
+		resetHeartbeat()
+		return true
+	}
 
 	c.Stream(func(w io.Writer) bool {
 		select {
 		case <-ctx.Done():
 			return false
-		case <-heartbeat.C:
-			c.Render(-1, sse.Event{
-				Event: realtimeEventHeartbeat,
-				Data: gin.H{
-					"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
-					"source":    realtimeSourceBackend,
-				},
-			})
-			if flusher != nil {
-				flusher.Flush()
-			}
-			return true
+		default:
+		}
+
+		select {
 		case message, ok := <-stream:
 			if !ok {
 				return false
 			}
-			timestamp := message.Timestamp
-			if timestamp.IsZero() {
-				timestamp = time.Now().UTC()
+			return sendMessage(message)
+		default:
+		}
+
+		select {
+		case <-ctx.Done():
+			return false
+		case message, ok := <-stream:
+			if !ok {
+				return false
 			}
-			c.Render(-1, sse.Event{
-				Event: message.EventType,
-				Data: gin.H{
-					"noteIds":   append([]string(nil), message.NoteIDs...),
-					"timestamp": timestamp.UTC().Format(time.RFC3339Nano),
-					"source":    realtimeSourceBackend,
-				},
-			})
-			if flusher != nil {
-				flusher.Flush()
+			return sendMessage(message)
+		case <-heartbeat.C:
+			select {
+			case message, ok := <-stream:
+				if !ok {
+					return false
+				}
+				return sendMessage(message)
+			default:
 			}
-			return true
+			return sendHeartbeat()
 		}
 	})
 }

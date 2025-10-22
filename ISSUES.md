@@ -95,7 +95,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
   - [ ] [GN-84] ![Card control bug](<card control bug.png>) The card control is not aligned to the top right corner of the cards, as specified in GN-72, in it instead aligned to the bottom right corner of the card. Fix the bug abnd align card controls to the top right corner of the card
 
-  - [ ] [GN-85] Tests are failing on CI (GitHub Actions). Fix the tests
+  - [x] [GN-85] Tests are failing on CI (GitHub Actions). Fix the tests — SSE dispatcher now prioritizes note-change payloads ahead of heartbeats and the realtime integration test awaits note-change events explicitly (branch bugfix/GN-85-ci-tests).
   ```
   go: downloading github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec
   ?   	github.com/MarcoPoloResearchLab/gravity/backend/cmd/gravity-api	[no test files]
