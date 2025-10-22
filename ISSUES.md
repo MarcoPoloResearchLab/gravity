@@ -91,7 +91,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   
   - [ ] [GN-82] Editing starts in a very different position than rendered HTML. Work on aligning these positions so that markdown and rendered HTML would be in the same places visually. Work on [ST-72] prior to this one.
 
-  - [ ] [GN-83] Logging in on two browsers (sessions) does not synchronize notes. As a logged in user I can create a new note on Browser A and never see it on browser B despite being logged in. Develop an SSE notification system for logged in users only which sends a notification when a new edit occurs, so that front end will synchronize the changes. Develop the system that allows automated note conflict resolution and works in a background thread on browser. The expectation is for two sessions/browsers to synchronize the moment there is a change introduced to the underlying data of the notes.
+  - [x] [GN-83] Unblocked realtime multi-session sync by instrumenting `EventSource` in the Puppeteer regression, confirming backend note-change broadcasts and Alpine snapshot hydration across tabs (branch bugfix/GN-83-realtime-sync-retry).
 
   - [ ] [GN-84] ![Card control bug](<card control bug.png>) The card control is not aligned to the top right corner of the cards, as specified in GN-72, in it instead aligned to the bottom right corner of the card. Fix the bug abnd align card controls to the top right corner of the card
 
@@ -99,8 +99,9 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
   - [ ] [GN-90] Code refactoring: we have screenshots, we have HTML view and we have markdown view. Use this rough taxonomy and revise the code to ensure there is no word previewe mentioned anywhere in the code. While working on it ensure that the code flow doesnt assume previewes, storing previews in the DOM, cahcing previewes or doing any operation wich pre-calculate views. Simplify the code where possible. Remember to rely on [marked.js](marked.js.md) and [MD](MDE.v2.19.0.md)
 
-  - [ ] [GN-91] Document the code flow when each card calls createHTMLView when it's loaded into view and deleteHTMLView when it's unloaded from the view or is getting edited  
+  - [ ] [GN-91] Document the current code flow when each card calls createHTMLView when it's loaded into view and deleteHTMLView when it's unloaded from the view or is getting edited. My understanding may be incorrect -- document the details in @ARCHITECTURE.md to ensure we have an easy guidance on cards rendering in both HTML and Markdown modes.
 
+  - [ ] [GN-92] Restructure the repository so that the /frontend and the /backend are two separate top level folders. Consider changes to GitHub Pages through `gh` utility to continue serving front-end from the github after the change of the front-end index.html path
 
 ### Planning (do not work on these, not ready)
 

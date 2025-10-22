@@ -14,7 +14,7 @@ import { EVENT_SYNC_SNAPSHOT_APPLIED } from "../constants.js";
  */
 
 /**
- * @typedef {{ authenticated: boolean, queueFlushed: boolean, snapshotApplied: boolean }} SignInResult
+ * @typedef {{ authenticated: boolean, queueFlushed: boolean, snapshotApplied: boolean, accessToken: string|null }} SignInResult
  */
 
 /**
@@ -128,7 +128,7 @@ export function createSyncManager(options = {}) {
          */
         async handleSignIn(params) {
             if (!params || !params.userId) {
-                return { authenticated: false, queueFlushed: false, snapshotApplied: false };
+                return { authenticated: false, queueFlushed: false, snapshotApplied: false, accessToken: null };
             }
 
             const loadedMetadata = metadataStore.load(params.userId);
@@ -139,7 +139,7 @@ export function createSyncManager(options = {}) {
                 exchanged = await backendClient.exchangeGoogleCredential({ credential: params.credential });
             } catch (error) {
                 logging.error(error);
-                return { authenticated: false, queueFlushed: false, snapshotApplied: false };
+                return { authenticated: false, queueFlushed: false, snapshotApplied: false, accessToken: null };
             }
 
             state.userId = params.userId;
@@ -159,7 +159,12 @@ export function createSyncManager(options = {}) {
                 snapshotApplied = await refreshSnapshot();
             }
 
-            return { authenticated: true, queueFlushed, snapshotApplied };
+            return {
+                authenticated: true,
+                queueFlushed,
+                snapshotApplied,
+                accessToken: state.backendToken ? state.backendToken.accessToken : null
+            };
         },
 
         /**
@@ -176,6 +181,24 @@ export function createSyncManager(options = {}) {
             state.metadata = {};
             state.queue = [];
             state.flushing = false;
+        },
+
+        /**
+         * Synchronize pending operations and refresh backend snapshot.
+         * @param {{ flushQueue?: boolean }} [options]
+         * @returns {Promise<{ queueFlushed: boolean, snapshotApplied: boolean }>}
+         */
+        async synchronize(options = {}) {
+            if (!state.userId || !state.backendToken) {
+                return { queueFlushed: false, snapshotApplied: false };
+            }
+            const shouldFlush = options.flushQueue !== false;
+            let queueFlushed = state.queue.length === 0;
+            if (shouldFlush) {
+                queueFlushed = await flushQueue();
+            }
+            const snapshotApplied = await refreshSnapshot();
+            return { queueFlushed, snapshotApplied };
         },
 
         /**
