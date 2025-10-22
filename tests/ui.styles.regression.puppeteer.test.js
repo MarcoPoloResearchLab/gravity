@@ -54,60 +54,93 @@ test("top editor keeps sticky positioning and compact padding", async () => {
     }
 });
 
-test("note cards preserve grid columns for content and actions", async () => {
+test("note cards preserve 2:1 grid proportion between content and controls", async () => {
     const { page, teardown, cardSelector } = await preparePage();
     try {
         await page.waitForSelector(cardSelector);
-        const metrics = await getComputedStyles(page, cardSelector, [
-            "display",
-            "grid-template-columns",
-            "column-gap",
-            "row-gap",
-            "align-items",
-            "padding-left",
-            "padding-right",
-            "border-bottom-width",
-            "border-bottom-color"
-        ]);
+        const metrics = await page.evaluate((selector) => {
+            const card = document.querySelector(selector);
+            if (!(card instanceof HTMLElement)) {
+                return null;
+            }
+            const computed = window.getComputedStyle(card);
+            const controls = card.querySelector(".card-controls");
+            const content = card.querySelector(".note-preview") || card.querySelector(".markdown-editor");
+            if (!(controls instanceof HTMLElement) || !(content instanceof HTMLElement)) {
+                return null;
+            }
+            const cardRect = card.getBoundingClientRect();
+            const controlsRect = controls.getBoundingClientRect();
+            const contentRect = content.getBoundingClientRect();
+            const paddingLeft = parseFloat(computed.paddingLeft);
+            const paddingRight = parseFloat(computed.paddingRight);
+            const columnGap = parseFloat(computed.columnGap);
+            const contentTrackWidth = controlsRect.left - (cardRect.left + paddingLeft) - columnGap;
+            const controlsTrackWidth = cardRect.right - paddingRight - controlsRect.left;
+            return {
+                display: computed.display,
+                columnGap,
+                rowGap: parseFloat(computed.rowGap),
+                alignItems: computed.alignItems,
+                paddingLeft,
+                paddingRight,
+                borderWidth: parseFloat(computed.borderBottomWidth),
+                borderColor: computed.borderBottomColor,
+                contentWidth: contentRect.width,
+                controlsWidth: controlsRect.width,
+                contentTrackWidth,
+                controlsTrackWidth
+            };
+        }, cardSelector);
+        assert.ok(metrics, "Expected to collect card layout metrics");
         assert.equal(metrics.display, "grid");
-        const columns = metrics["grid-template-columns"].trim().split(/\s+/).filter(Boolean);
-        assert.equal(columns.length, 2);
-        const primaryWidth = parseFloat(columns[0]);
-        const actionWidth = parseFloat(columns[1]);
-        assert.ok(Number.isFinite(primaryWidth) && Number.isFinite(actionWidth), "Grid columns should resolve to numeric widths");
-        assert.ok(primaryWidth > actionWidth * 4, "Primary column should be significantly wider than actions column");
-        const gapPx = parseFloat(metrics["column-gap"]);
-        assert.ok(gapPx >= 10 && gapPx <= 14, "Column gap should remain close to 0.75rem");
-        const rowGapPx = parseFloat(metrics["row-gap"]);
-        assert.ok(rowGapPx >= 5 && rowGapPx <= 7, "Row gap should remain close to 0.35rem");
-        assert.equal(metrics["align-items"], "start");
-        assert.ok(parseFloat(metrics["padding-left"]) >= 15 && parseFloat(metrics["padding-left"]) <= 18);
-        assert.ok(parseFloat(metrics["padding-right"]) >= 15 && parseFloat(metrics["padding-right"]) <= 18);
-        assert.ok(parseFloat(metrics["border-bottom-width"]) >= 1 && parseFloat(metrics["border-bottom-width"]) <= 1.5);
-        assert.equal(metrics["border-bottom-color"], "rgba(58, 68, 94, 0.7)");
+        assert.ok(metrics.contentWidth > 0 && metrics.controlsWidth > 0, "Track widths must be measurable");
+        assert.ok(metrics.contentTrackWidth > 0 && metrics.controlsTrackWidth > 0, "Track widths derived from card geometry must be positive");
+        const ratio = metrics.contentTrackWidth / metrics.controlsTrackWidth;
+        assert.ok(ratio >= 1.9 && ratio <= 2.2, `Content column should remain close to a 2:1 ratio (observed ${ratio.toFixed(2)}).`);
+        assert.ok(metrics.columnGap >= 10 && metrics.columnGap <= 14, "Column gap should remain close to 0.75rem");
+        assert.ok(metrics.rowGap >= 5 && metrics.rowGap <= 7, "Row gap should remain close to 0.35rem");
+        assert.equal(metrics.alignItems, "start");
+        assert.ok(metrics.paddingLeft >= 15 && metrics.paddingLeft <= 18);
+        assert.ok(metrics.paddingRight >= 15 && metrics.paddingRight <= 18);
+        assert.ok(metrics.borderWidth >= 1 && metrics.borderWidth <= 1.5);
+        assert.equal(metrics.borderColor, "rgba(58, 68, 94, 0.7)");
     } finally {
         await teardown();
     }
 });
 
-test("action column stays in second grid column with vertical layout", async () => {
+test("control column anchors to second grid track and keeps vertical controls", async () => {
     const { page, teardown, cardSelector } = await preparePage();
     try {
-        await page.waitForSelector(`${cardSelector} .actions`);
-        const metrics = await getComputedStyles(page, `${cardSelector} .actions`, [
+        await page.waitForSelector(`${cardSelector} .card-controls`);
+        const controlMetrics = await getComputedStyles(page, `${cardSelector} .card-controls`, [
             "display",
             "flex-direction",
             "grid-column-start",
             "grid-column-end",
+            "justify-self",
+            "align-self",
+            "text-align"
+        ]);
+        assert.equal(controlMetrics.display, "flex");
+        assert.equal(controlMetrics["flex-direction"], "column");
+        assert.equal(controlMetrics["grid-column-start"], "2");
+        assert.equal(controlMetrics["grid-column-end"], "auto");
+        assert.equal(controlMetrics["justify-self"], "stretch");
+        assert.equal(controlMetrics["align-self"], "start");
+        assert.equal(controlMetrics["text-align"], "right");
+
+        const actionsMetrics = await getComputedStyles(page, `${cardSelector} .card-controls .actions`, [
+            "display",
+            "flex-direction",
             "visibility",
             "opacity"
         ]);
-        assert.equal(metrics.display, "flex");
-        assert.equal(metrics["flex-direction"], "column");
-        assert.equal(metrics["grid-column-start"], "2");
-        assert.equal(metrics["grid-column-end"], "auto");
-        assert.equal(metrics.visibility, "visible");
-        assert.ok(parseFloat(metrics.opacity) > 0);
+        assert.equal(actionsMetrics.display, "flex");
+        assert.equal(actionsMetrics["flex-direction"], "column");
+        assert.equal(actionsMetrics.visibility, "visible");
+        assert.ok(parseFloat(actionsMetrics.opacity) > 0);
     } finally {
         await teardown();
     }
@@ -137,11 +170,11 @@ test("action buttons inherit compact styling", async () => {
     }
 });
 
-test("content elements stay anchored to the first grid column", async () => {
+test("content and control columns stay anchored to their grid tracks", async () => {
     const { page, teardown, cardSelector } = await preparePage();
     try {
         await page.waitForSelector(`${cardSelector} .markdown-content`);
-        const grids = await page.evaluate((selector) => {
+        const layout = await page.evaluate((selector) => {
             const card = document.querySelector(selector);
             if (!(card instanceof HTMLElement)) {
                 return null;
@@ -157,21 +190,26 @@ test("content elements stay anchored to the first grid column", async () => {
                     end: style.gridColumnEnd
                 };
             };
-            return [
-                collectColumn(card.querySelector(".meta-chips"), ".meta-chips"),
-                collectColumn(card.querySelector(".note-badges"), ".note-badges"),
-                collectColumn(card.querySelector(".note-preview"), ".note-preview"),
-                collectColumn(card.querySelector(".markdown-editor"), ".markdown-editor")
-            ];
+            return {
+                content: [
+                    collectColumn(card.querySelector(".note-badges"), ".note-badges"),
+                    collectColumn(card.querySelector(".note-preview"), ".note-preview"),
+                    collectColumn(card.querySelector(".markdown-editor"), ".markdown-editor")
+                ],
+                controls: collectColumn(card.querySelector(".card-controls"), ".card-controls")
+            };
         }, cardSelector);
-        assert.ok(Array.isArray(grids), "Expected to collect grid metadata for content elements");
-        grids.forEach((entry) => {
+        assert.ok(layout && Array.isArray(layout.content), "Expected layout metadata for note card columns");
+        layout.content.forEach((entry) => {
             if (!entry) {
                 return;
             }
             assert.equal(entry.start, "1", `${entry.selector} should start in column 1`);
             assert.equal(entry.end, "auto", `${entry.selector} should rely on implicit end column`);
         });
+        assert.ok(layout.controls, "Expected control column metadata");
+        assert.equal(layout.controls.start, "2", "Control column should start in column 2");
+        assert.equal(layout.controls.end, "auto", "Control column should rely on implicit end column");
     } finally {
         await teardown();
     }

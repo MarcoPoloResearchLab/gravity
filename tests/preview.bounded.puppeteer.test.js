@@ -67,11 +67,48 @@ test.describe("Bounded previews", () => {
             );
             assert.equal(shortToggleHidden, true, "chevron toggle should stay hidden on short previews");
 
-            const mediumToggleHidden = await page.$eval(
-                `[data-note-id="${MEDIUM_NOTE_ID}"] .note-expand-toggle`,
-                (button) => button.hidden
+            const { mediumOverflow, mediumToggleHidden } = await page.$eval(
+                `[data-note-id="${MEDIUM_NOTE_ID}"]`,
+                (card) => {
+                    const preview = card.querySelector(".note-preview");
+                    const toggle = card.querySelector(".note-expand-toggle");
+                    if (!(preview instanceof HTMLElement) || !(toggle instanceof HTMLElement)) {
+                        return { mediumOverflow: false, mediumToggleHidden: true };
+                    }
+                    const overflow = preview.scrollHeight - preview.clientHeight > 0.5;
+                    return {
+                        mediumOverflow: overflow,
+                        mediumToggleHidden: toggle.hidden
+                    };
+                }
             );
-            assert.equal(mediumToggleHidden, true, "chevron toggle should stay hidden on medium previews that fit");
+            if (mediumOverflow) {
+                assert.equal(mediumToggleHidden, false, "chevron toggle should appear when medium previews overflow");
+            } else {
+                assert.equal(mediumToggleHidden, true, "chevron toggle should stay hidden when medium previews fit within bounds");
+            }
+
+            const toggleAlignment = await page.$eval(
+                `[data-note-id="${LONG_NOTE_ID}"]`,
+                (card) => {
+                    const preview = card.querySelector(".note-preview");
+                    const toggle = card.querySelector(".note-expand-toggle");
+                    if (!(preview instanceof HTMLElement) || !(toggle instanceof HTMLElement)) {
+                        return null;
+                    }
+                    const previewRect = preview.getBoundingClientRect();
+                    const toggleRect = toggle.getBoundingClientRect();
+                    return {
+                        bottomDelta: Math.abs(previewRect.bottom - toggleRect.bottom),
+                        rightDelta: Math.abs(previewRect.right - toggleRect.right)
+                    };
+                }
+            );
+            assert.ok(toggleAlignment, "expand toggle should render alongside the preview");
+            assert.ok(
+                toggleAlignment.bottomDelta <= 4,
+                `expand toggle should align with the bottom edge of the text column (delta=${toggleAlignment?.bottomDelta ?? "n/a"})`
+            );
 
             await page.focus(toggleSelector);
             await page.keyboard.press("Enter");
@@ -125,15 +162,6 @@ test.describe("Bounded previews", () => {
                 );
             }
 
-            const mediumExpansionAdjusted = await page.evaluate(({ mediumId }) => {
-                const mediumPreview = document.querySelector(`[data-note-id="${mediumId}"] .note-preview`);
-                if (!(mediumPreview instanceof HTMLElement)) {
-                    return null;
-                }
-                const toggle = mediumPreview.parentElement?.querySelector(".note-expand-toggle");
-                return toggle instanceof HTMLElement && toggle.hidden;
-            }, { mediumId: MEDIUM_NOTE_ID });
-            assert.equal(mediumExpansionAdjusted, true, "medium previews that fit should not reveal expansion toggle");
         } finally {
             await teardown();
         }
@@ -197,7 +225,7 @@ test.describe("Bounded previews", () => {
         }
     });
 
-    test("short and medium previews hide the expand toggle", async () => {
+    test("short previews hide the expand toggle and medium previews follow overflow state", async () => {
         const { page, teardown } = await openPreviewHarness(createShortMediumRecords());
         try {
             await collapseAllPreviews(page);
@@ -209,11 +237,27 @@ test.describe("Bounded previews", () => {
             );
             assert.equal(shortToggleDisplay, "none", "short previews must not render the expand toggle");
 
-            const mediumToggleDisplay = await page.$eval(
-                `[data-note-id="${MEDIUM_NOTE_ID}"] .note-expand-toggle`,
-                (button) => window.getComputedStyle(button).display
+            const mediumToggleState = await page.$eval(
+                `[data-note-id="${MEDIUM_NOTE_ID}"]`,
+                (card) => {
+                    const preview = card.querySelector(".note-preview");
+                    const toggle = card.querySelector(".note-expand-toggle");
+                    if (!(preview instanceof HTMLElement) || !(toggle instanceof HTMLElement)) {
+                        return { display: "none", overflow: false };
+                    }
+                    const style = window.getComputedStyle(toggle);
+                    const overflow = preview.scrollHeight - preview.clientHeight > 0.5;
+                    return {
+                        display: style.display,
+                        overflow
+                    };
+                }
             );
-            assert.equal(mediumToggleDisplay, "none", "medium previews must not render the expand toggle");
+            if (mediumToggleState.overflow) {
+                assert.notEqual(mediumToggleState.display, "none", "medium previews that overflow must render the expand toggle");
+            } else {
+                assert.equal(mediumToggleState.display, "none", "medium previews that fit must not render the expand toggle");
+            }
         } finally {
             await teardown();
         }
