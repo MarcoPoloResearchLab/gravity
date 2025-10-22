@@ -21,6 +21,9 @@ and are grouped by the date the work landed on `master`.
 ### Removed
 - Deleted the legacy `MIGRATION.md` now that the architecture guide houses the relevant details (GN-54).
 
+### Changed
+- Moved the static site, npm tooling, and browser tests under `frontend/` while adjusting Docker and docs to reference the new layout (GN-92).
+
 ### Documentation
 - Folded `MIGRATION.md` into `ARCHITECTURE.md`, clarifying event contracts, module guidance, and third-party reading expectations (GN-54).
 - Tightened `NOTES.md` instructions so coding agents only touch `ISSUES.md`, `PLAN.md`, and `CHANGELOG.md`, including guidance to use `git filter-repo` if `PLAN.md` ever re-enters history (GN-54).

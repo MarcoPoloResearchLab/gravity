@@ -23,7 +23,7 @@ const CURRENT_FILE = fileURLToPath(import.meta.url);
 const TESTS_ROOT = path.dirname(CURRENT_FILE);
 const PROJECT_ROOT = path.join(TESTS_ROOT, "..");
 const RUNTIME_OPTIONS_PATH = path.join(TESTS_ROOT, "runtime-options.json");
-const SCREENSHOT_ARTIFACT_ROOT = path.join(PROJECT_ROOT, "artifacts");
+const SCREENSHOT_ARTIFACT_ROOT = path.join(TESTS_ROOT, "artifacts");
 
 /**
  * @param {string} root

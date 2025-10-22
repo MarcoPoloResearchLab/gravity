@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { readRuntimeContext } from "./runtimeContext.js";
 
-const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..");
+const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..", "..");
 const BACKEND_DIR = path.join(REPO_ROOT, "backend");
 const DEFAULT_GOOGLE_CLIENT_ID = "gravity-test-client";
 const DEFAULT_SIGNING_SECRET = "gravity-test-signing-secret";

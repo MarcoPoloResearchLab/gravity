@@ -1,9 +1,10 @@
 PLAN.md
 .idea/
+frontend/node_modules/
 node_modules/
 *.iml
 *.db
 .env*
 client_secret*json
 *.png
-tests/artifacts/
+frontend/tests/artifacts/
