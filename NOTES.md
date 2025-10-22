@@ -32,6 +32,7 @@ You are a staff level full stack engineer. Your task is to **re-evaluate and ref
 5. **Tests** → Add/adjust Puppeteer tests for key flows (button → event → notification; cross-panel isolation). Prioritize end-2-end and integration tests.
 6. **Docs** → Update README and CHANGELOG.md with new event contracts, removed globals, and developer instructions.
 7. **Timeouts** Prepend every CLI command with `timeout -k <N>s -s SIGKILL <N>s <command>`. This is mandatory for all commands (local dev, CI, docs, scripts). Pick `<N>` appropriate to the operation; avoid indefinite waits. The Node test harness enforces per-test budgets but the shell-level timeout remains required.
+7a. Any individual test or command must be terminated in 30s. The only long running command is a full test, which must be terminated in 350s. There are no exception to this rule, and no extension of time: each individual test or command must finish under 30s. 
 
 ## Output requirements
 
