@@ -6,7 +6,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
 ### Improvements
 
-  - [ ] [GN-70] Use screenshots of the areas that tests run on when in local enviornment. CI environment is defined as an enviornment that has an env var CI=true. Do not save screenshots on CI.
+  - [x] [GN-70] Use screenshots of the areas that tests run on when in local enviornment. CI environment is defined as an enviornment that has an env var CI=true. Do not save screenshots on CI. — Automated local screenshot artifacts per Puppeteer suite with new helper and harness test (branch improvement/GN-70-local-screenshots).
   - [ ] [GN-71] The changes in the notes height must only happen in response to user actions. If a note was clicked on and extended in height, it stays so untill the user clicks and folds the note back in. The note does not auto resizes back when the user clicks or edits another note. Apply the logc to thwe UI: only users actions change the height of the cards containing notes:
     1. Clicking expands the note
     2. Clicking an expanded note returns it to its original height
@@ -104,4 +104,3 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
 - [ ] [GN-55] The current llm-proxy URL is wrong -- there is no such path as https://llm-proxy.mprlab.com/v1/gravity/
   classify. There is only https://llm-proxy.mprlab.com/, and we need to be sending a system prompt to it to get classification. I have copied llm-proxy codebase under the tools folder. Prepare a system prompt for classification of the notes and send it to llm-proxy service. 
-
