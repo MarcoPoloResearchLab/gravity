@@ -341,7 +341,7 @@ function countHighlightedCheckboxClusters(buffer) {
         tolerance: 25,
         alphaThreshold: 200,
         columnGapThreshold: 3,
-        rowGapThreshold: 12,
+        rowGapThreshold: 6,
         columnWeightThreshold: 120,
         rowWeightThreshold: 40
     });

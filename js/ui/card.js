@@ -907,9 +907,6 @@ export function renderCard(record, options = {}) {
     }, true);
 
     // Chips + content
-    const chips = createElement("div", "meta-chips");
-    applyChips(chips, record.classification);
-
     const badges = createElement("div", "note-badges");
 
     const initialAttachments = record.attachments || {};
@@ -918,10 +915,16 @@ export function renderCard(record, options = {}) {
     editor.value  = record.markdownText;
     editor.setAttribute("rows", "1");
 
+    const chips = createElement("div", "meta-chips");
+    applyChips(chips, record.classification);
+
+    const controlsColumn = createElement("div", "card-controls");
+    controlsColumn.append(chips, actions);
+
     registerInitialAttachments(editor, initialAttachments);
     enableClipboardImagePaste(editor);
 
-    card.append(chips, badges, editor, actions);
+    card.append(badges, editor, controlsColumn);
 
     const initialMarkdownWithAttachments = transformMarkdownWithAttachments(record.markdownText, initialAttachments);
     // Always build the preview from scratch when the card enters view mode.
