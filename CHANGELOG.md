@@ -10,6 +10,9 @@ and are grouped by the date the work landed on `master`.
 - Python utility `tools/ensure_plan_untracked.py` and a test guard to keep `PLAN.md` untracked (GN-54).
 - Local test runs now capture Puppeteer screenshots per suite while skipping CI to aid debugging (GN-70).
 
+### Fixed
+- Note preview expansion now persists until manually collapsed, and inline editing preserves the expanded height envelope (GN-71).
+
 ### Documentation
 - Folded `MIGRATION.md` into `ARCHITECTURE.md`, clarifying event contracts and module guidance (GN-54).
 - Tightened `NOTES.md` instructions so coding agents only touch `ISSUES.md`, `PLAN.md`, and `CHANGELOG.md` (GN-54).

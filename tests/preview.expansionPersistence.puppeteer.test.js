@@ -1,0 +1,167 @@
+import assert from "node:assert/strict";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import test from "node:test";
+
+import { appConfig } from "../js/core/config.js";
+import { createSharedPage } from "./helpers/browserHarness.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = path.resolve(__dirname, "..");
+const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+
+const FIRST_NOTE_ID = "gn71-primary";
+const SECOND_NOTE_ID = "gn71-secondary";
+
+const LONG_MARKDOWN_BLOCK = [
+    "# Overflowing heading",
+    "",
+    "Paragraph one describes the behaviour of expanding previews within the Gravity Notes grid.",
+    "Paragraph two adds more prose to ensure the preview requires expansion to show full content.",
+    "Paragraph three keeps going with additional markdown lines so the rendered preview needs scrolling.",
+    "",
+    "- List item A stretches the rendered height a little further.",
+    "- List item B adds even more content to the preview container.",
+    "- List item C continues the overflow scenario required by the test.",
+    "",
+    "```js",
+    "function sample() {",
+    "  return \"markdown content\";",
+    "}",
+    "```",
+    "",
+    "Final paragraph emphasises the need for a tall preview."
+].join("\n");
+
+const SECONDARY_MARKDOWN = [
+    "# Secondary note",
+    "",
+    "This record also overflows the preview surface so that multiple cards can be expanded at once.",
+    "",
+    "> Quotes and additional text contribute to the preview height.",
+    "",
+    "- Additional bullet one",
+    "- Additional bullet two",
+    "- Additional bullet three"
+].join("\n");
+
+test.describe("GN-71 note expansion persistence", () => {
+    test("expansions persist across cards and edit mode preserves expanded height", async () => {
+        const seededRecords = [
+            buildNoteRecord({ noteId: FIRST_NOTE_ID, markdownText: LONG_MARKDOWN_BLOCK }),
+            buildNoteRecord({ noteId: SECOND_NOTE_ID, markdownText: SECONDARY_MARKDOWN })
+        ];
+        const { page, teardown } = await openPageWithRecords(seededRecords);
+        const firstCardSelector = `.markdown-block[data-note-id="${FIRST_NOTE_ID}"]`;
+        const secondCardSelector = `.markdown-block[data-note-id="${SECOND_NOTE_ID}"]`;
+        const firstPreviewSelector = `${firstCardSelector} .note-preview`;
+        const secondPreviewSelector = `${secondCardSelector} .note-preview`;
+
+        try {
+            await page.waitForSelector(firstPreviewSelector);
+            await page.waitForSelector(secondPreviewSelector);
+
+            await page.click(firstCardSelector);
+            await page.waitForSelector(`${firstPreviewSelector}.note-preview--expanded`);
+            const firstExpandedHeight = await getElementHeight(page, firstPreviewSelector);
+            assert.ok(firstExpandedHeight > 0, "expanded preview should report a positive height");
+            const firstExpandedCardHeight = await getElementHeight(page, firstCardSelector);
+
+            await page.click(secondCardSelector);
+            await page.waitForSelector(`${secondPreviewSelector}.note-preview--expanded`);
+
+            const firstStillExpanded = await isPreviewExpanded(page, firstPreviewSelector);
+            assert.equal(firstStillExpanded, true, "first card must remain expanded after expanding the second card");
+
+            await page.click(firstCardSelector, { clickCount: 2 });
+            await page.waitForSelector(`${firstCardSelector}.editing-in-place`);
+            await page.waitForSelector(`${firstCardSelector} .CodeMirror-scroll`);
+            const editorHeight = await getElementHeight(page, `${firstCardSelector} .CodeMirror-scroll`);
+            assert.ok(editorHeight > 0, "editing surface should report a measurable height");
+            const editingCardHeight = await getElementHeight(page, firstCardSelector);
+            assert.ok(
+                Math.abs(editingCardHeight - firstExpandedCardHeight) <= 2,
+                `card height (${editingCardHeight}) should match expanded preview height (${firstExpandedCardHeight})`
+            );
+            assert.ok(
+                editorHeight >= firstExpandedHeight - 16,
+                `editor height (${editorHeight}) should not shrink appreciably from preview height (${firstExpandedHeight})`
+            );
+
+            await page.keyboard.down("Shift");
+            await page.keyboard.press("Enter");
+            await page.keyboard.up("Shift");
+
+            await page.waitForSelector(`${firstPreviewSelector}.note-preview--expanded`);
+            const postEditPreviewHeight = await getElementHeight(page, firstPreviewSelector);
+            const postEditCardHeight = await getElementHeight(page, firstCardSelector);
+            assert.ok(
+                Math.abs(postEditPreviewHeight - firstExpandedHeight) <= 2,
+                `expanded preview height should remain stable after editing (${postEditPreviewHeight} vs ${firstExpandedHeight})`
+            );
+            assert.ok(
+                Math.abs(postEditCardHeight - firstExpandedCardHeight) <= 2,
+                `card height should remain stable after editing (${postEditCardHeight} vs ${firstExpandedCardHeight})`
+            );
+
+            const secondStillExpanded = await isPreviewExpanded(page, secondPreviewSelector);
+            assert.equal(secondStillExpanded, true, "second card should remain expanded after editing the first card");
+
+            await page.click(firstCardSelector);
+            await page.waitForFunction((selector) => {
+                const preview = document.querySelector(selector);
+                return !(preview instanceof HTMLElement) || !preview.classList.contains("note-preview--expanded");
+            }, {}, firstPreviewSelector);
+            const collapseResult = await isPreviewExpanded(page, firstPreviewSelector);
+            assert.equal(collapseResult, false, "expanded card should collapse after explicit click");
+
+            const secondAfterCollapse = await isPreviewExpanded(page, secondPreviewSelector);
+            assert.equal(secondAfterCollapse, true, "collapsing one card must not affect other expanded cards");
+        } finally {
+            await teardown();
+        }
+    });
+});
+
+async function openPageWithRecords(records) {
+    const { page, teardown } = await createSharedPage();
+    const serialized = JSON.stringify(Array.isArray(records) ? records : []);
+    await page.evaluateOnNewDocument((storageKey, payload) => {
+        window.__gravityForceMarkdownEditor = true;
+        window.localStorage.clear();
+        window.localStorage.setItem(storageKey, payload);
+    }, appConfig.storageKey, serialized);
+    await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
+    return { page, teardown };
+}
+
+function buildNoteRecord({ noteId, markdownText, attachments = {}, pinned = false }) {
+    const timestamp = new Date().toISOString();
+    return {
+        noteId,
+        markdownText,
+        attachments,
+        createdAtIso: timestamp,
+        updatedAtIso: timestamp,
+        lastActivityIso: timestamp,
+        pinned
+    };
+}
+
+async function getElementHeight(page, selector) {
+    return page.$eval(selector, (element) => {
+        if (!(element instanceof HTMLElement)) {
+            return 0;
+        }
+        return Math.round(element.getBoundingClientRect().height);
+    });
+}
+
+async function isPreviewExpanded(page, selector) {
+    return page.$eval(selector, (element) => {
+        if (!(element instanceof HTMLElement)) {
+            return false;
+        }
+        return element.classList.contains("note-preview--expanded");
+    }).catch(() => false);
+}
