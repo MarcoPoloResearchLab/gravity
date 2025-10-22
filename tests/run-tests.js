@@ -21,8 +21,9 @@ import {
 
 const CURRENT_FILE = fileURLToPath(import.meta.url);
 const TESTS_ROOT = path.dirname(CURRENT_FILE);
+const PROJECT_ROOT = path.join(TESTS_ROOT, "..");
 const RUNTIME_OPTIONS_PATH = path.join(TESTS_ROOT, "runtime-options.json");
-const SCREENSHOT_ARTIFACT_ROOT = path.join(TESTS_ROOT, "artifacts", "screenshots");
+const SCREENSHOT_ARTIFACT_ROOT = path.join(PROJECT_ROOT, "artifacts");
 
 /**
  * @param {string} root
@@ -226,8 +227,8 @@ async function main() {
       const effectiveKillGrace = killOverrides.get(relative) ?? killGraceMs;
       let screenshotDirectoryForTest = null;
       if (screenshotRunRoot) {
-        const sanitized = sanitizeArtifactComponent(relative);
-        screenshotDirectoryForTest = path.join(screenshotRunRoot, sanitized);
+        const shortName = deriveShortTestName(relative);
+        screenshotDirectoryForTest = path.join(screenshotRunRoot, shortName);
         await fs.mkdir(screenshotDirectoryForTest, { recursive: true });
       }
 
@@ -328,7 +329,14 @@ async function main() {
 }
 
 function createArtifactTimestamp() {
-  return new Date().toISOString().replace(/[:]/g, "-").replace(/\..*$/u, "");
+  const now = new Date();
+  const pad = (value) => String(value).padStart(2, "0");
+  const day = pad(now.getDate());
+  const month = pad(now.getMonth() + 1);
+  const year = now.getFullYear();
+  const hours = pad(now.getHours());
+  const minutes = pad(now.getMinutes());
+  return `${day}${month}${year}-${hours}${minutes}`;
 }
 
 function sanitizeArtifactComponent(value) {
@@ -350,6 +358,11 @@ function createChildEnv(runtimeContextPayload, screenshotDirectory, relativePath
     overrides.GRAVITY_SCREENSHOT_TEST_FILE = relativePath;
   }
   return Object.keys(overrides).length > 0 ? overrides : undefined;
+}
+
+function deriveShortTestName(relativePath) {
+  const base = path.basename(relativePath).replace(/\.test\.js$/u, "");
+  return sanitizeArtifactComponent(base);
 }
 
 main()
