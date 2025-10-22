@@ -1474,6 +1474,8 @@ async function finalizeCard(card, notesContainer, options = {}) {
 
     const editorHost = editorHosts.get(card);
     const isEditMode = card.classList.contains("editing-in-place") || editorHost?.getMode() === MARKDOWN_MODE_EDIT;
+    const badgesContainer = card.querySelector(".note-badges");
+    const badgesTarget = badgesContainer instanceof HTMLElement ? badgesContainer : null;
     if (!isEditMode) return;
 
     if (shouldSuppressTopEditorAutofocus) {
@@ -1556,7 +1558,7 @@ async function finalizeCard(card, notesContainer, options = {}) {
         exitEditingMode();
         createHTMLView(card, {
             markdownSource: baselineTransformed,
-            badgesTarget: badges
+            badgesTarget
         });
         return;
     }
@@ -1568,7 +1570,7 @@ async function finalizeCard(card, notesContainer, options = {}) {
     exitEditingMode();
     createHTMLView(card, {
         markdownSource: markdownWithAttachments,
-        badgesTarget: badges
+        badgesTarget
     });
 
     if (typeof requestAnimationFrame === "function") {

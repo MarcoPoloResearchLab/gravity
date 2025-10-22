@@ -763,6 +763,42 @@ test.describe("Markdown inline editor", () => {
         }
     });
 
+    test("finalizing inline edit rebuilds preview without badge errors", async () => {
+        const seededRecords = [buildNoteRecord({
+            noteId: NOTE_ID,
+            markdownText: INITIAL_MARKDOWN
+        })];
+        const { page, teardown } = await preparePage({ records: seededRecords });
+        const cardSelector = `.markdown-block[data-note-id="${NOTE_ID}"]`;
+        const capturedErrors = [];
+
+        const handlePageError = (error) => {
+            const message = error && typeof error.message === "string" ? error.message : String(error);
+            capturedErrors.push(message);
+        };
+
+        page.on("pageerror", handlePageError);
+
+        try {
+            await page.waitForSelector(cardSelector);
+            await enterCardEditMode(page, cardSelector);
+            await focusCardEditor(page, cardSelector, "end");
+
+            await page.keyboard.down("Shift");
+            await page.keyboard.press("Enter");
+            await page.keyboard.up("Shift");
+
+            await page.waitForSelector(`${cardSelector}:not(.editing-in-place)`);
+            await page.waitForSelector(`${cardSelector} .note-preview .markdown-content`);
+            const badgeCount = await page.$$eval(`${cardSelector} .note-badges`, (elements) => elements.length);
+            assert.equal(badgeCount, 1, "Card should retain a single badge container after finalizing");
+            assert.equal(capturedErrors.length, 0, `Expected no page errors, received: ${capturedErrors.join(" | ")}`);
+        } finally {
+            page.off("pageerror", handlePageError);
+            await teardown();
+        }
+    });
+
     test("shift-enter finalizes inline editing", async () => {
         const seededRecords = [buildNoteRecord({
             noteId: NOTE_ID,
