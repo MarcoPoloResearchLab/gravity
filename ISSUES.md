@@ -14,6 +14,10 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
     4. Shift-enter finishes editing
     5. Clicking outside of the note finishes editing 
     6. The height of expanded rendered note and the height of markedown not must be identical. Work on the stling that gurantees that the size of markdown and rendered note are the same.
+  - [ ] [GN-72] Front-end redesign:
+    1. The text area whether rendered as HTML or markdown must occupy 2/3 of the viewport. The control areas of the note must occupy another 1/3 of the viepoert on the right.
+    2. The control area on the right is aligned to the top right corner of the card
+    3. The indicator of a large not is aligned to the bottom of the text area of the card
 
 ### BugFixes
 
