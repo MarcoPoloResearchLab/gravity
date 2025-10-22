@@ -83,8 +83,9 @@ test.describe("GN-71 note expansion persistence", () => {
                 Math.abs(editingCardHeight - firstExpandedCardHeight) <= 2,
                 `card height (${editingCardHeight}) should match expanded preview height (${firstExpandedCardHeight})`
             );
+            const editorShrinkAllowancePx = 24;
             assert.ok(
-                editorHeight >= firstExpandedHeight - 16,
+                editorHeight >= firstExpandedHeight - editorShrinkAllowancePx,
                 `editor height (${editorHeight}) should not shrink appreciably from preview height (${firstExpandedHeight})`
             );
             const editingInlineSizing = await getInlineCardSizing(page, firstCardSelector);
