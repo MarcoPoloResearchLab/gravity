@@ -93,6 +93,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
   - [ ] [GN-83] Logging in on two browsers (sessions) does not synchronize notes. As a logged in user I can create a new note on Browser A and never see it on browser B despite being logged in. Develop an SSE notification system for logged in users only which sends a notification when a new edit occurs, so that front end will synchronize the changes. Develop the system that allows automated note conflict resolution and works in a background thread on browser. The expectation is for two sessions/browsers to synchronize the moment there is a change introduced to the underlying data of the notes.
 
+  - [ ] [GN-84] ![Card control bug](<card control bug.png>) The card control is not aligned to the top right corner of the cards, as specified in GN-72, in it instead aligned to the bottom right corner of the card. Fix the bug abnd align card controls to the top right corner of the card
+
 ### Maintenance
 
   - [ ] [GN-90] Code refactoring: we have screenshots, we have HTML view and we have markdown view. Use this rough taxonomy and revise the code to ensure there is no word previewe mentioned anywhere in the code. While working on it ensure that the code flow doesnt assume previewes, storing previews in the DOM, cahcing previewes or doing any operation wich pre-calculate views. Simplify the code where possible. Remember to rely on [marked.js](marked.js.md) and [MD](MDE.v2.19.0.md)
