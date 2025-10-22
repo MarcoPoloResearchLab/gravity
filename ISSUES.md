@@ -91,7 +91,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
     3. find the closest word or character to the clicking point in this card 
     4. open markdown editing and place the cursor on the identified position
   
-  - [ ] [GN-82] Editing starts in a very different position than rendered HTML. Work on aligning these positions so that markdown and rendered HTML would be in the same places visually
+  - [ ] [GN-82] Editing starts in a very different position than rendered HTML. Work on aligning these positions so that markdown and rendered HTML would be in the same places visually. Work on [ST-72] prior to this one.
 
 ### Maintenance
 
