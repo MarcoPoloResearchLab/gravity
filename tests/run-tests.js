@@ -331,12 +331,12 @@ async function main() {
 function createArtifactTimestamp() {
   const now = new Date();
   const pad = (value) => String(value).padStart(2, "0");
-  const day = pad(now.getDate());
   const month = pad(now.getMonth() + 1);
+  const day = pad(now.getDate());
   const year = now.getFullYear();
   const hours = pad(now.getHours());
   const minutes = pad(now.getMinutes());
-  return `${day}${month}${year}-${hours}${minutes}`;
+  return `${year}${month}${day}-${hours}${minutes}`;
 }
 
 function sanitizeArtifactComponent(value) {
