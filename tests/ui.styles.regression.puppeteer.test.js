@@ -69,19 +69,27 @@ test("note cards preserve 2:1 grid proportion between content and controls", asy
             if (!(controls instanceof HTMLElement) || !(content instanceof HTMLElement)) {
                 return null;
             }
+            const actions = controls.querySelector(".actions");
+            const chips = controls.querySelector(".meta-chips");
             const cardRect = card.getBoundingClientRect();
             const controlsRect = controls.getBoundingClientRect();
             const contentRect = content.getBoundingClientRect();
             const paddingLeft = parseFloat(computed.paddingLeft);
             const paddingRight = parseFloat(computed.paddingRight);
+            const paddingTop = parseFloat(computed.paddingTop);
             const columnGap = parseFloat(computed.columnGap);
             const contentTrackWidth = controlsRect.left - (cardRect.left + paddingLeft) - columnGap;
             const controlsTrackWidth = cardRect.right - paddingRight - controlsRect.left;
+            const actionsRect = actions instanceof HTMLElement ? actions.getBoundingClientRect() : null;
+            const chipsRect = chips instanceof HTMLElement ? chips.getBoundingClientRect() : null;
+            const computedActions = actions instanceof HTMLElement ? window.getComputedStyle(actions) : null;
+            const actionsTopOffset = actionsRect ? actionsRect.top - (cardRect.top + paddingTop) : null;
             return {
                 display: computed.display,
                 columnGap,
                 rowGap: parseFloat(computed.rowGap),
                 alignItems: computed.alignItems,
+                paddingTop,
                 paddingLeft,
                 paddingRight,
                 borderWidth: parseFloat(computed.borderBottomWidth),
@@ -89,7 +97,11 @@ test("note cards preserve 2:1 grid proportion between content and controls", asy
                 contentWidth: contentRect.width,
                 controlsWidth: controlsRect.width,
                 contentTrackWidth,
-                controlsTrackWidth
+                controlsTrackWidth,
+                actionsTopOffset,
+                chipsHeight: chipsRect ? chipsRect.height : null,
+                actionsMarginTop: computedActions ? parseFloat(computedActions.marginTop) : null,
+                actionsJustifySelf: computedActions ? computedActions.justifySelf : null
             };
         }, cardSelector);
         assert.ok(metrics, "Expected to collect card layout metrics");
@@ -101,6 +113,12 @@ test("note cards preserve 2:1 grid proportion between content and controls", asy
         assert.ok(metrics.columnGap >= 10 && metrics.columnGap <= 14, "Column gap should remain close to 0.75rem");
         assert.ok(metrics.rowGap >= 5 && metrics.rowGap <= 7, "Row gap should remain close to 0.35rem");
         assert.equal(metrics.alignItems, "start");
+        assert.ok(typeof metrics.actionsTopOffset === "number", "Expected to capture control actions vertical offset");
+        const actionsOffset = Number(metrics.actionsTopOffset);
+        const chipsHeight = typeof metrics.chipsHeight === "number" ? Number(metrics.chipsHeight) : null;
+        const actionsMarginTop = typeof metrics.actionsMarginTop === "number" ? Number(metrics.actionsMarginTop) : null;
+        const justification = typeof metrics.actionsJustifySelf === "string" ? metrics.actionsJustifySelf : "n/a";
+        assert.ok(Math.abs(actionsOffset) <= 12, `Control actions should align near the card header (observed offset ${actionsOffset.toFixed(2)}px, chips height ${chipsHeight !== null ? chipsHeight.toFixed(2) : "n/a"}px, margin-top ${actionsMarginTop !== null ? actionsMarginTop.toFixed(2) : "n/a"}px, justify-self ${justification}).`);
         assert.ok(metrics.paddingLeft >= 15 && metrics.paddingLeft <= 18);
         assert.ok(metrics.paddingRight >= 15 && metrics.paddingRight <= 18);
         assert.ok(metrics.borderWidth >= 1 && metrics.borderWidth <= 1.5);
