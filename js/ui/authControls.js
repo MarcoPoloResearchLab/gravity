@@ -29,7 +29,9 @@ import {
  *   showSignedOut(): void,
  *   showSignedIn(user: { id: string, email: string|null, name: string|null, pictureUrl: string|null }): void,
  *   showError(message: string): void,
- *   clearError(): void
+ *   clearError(): void,
+ *   showUnavailable(message: string): void,
+ *   clearAvailability(): void
  * }}
  */
 export function initializeAuthControls(options) {
@@ -105,32 +107,26 @@ export function initializeAuthControls(options) {
         showSignedOut,
         showSignedIn,
         showError(message) {
-            if (statusElement) {
-                statusElement.hidden = false;
-                statusElement.setAttribute("aria-hidden", "false");
-                statusElement.textContent = message;
-                statusElement.dataset.status = "error";
-            }
+            setStatus("error", message);
         },
         clearError() {
-            if (statusElement) {
-                statusElement.hidden = true;
-                statusElement.textContent = "";
-                statusElement.setAttribute("aria-hidden", "true");
-                delete statusElement.dataset.status;
-            }
+            clearStatus();
+        },
+        showUnavailable(message) {
+            toggleButtonHostVisibility(true);
+            buttonElement.dataset.googleSignIn = "unavailable";
+            buttonElement.setAttribute("aria-disabled", "true");
+            setStatus("unavailable", message);
+        },
+        clearAvailability() {
+            clearAvailabilityIndicators();
         }
     });
 
     function showSignedOut() {
         profileContainer.hidden = true;
         toggleButtonHostVisibility(true);
-        if (statusElement) {
-            statusElement.hidden = true;
-            statusElement.textContent = "";
-            statusElement.setAttribute("aria-hidden", "true");
-            delete statusElement.dataset.status;
-        }
+        clearAvailabilityIndicators();
         if (signOutButton) {
             signOutButton.hidden = true;
         }
@@ -153,12 +149,7 @@ export function initializeAuthControls(options) {
         if (menuWrapper) {
             menuWrapper.hidden = false;
         }
-        if (statusElement) {
-            statusElement.hidden = true;
-            statusElement.textContent = "";
-            statusElement.setAttribute("aria-hidden", "true");
-            delete statusElement.dataset.status;
-        }
+        clearAvailabilityIndicators();
         applyProfile(user);
     }
 
@@ -229,5 +220,42 @@ export function initializeAuthControls(options) {
                 avatarElement.removeAttribute("alt");
             }
         }
+    }
+
+    /**
+     * @param {"error"|"unavailable"} status
+     * @param {string} message
+     * @returns {void}
+     */
+    function setStatus(status, message) {
+        if (!statusElement) {
+            return;
+        }
+        statusElement.hidden = false;
+        statusElement.setAttribute("aria-hidden", "false");
+        statusElement.textContent = message;
+        statusElement.dataset.status = status;
+    }
+
+    /**
+     * @returns {void}
+     */
+    function clearStatus() {
+        if (!statusElement) {
+            return;
+        }
+        statusElement.hidden = true;
+        statusElement.textContent = "";
+        statusElement.setAttribute("aria-hidden", "true");
+        delete statusElement.dataset.status;
+    }
+
+    /**
+     * @returns {void}
+     */
+    function clearAvailabilityIndicators() {
+        clearStatus();
+        delete buttonElement.dataset.googleSignIn;
+        buttonElement.removeAttribute("aria-disabled");
     }
 }

@@ -32,7 +32,10 @@ import {
     EVENT_SYNC_SNAPSHOT_APPLIED,
     MESSAGE_NOTES_IMPORTED,
     MESSAGE_NOTES_SKIPPED,
-    MESSAGE_NOTES_IMPORT_FAILED
+    MESSAGE_NOTES_IMPORT_FAILED,
+    MESSAGE_AUTH_UNAVAILABLE_ORIGIN,
+    MESSAGE_AUTH_UNAVAILABLE_TEMPORARY,
+    GOOGLE_IDENTITY_SCRIPT_URL
 } from "./constants.js";
 import { initializeKeyboardShortcutsModal } from "./ui/keyboardShortcutsModal.js";
 import { initializeNotesState } from "./ui/notesState.js";
@@ -82,6 +85,7 @@ function gravityApp() {
         authPollHandle: /** @type {number|null} */ (null),
         guestExportButton: /** @type {HTMLButtonElement|null} */ (null),
         syncManager: /** @type {ReturnType<typeof createSyncManager>|null} */ (null),
+        googleScriptRequested: false,
 
         init() {
             this.notesContainer = this.$refs.notesContainer ?? document.getElementById("notes-container");
@@ -228,10 +232,12 @@ function gravityApp() {
             if (typeof window === "undefined") {
                 return;
             }
-            if (!isGoogleIdentitySupportedOrigin(window.location)) {
-                this.stopGoogleIdentityPolling();
+            const allowedOrigins = appConfig.googleAuthorizedOrigins;
+            if (!isGoogleIdentitySupportedOrigin(window.location, allowedOrigins)) {
+                this.handleGoogleIdentityUnavailable(MESSAGE_AUTH_UNAVAILABLE_ORIGIN);
                 return;
             }
+            this.requestGoogleIdentityScript();
             const google = /** @type {any} */ (window.google);
             const hasIdentity = Boolean(google?.accounts?.id);
             if (!hasIdentity) {
@@ -240,12 +246,15 @@ function gravityApp() {
             }
 
             const buttonHost = this.authControls?.getButtonHost() ?? null;
+            this.clearGoogleUnavailableState();
             this.authController = createGoogleIdentityController({
                 clientId: appConfig.googleClientId,
                 google,
                 buttonElement: buttonHost ?? undefined,
                 eventTarget: this.$el,
-                autoPrompt: true
+                autoPrompt: true,
+                location: window.location,
+                allowedOrigins
             });
             this.stopGoogleIdentityPolling();
         },
@@ -261,7 +270,7 @@ function gravityApp() {
             if (typeof window === "undefined") {
                 return;
             }
-            if (!isGoogleIdentitySupportedOrigin(window.location)) {
+            if (!isGoogleIdentitySupportedOrigin(window.location, appConfig.googleAuthorizedOrigins)) {
                 return;
             }
             const poll = () => {
@@ -288,6 +297,86 @@ function gravityApp() {
                 window.clearInterval(this.authPollHandle);
             }
             this.authPollHandle = null;
+        },
+
+        /**
+         * Flag Google Identity as unavailable and surface messaging to the UI.
+         * @param {string} message
+         * @returns {void}
+         */
+        handleGoogleIdentityUnavailable(message) {
+            this.stopGoogleIdentityPolling();
+            const buttonHost = this.authControls?.getButtonHost() ?? null;
+            if (buttonHost) {
+                buttonHost.dataset.googleSignIn = "unavailable";
+                buttonHost.setAttribute("aria-disabled", "true");
+            }
+            if (typeof this.authControls?.showUnavailable === "function") {
+                this.authControls.showUnavailable(message);
+            } else {
+                this.authControls?.showError(message);
+            }
+            if (this.authController) {
+                try {
+                    this.authController.dispose();
+                } catch (error) {
+                    logging.error(error);
+                }
+                this.authController = null;
+            }
+        },
+
+        /**
+         * Clear any prior Google availability messaging.
+         * @returns {void}
+         */
+        clearGoogleUnavailableState() {
+            const buttonHost = this.authControls?.getButtonHost() ?? null;
+            if (buttonHost) {
+                delete buttonHost.dataset.googleSignIn;
+                buttonHost.removeAttribute("aria-disabled");
+            }
+            if (typeof this.authControls?.clearAvailability === "function") {
+                this.authControls.clearAvailability();
+            } else {
+                this.authControls?.clearError();
+            }
+        },
+
+        /**
+         * Lazily inject the Google Identity script when allowed.
+         * @returns {void}
+         */
+        requestGoogleIdentityScript() {
+            if (this.googleScriptRequested) {
+                return;
+            }
+            const documentTarget = typeof document !== "undefined" ? document : null;
+            if (!documentTarget) {
+                return;
+            }
+            const existing = documentTarget.querySelector(`script[src="${GOOGLE_IDENTITY_SCRIPT_URL}"]`);
+            if (existing) {
+                this.googleScriptRequested = true;
+                return;
+            }
+            const head = documentTarget.head ?? documentTarget.querySelector("head");
+            if (!(head instanceof HTMLElement)) {
+                return;
+            }
+            this.googleScriptRequested = true;
+            const script = documentTarget.createElement("script");
+            script.src = GOOGLE_IDENTITY_SCRIPT_URL;
+            script.async = true;
+            script.defer = true;
+            script.dataset.gravityGoogleIdentity = "true";
+            script.addEventListener("error", () => {
+                this.handleGoogleIdentityUnavailable(MESSAGE_AUTH_UNAVAILABLE_TEMPORARY);
+            });
+            script.addEventListener("load", () => {
+                this.ensureGoogleIdentityController();
+            });
+            head.appendChild(script);
         },
 
         /**

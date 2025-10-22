@@ -30,7 +30,8 @@ export function createGoogleIdentityController(options) {
         buttonElement = null,
         eventTarget = typeof document !== "undefined" ? document : undefined,
         autoPrompt = true,
-        location = typeof window !== "undefined" ? window.location : undefined
+        location = typeof window !== "undefined" ? window.location : undefined,
+        allowedOrigins = []
     } = options || {};
 
     if (!isNonEmptyString(clientId)) {
@@ -44,7 +45,7 @@ export function createGoogleIdentityController(options) {
 
     const identity = google.accounts.id;
 
-    if (!isGoogleIdentitySupportedOrigin(location ?? undefined)) {
+    if (!isGoogleIdentitySupportedOrigin(location ?? undefined, allowedOrigins)) {
         if (isElementLike(buttonElement)) {
             buttonElement.dataset.googleSignIn = "unavailable";
         }
@@ -293,9 +294,9 @@ function isElementLike(candidate) {
  * @param {Location|undefined|null} runtimeLocation
  * @returns {boolean}
  */
-export function isGoogleIdentitySupportedOrigin(runtimeLocation) {
+export function isGoogleIdentitySupportedOrigin(runtimeLocation, allowedOrigins = undefined) {
     if (!runtimeLocation) {
-        return true;
+        return !Array.isArray(allowedOrigins) || allowedOrigins.length === 0;
     }
     const protocol = typeof runtimeLocation.protocol === "string" ? runtimeLocation.protocol.toLowerCase() : "";
     const hostname = typeof runtimeLocation.hostname === "string" ? runtimeLocation.hostname.toLowerCase() : "";
@@ -305,16 +306,48 @@ export function isGoogleIdentitySupportedOrigin(runtimeLocation) {
     if (protocol === "file:" || protocol === "about:") {
         return false;
     }
+    let schemeSupported = false;
     if (protocol === "https:") {
-        return true;
+        schemeSupported = true;
     }
     if (protocol === "http:" && hostname) {
         if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]") {
-            return true;
+            schemeSupported = true;
         }
         if (hostname.endsWith(".local") || hostname.endsWith(".test")) {
-            return true;
+            schemeSupported = true;
         }
     }
-    return false;
+    if (!schemeSupported) {
+        return false;
+    }
+    if (!Array.isArray(allowedOrigins) || allowedOrigins.length === 0) {
+        return true;
+    }
+    const normalizedOrigin = normalizeLocationOrigin(runtimeLocation);
+    if (!normalizedOrigin) {
+        return false;
+    }
+    return allowedOrigins.includes(normalizedOrigin);
+}
+
+/**
+ * Normalize a Location into a lowercase origin string.
+ * @param {Location} runtimeLocation
+ * @returns {string|null}
+ */
+function normalizeLocationOrigin(runtimeLocation) {
+    const protocol = typeof runtimeLocation.protocol === "string" ? runtimeLocation.protocol.toLowerCase() : "";
+    const hostname = typeof runtimeLocation.hostname === "string" ? runtimeLocation.hostname.toLowerCase() : "";
+    if (!protocol || !hostname) {
+        return null;
+    }
+    const port = typeof runtimeLocation.port === "string" ? runtimeLocation.port.trim() : "";
+    if (!port) {
+        return `${protocol}//${hostname}`;
+    }
+    if ((protocol === "https:" && port === "443") || (protocol === "http:" && port === "80")) {
+        return `${protocol}//${hostname}`;
+    }
+    return `${protocol}//${hostname}:${port}`;
 }

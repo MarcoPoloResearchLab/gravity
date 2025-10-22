@@ -18,7 +18,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
 ### BugFixes
 
-  - [ ] [GN-80] There are various issues logged by JS Console. Analyze each, develop a plan to address it and deliver a fix. I expect a lit of stacked up open PRs as a deliverable
+  - [x] [GN-80] There are various issues logged by JS Console. Analyze each, develop a plan to address it and deliver a fix. I expect a lit of stacked up open PRs as a deliverable — Google Identity now skips unauthorized origins, suppressing console noise and surfacing an explicit availability banner (branch bugfix/GN-80-console-errors).
     ```
     Feature Policy: Skipping unsupported feature name “identity-credentials-get”. client:270:37
     Feature Policy: Skipping unsupported feature name “identity-credentials-get”. client:271:336
@@ -91,6 +91,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - [ ] [GN-82] Editing starts in a very different position than rendered HTML. Work on aligning these positions so that markdown and rendered HTML would be in the same places visually. Work on [ST-72] prior to this one.
 
   - [ ] [GN-83] Logging in on two browsers (sessions) does not synchronize notes. As a logged in user I can create a new note on Browser A and never see it on browser B despite being logged in. Develop an SSE notification system for logged in users only which sends a notification when a new edit occurs, so that front end will synchronize the changes. Develop the system that allows automated note conflict resolution and works in a background thread on browser. The expectation is for two sessions/browsers to synchronize the moment there is a change introduced to the underlying data of the notes.
+
+  - [ ] [GN-84] Once we identify the timestamp of a test, all other tests in the session shall use the same timstamp, so the timestamp represent the first moment of the tests suite runningI havent th
 
 ### Maintenance
 
