@@ -54,7 +54,7 @@ Review the backlog in `ISSUES.md`. Make a plan for autonomously fixing every ite
 Fix issues one by one, working sequentially.
 
 1. The production git branch is called `master`. The `main` branch does not exist.
-2. Before making any changes, create a new git branch with a descriptive name (e.g., `bugfix/GN-58-editor-duplicate-preview`). Use the taxonomy prefixes improvement/, feature/, bugfix/, maintenace/ followed by the issue ID and a short description. Respect branch name limits.
+2. Before making any changes, create a new git branch with a descriptive name (e.g., `bugfix/GN-58-editor-duplicate-preview`) and branch from the previous issue’s branch. Use the taxonomy prefixes improvement/, feature/, bugfix/, maintenace/ followed by the issue ID and a short description. Respect branch name limits.
 3. On that branch, describe the issue through tests.
    3a. Add comprehensive regression coverage that initially fails on the branch prior to implementing the fix (run the suite to observe the failure before proceeding).
    3b. Ensure AGENTS.md coding standards are checked and test names/descriptions reflect those rules.
