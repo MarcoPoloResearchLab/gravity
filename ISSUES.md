@@ -18,7 +18,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
 ### BugFixes
 
-  - [ ] [GN-80] There are various issues logged by JS Console. Analyze each, develop a plan to address it and deliver a fix. I expect a lit of stacked up open PRs as a deliverable
+  - [ ] [GN-80] There are various issues logged by JS Console. The errors are from a browser console when everything is served through http. Analyze each, develop a plan to address it and deliver a fix. I expect a lit of stacked up open PRs as a deliverable
     ```
     Feature Policy: Skipping unsupported feature name “identity-credentials-get”. client:270:37
     Feature Policy: Skipping unsupported feature name “identity-credentials-get”. client:271:336
@@ -81,6 +81,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
         <anonymous> https://accounts.google.com/gsi/button?theme=outline&size=small&shape=pill&text=signin_with&is_fedcm_supported=false&client_id=156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com&iframe_id=gsi_451133_914081&cas=/nrGSe6oSqBoygrIHC3O6DYcFNuiHkz6MfGe2WCWWOY:1
 
     ```
+    The google console screenshot is here ![Google console](<Google Console.png>)
 
   - [ ] [GN-81] Double-clicking opens a wrong note. Adjust the code to 
     1. identify the card that was clicked on 
