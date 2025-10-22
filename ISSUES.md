@@ -101,6 +101,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
   - [ ] [GN-91] Document the code flow when each card calls createHTMLView when it's loaded into view and deleteHTMLView when it's unloaded from the view or is getting edited  
 
+  - [ ] [GN-92] Restructure the repository so that the /frontend and the /backend are two separate top level folders. Consider changes to GitHub Pages through `gh` utility to continue serving front-end from the github after the change of the front-end index.html path
 
 ### Planning (do not work on these, not ready)
 
