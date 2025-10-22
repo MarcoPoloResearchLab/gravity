@@ -11,6 +11,7 @@ import { initializeRuntimeConfig } from "./core/runtimeConfig.js";
 import { createGoogleIdentityController, isGoogleIdentitySupportedOrigin } from "./core/auth.js";
 import { initializeAnalytics } from "./core/analytics.js";
 import { createSyncManager } from "./core/syncManager.js";
+import { createRealtimeSyncController } from "./core/realtimeSyncController.js";
 import { loadAuthState, saveAuthState, clearAuthState, isAuthStateFresh } from "./core/authState.js";
 import { mountTopEditor } from "./ui/topEditor.js";
 import {
@@ -82,6 +83,8 @@ function gravityApp() {
         authPollHandle: /** @type {number|null} */ (null),
         guestExportButton: /** @type {HTMLButtonElement|null} */ (null),
         syncManager: /** @type {ReturnType<typeof createSyncManager>|null} */ (null),
+        realtimeSync: /** @type {{ connect(params: { baseUrl: string, accessToken: string }): void, disconnect(): void, dispose(): void }|null} */ (null),
+        syncIntervalHandle: /** @type {number|null} */ (null),
 
         init() {
             this.notesContainer = this.$refs.notesContainer ?? document.getElementById("notes-container");
@@ -100,6 +103,28 @@ function gravityApp() {
             this.initializeTopEditor();
             this.initializeImportExport();
             this.syncManager = createSyncManager({ eventTarget: this.$el ?? null });
+            this.realtimeSync = createRealtimeSyncController({ syncManager: this.syncManager });
+            if (typeof window !== "undefined") {
+                window.addEventListener("storage", (event) => {
+                    if (!event) {
+                        return;
+                    }
+                    if (event.storageArea !== window.localStorage) {
+                        return;
+                    }
+                    const activeKey = GravityStore.getActiveStorageKey();
+                    if (event.key !== activeKey) {
+                        return;
+                    }
+                    this.initializeNotes();
+                    void this.syncManager?.synchronize({ flushQueue: false });
+                });
+                if (this.syncIntervalHandle === null) {
+                    this.syncIntervalHandle = window.setInterval(() => {
+                        void this.syncManager?.synchronize({ flushQueue: false });
+                    }, 3000);
+                }
+            }
             const restored = this.restoreAuthFromStorage();
             if (!restored) {
                 GravityStore.setUserScope(null);
@@ -297,12 +322,14 @@ function gravityApp() {
         handleAuthSignOutRequest() {
             this.avatarMenu?.close({ focusTrigger: false });
             if (this.authController) {
+                this.realtimeSync?.disconnect();
                 this.authController.signOut("manual");
             } else {
                 this.authControls?.showSignedOut();
                 this.avatarMenu?.setEnabled(false);
                 GravityStore.setUserScope(null);
                 this.initializeNotes();
+                this.realtimeSync?.disconnect();
             }
         },
 
@@ -425,6 +452,7 @@ function gravityApp() {
                 this.initializeNotes();
                 this.setGuestExportVisibility(true);
                 clearAuthState();
+                this.realtimeSync?.disconnect();
             };
 
             const applySignedInState = () => {
@@ -463,13 +491,22 @@ function gravityApp() {
                 try {
                     const result = syncManager && typeof syncManager.handleSignIn === "function"
                         ? await syncManager.handleSignIn({ userId: user.id, credential })
-                        : { authenticated: true, queueFlushed: false, snapshotApplied: false };
+                        : { authenticated: true, queueFlushed: false, snapshotApplied: false, accessToken: null };
                     if (!result?.authenticated) {
                         applyGuestState();
                         this.authControls?.showError(ERROR_AUTHENTICATION_GENERIC);
                         return;
                     }
                     applySignedInState();
+                    const accessToken = typeof result.accessToken === "string" ? result.accessToken : "";
+                    if (accessToken) {
+                        this.realtimeSync?.connect({
+                            baseUrl: appConfig.backendBaseUrl,
+                            accessToken
+                        });
+                    } else {
+                        this.realtimeSync?.disconnect();
+                    }
                 } catch (error) {
                     logging.error(error);
                     applyGuestState();
@@ -491,6 +528,11 @@ function gravityApp() {
             this.syncManager?.handleSignOut();
             this.setGuestExportVisibility(true);
             clearAuthState();
+            this.realtimeSync?.disconnect();
+            if (typeof window !== "undefined" && this.syncIntervalHandle !== null) {
+                window.clearInterval(this.syncIntervalHandle);
+                this.syncIntervalHandle = null;
+            }
         });
 
             root.addEventListener(EVENT_AUTH_ERROR, (event) => {

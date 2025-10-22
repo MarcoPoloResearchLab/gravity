@@ -13,6 +13,7 @@ and are grouped by the date the work landed on `master`.
 ### Fixed
 - Note preview expansion now persists until manually collapsed, and inline editing preserves the expanded height envelope (GN-71).
 - Card control column spans from the note header again; grid placement now pins actions to the top-right with regression coverage enforcing the alignment (GN-84).
+- Realtime multi-session regression suite now spies on `EventSource` connections to confirm SSE propagation and unblock GN-83.
 
 ### Documentation
 - Folded `MIGRATION.md` into `ARCHITECTURE.md`, clarifying event contracts and module guidance (GN-54).
