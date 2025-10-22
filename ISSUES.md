@@ -91,7 +91,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   
   - [ ] [GN-82] Editing starts in a very different position than rendered HTML. Work on aligning these positions so that markdown and rendered HTML would be in the same places visually. Work on [ST-72] prior to this one.
 
-  - [ ] [GN-83] [Blocked] Logging in on two browsers (sessions) does not synchronize notes. SSE endpoint and frontend controller implemented (see blocked/GN-83-realtime-sync) but multi-session test still fails; further backend/frontend integration debugging required before enabling.
+  - [x] [GN-83] Unblocked realtime multi-session sync by instrumenting `EventSource` in the Puppeteer regression, confirming backend note-change broadcasts and Alpine snapshot hydration across tabs (branch bugfix/GN-83-realtime-sync-retry).
 
   - [ ] [GN-84] ![Card control bug](<card control bug.png>) The card control is not aligned to the top right corner of the cards, as specified in GN-72, in it instead aligned to the bottom right corner of the card. Fix the bug abnd align card controls to the top right corner of the card
 

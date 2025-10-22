@@ -58,23 +58,53 @@ test.describe("Realtime synchronization", () => {
 
         try {
             await pageB.evaluate(() => {
-                window.__GRAVITY_REALTIME_DEBUG__ = { events: [] };
-                const root = document.querySelector("[x-data]");
-                const alpine = typeof window !== "undefined" ? window.Alpine : null;
-                let component = null;
-                if (root && alpine && typeof alpine.$data === "function") {
-                    component = alpine.$data(root);
+                const OriginalEventSource = window.EventSource;
+                if (!OriginalEventSource) {
+                    return;
                 }
-                const realtime = component?.realtimeSync ?? null;
-                if (realtime) {
-                    const originalConnect = realtime.connect.bind(realtime);
-                    const calls = [];
-                    realtime.connect = (params) => {
-                        calls.push(params);
-                        return originalConnect(params);
+                const connectCalls = [];
+                const realtimeEvents = [];
+
+                function recordEvent(event, url) {
+                    const entry = { type: event?.type ?? "message", url };
+                    if (typeof event?.data === "string" && event.data.length > 0) {
+                        try {
+                            entry.data = JSON.parse(event.data);
+                        } catch {
+                            entry.data = event.data;
+                        }
+                    }
+                    realtimeEvents.push(entry);
+                }
+
+                function InstrumentedEventSource(url, init) {
+                    const instance = new OriginalEventSource(url, init);
+                    connectCalls.push({
+                        url,
+                        withCredentials: Boolean(init?.withCredentials)
+                    });
+                    instance.addEventListener("open", (event) => {
+                        realtimeEvents.push({ type: "open", url, readyState: instance.readyState ?? null });
+                    });
+                    instance.addEventListener("error", (event) => {
+                        realtimeEvents.push({ type: "error", url, readyState: instance.readyState ?? null });
+                    });
+                    instance.addEventListener("note-change", (event) => recordEvent(event, url));
+                    instance.addEventListener("heartbeat", (event) => recordEvent(event, url));
+                    window.__GRAVITY_REALTIME_DEBUG__ = {
+                        connects: connectCalls,
+                        events: realtimeEvents
                     };
-                    window.__realtimeDebug = { calls };
+                    return instance;
                 }
+
+                InstrumentedEventSource.prototype = OriginalEventSource.prototype;
+                Object.setPrototypeOf(InstrumentedEventSource, OriginalEventSource);
+                window.EventSource = InstrumentedEventSource;
+                window.__GRAVITY_REALTIME_DEBUG__ = {
+                    connects: connectCalls,
+                    events: realtimeEvents
+                };
             });
 
             await dispatchSignIn(pageA, credential, userId);
@@ -105,10 +135,11 @@ test.describe("Realtime synchronization", () => {
             });
             console.log("[Realtime][Debug] backend base URL:", runtimeConfig);
             await pageB.waitForFunction(() => {
-                return Array.isArray(window.__realtimeDebug?.calls) && window.__realtimeDebug.calls.length >= 1;
-            }, { timeout: 5000 });
+                const debug = window.__GRAVITY_REALTIME_DEBUG__;
+                return Array.isArray(debug?.connects) && debug.connects.length >= 1;
+            }, { timeout: 10000 });
 
-            const connectCalls = await pageB.evaluate(() => window.__realtimeDebug?.calls ?? []);
+            const connectCalls = await pageB.evaluate(() => window.__GRAVITY_REALTIME_DEBUG__?.connects ?? []);
             console.log("[Realtime][Debug] connect calls:", connectCalls);
             const realtimeEvents = await pageB.evaluate(() => window.__GRAVITY_REALTIME_DEBUG__?.events ?? []);
             console.log("[Realtime][Debug] events captured:", realtimeEvents);
