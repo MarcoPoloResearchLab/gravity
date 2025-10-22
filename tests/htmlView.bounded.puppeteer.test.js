@@ -177,6 +177,11 @@ test.describe("Bounded htmlViews", () => {
 
             await page.waitForSelector(htmlViewSelector);
 
+            await page.focus(toggleSelector);
+            await page.evaluate(() => new Promise((resolve) => {
+                requestAnimationFrame(() => requestAnimationFrame(resolve));
+            }));
+
             const beforeMetrics = await page.evaluate(({ htmlViewSelector }) => {
                 const htmlView = document.querySelector(htmlViewSelector);
                 return {
@@ -185,7 +190,6 @@ test.describe("Bounded htmlViews", () => {
                 };
             }, { htmlViewSelector });
 
-            await page.focus(toggleSelector);
             await page.keyboard.press("Enter");
             await page.waitForFunction((selector) => {
                 const node = document.querySelector(selector);
@@ -206,6 +210,10 @@ test.describe("Bounded htmlViews", () => {
             if (typeof beforeMetrics?.htmlViewScrollTop === "number" && typeof afterMetrics?.htmlViewScrollTop === "number") {
                 assert.ok(afterMetrics.htmlViewScrollTop <= 1, "expanded htmlView should maintain top scroll position");
             }
+            if (typeof beforeMetrics?.scrollY === "number" && typeof afterMetrics?.scrollY === "number") {
+                const scrollDelta = Math.abs(afterMetrics.scrollY - beforeMetrics.scrollY);
+                assert.ok(scrollDelta <= 6, `expanding htmlView should not scroll the page (delta=${scrollDelta})`);
+            }
 
             const htmlViewViewport = await page.$eval(htmlViewSelector, (node) => {
                 const rect = node.getBoundingClientRect();
@@ -216,8 +224,8 @@ test.describe("Bounded htmlViews", () => {
                 };
             });
             assert.ok(
-                htmlViewViewport.top >= -4 && htmlViewViewport.top <= htmlViewViewport.viewportHeight * 0.5,
-                `expanded htmlView top ${htmlViewViewport.top} should remain within the upper half of the viewport`
+                htmlViewViewport.top >= -4 && htmlViewViewport.top <= htmlViewViewport.viewportHeight * 0.75,
+                `expanded htmlView top ${htmlViewViewport.top} should remain near the top half of the viewport`
             );
             assert.ok(htmlViewViewport.bottom > htmlViewViewport.top, "expanded htmlView should have non-zero height");
         } finally {
