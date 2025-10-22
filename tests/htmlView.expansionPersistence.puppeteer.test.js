@@ -16,12 +16,12 @@ const SECOND_NOTE_ID = "gn71-secondary";
 const LONG_MARKDOWN_BLOCK = [
     "# Overflowing heading",
     "",
-    "Paragraph one describes the behaviour of expanding previews within the Gravity Notes grid.",
-    "Paragraph two adds more prose to ensure the preview requires expansion to show full content.",
-    "Paragraph three keeps going with additional markdown lines so the rendered preview needs scrolling.",
+    "Paragraph one describes the behaviour of expanding htmlViews within the Gravity Notes grid.",
+    "Paragraph two adds more prose to ensure the htmlView requires expansion to show full content.",
+    "Paragraph three keeps going with additional markdown lines so the rendered htmlView needs scrolling.",
     "",
     "- List item A stretches the rendered height a little further.",
-    "- List item B adds even more content to the preview container.",
+    "- List item B adds even more content to the htmlView container.",
     "- List item C continues the overflow scenario required by the test.",
     "",
     "```js",
@@ -30,15 +30,15 @@ const LONG_MARKDOWN_BLOCK = [
     "}",
     "```",
     "",
-    "Final paragraph emphasises the need for a tall preview."
+    "Final paragraph emphasises the need for a tall htmlView."
 ].join("\n");
 
 const SECONDARY_MARKDOWN = [
     "# Secondary note",
     "",
-    "This record also overflows the preview surface so that multiple cards can be expanded at once.",
+    "This record also overflows the htmlView surface so that multiple cards can be expanded at once.",
     "",
-    "> Quotes and additional text contribute to the preview height.",
+    "> Quotes and additional text contribute to the htmlView height.",
     "",
     "- Additional bullet one",
     "- Additional bullet two",
@@ -54,23 +54,23 @@ test.describe("GN-71 note expansion persistence", () => {
         const { page, teardown } = await openPageWithRecords(seededRecords);
         const firstCardSelector = `.markdown-block[data-note-id="${FIRST_NOTE_ID}"]`;
         const secondCardSelector = `.markdown-block[data-note-id="${SECOND_NOTE_ID}"]`;
-        const firstPreviewSelector = `${firstCardSelector} .note-preview`;
-        const secondPreviewSelector = `${secondCardSelector} .note-preview`;
+        const firstHtmlViewSelector = `${firstCardSelector} .note-html-view`;
+        const secondHtmlViewSelector = `${secondCardSelector} .note-html-view`;
 
         try {
-            await page.waitForSelector(firstPreviewSelector);
-            await page.waitForSelector(secondPreviewSelector);
+            await page.waitForSelector(firstHtmlViewSelector);
+            await page.waitForSelector(secondHtmlViewSelector);
 
             await page.click(firstCardSelector);
-            await page.waitForSelector(`${firstPreviewSelector}.note-preview--expanded`);
-            const firstExpandedHeight = await getElementHeight(page, firstPreviewSelector);
-            assert.ok(firstExpandedHeight > 0, "expanded preview should report a positive height");
+            await page.waitForSelector(`${firstHtmlViewSelector}.note-html-view--expanded`);
+            const firstExpandedHeight = await getElementHeight(page, firstHtmlViewSelector);
+            assert.ok(firstExpandedHeight > 0, "expanded htmlView should report a positive height");
             const firstExpandedCardHeight = await getElementHeight(page, firstCardSelector);
 
             await page.click(secondCardSelector);
-            await page.waitForSelector(`${secondPreviewSelector}.note-preview--expanded`);
+            await page.waitForSelector(`${secondHtmlViewSelector}.note-html-view--expanded`);
 
-            const firstStillExpanded = await isPreviewExpanded(page, firstPreviewSelector);
+            const firstStillExpanded = await isHtmlViewExpanded(page, firstHtmlViewSelector);
             assert.equal(firstStillExpanded, true, "first card must remain expanded after expanding the second card");
 
             await page.click(firstCardSelector, { clickCount: 2 });
@@ -81,12 +81,12 @@ test.describe("GN-71 note expansion persistence", () => {
             const editingCardHeight = await getElementHeight(page, firstCardSelector);
             assert.ok(
                 Math.abs(editingCardHeight - firstExpandedCardHeight) <= 2,
-                `card height (${editingCardHeight}) should match expanded preview height (${firstExpandedCardHeight})`
+                `card height (${editingCardHeight}) should match expanded htmlView height (${firstExpandedCardHeight})`
             );
             const editorShrinkAllowancePx = 24;
             assert.ok(
                 editorHeight >= firstExpandedHeight - editorShrinkAllowancePx,
-                `editor height (${editorHeight}) should not shrink appreciably from preview height (${firstExpandedHeight})`
+                `editor height (${editorHeight}) should not shrink appreciably from htmlView height (${firstExpandedHeight})`
             );
             const editingInlineSizing = await getInlineCardSizing(page, firstCardSelector);
             assert.ok(
@@ -106,12 +106,12 @@ test.describe("GN-71 note expansion persistence", () => {
             await page.keyboard.press("Enter");
             await page.keyboard.up("Shift");
 
-            await page.waitForSelector(`${firstPreviewSelector}.note-preview--expanded`);
-            const postEditPreviewHeight = await getElementHeight(page, firstPreviewSelector);
+            await page.waitForSelector(`${firstHtmlViewSelector}.note-html-view--expanded`);
+            const postEditHtmlViewHeight = await getElementHeight(page, firstHtmlViewSelector);
             const postEditCardHeight = await getElementHeight(page, firstCardSelector);
             assert.ok(
-                Math.abs(postEditPreviewHeight - firstExpandedHeight) <= 2,
-                `expanded preview height should remain stable after editing (${postEditPreviewHeight} vs ${firstExpandedHeight})`
+                Math.abs(postEditHtmlViewHeight - firstExpandedHeight) <= 2,
+                `expanded htmlView height should remain stable after editing (${postEditHtmlViewHeight} vs ${firstExpandedHeight})`
             );
             assert.ok(
                 Math.abs(postEditCardHeight - firstExpandedCardHeight) <= 2,
@@ -145,18 +145,18 @@ test.describe("GN-71 note expansion persistence", () => {
                 "CSS variable height lock must be cleared after exiting edit mode"
             );
 
-            const secondStillExpanded = await isPreviewExpanded(page, secondPreviewSelector);
+            const secondStillExpanded = await isHtmlViewExpanded(page, secondHtmlViewSelector);
             assert.equal(secondStillExpanded, true, "second card should remain expanded after editing the first card");
 
             await page.click(firstCardSelector);
             await page.waitForFunction((selector) => {
-                const preview = document.querySelector(selector);
-                return !(preview instanceof HTMLElement) || !preview.classList.contains("note-preview--expanded");
-            }, {}, firstPreviewSelector);
-            const collapseResult = await isPreviewExpanded(page, firstPreviewSelector);
+                const htmlView = document.querySelector(selector);
+                return !(htmlView instanceof HTMLElement) || !htmlView.classList.contains("note-html-view--expanded");
+            }, {}, firstHtmlViewSelector);
+            const collapseResult = await isHtmlViewExpanded(page, firstHtmlViewSelector);
             assert.equal(collapseResult, false, "expanded card should collapse after explicit click");
 
-            const secondAfterCollapse = await isPreviewExpanded(page, secondPreviewSelector);
+            const secondAfterCollapse = await isHtmlViewExpanded(page, secondHtmlViewSelector);
             assert.equal(secondAfterCollapse, true, "collapsing one card must not affect other expanded cards");
         } finally {
             await teardown();
@@ -198,12 +198,12 @@ async function getElementHeight(page, selector) {
     });
 }
 
-async function isPreviewExpanded(page, selector) {
+async function isHtmlViewExpanded(page, selector) {
     return page.$eval(selector, (element) => {
         if (!(element instanceof HTMLElement)) {
             return false;
         }
-        return element.classList.contains("note-preview--expanded");
+        return element.classList.contains("note-html-view--expanded");
     }).catch(() => false);
 }
 

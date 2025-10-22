@@ -10,7 +10,7 @@ import {
     EVENT_NOTE_CREATE
 } from "../constants.js";
 import { triggerClassificationForCard, focusCardEditor } from "./card.js";
-import { renderSanitizedMarkdown } from "./markdownPreview.js";
+import { renderHtmlView } from "./htmlView.js";
 import {
     enableClipboardImagePaste,
     registerInitialAttachments,
@@ -43,7 +43,7 @@ export function mountTopEditor({ notesContainer }) {
     host.innerHTML = "";
 
     const wrapper = createElement("div", "markdown-block top-editor");
-    const preview = createElement("div", "markdown-content");   // div so tables render
+    const htmlView = createElement("div", "markdown-content");   // div so tables render
     const editor  = createElement("textarea", "markdown-editor");
 
     editor.value = "";
@@ -55,7 +55,7 @@ export function mountTopEditor({ notesContainer }) {
     registerInitialAttachments(editor, {});
     enableClipboardImagePaste(editor);
 
-    wrapper.append(preview, editor);
+    wrapper.append(htmlView, editor);
     host.appendChild(wrapper);
 
     let maintainAutofocus = true;
@@ -82,25 +82,25 @@ export function mountTopEditor({ notesContainer }) {
     const editorHost = createMarkdownEditorHost({
         container: wrapper,
         textarea: editor,
-        previewElement: preview,
+        htmlViewElement: htmlView,
         initialMode: MARKDOWN_MODE_EDIT,
         showToolbar: false
     });
     // Expose for cross-module focus utilities.
     wrapper.__markdownHost = editorHost;
 
-    const updatePreview = () => {
+    const updateHtmlView = () => {
         const attachments = getAllAttachments(editor);
         const markdownWithAttachments = transformMarkdownWithAttachments(editorHost.getValue(), attachments);
-        renderSanitizedMarkdown(preview, markdownWithAttachments);
+        renderHtmlView(htmlView, markdownWithAttachments);
     };
 
-    editorHost.on("change", updatePreview);
+    editorHost.on("change", updateHtmlView);
     editorHost.on("modechange", ({ mode }) => {
         if (mode === MARKDOWN_MODE_EDIT) {
             keepFocus();
         } else {
-            updatePreview();
+            updateHtmlView();
         }
     });
     editorHost.on("submit", finalizeTopEditor);
@@ -112,7 +112,7 @@ export function mountTopEditor({ notesContainer }) {
         }
     });
 
-    updatePreview();
+    updateHtmlView();
     keepFocus({ force: true });
 
     async function finalizeTopEditor() {
@@ -123,7 +123,7 @@ export function mountTopEditor({ notesContainer }) {
 
         if (trimmed.length === 0) {
             editorHost.setMode(MARKDOWN_MODE_EDIT);
-            renderSanitizedMarkdown(preview, "");
+            renderHtmlView(htmlView, "");
             resetAttachments(editor);
             editorHost.setValue("");
             keepFocus();
@@ -145,7 +145,7 @@ export function mountTopEditor({ notesContainer }) {
 
         editorHost.setValue("");
         editorHost.setMode(MARKDOWN_MODE_EDIT);
-        renderSanitizedMarkdown(preview, "");
+        renderHtmlView(htmlView, "");
         resetAttachments(editor);
         keepFocus();
 

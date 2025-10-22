@@ -40,20 +40,20 @@ import {
     placeCardRespectingPinned
 } from "./card/layout.js";
 import {
-    schedulePreviewBubble,
+    scheduleHtmlViewBubble,
     bubbleCardToTop,
-    createHTMLView as createHTMLViewBase,
-    deleteHTMLView as deleteHTMLViewBase,
-    queuePreviewFocus,
-    restorePreviewFocus,
-    setCardExpanded,
-    collapseExpandedPreview
-} from "./card/preview.js";
+    createHtmlView as createHtmlViewBase,
+    deleteHtmlView as deleteHtmlViewBase,
+    queueHtmlViewFocus,
+    restoreHtmlViewFocus,
+    setHtmlViewExpanded,
+    collapseExpandedHtmlView
+} from "./card/htmlView.js";
 export { updateActionButtons, insertCardRespectingPinned } from "./card/listControls.js";
 import {
-    getSanitizedRenderedHtml,
-    getRenderedPlainText
-} from "./markdownPreview.js";
+    renderHtmlViewToString,
+    getHtmlViewPlainText
+} from "./htmlView.js";
 import {
     enableClipboardImagePaste,
     waitForPendingImagePastes,
@@ -158,11 +158,11 @@ function isPointerWithinInlineEditorSurface(card, pointerTarget) {
     return true;
 }
 
-function calculatePreviewTextOffset(previewElement, event) {
-    if (!(previewElement instanceof HTMLElement)) {
+function calculateHtmlViewTextOffset(htmlViewElement, event) {
+    if (!(htmlViewElement instanceof HTMLElement)) {
         return null;
     }
-    const doc = previewElement.ownerDocument;
+    const doc = htmlViewElement.ownerDocument;
     if (!doc) {
         return null;
     }
@@ -179,17 +179,17 @@ function calculatePreviewTextOffset(previewElement, event) {
         }
     }
 
-    if (!range || !previewElement.contains(range.startContainer)) {
+    if (!range || !htmlViewElement.contains(range.startContainer)) {
         return null;
     }
 
-    const resolved = resolveRangeEndpoint(range.startContainer, range.startOffset, previewElement);
+    const resolved = resolveRangeEndpoint(range.startContainer, range.startOffset, htmlViewElement);
     if (!resolved) {
         return null;
     }
 
     const preRange = doc.createRange();
-    preRange.selectNodeContents(previewElement);
+    preRange.selectNodeContents(htmlViewElement);
     try {
         preRange.setEnd(resolved.container, resolved.offset);
     } catch {
@@ -795,8 +795,8 @@ export function renderCard(record, options = {}) {
     const handleCopy = async () => {
         const host = editorHostRef;
         if (!host) return;
-        const previewCandidate = card.querySelector(".markdown-content");
-        const previewElement = previewCandidate instanceof HTMLElement ? previewCandidate : null;
+        const htmlViewCandidate = card.querySelector(".markdown-content");
+        const htmlViewElement = htmlViewCandidate instanceof HTMLElement ? htmlViewCandidate : null;
         const suppressedCards = new Set();
         const protectCard = (candidate) => {
             if (!candidate) return;
@@ -817,8 +817,8 @@ export function renderCard(record, options = {}) {
             const markdownValue = host.getValue();
             const attachments = getAllAttachments(editor);
             const markdownWithAttachments = transformMarkdownWithAttachments(markdownValue, attachments);
-            const renderedHtml = previewElement ? getSanitizedRenderedHtml(previewElement) : "";
-            const renderedText = previewElement ? getRenderedPlainText(previewElement) : "";
+            const renderedHtml = renderHtmlViewToString(markdownWithAttachments);
+            const renderedText = htmlViewElement ? getHtmlViewPlainText(htmlViewElement) : "";
             const attachmentDataUrls = Object.values(attachments)
                 .map((value) => value?.dataUrl)
                 .filter((value) => typeof value === "string" && value.length > 0);
@@ -927,8 +927,8 @@ export function renderCard(record, options = {}) {
     card.append(badges, editor, controlsColumn);
 
     const initialMarkdownWithAttachments = transformMarkdownWithAttachments(record.markdownText, initialAttachments);
-    // Always build the preview from scratch when the card enters view mode.
-    createHTMLView(card, {
+    // Always build the HTML view from scratch when the card enters view mode.
+    createHtmlView(card, {
         markdownSource: initialMarkdownWithAttachments,
         badgesTarget: badges
     });
@@ -947,17 +947,17 @@ export function renderCard(record, options = {}) {
         if (card.classList.contains("editing-in-place")) {
             return;
         }
-        const previewWrapper = card.querySelector(".note-preview");
-        if (!(previewWrapper instanceof HTMLElement)) {
+        const htmlViewWrapper = card.querySelector(".note-html-view");
+        if (!(htmlViewWrapper instanceof HTMLElement)) {
             return;
         }
-        const shouldToggleExpansion = previewWrapper.classList.contains("note-preview--overflow")
-            || previewWrapper.classList.contains("note-preview--expanded");
+        const shouldToggleExpansion = htmlViewWrapper.classList.contains("note-html-view--overflow")
+            || htmlViewWrapper.classList.contains("note-html-view--expanded");
         if (!shouldToggleExpansion) {
             return;
         }
-        const expandNext = !previewWrapper.classList.contains("note-preview--expanded");
-        setCardExpanded(card, expandNext);
+        const expandNext = !htmlViewWrapper.classList.contains("note-html-view--expanded");
+        setHtmlViewExpanded(card, expandNext);
     };
 
     const handleCardDoubleClick = (event) => {
@@ -970,11 +970,11 @@ export function renderCard(record, options = {}) {
         }
 
         let caretPlacement = CARET_PLACEMENT_END;
-        const previewElement = card.querySelector(".markdown-content");
+        const htmlViewElement = card.querySelector(".markdown-content");
         const host = editorHosts.get(card);
 
-        if (previewElement instanceof HTMLElement && host) {
-            const offset = calculatePreviewTextOffset(previewElement, event);
+        if (htmlViewElement instanceof HTMLElement && host) {
+            const offset = calculateHtmlViewTextOffset(htmlViewElement, event);
             if (offset !== null) {
                 const markdownValue = host.getValue();
                 caretPlacement = mapPlainTextOffsetToMarkdown(markdownValue, offset);
@@ -989,14 +989,14 @@ export function renderCard(record, options = {}) {
 
     card.addEventListener("click", handleCardClick);
     card.addEventListener("dblclick", handleCardDoubleClick);
-    card.addEventListener("click", handlePreviewInteraction);
+    card.addEventListener("click", handleHtmlViewInteraction);
 
-    const previewPlaceholder = createElement("div");
+    const htmlViewPlaceholder = createElement("div");
 
     const editorHost = createMarkdownEditorHost({
         container: card,
         textarea: editor,
-        previewElement: previewPlaceholder,
+        htmlViewElement: htmlViewPlaceholder,
         initialMode: MARKDOWN_MODE_VIEW,
         showToolbar: false
     });
@@ -1031,7 +1031,7 @@ export function renderCard(record, options = {}) {
     editorHost.on("modechange", ({ mode }) => {
         updateModeControls();
         if (mode === MARKDOWN_MODE_EDIT) {
-            deleteHTMLView(card);
+            deleteHtmlView(card);
             card.classList.add("editing-in-place");
             createMarkdownView(editorHost);
         } else {
@@ -1039,7 +1039,7 @@ export function renderCard(record, options = {}) {
             deleteMarkdownView(editorHost);
             const attachments = getAllAttachments(editor);
             const markdownWithAttachments = transformMarkdownWithAttachments(editorHost.getValue(), attachments);
-            createHTMLView(card, {
+            createHtmlView(card, {
                 markdownSource: markdownWithAttachments,
                 badgesTarget: badges
             });
@@ -1074,7 +1074,7 @@ export function renderCard(record, options = {}) {
 
     return card;
 
-    function handlePreviewInteraction(event) {
+    function handleHtmlViewInteraction(event) {
         const target = event.target;
         if (!(target instanceof HTMLInputElement) || target.type !== "checkbox") {
             return;
@@ -1099,17 +1099,17 @@ export function renderCard(record, options = {}) {
             return;
         }
 
-        queuePreviewFocus(card, { type: "checkbox", taskIndex, remaining: 2 });
+        queueHtmlViewFocus(card, { type: "checkbox", taskIndex, remaining: 2 });
         host.setValue(nextMarkdown);
         const toggledAttachments = getAllAttachments(editor);
-        const toggledPreviewSource = transformMarkdownWithAttachments(nextMarkdown, toggledAttachments);
-        createHTMLView(card, {
-            markdownSource: toggledPreviewSource,
+        const toggledHtmlViewSource = transformMarkdownWithAttachments(nextMarkdown, toggledAttachments);
+        createHtmlView(card, {
+            markdownSource: toggledHtmlViewSource,
             badgesTarget: badges
         });
         const persisted = persistCardState(card, notesContainer, nextMarkdown, { bubbleToTop: false });
         if (persisted) {
-            schedulePreviewBubble(card, notesContainer);
+            scheduleHtmlViewBubble(card, notesContainer);
         }
     }
 }
@@ -1258,21 +1258,21 @@ function persistCardState(card, notesContainer, markdownText, options = {}) {
 
     if (notesContainer instanceof HTMLElement) {
         if (bubbleToTop) {
-            const previewSource = transformMarkdownWithAttachments(markdownText, attachments);
-            bubbleCardToTop(card, notesContainer, previewSource, record);
+            const htmlViewSource = transformMarkdownWithAttachments(markdownText, attachments);
+            bubbleCardToTop(card, notesContainer, htmlViewSource, record);
         } else {
-            const previewSource = transformMarkdownWithAttachments(markdownText, attachments);
-            createHTMLView(card, {
-                markdownSource: previewSource,
+            const htmlViewSource = transformMarkdownWithAttachments(markdownText, attachments);
+            createHtmlView(card, {
+                markdownSource: htmlViewSource,
                 badgesTarget: badgesElement
             });
             syncStoreFromDom(notesContainer, { [noteId]: record });
             updateActionButtons(notesContainer);
         }
     } else {
-        const previewSource = transformMarkdownWithAttachments(markdownText, attachments);
-        createHTMLView(card, {
-            markdownSource: previewSource,
+        const htmlViewSource = transformMarkdownWithAttachments(markdownText, attachments);
+        createHtmlView(card, {
+            markdownSource: htmlViewSource,
             badgesTarget: badgesElement
         });
     }
@@ -1332,14 +1332,14 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
         && initialViewportTop <= window.innerHeight;
 
     const wasEditing = card.classList.contains("editing-in-place");
-    const previewWrapper = card.querySelector(".note-preview");
-    const wasPreviewExpanded = previewWrapper instanceof HTMLElement && previewWrapper.classList.contains("note-preview--expanded");
-    const expandedCardHeight = wasPreviewExpanded ? card.getBoundingClientRect().height : null;
-    const expandedContentHeight = wasPreviewExpanded && previewWrapper instanceof HTMLElement
-        ? previewWrapper.getBoundingClientRect().height
+    const htmlViewWrapper = card.querySelector(".note-html-view");
+    const wasHtmlViewExpanded = htmlViewWrapper instanceof HTMLElement && htmlViewWrapper.classList.contains("note-html-view--expanded");
+    const expandedCardHeight = wasHtmlViewExpanded ? card.getBoundingClientRect().height : null;
+    const expandedContentHeight = wasHtmlViewExpanded && htmlViewWrapper instanceof HTMLElement
+        ? htmlViewWrapper.getBoundingClientRect().height
         : null;
-    if (wasPreviewExpanded) {
-        card.dataset.previewExpanded = "true";
+    if (wasHtmlViewExpanded) {
+        card.dataset.htmlViewExpanded = "true";
     }
     if (currentEditingCard && currentEditingCard !== card && !mergeInProgress) {
         finalizeCard(currentEditingCard, notesContainer, { bubbleToTop: bubblePreviousCardToTop });
@@ -1364,9 +1364,9 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
             ? candidateHost.getValue()
             : candidateTextarea?.value ?? "";
         const candidateAttachments = candidateTextarea instanceof HTMLTextAreaElement ? collectReferencedAttachments(candidateTextarea) : {};
-        const candidatePreviewSource = transformMarkdownWithAttachments(candidateMarkdown, candidateAttachments);
-        createHTMLView(candidate, {
-            markdownSource: candidatePreviewSource,
+        const candidateHtmlViewSource = transformMarkdownWithAttachments(candidateMarkdown, candidateAttachments);
+        createHtmlView(candidate, {
+            markdownSource: candidateHtmlViewSource,
             badgesTarget: candidate.querySelector(".note-badges")
         });
     });
@@ -1379,7 +1379,7 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
     const initialValue = editorHost ? editorHost.getValue() : editor?.value ?? "";
     card.dataset.initialValue = initialValue;
 
-    deleteHTMLView(card);
+    deleteHtmlView(card);
     card.classList.add("editing-in-place");
     createMarkdownView(editorHost);
     lockEditingSurfaceHeight(card, {
@@ -1520,18 +1520,18 @@ function stripMarkdownImages(markdown) {
  * @param {{ markdownSource: string, badgesTarget?: HTMLElement|null }} options
  * @returns {HTMLElement|null}
  */
-function createHTMLView(card, options) {
-    return createHTMLViewBase(card, options);
+function createHtmlView(card, options) {
+    return createHtmlViewBase(card, options);
 }
 
 /**
  * Cards never hide HTML views with styling; entering markdown mode must delete
  * the rendered HTML entirely so only the editor remains. Returning to HTML
- * view recreates it from the note's markdown via `createHTMLView`.
+ * view recreates it from the note's markdown via `createHtmlView`.
  * @param {HTMLElement} card
  */
-function deleteHTMLView(card) {
-    deleteHTMLViewBase(card);
+function deleteHtmlView(card) {
+    deleteHtmlViewBase(card);
 }
 
 /**
@@ -1630,7 +1630,7 @@ async function finalizeCard(card, notesContainer, options = {}) {
     // If cleared, delete the card entirely
     if (trimmed.length === 0) {
         exitEditingMode();
-        collapseExpandedPreview(card);
+        collapseExpandedHtmlView(card);
         const id = card.getAttribute("data-note-id");
         clearPinnedNoteIfMatches(id);
         card.remove();
@@ -1649,7 +1649,7 @@ async function finalizeCard(card, notesContainer, options = {}) {
             editor.value = previousText;
         }
         exitEditingMode();
-        createHTMLView(card, {
+        createHtmlView(card, {
             markdownSource: baselineTransformed,
             badgesTarget
         });
@@ -1661,7 +1661,7 @@ async function finalizeCard(card, notesContainer, options = {}) {
     persistCardState(card, notesContainer, text, { bubbleToTop: shouldBubble });
 
     exitEditingMode();
-    createHTMLView(card, {
+    createHtmlView(card, {
         markdownSource: markdownWithAttachments,
         badgesTarget
     });
@@ -1677,7 +1677,7 @@ async function finalizeCard(card, notesContainer, options = {}) {
 
 function deleteCard(card, notesContainer) {
     if (!card) return;
-    collapseExpandedPreview(card);
+    collapseExpandedHtmlView(card);
     if (currentEditingCard === card) {
         currentEditingCard = null;
     }
@@ -1712,8 +1712,8 @@ function mergeDown(card, notesContainer) {
     const below = card.nextElementSibling;
     if (!(below instanceof HTMLElement)) return;
 
-    collapseExpandedPreview(card);
-    collapseExpandedPreview(below);
+    collapseExpandedHtmlView(card);
+    collapseExpandedHtmlView(below);
 
     const editorHere  = card.querySelector(".markdown-editor");
     const editorBelow = below.querySelector(".markdown-editor");
@@ -1729,9 +1729,9 @@ function mergeDown(card, notesContainer) {
     const hostBelow = editorHosts.get(below);
     hostBelow?.setValue(merged);
     registerInitialAttachments(editorBelow, mergedAttachments);
-    const mergedPreviewSource = transformMarkdownWithAttachments(merged, mergedAttachments);
-    createHTMLView(below, {
-        markdownSource: mergedPreviewSource,
+    const mergedHtmlViewSource = transformMarkdownWithAttachments(merged, mergedAttachments);
+    createHtmlView(below, {
+        markdownSource: mergedHtmlViewSource,
         badgesTarget: below.querySelector(".note-badges")
     });
 
@@ -1787,8 +1787,8 @@ function mergeUp(card, notesContainer) {
     if (!(above instanceof HTMLElement)) return;
     const editorAbove  = above.querySelector(".markdown-editor");
     const editorHere   = card.querySelector(".markdown-editor");
-    collapseExpandedPreview(card);
-    collapseExpandedPreview(above);
+    collapseExpandedHtmlView(card);
+    collapseExpandedHtmlView(above);
 
     const a = editorAbove.value.trim();
     const b = editorHere.value.trim();
@@ -1802,9 +1802,9 @@ function mergeUp(card, notesContainer) {
     const hostAbove = editorHosts.get(above);
     hostAbove?.setValue(merged);
     registerInitialAttachments(editorAbove, mergedAttachments);
-    const mergedPreviewSource = transformMarkdownWithAttachments(merged, mergedAttachments);
-    createHTMLView(above, {
-        markdownSource: mergedPreviewSource,
+    const mergedHtmlViewSource = transformMarkdownWithAttachments(merged, mergedAttachments);
+    createHtmlView(above, {
+        markdownSource: mergedHtmlViewSource,
         badgesTarget: above.querySelector(".note-badges")
     });
 

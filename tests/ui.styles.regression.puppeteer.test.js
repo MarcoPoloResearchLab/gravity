@@ -65,7 +65,7 @@ test("note cards preserve 2:1 grid proportion between content and controls", asy
             }
             const computed = window.getComputedStyle(card);
             const controls = card.querySelector(".card-controls");
-            const content = card.querySelector(".note-preview") || card.querySelector(".markdown-editor");
+            const content = card.querySelector(".note-html-view") || card.querySelector(".markdown-editor");
             if (!(controls instanceof HTMLElement) || !(content instanceof HTMLElement)) {
                 return null;
             }
@@ -193,7 +193,7 @@ test("content and control columns stay anchored to their grid tracks", async () 
             return {
                 content: [
                     collectColumn(card.querySelector(".note-badges"), ".note-badges"),
-                    collectColumn(card.querySelector(".note-preview"), ".note-preview"),
+                    collectColumn(card.querySelector(".note-html-view"), ".note-html-view"),
                     collectColumn(card.querySelector(".markdown-editor"), ".markdown-editor")
                 ],
                 controls: collectColumn(card.querySelector(".card-controls"), ".card-controls")

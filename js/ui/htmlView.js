@@ -1,8 +1,6 @@
 /* global DOMPurify, marked */
 // @ts-check
 
-import { DATA_ATTRIBUTE_RENDERED_HTML } from "../constants.js";
-
 const INLINE_CODE_PATTERN = /`[^`]+`/;
 const FENCED_CODE_PATTERN = /(^|\n)\s*(```+|~~~+)/;
 const SANITIZE_CONFIG = Object.freeze({
@@ -10,80 +8,75 @@ const SANITIZE_CONFIG = Object.freeze({
     ADD_ATTR: ["type", "checked", "disabled", "aria-checked", "class"]
 });
 
-const PREVIEW_RENDERED_HTML_DATASET_KEY = DATA_ATTRIBUTE_RENDERED_HTML;
 const EMPTY_MARKDOWN_FALLBACK = "";
 
 /**
- * Render Markdown to sanitized HTML inside the provided preview element.
- * The sanitized HTML is also stored on the element for future access by
- * rendered-mode views or clipboard utilities.
+ * Render Markdown to sanitized HTML inside the provided HTML view container.
+ * The sanitized markup is stored on the element for downstream consumers.
  *
- * @param {HTMLElement} previewElement Target element that receives the HTML.
+ * @param {HTMLElement} container Target element that receives the HTML.
  * @param {string} markdownSource Markdown text to render.
- * @returns {string} Sanitized HTML string applied to the preview element.
+ * @returns {string} Sanitized HTML string applied to the HTML view container.
  */
-export function renderSanitizedMarkdown(previewElement, markdownSource) {
-    if (!(previewElement instanceof HTMLElement)) {
+export function renderHtmlView(container, markdownSource) {
+    if (!(container instanceof HTMLElement)) {
         return EMPTY_MARKDOWN_FALLBACK;
     }
 
-    const safeMarkdownSource = typeof markdownSource === "string" ? markdownSource : EMPTY_MARKDOWN_FALLBACK;
-    const parsedHtml = typeof marked !== "undefined" && typeof marked.parse === "function"
-        ? marked.parse(safeMarkdownSource)
-        : safeMarkdownSource;
-    const sanitizedHtml = typeof DOMPurify !== "undefined" && typeof DOMPurify.sanitize === "function"
-        ? DOMPurify.sanitize(parsedHtml, SANITIZE_CONFIG)
-        : parsedHtml;
-
-    previewElement.innerHTML = sanitizedHtml;
-    previewElement.dataset[PREVIEW_RENDERED_HTML_DATASET_KEY] = sanitizedHtml;
-    decorateTaskCheckboxes(previewElement);
+    const sanitizedHtml = renderHtmlViewToString(markdownSource);
+    container.innerHTML = sanitizedHtml;
+    decorateTaskCheckboxes(container);
     return sanitizedHtml;
 }
 
 /**
- * Retrieve the most recently rendered sanitized HTML from a preview element.
- *
- * @param {HTMLElement} previewElement Target element to inspect.
- * @returns {string} Sanitized HTML string previously rendered for the element.
- */
-export function getSanitizedRenderedHtml(previewElement) {
-    if (!(previewElement instanceof HTMLElement)) {
-        return EMPTY_MARKDOWN_FALLBACK;
-    }
-
-    return previewElement.dataset?.[PREVIEW_RENDERED_HTML_DATASET_KEY] ?? EMPTY_MARKDOWN_FALLBACK;
-}
-
-/**
- * Retrieve the plain text representation of the most recently rendered preview.
- * @param {HTMLElement} previewElement
+ * Generate sanitized HTML for the provided markdown without mutating the DOM.
+ * @param {string} markdownSource
  * @returns {string}
  */
-export function getRenderedPlainText(previewElement) {
-    if (!(previewElement instanceof HTMLElement)) {
+export function renderHtmlViewToString(markdownSource) {
+    const safeMarkdownSource = typeof markdownSource === "string" ? markdownSource : EMPTY_MARKDOWN_FALLBACK;
+    const parsedHtml = typeof marked !== "undefined" && typeof marked.parse === "function"
+        ? marked.parse(safeMarkdownSource)
+        : safeMarkdownSource;
+    return typeof DOMPurify !== "undefined" && typeof DOMPurify.sanitize === "function"
+        ? DOMPurify.sanitize(parsedHtml, SANITIZE_CONFIG)
+        : parsedHtml;
+}
+
+/**
+ * Retrieve the most recently rendered sanitized HTML from an HTML view container.
+ *
+ * @param {HTMLElement} container Target element to inspect.
+ * @returns {string} Sanitized HTML string previously rendered for the element.
+ */
+/**
+ * Retrieve the plain text representation of the most recently rendered HTML view.
+ * @param {HTMLElement} container
+ * @returns {string}
+ */
+export function getHtmlViewPlainText(container) {
+    if (!(container instanceof HTMLElement)) {
         return EMPTY_MARKDOWN_FALLBACK;
     }
 
-    return previewElement.textContent ?? EMPTY_MARKDOWN_FALLBACK;
+    return container.textContent ?? EMPTY_MARKDOWN_FALLBACK;
 }
 
-export { PREVIEW_RENDERED_HTML_DATASET_KEY };
-
 /**
- * @typedef {{ hasCode: boolean }} MarkdownPreviewMeta
+ * @typedef {{ hasCode: boolean }} HtmlViewMeta
  */
 
 /**
  * For the grid view we now surface the full markdown, letting CSS clamp the
  * viewport. This helper simply normalises metadata used for badges.
  * @param {string} markdownSource
- * @returns {{ previewMarkdown: string, meta: MarkdownPreviewMeta }}
+ * @returns {{ htmlViewMarkdown: string, meta: HtmlViewMeta }}
  */
-export function buildDeterministicPreview(markdownSource) {
+export function buildHtmlViewSource(markdownSource) {
     const safeSource = typeof markdownSource === "string" ? markdownSource : EMPTY_MARKDOWN_FALLBACK;
     return {
-        previewMarkdown: safeSource,
+        htmlViewMarkdown: safeSource,
         meta: {
             hasCode: hasAnyCode(safeSource)
         }
@@ -97,11 +90,11 @@ function hasAnyCode(source) {
     return INLINE_CODE_PATTERN.test(source) || FENCED_CODE_PATTERN.test(source);
 }
 
-function decorateTaskCheckboxes(previewElement) {
-    if (!(previewElement instanceof HTMLElement)) {
+function decorateTaskCheckboxes(container) {
+    if (!(container instanceof HTMLElement)) {
         return;
     }
-    const listItems = previewElement.querySelectorAll("li");
+    const listItems = container.querySelectorAll("li");
     listItems.forEach((item) => {
         if (!(item instanceof HTMLElement)) {
             return;
@@ -125,7 +118,7 @@ function decorateTaskCheckboxes(previewElement) {
         item.textContent = "";
         item.appendChild(checkbox);
     });
-    const checkboxNodes = previewElement.querySelectorAll("input");
+    const checkboxNodes = container.querySelectorAll("input");
     let taskIndex = 0;
     checkboxNodes.forEach((node) => {
         if (!(node instanceof HTMLInputElement)) {

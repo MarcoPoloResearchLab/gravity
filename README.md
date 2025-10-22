@@ -1,12 +1,12 @@
 # Gravity Notes
 
 Gravity Notes is a simple, single-page web application for taking notes using Markdown. Notes surface in a stable grid
-with bounded previews, and every note edits inline—no modal overlays or context switches.
+with bounded HTML views, and every note edits inline—no modal overlays or context switches.
 
 ## Features
 
-* **Bounded previews:** Each card renders the first two paragraphs (or ~450 characters), the first image as a cover
-  thumbnail, and a six-line preview of the first code block. A fade mask signals truncated content.
+* **Bounded HTML views:** Each card renders the first two paragraphs (or ~450 characters), the first image as a cover
+  thumbnail, and a six-line HTML view of the first code block. A fade mask signals truncated content.
 * **Code badge:** Notes that contain code display a `code` pill so technical snippets stand out at a glance.
 * **Interactive checklists:** Click rendered task checkboxes to flip their state without entering edit mode; updates
   persist immediately and bubble that note to the top.
@@ -15,7 +15,7 @@ with bounded previews, and every note edits inline—no modal overlays or contex
   `Tab`/`Shift+Tab` indentation for lists and code blocks.
 * **Always-ready capture:** The sticky blank note beneath the header is the entry point for brand new ideas. Type there,
   click away, or hit `Cmd/Ctrl+Enter` to persist immediately.
-* **Scrollbar-free cards:** Preview panes clamp behind fade masks, and editing surfaces expand vertically so no inner scrollbars appear.
+* **Scrollbar-free cards:** HTML view panes clamp behind fade masks, and editing surfaces expand vertically so no inner scrollbars appear.
 * **Rich Markdown:** Markdown rendering is powered by [marked.js](https://marked.js.org/) with sanitisation from
   [DOMPurify](https://github.com/cure53/DOMPurify). Inline image pasting is preserved through attachment placeholders.
 * **Organise & share:** Notes retain the existing move, merge, copy, and classification behaviours, and you can import
@@ -37,9 +37,9 @@ with bounded previews, and every note edits inline—no modal overlays or contex
     * `Tab` / `Shift+Tab` indent or outdent the current selection, making lists and code blocks easy to adjust.
     * `Cmd/Ctrl+Shift+K` deletes the current line; `Cmd/Ctrl+Shift+D` duplicates it in place.
 4. **Edit existing notes:** Click anywhere in a rendered note to switch it into Markdown mode inline. The grid stays in
-   place while you edit, then re-renders the preview once you finish.
-5. **Skim with previews:** Each card shows a deterministic snippet and fade mask; notes with code call it out with a
-   `code` badge, and overflowing notes expose a rotated double-chevron toggle to expand the full preview in place.
+   place while you edit, then re-renders the HTML view once you finish.
+5. **Skim with HTML views:** Each card shows a deterministic snippet and fade mask; notes with code call it out with a
+   `code` badge, and overflowing notes expose a rotated double-chevron toggle to expand the full HTML view in place.
 6. **Organise:** Reorder, merge, or delete notes with the familiar toolbar actions along the right edge. The copy button
    still mirrors either Markdown or sanitized HTML (including attachment metadata) depending on the current mode.
 7. **Import / Export:** Click the profile avatar to open the stacked account menu—export and import live alongside the
@@ -74,16 +74,16 @@ with bounded previews, and every note edits inline—no modal overlays or contex
 * **Toast notifications:** Non-blocking feedback flows through `gravity:notify` instead of `alert()`, keeping the UI
   accessible and aligned with the design system.
 
-## Editor & Preview
+## Editor & HTML View
 
-- **Deterministic preview:** Cards render the full sanitized Markdown and clamp at roughly `18vh`. Shorter notes shrink
+- **Deterministic HTML view:** Cards render the full sanitized Markdown and clamp at roughly `18vh`. Shorter notes shrink
   to their natural height, while longer ones fade out gracefully.
-- **Fade mask:** A gradient mask is layered over the last few pixels of the preview to avoid sudden cut-offs while
+- **Fade mask:** A gradient mask is layered over the last few pixels of the HTML view to avoid sudden cut-offs while
   keeping the card height capped at roughly `18vh` when content overflows.
 - **Dynamic height:** Cards shrink to match their rendered content and grow only up to the shared `18vh` limit, so short
   notes stay compact while longer ones fade out.
 - **Expandable overflow:** Overflowing notes get a rotated `»` toggle at the bottom border—click to expand the rendered
-  preview downward, click again (or edit any note) to collapse.
+  HTML view downward, click again (or edit any note) to collapse.
 - **Code indicator:** A `code` badge appears when a note includes inline or fenced code so heavy snippets are easy to
   spot without opening the editor.
 - **Autosave:** Inline edits flush on blur or `Cmd/Ctrl+Enter` and surface a non-blocking “Saved” toast. Shortcuts still
@@ -195,10 +195,10 @@ Note: When serving the app from a custom domain, ensure the hostname detection r
   per-file overrides using `GRAVITY_TEST_TIMEOUT_OVERRIDES` /
   `GRAVITY_TEST_KILL_GRACE_OVERRIDES` (comma-separated `file=testTimeoutMs`). The harness already relaxes the budget
   for `persistence.backend`, `sync.endtoend`, and `fullstack.endtoend` suites so they can bootstrap the Go backend.
-- `npm test` drives the Node test suite, including Puppeteer coverage for the inline editor, bounded previews, and
+- `npm test` drives the Node test suite, including Puppeteer coverage for the inline editor, bounded HTML views, and
   the notification flow.
-- `tests/preview.bounded.puppeteer.test.js` now guards the viewport anchoring behaviour—expanding a rendered note keeps
-  the card in place even if the browser attempts to scroll to the bottom of the preview.
+- `tests/htmlView.bounded.puppeteer.test.js` now guards the viewport anchoring behaviour—expanding a rendered note keeps
+  the card in place even if the browser attempts to scroll to the bottom of the HTML view.
 - `tests/sync.endtoend.puppeteer.test.js` starts the Go backend harness and uses the real UI to create notes, asserting
   that operations propagate through `createSyncManager` to the server snapshot.
 - `tests/auth.sessionPersistence.puppeteer.test.js` signs in via the event bridge, reloads the page, and verifies the
@@ -206,7 +206,7 @@ Note: When serving the app from a custom domain, ensure the hostname detection r
 - Run `npx puppeteer browsers install chrome` once to download the Chromium binary that Puppeteer uses during the
   end-to-end tests.
 - GitHub Actions executes the same test command on every push and pull request, validating the inline editing workflow and
-  preview truncation remain stable.
+  HTML view truncation remain stable.
 
 ## Dependencies
 

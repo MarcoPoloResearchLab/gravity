@@ -232,7 +232,7 @@ html, body {
     color: #a9f3c6;
 }
 
-.note-preview {
+.note-html-view {
     position: relative;
     grid-column: 1;
     max-height: 18vh;
@@ -240,7 +240,7 @@ html, body {
     border-radius: 0.5rem;
 }
 
-.note-preview::after {
+.note-html-view::after {
     content: "";
     position: absolute;
     left: 0;
@@ -253,16 +253,16 @@ html, body {
     background: linear-gradient(180deg, rgba(11, 12, 15, 0) 0%, rgba(11, 12, 15, 0.85) 65%, rgba(11, 12, 15, 1) 100%);
 }
 
-.note-preview.note-preview--overflow::after {
+.note-html-view.note-html-view--overflow::after {
     opacity: 1;
 }
 
-.note-preview.note-preview--expanded {
+.note-html-view.note-html-view--expanded {
     max-height: none;
     overflow: visible;
 }
 
-.note-preview.note-preview--expanded::after {
+.note-html-view.note-html-view--expanded::after {
     opacity: 0;
 }
 
@@ -299,7 +299,7 @@ html, body {
     cursor: pointer;
 }
 
-/* PREVIEW (rendered markdown) */
+/* HTML VIEW (rendered markdown) */
 .markdown-content {
     white-space: normal;                /* let HTML decide layout */
     line-height: 1.35;
@@ -326,13 +326,13 @@ html, body {
     object-position: top left;
 }
 
-.note-preview .markdown-content {
+.note-html-view .markdown-content {
     padding-right: 0.25rem;
 }
 
 
 
-.note-preview--placeholder {
+.note-html-view--placeholder {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -340,7 +340,7 @@ html, body {
     color: rgba(191, 202, 245, 0.8);
     font-size: 0.95rem;
 }
-.note-preview--placeholder .note-preview__icon {
+.note-html-view--placeholder .note-html-view__icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -386,7 +386,7 @@ html, body {
     /* baseline so the caret shows up before first input */
     min-height: 2.2rem;
     line-height: 1.35;
-    padding: 0.25rem 0; /* match preview padding */
+    padding: 0.25rem 0; /* match html view padding */
 }
 
 .markdown-editor--enhanced {

@@ -11,7 +11,7 @@ and are grouped by the date the work landed on `master`.
 - Local test runs now capture Puppeteer screenshots per suite while skipping CI to aid debugging (GN-70).
 
 ### Fixed
-- Note preview expansion now persists until manually collapsed, and inline editing preserves the expanded height envelope (GN-71).
+- Note HTML view expansion now persists until manually collapsed, and inline editing preserves the expanded height envelope (GN-71).
 - Realtime multi-session regression suite now spies on `EventSource` connections to confirm SSE propagation and unblock GN-83.
 
 ### Documentation
@@ -44,12 +44,12 @@ and are grouped by the date the work landed on `master`.
 ## 2025-10-19
 
 ### Fixed
-- Repaired bounded preview behaviours to keep expanding cards anchored while preserving the grid mask (GN-45).
+- Repaired bounded HTML view behaviours to keep expanding cards anchored while preserving the grid mask (GN-45).
 - Eliminated flicker and cursor resets when clicking already-editing cards and pinned Shift+Enter behaviour to finalise
-  edits without reopening previews (GN-46, GN-47, GN-48, GN-49).
+  edits without reopening HTML views (GN-46, GN-47, GN-48, GN-49).
 
 ### Documentation
-- Captured architecture evolution and enforced scroll-free card previews in both docs and CSS.
+- Captured architecture evolution and enforced scroll-free card HTML views in both docs and CSS.
 - Clarified autonomous contribution flow for Codex agents.
 
 ### Testing
@@ -77,7 +77,7 @@ and are grouped by the date the work landed on `master`.
 
 ### Fixed
 - Prevented focus loops that trapped users in the top editor instead of opening selected cards.
-- Clamped pasted image dimensions for consistent previews.
+- Clamped pasted image dimensions for consistent HTML views.
 
 ## 2025-04-12
 
