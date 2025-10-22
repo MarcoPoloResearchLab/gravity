@@ -8,6 +8,7 @@ and are grouped by the date the work landed on `master`.
 ### Added
 - Change log scaffolding and historical backlog capture (GN-53).
 - Python utility `tools/ensure_plan_untracked.py` and a test guard to keep `PLAN.md` untracked (GN-54).
+- Local test runs now capture Puppeteer screenshots per suite while skipping CI to aid debugging (GN-70).
 
 ### Documentation
 - Folded `MIGRATION.md` into `ARCHITECTURE.md`, clarifying event contracts and module guidance (GN-54).

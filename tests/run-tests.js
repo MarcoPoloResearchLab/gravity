@@ -22,6 +22,7 @@ import {
 const CURRENT_FILE = fileURLToPath(import.meta.url);
 const TESTS_ROOT = path.dirname(CURRENT_FILE);
 const RUNTIME_OPTIONS_PATH = path.join(TESTS_ROOT, "runtime-options.json");
+const SCREENSHOT_ARTIFACT_ROOT = path.join(TESTS_ROOT, "artifacts", "screenshots");
 
 /**
  * @param {string} root
@@ -95,6 +96,13 @@ async function loadRuntimeOptions() {
 
 async function main() {
   const runtimeOptions = await loadRuntimeOptions();
+  const isCiEnvironment = process.env.CI === "true";
+  let screenshotRunRoot = null;
+  if (!isCiEnvironment) {
+    const timestamp = createArtifactTimestamp();
+    screenshotRunRoot = path.join(SCREENSHOT_ARTIFACT_ROOT, timestamp);
+    await fs.mkdir(screenshotRunRoot, { recursive: true });
+  }
 
   // Minimal mode = no browser/backend/launch guard. Used by harness self-tests.
   const minimal = Boolean(runtimeOptions.minimal);
@@ -216,6 +224,12 @@ async function main() {
       const absolute = path.join(TESTS_ROOT, relative);
       const effectiveTimeout = timeoutOverrides.get(relative) ?? timeoutMs;
       const effectiveKillGrace = killOverrides.get(relative) ?? killGraceMs;
+      let screenshotDirectoryForTest = null;
+      if (screenshotRunRoot) {
+        const sanitized = sanitizeArtifactComponent(relative);
+        screenshotDirectoryForTest = path.join(screenshotRunRoot, sanitized);
+        await fs.mkdir(screenshotDirectoryForTest, { recursive: true });
+      }
 
       console.log(sectionHeading(relative));
 
@@ -237,9 +251,7 @@ async function main() {
         args,
         timeoutMs: effectiveTimeout,
         killGraceMs: effectiveKillGrace,
-        env: runtimeContextPayload
-          ? { GRAVITY_RUNTIME_CONTEXT: runtimeContextPayload }
-          : undefined,
+        env: createChildEnv(runtimeContextPayload, screenshotDirectoryForTest, relative),
         onStdout: (chunk) => process.stdout.write(chunk),
         onStderr: (chunk) => process.stderr.write(chunk)
       });
@@ -313,6 +325,31 @@ async function main() {
     return harnessDefaults.exitCode.failure;
   }
   return harnessDefaults.exitCode.success;
+}
+
+function createArtifactTimestamp() {
+  return new Date().toISOString().replace(/[:]/g, "-").replace(/\..*$/u, "");
+}
+
+function sanitizeArtifactComponent(value) {
+  const normalized = value
+    .replace(/\\/g, "/")
+    .split("/")
+    .map((segment) => segment.replace(/[^a-zA-Z0-9_.-]+/g, "_").replace(/^_+$/u, "_"))
+    .join("__");
+  return normalized.length > 0 ? normalized : `${Date.now()}`;
+}
+
+function createChildEnv(runtimeContextPayload, screenshotDirectory, relativePath) {
+  const overrides = {};
+  if (typeof runtimeContextPayload === "string" && runtimeContextPayload.length > 0) {
+    overrides.GRAVITY_RUNTIME_CONTEXT = runtimeContextPayload;
+  }
+  if (typeof screenshotDirectory === "string" && screenshotDirectory.length > 0) {
+    overrides.GRAVITY_SCREENSHOT_DIR = screenshotDirectory;
+    overrides.GRAVITY_SCREENSHOT_TEST_FILE = relativePath;
+  }
+  return Object.keys(overrides).length > 0 ? overrides : undefined;
 }
 
 main()

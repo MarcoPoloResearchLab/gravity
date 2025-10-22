@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -8,16 +7,11 @@ import { PNG } from "pngjs";
 
 import { appConfig } from "../js/core/config.js";
 import { createSharedPage } from "./helpers/browserHarness.js";
+import { saveScreenshotArtifact } from "./helpers/screenshotArtifacts.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
-const SCREENSHOT_DIR = process.env.GN58_SCREENSHOT_DIR
-    ? path.resolve(PROJECT_ROOT, process.env.GN58_SCREENSHOT_DIR)
-    : null;
-if (SCREENSHOT_DIR && !fs.existsSync(SCREENSHOT_DIR)) {
-    fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
-}
 
 const GN58_NOTE_ID = "gn58-duplicate-preview";
 const UNIQUE_TASK_TEXT = "unique1";
@@ -52,13 +46,13 @@ test.describe("GN-58 duplicate markdown rendering", () => {
             await page.waitForSelector(cardSelector);
 
             const previewCleanBuffer = await captureCardScreenshot(page, cardSelector);
-            saveScreenshotIfRequested("preview-clean", previewCleanBuffer);
+            await saveScreenshotArtifact("preview-clean", previewCleanBuffer);
 
             await highlightRenderedCheckboxes(page, cardSelector);
             const previewHtmlSnapshot = await getPreviewHtml(page, cardSelector);
             const previewDebugBuffer = await captureCardScreenshot(page, cardSelector);
             const checkboxClusterCount = countHighlightedCheckboxClusters(previewDebugBuffer);
-            saveScreenshotIfRequested("preview-debug", previewDebugBuffer);
+            await saveScreenshotArtifact("preview-debug", previewDebugBuffer);
             assert.equal(
                 checkboxClusterCount,
                 2,
@@ -77,7 +71,7 @@ test.describe("GN-58 duplicate markdown rendering", () => {
             assert.equal(previewDuringEditCount, 0, "entering edit mode removes preview wrapper");
 
             const editCleanBuffer = await captureCardScreenshot(page, cardSelector);
-            saveScreenshotIfRequested("edit-clean", editCleanBuffer);
+            await saveScreenshotArtifact("edit-clean", editCleanBuffer);
 
             const editHighlightMetrics = await highlightEditorModeSurface(
                 page,
@@ -93,7 +87,7 @@ test.describe("GN-58 duplicate markdown rendering", () => {
                 `editing state highlights ${UNIQUE_TASK_TEXT} exactly once`
             );
             const editDebugBuffer = await captureCardScreenshot(page, cardSelector);
-            saveScreenshotIfRequested("edit-debug", editDebugBuffer);
+            await saveScreenshotArtifact("edit-debug", editDebugBuffer);
             const highlightedWordClusters = countColorClusters(editDebugBuffer, {
                 targetColor: EDIT_WORD_HIGHLIGHT_RGB,
                 tolerance: 18,
@@ -429,15 +423,6 @@ function isApproximateColorMatch(red, green, blue, target, tolerance) {
         && Math.abs(green - targetGreen) <= tolerance
         && Math.abs(blue - targetBlue) <= tolerance
     );
-}
-
-function saveScreenshotIfRequested(label, buffer) {
-    if (!SCREENSHOT_DIR || !Buffer.isBuffer(buffer)) {
-        return;
-    }
-    const safeLabel = label.replace(/[^a-z0-9-_]+/gi, "_");
-    const filePath = path.join(SCREENSHOT_DIR, `${safeLabel}.png`);
-    fs.writeFileSync(filePath, buffer);
 }
 
 async function enterEditMode(page, cardSelector) {
