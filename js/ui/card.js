@@ -47,9 +47,7 @@ import {
     queuePreviewFocus,
     restorePreviewFocus,
     setCardExpanded,
-    collapseExpandedPreview,
-    collapseActivePreview,
-    getExpandedPreviewCard
+    collapseExpandedPreview
 } from "./card/preview.js";
 export { updateActionButtons, insertCardRespectingPinned } from "./card/listControls.js";
 import {
@@ -940,6 +938,9 @@ export function renderCard(record, options = {}) {
         if (shouldIgnoreCardPointerTarget(target)) {
             return;
         }
+        if (typeof event.detail === "number" && event.detail > 1) {
+            return;
+        }
         if (card.classList.contains("editing-in-place")) {
             return;
         }
@@ -1328,14 +1329,18 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
         && initialViewportTop <= window.innerHeight;
 
     const wasEditing = card.classList.contains("editing-in-place");
+    const previewWrapper = card.querySelector(".note-preview");
+    const wasPreviewExpanded = previewWrapper instanceof HTMLElement && previewWrapper.classList.contains("note-preview--expanded");
+    const expandedCardHeight = wasPreviewExpanded ? card.getBoundingClientRect().height : null;
+    const expandedContentHeight = wasPreviewExpanded && previewWrapper instanceof HTMLElement
+        ? previewWrapper.getBoundingClientRect().height
+        : null;
+    if (wasPreviewExpanded) {
+        card.dataset.previewExpanded = "true";
+    }
     if (currentEditingCard && currentEditingCard !== card && !mergeInProgress) {
         finalizeCard(currentEditingCard, notesContainer, { bubbleToTop: bubblePreviousCardToTop });
     }
-    const activeExpanded = getExpandedPreviewCard();
-    if (activeExpanded && activeExpanded !== card) {
-        collapseExpandedPreview(activeExpanded);
-    }
-    collapseExpandedPreview(card);
     currentEditingCard = card;
 
     // Remove edit mode from others
@@ -1374,6 +1379,10 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
     deleteHTMLView(card);
     card.classList.add("editing-in-place");
     createMarkdownView(editorHost);
+    lockEditingSurfaceHeight(card, {
+        cardHeight: expandedCardHeight,
+        contentHeight: expandedContentHeight
+    });
 
     if (bubbleSelfToTop) {
         const firstCard = notesContainer.firstElementChild;
@@ -1415,6 +1424,86 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
     });
 
     updateActionButtons(notesContainer);
+}
+
+function lockEditingSurfaceHeight(card, measurements) {
+    if (!(card instanceof HTMLElement)) {
+        return;
+    }
+    const normalizedCardHeight = normalizeHeight(measurements?.cardHeight);
+    const normalizedContentHeight = normalizeHeight(measurements?.contentHeight);
+    if (normalizedCardHeight <= 0) {
+        releaseEditingSurfaceHeight(card);
+        return;
+    }
+    const resolvedContentHeight = normalizedContentHeight > 0 ? normalizedContentHeight : normalizedCardHeight;
+    card.style.setProperty("--note-expanded-edit-height", `${normalizedCardHeight}px`);
+    const apply = () => {
+        card.style.minHeight = `${normalizedCardHeight}px`;
+        card.style.maxHeight = `${normalizedCardHeight}px`;
+        const codeMirrorScroll = card.querySelector(".CodeMirror-scroll");
+        if (codeMirrorScroll instanceof HTMLElement) {
+            codeMirrorScroll.style.minHeight = `${resolvedContentHeight}px`;
+            codeMirrorScroll.style.maxHeight = `${resolvedContentHeight}px`;
+            codeMirrorScroll.style.height = `${resolvedContentHeight}px`;
+            codeMirrorScroll.style.overflowY = "auto";
+        }
+        const codeMirror = card.querySelector(".CodeMirror");
+        if (codeMirror instanceof HTMLElement) {
+            codeMirror.style.minHeight = `${resolvedContentHeight}px`;
+            codeMirror.style.maxHeight = `${resolvedContentHeight}px`;
+            codeMirror.style.height = `${resolvedContentHeight}px`;
+        }
+        const textarea = card.querySelector(".markdown-editor");
+        if (textarea instanceof HTMLElement) {
+            textarea.style.minHeight = `${resolvedContentHeight}px`;
+            textarea.style.maxHeight = `${resolvedContentHeight}px`;
+            textarea.style.height = `${resolvedContentHeight}px`;
+        }
+    };
+    apply();
+    if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => {
+            apply();
+            requestAnimationFrame(apply);
+        });
+    }
+}
+
+function normalizeHeight(value) {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+        return 0;
+    }
+    const rounded = Math.round(value);
+    return rounded > 0 ? rounded : 0;
+}
+
+function releaseEditingSurfaceHeight(card) {
+    if (!(card instanceof HTMLElement)) {
+        return;
+    }
+    card.style.removeProperty("--note-expanded-edit-height");
+    card.style.minHeight = "";
+    card.style.maxHeight = "";
+    const codeMirrorScroll = card.querySelector(".CodeMirror-scroll");
+    if (codeMirrorScroll instanceof HTMLElement) {
+        codeMirrorScroll.style.minHeight = "";
+        codeMirrorScroll.style.maxHeight = "";
+        codeMirrorScroll.style.height = "";
+        codeMirrorScroll.style.overflowY = "";
+    }
+    const codeMirror = card.querySelector(".CodeMirror");
+    if (codeMirror instanceof HTMLElement) {
+        codeMirror.style.minHeight = "";
+        codeMirror.style.maxHeight = "";
+        codeMirror.style.height = "";
+    }
+    const textarea = card.querySelector(".markdown-editor");
+    if (textarea instanceof HTMLElement) {
+        textarea.style.minHeight = "";
+        textarea.style.maxHeight = "";
+        textarea.style.height = "";
+    }
 }
 
 function stripMarkdownImages(markdown) {
@@ -1524,6 +1613,7 @@ async function finalizeCard(card, notesContainer, options = {}) {
 
     const exitEditingMode = () => {
         card.classList.remove("editing-in-place");
+        releaseEditingSurfaceHeight(card);
         if (currentEditingCard === card) {
             currentEditingCard = null;
         }

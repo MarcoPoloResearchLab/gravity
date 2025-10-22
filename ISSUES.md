@@ -7,17 +7,18 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 ### Improvements
 
   - [x] [GN-70] Use screenshots of the areas that tests run on when in local enviornment. CI environment is defined as an enviornment that has an env var CI=true. Do not save screenshots on CI. — Automated local screenshot artifacts per Puppeteer suite with new helper and harness test (branch improvement/GN-70-local-screenshots).
-  - [ ] [GN-71] The changes in the notes height must only happen in response to user actions. If a note was clicked on and extended in height, it stays so untill the user clicks and folds the note back in. The note does not auto resizes back when the user clicks or edits another note. Apply the logc to thwe UI: only users actions change the height of the cards containing notes:
+  - [x] [GN-71] The changes in the notes height must only happen in response to user actions. If a note was clicked on and extended in height, it stays so untill the user clicks and folds the note back in. The note does not auto resizes back when the user clicks or edits another note. Apply the logc to thwe UI: only users actions change the height of the cards containing notes: — per-card expansions persist across interactions, editing locks to the expanded footprint, and new Puppeteer coverage guards the flow (branch improvement/GN-71-note-height-behavior).
     1. Clicking expands the note
     2. Clicking an expanded note returns it to its original height
     3. Doubleclicking switches the note to editing -- markdown
     4. Shift-enter finishes editing
     5. Clicking outside of the note finishes editing 
-    6. The height of expanded rendered note and the height of markedown not must be identical. Work on the stling that gurantees that the size of markdown and rendered note are the same.
+    6. The height of expanded rendered note and the height of markedown note must be identical. Work on the stling that gurantees that the size of markdown and rendered note are the same.
   - [ ] [GN-72] Front-end redesign:
     1. The text area whether rendered as HTML or markdown must occupy 2/3 of the viewport. The control areas of the note must occupy another 1/3 of the viepoert on the right.
     2. The control area on the right is aligned to the top right corner of the card
     3. The indicator of a large not is aligned to the bottom of the text area of the card
+    4. The classified badges move from the text area to note control area
 
 ### BugFixes
 
@@ -92,6 +93,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
     4. open markdown editing and place the cursor on the identified position
   
   - [ ] [GN-82] Editing starts in a very different position than rendered HTML. Work on aligning these positions so that markdown and rendered HTML would be in the same places visually. Work on [ST-72] prior to this one.
+
+  - [ ] [GN-83] Logging in on two browsers (sessions) does not synchronize notes. As a logged in user I can create a new note on Browser A and never see it on browser B despite being logged in. Develop an SSE notification system for logged in users only which sends a notification when a new edit occurs, so that front end will synchronize the changes. Develop the system that allows automated note conflict resolution and works in a background thread on browser. The expectation is for two sessions/browsers to synchronize the moment there is a change introduced to the underlying data of the notes.
 
 ### Maintenance
 

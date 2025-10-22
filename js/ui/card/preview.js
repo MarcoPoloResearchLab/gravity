@@ -32,7 +32,6 @@ import { syncStoreFromDom } from "../storeSync.js";
 // (delete). No refresh helpers remain by design.
 const previewBubbleTimers = new WeakMap();
 const previewFocusTargets = new WeakMap();
-let expandedPreviewCard = /** @type {HTMLElement|null} */ (null);
 
 /**
  * Queue a preview bubble after a checkbox interaction.
@@ -112,6 +111,9 @@ export function createHTMLView(card, { markdownSource, badgesTarget }) {
         return null;
     }
     deleteHTMLView(card);
+    if (card.dataset.previewExpanded !== "true") {
+        card.dataset.previewExpanded = "false";
+    }
     const { previewMarkdown, meta } = buildDeterministicPreview(markdownSource);
     const wrapper = createElement("div", "note-preview");
     const content = createElement("div", "markdown-content");
@@ -124,6 +126,11 @@ export function createHTMLView(card, { markdownSource, badgesTarget }) {
         applyPreviewBadges(badgesTarget, meta);
     }
     scheduleOverflowCheck(wrapper, content, expandToggle);
+    if (card.dataset.previewExpanded === "true") {
+        requestAnimationFrame(() => {
+            setCardExpanded(card, true);
+        });
+    }
     return wrapper;
 }
 
@@ -138,9 +145,6 @@ export function deleteHTMLView(card) {
     const wrapper = card.querySelector(".note-preview");
     if (!(wrapper instanceof HTMLElement)) {
         return;
-    }
-    if (expandedPreviewCard === card) {
-        expandedPreviewCard = null;
     }
     wrapper.remove();
 }
@@ -234,23 +238,18 @@ export function setCardExpanded(card, shouldExpand) {
         : null;
 
     if (shouldExpand) {
-        if (expandedPreviewCard && expandedPreviewCard !== card) {
-            setCardExpanded(expandedPreviewCard, false);
-        }
         preview.classList.add("note-preview--expanded");
+        card.dataset.previewExpanded = "true";
         if (toggle) {
             toggle.setAttribute("aria-expanded", "true");
             toggle.setAttribute("aria-label", LABEL_COLLAPSE_NOTE);
         }
-        expandedPreviewCard = card;
     } else {
         preview.classList.remove("note-preview--expanded");
+        card.dataset.previewExpanded = "false";
         if (toggle) {
             toggle.setAttribute("aria-expanded", "false");
             toggle.setAttribute("aria-label", LABEL_EXPAND_NOTE);
-        }
-        if (expandedPreviewCard === card) {
-            expandedPreviewCard = null;
         }
     }
     scheduleOverflowCheck(preview, content, toggle);
@@ -281,24 +280,6 @@ export function collapseExpandedPreview(card) {
 }
 
 /**
- * Collapse whichever card is currently expanded.
- * @returns {void}
- */
-export function collapseActivePreview() {
-    if (expandedPreviewCard) {
-        setCardExpanded(expandedPreviewCard, false);
-    }
-}
-
-/**
- * Return the currently expanded card, if any.
- * @returns {HTMLElement|null}
- */
-export function getExpandedPreviewCard() {
-    return expandedPreviewCard;
-}
-
-/**
  * Measure overflow and toggle the expand affordance accordingly.
  * @param {HTMLElement|null} wrapper
  * @param {HTMLElement|null} content
@@ -312,6 +293,8 @@ export function scheduleOverflowCheck(wrapper, content, toggle) {
         }
         return;
     }
+
+    const card = /** @type {HTMLElement|null} */ (wrapper.closest(".markdown-block"));
 
     const applyMeasurements = () => {
         const isExpanded = wrapper.classList.contains("note-preview--expanded");
@@ -336,13 +319,23 @@ export function scheduleOverflowCheck(wrapper, content, toggle) {
 
         if (!overflowing && isExpanded) {
             wrapper.classList.remove("note-preview--expanded");
+            if (card instanceof HTMLElement) {
+                card.dataset.previewExpanded = "false";
+            }
             if (toggle instanceof HTMLElement) {
                 toggle.setAttribute("aria-expanded", "false");
                 toggle.setAttribute("aria-label", LABEL_EXPAND_NOTE);
                 toggle.style.display = "none";
             }
-            if (expandedPreviewCard === wrapper.closest(".markdown-block")) {
-                expandedPreviewCard = null;
+        }
+
+        if (overflowing && card instanceof HTMLElement && card.dataset.previewExpanded === "true") {
+            wrapper.classList.add("note-preview--expanded");
+            if (toggle instanceof HTMLElement) {
+                toggle.setAttribute("aria-expanded", "true");
+                toggle.setAttribute("aria-label", LABEL_COLLAPSE_NOTE);
+                toggle.style.display = "flex";
+                toggle.hidden = false;
             }
         }
     };
