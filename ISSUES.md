@@ -95,6 +95,37 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
   - [ ] [GN-84] ![Card control bug](<card control bug.png>) The card control is not aligned to the top right corner of the cards, as specified in GN-72, in it instead aligned to the bottom right corner of the card. Fix the bug abnd align card controls to the top right corner of the card
 
+  - [ ] [GN-85] Tests are failing on CI (GitHub Actions). Fix the tests
+  ```
+  go: downloading github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec
+  ?   	github.com/MarcoPoloResearchLab/gravity/backend/cmd/gravity-api	[no test files]
+  ok  	github.com/MarcoPoloResearchLab/gravity/backend/internal/auth	0.176s
+  ?   	github.com/MarcoPoloResearchLab/gravity/backend/internal/config	[no test files]
+  ?   	github.com/MarcoPoloResearchLab/gravity/backend/internal/database	[no test files]
+  ?   	github.com/MarcoPoloResearchLab/gravity/backend/internal/logging	[no test files]
+  ok  	github.com/MarcoPoloResearchLab/gravity/backend/internal/notes	0.009s
+  Warning: g] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+  - using env:	export GIN_MODE=release
+  - using code:	gin.SetMode(gin.ReleaseMode)
+
+  [GIN-debug] POST   /auth/google              --> github.com/MarcoPoloResearchLab/gravity/backend/internal/server.(*httpHandler).handleGoogleAuth-fm (3 handlers)
+  [GIN-debug] POST   /notes/sync               --> github.com/MarcoPoloResearchLab/gravity/backend/internal/server.(*httpHandler).handleNotesSync-fm (4 handlers)
+  [GIN-debug] GET    /notes                    --> github.com/MarcoPoloResearchLab/gravity/backend/internal/server.(*httpHandler).handleListNotes-fm (4 handlers)
+  [GIN-debug] GET    /notes/stream             --> github.com/MarcoPoloResearchLab/gravity/backend/internal/server.(*httpHandler).handleNotesStream-fm (4 handlers)
+  {"level":"info","msg":"realtime stream subscribed","user_id":"user-123"}
+
+  2025/10/22 18:15:14 /home/runner/work/gravity/gravity/backend/internal/notes/service.go:99 record not found
+  [0.115ms] [rows:0] SELECT * FROM `notes` WHERE user_id = "user-123" AND note_id = "note-1" LIMIT 1 
+  {"level":"info","msg":"broadcasting realtime note change","user_id":"user-123","note_ids":["note-1"]}
+  --- FAIL: TestRealtimeStreamEmitsNoteChangeEvents (25.03s)
+      realtime_integration_test.go:125: unexpected note identifiers: []string(nil)
+  FAIL
+  FAIL	github.com/MarcoPoloResearchLab/gravity/backend/internal/server	25.236s
+  ok  	github.com/MarcoPoloResearchLab/gravity/backend/tests/integration	0.011s
+  FAIL
+  Error: Process completed with exit code 1.
+  ```
+
 ### Maintenance
 
   - [ ] [GN-90] Code refactoring: we have screenshots, we have HTML view and we have markdown view. Use this rough taxonomy and revise the code to ensure there is no word previewe mentioned anywhere in the code. While working on it ensure that the code flow doesnt assume previewes, storing previews in the DOM, cahcing previewes or doing any operation wich pre-calculate views. Simplify the code where possible. Remember to rely on [marked.js](marked.js.md) and [MD](MDE.v2.19.0.md)
