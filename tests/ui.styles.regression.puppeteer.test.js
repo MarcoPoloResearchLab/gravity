@@ -233,6 +233,43 @@ test("content and control columns stay anchored to their grid tracks", async () 
     }
 });
 
+test("meta chips container stretches across the control column to preserve wrapping", async () => {
+    const { page, teardown, cardSelector } = await preparePage();
+    const chipsSelector = `${cardSelector} .card-controls .meta-chips`;
+    try {
+        await page.waitForSelector(chipsSelector);
+        const metrics = await page.evaluate((selector) => {
+            const chips = document.querySelector(`${selector} .card-controls .meta-chips`);
+            if (!(chips instanceof HTMLElement)) {
+                return null;
+            }
+            const controls = chips.closest(".card-controls");
+            if (!(controls instanceof HTMLElement)) {
+                return null;
+            }
+            const style = window.getComputedStyle(chips);
+            const chipsRect = chips.getBoundingClientRect();
+            const controlsRect = controls.getBoundingClientRect();
+            return {
+                alignSelf: style.getPropertyValue("align-self") || style.alignSelf || "",
+                justifyContent: style.getPropertyValue("justify-content") || style.justifyContent || "",
+                textAlign: style.getPropertyValue("text-align") || style.textAlign || "",
+                width: chipsRect.width,
+                controlsWidth: controlsRect.width
+            };
+        }, cardSelector);
+        assert.ok(metrics, "Expected meta chips layout metrics");
+        assert.equal(metrics.alignSelf.trim(), "stretch", "Meta chips should stretch within the control column");
+        assert.equal(metrics.justifyContent.trim(), "flex-end", "Meta chips should remain right aligned");
+        assert.equal(metrics.textAlign.trim(), "right", "Meta chips text should maintain right alignment");
+        assert.ok(metrics.width > 0 && metrics.controlsWidth > 0, "Meta chips and control column widths must be measurable");
+        const widthDelta = Math.abs(metrics.width - metrics.controlsWidth);
+        assert.ok(widthDelta <= 1, `Meta chips width should match control column width (delta ${widthDelta.toFixed(2)}px)`);
+    } finally {
+        await teardown();
+    }
+});
+
 async function preparePage() {
     const { page, teardown } = await createSharedPage();
     const records = [buildNoteRecord({ noteId: NOTE_ID, markdownText: NOTE_MARKDOWN })];
