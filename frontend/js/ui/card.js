@@ -866,6 +866,10 @@ export function renderCard(record, options = {}) {
         syncStoreFromDom(notesContainer);
         updateActionButtons(notesContainer);
         dispatchPinToggle(notesContainer, record.noteId, { storeUpdated: true, shouldRender: false });
+        finalizeCard(card, notesContainer, {
+            bubbleToTop: false,
+            suppressTopEditorAutofocus: true
+        });
     };
 
     const handleCopy = async () => {
@@ -965,7 +969,7 @@ export function renderCard(record, options = {}) {
             return;
         }
         const actionType = target.getAttribute("data-action");
-        if (actionType === "copy-note") {
+        if (actionType === "copy-note" || actionType === "toggle-pin") {
             return;
         }
         const scheduleFinalize = typeof queueMicrotask === "function"
