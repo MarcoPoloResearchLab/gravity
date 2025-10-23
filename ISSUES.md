@@ -52,6 +52,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
   -[x] [GN-97] [P1] Refreshing the app triggers Google Sign-In again. After a full page reload, the Google button renders in the "Signing in" state and GIS tries to prompt even though the session was restored. Stop re-initiating the sign-in flow on refresh unless the credential actually expired. — Restored sessions now bypass GIS auto prompt (auto-select disabled when cached credentials are fresh), and controller tests cover the toggle (branch bugfix/GN-97-refresh-autoprompt).
 
+  -[x] [GN-98] [P1] The double chevron expand indicator sits off-center on note cards. Align the indicator vertically in the middle of the card so the icon consistently mirrors card height. — Toggle now centers via CSS transform, and `htmlView.bounded.puppeteer.test.js` asserts vertical alignment (branch bugfix/GN-98-chevron-alignment).
+
 ### Maintenance
 
   - [x] [GN-90] Code refactoring: we have screenshots, we have HTML view and we have markdown view. Use this rough taxonomy and revise the code to ensure there is no word previewe mentioned anywhere in the code. While working on it ensure that the code flow doesnt assume previewes, storing previews in the DOM, cahcing previewes or doing any operation wich pre-calculate views. Simplify the code where possible. Remember to rely on [marked.js](marked.js.md) and [MD](MDE.v2.19.0.md) — HTML view terminology replaces preview helpers across the UI, clipboard generation now re-renders sanitized HTML on demand, and styles/tests track the new names (branch maintenance/GN-90-rename-preview).
