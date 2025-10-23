@@ -112,6 +112,12 @@ const GN81_TRAILING_NOTE_ID = "inline-double-click-trailing";
 const GN81_TRAILING_MARKDOWN = [
     "Trailing note confirms no other cards gain focus during the regression scenario."
 ].join("\n");
+const GN82_NOTE_ID = "inline-align-html-editor";
+const GN82_MARKDOWN = [
+    "Alignment baseline paragraph keeps htmlView padding measurable.",
+    "",
+    "Secondary paragraph verifies vertical spacing while comparing editor offsets."
+].join("\n");
 
 test.describe("Markdown inline editor", () => {
 
@@ -152,6 +158,139 @@ test.describe("Markdown inline editor", () => {
             assert.equal(topEditorState.value, "", "Top editor clears value after submit");
             assert.equal(topEditorState.line, 0, "Top editor caret returns to first line");
             assert.equal(topEditorState.ch, 0, "Top editor caret resets to first column");
+        } finally {
+            await teardown();
+        }
+    });
+
+    test("inline editor matches htmlView padding and origin", async () => {
+        const noteRecord = buildNoteRecord({
+            noteId: GN82_NOTE_ID,
+            markdownText: GN82_MARKDOWN
+        });
+        const { page, teardown } = await preparePage({
+            records: [noteRecord]
+        });
+        const cardSelector = `.markdown-block[data-note-id="${GN82_NOTE_ID}"]`;
+        const htmlSelector = `${cardSelector} .note-html-view .markdown-content`;
+
+        try {
+            await page.waitForSelector(htmlSelector, { timeout: 5000 });
+            const htmlMetrics = await page.$eval(htmlSelector, (element) => {
+                if (!(element instanceof HTMLElement)) {
+                    return null;
+                }
+                const rect = element.getBoundingClientRect();
+                const styles = window.getComputedStyle(element);
+                return {
+                    top: rect.top,
+                    left: rect.left,
+                    paddingTop: parseFloat(styles.paddingTop || "0"),
+                    paddingBottom: parseFloat(styles.paddingBottom || "0"),
+                    paddingLeft: parseFloat(styles.paddingLeft || "0"),
+                    paddingRight: parseFloat(styles.paddingRight || "0"),
+                    marginTop: parseFloat(styles.marginTop || "0"),
+                    marginBottom: parseFloat(styles.marginBottom || "0"),
+                    marginLeft: parseFloat(styles.marginLeft || "0"),
+                    marginRight: parseFloat(styles.marginRight || "0"),
+                    borderTopWidth: parseFloat(styles.borderTopWidth || "0"),
+                    borderBottomWidth: parseFloat(styles.borderBottomWidth || "0"),
+                    borderLeftWidth: parseFloat(styles.borderLeftWidth || "0"),
+                    borderRightWidth: parseFloat(styles.borderRightWidth || "0"),
+                    cardTop: (() => {
+                        const parent = element.closest(".markdown-block");
+                        if (!(parent instanceof HTMLElement)) {
+                            return 0;
+                        }
+                        return parent.getBoundingClientRect().top;
+                    })(),
+                    cardLeft: (() => {
+                        const parent = element.closest(".markdown-block");
+                        if (!(parent instanceof HTMLElement)) {
+                            return 0;
+                        }
+                        return parent.getBoundingClientRect().left;
+                    })()
+                };
+            });
+            assert.ok(htmlMetrics, "Expected to capture htmlView metrics prior to editing");
+
+            await page.click(`${cardSelector} .note-html-view`, { clickCount: 2 });
+            await page.waitForSelector(`${cardSelector}.editing-in-place`, { timeout: 5000 });
+            await page.waitForSelector(`${cardSelector} .CodeMirror-lines`, { timeout: 5000 });
+
+            const editorMetrics = await page.$eval(`${cardSelector} .CodeMirror-lines`, (element) => {
+                if (!(element instanceof HTMLElement)) {
+                    return null;
+                }
+                const rect = element.getBoundingClientRect();
+                const styles = window.getComputedStyle(element);
+                return {
+                    top: rect.top,
+                    left: rect.left,
+                    paddingTop: parseFloat(styles.paddingTop || "0"),
+                    paddingBottom: parseFloat(styles.paddingBottom || "0"),
+                    paddingLeft: parseFloat(styles.paddingLeft || "0"),
+                    paddingRight: parseFloat(styles.paddingRight || "0"),
+                    marginTop: parseFloat(styles.marginTop || "0"),
+                    marginBottom: parseFloat(styles.marginBottom || "0"),
+                    marginLeft: parseFloat(styles.marginLeft || "0"),
+                    marginRight: parseFloat(styles.marginRight || "0"),
+                    borderTopWidth: parseFloat(styles.borderTopWidth || "0"),
+                    borderBottomWidth: parseFloat(styles.borderBottomWidth || "0"),
+                    borderLeftWidth: parseFloat(styles.borderLeftWidth || "0"),
+                    borderRightWidth: parseFloat(styles.borderRightWidth || "0"),
+                    cardTop: (() => {
+                        const parent = element.closest(".markdown-block");
+                        if (!(parent instanceof HTMLElement)) {
+                            return 0;
+                        }
+                        return parent.getBoundingClientRect().top;
+                    })(),
+                    cardLeft: (() => {
+                        const parent = element.closest(".markdown-block");
+                        if (!(parent instanceof HTMLElement)) {
+                            return 0;
+                        }
+                        return parent.getBoundingClientRect().left;
+                    })()
+                };
+            });
+            assert.ok(editorMetrics, "Expected to capture CodeMirror metrics after entering edit mode");
+
+            const htmlOffset = {
+                top: htmlMetrics.top - htmlMetrics.cardTop,
+                left: htmlMetrics.left - htmlMetrics.cardLeft
+            };
+            const editorOffset = {
+                top: editorMetrics.top - editorMetrics.cardTop,
+                left: editorMetrics.left - editorMetrics.cardLeft
+            };
+
+            const originTolerancePx = 1.5;
+            assert.ok(
+                Math.abs(editorOffset.top - htmlOffset.top) <= originTolerancePx,
+                `Editor offset top (${editorOffset.top}) should align with htmlView offset top (${htmlOffset.top})`
+            );
+            assert.ok(
+                Math.abs(editorOffset.left - htmlOffset.left) <= originTolerancePx,
+                `Editor offset left (${editorOffset.left}) should align with htmlView offset left (${htmlOffset.left})`
+            );
+
+            const paddingTolerancePx = 0.11;
+            const paddingComparisons = [
+                ["top", editorMetrics.paddingTop, htmlMetrics.paddingTop],
+                ["bottom", editorMetrics.paddingBottom, htmlMetrics.paddingBottom],
+                ["left", editorMetrics.paddingLeft, htmlMetrics.paddingLeft],
+                ["right", editorMetrics.paddingRight, htmlMetrics.paddingRight]
+            ];
+
+            paddingComparisons.forEach(([label, editorValue, htmlValue]) => {
+                assert.ok(
+                    Math.abs(/** @type {number} */ (editorValue) - /** @type {number} */ (htmlValue)) <= paddingTolerancePx,
+                    `Editor padding ${label} (${editorValue}) should match htmlView padding ${label} (${htmlValue})`
+                );
+            });
         } finally {
             await teardown();
         }
@@ -676,9 +815,9 @@ test.describe("Markdown inline editor", () => {
         const cardSelector = `.markdown-block[data-note-id="${GN48_NOTE_ID}"]`;
 
         try {
-            await page.waitForSelector(cardSelector);
+            await page.waitForSelector(cardSelector, { timeout: 5000 });
             const textareaSelector = await enterCardEditMode(page, cardSelector);
-            await page.waitForSelector(textareaSelector);
+            await page.waitForSelector(textareaSelector, { timeout: 5000 });
             await page.waitForFunction((selector) => {
                 const card = document.querySelector(selector);
                 return card instanceof HTMLElement && card.classList.contains("editing-in-place");
@@ -945,6 +1084,10 @@ test.describe("Markdown inline editor", () => {
         }
     });
 
+});
+
+test.describe("Markdown inline editor — actions", () => {
+
     test("card actions finalize editing and remain clickable", async () => {
         const seededRecords = [buildNoteRecord({
             noteId: PIN_FIRST_NOTE_ID,
@@ -957,13 +1100,13 @@ test.describe("Markdown inline editor", () => {
         const pinButtonSelector = `${cardSelector} .actions [data-action="toggle-pin"]`;
 
         try {
-            await page.waitForSelector(cardSelector);
+            await page.waitForSelector(cardSelector, { timeout: 5000 });
             const textareaSelector = await enterCardEditMode(page, cardSelector);
-            await page.waitForSelector(textareaSelector);
+            await page.waitForSelector(textareaSelector, { timeout: 5000 });
             await page.waitForFunction((selector) => {
                 const card = document.querySelector(selector);
                 return card instanceof HTMLElement && card.classList.contains("editing-in-place");
-            }, {}, cardSelector);
+            }, { timeout: 5000 }, cardSelector);
 
             const baselineTelemetry = await beginCardEditingTelemetry(page, cardSelector);
             assert.ok(baselineTelemetry, "Expected to capture baseline telemetry while editing");
@@ -973,15 +1116,16 @@ test.describe("Markdown inline editor", () => {
             const initialPinnedState = await page.$eval(cardSelector, (card) => card.getAttribute("data-pinned"));
             assert.equal(initialPinnedState, "false", "Card should begin unpinned for the regression scenario");
 
-            await page.waitForSelector(pinButtonSelector);
+            await page.waitForSelector(pinButtonSelector, { timeout: 5000 });
             await page.click(pinButtonSelector);
 
-            await page.waitForFunction((selector) => {
+            const pinnedApplied = await page.waitForFunction((selector) => {
                 const card = document.querySelector(selector);
                 return card instanceof HTMLElement && card.dataset.pinned === "true";
-            }, {}, cardSelector);
+            }, { timeout: 5000 }, cardSelector).catch(() => null);
+            assert.ok(pinnedApplied, "Card should report pinned state after clicking the pin action");
 
-            await page.waitForFunction((selector) => {
+            const exitedEditMode = await page.waitForFunction((selector) => {
                 const card = document.querySelector(selector);
                 if (!(card instanceof HTMLElement)) {
                     return false;
@@ -989,7 +1133,8 @@ test.describe("Markdown inline editor", () => {
                 const host = Reflect.get(card, "__markdownHost");
                 const mode = host && typeof host.getMode === "function" ? host.getMode() : null;
                 return !card.classList.contains("editing-in-place") && mode === "view";
-            }, {}, cardSelector);
+            }, { timeout: 5000 }, cardSelector).catch(() => null);
+            assert.ok(exitedEditMode, "Card should exit edit mode after toggling pin");
 
             const finalTelemetry = await collectCardEditingTelemetry(page, cardSelector);
             assert.ok(finalTelemetry, "Expected to collect telemetry after clicking actions while editing");
@@ -1443,9 +1588,9 @@ test.describe("Markdown inline editor", () => {
 
 async function enterCardEditMode(page, cardSelector) {
     await page.click(`${cardSelector} .note-html-view`, { clickCount: 2 });
-    await page.waitForSelector(`${cardSelector}.editing-in-place`);
+    await page.waitForSelector(`${cardSelector}.editing-in-place`, { timeout: 5000 });
     const codeMirrorTextarea = `${cardSelector} .CodeMirror textarea`;
-    await page.waitForSelector(codeMirrorTextarea);
+    await page.waitForSelector(codeMirrorTextarea, { timeout: 5000 });
     return codeMirrorTextarea;
 }
 

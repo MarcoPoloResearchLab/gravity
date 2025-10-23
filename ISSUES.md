@@ -24,8 +24,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
     3. find the closest word or character to the clicking point in this card 
     4. open markdown editing and place the cursor on the identified position
   
-  - [ ] [GN-82] [P0] Editing starts in a very different position than rendered HTML. Work on aligning these positions so that markdown and rendered HTML would be in the same places visually. Work on [ST-72] prior to this one.
-    - I see editing starting in the top left corner with no padding but rendering starting in the top left corner with padding both at the top and and at the left. Style markdown rendering as close to HTML rendering in terms of size and pistion is possible. Check MDE documentation.
+  - [x] [GN-82] [P0] Editing starts in a very different position than rendered HTML. Work on aligning these positions so that markdown and rendered HTML would be in the same places visually. Work on [ST-72] prior to this one. — CodeMirror lines now mirror htmlView padding/top offsets, a new Puppeteer assertion guards the alignment, and pin toggles finalize after the click handler so editing exits cleanly.
 
   - [x] [GN-83] Unblocked realtime multi-session sync by instrumenting `EventSource` in the Puppeteer regression, confirming backend note-change broadcasts and Alpine snapshot hydration across tabs (branch bugfix/GN-83-realtime-sync-retry).
 
