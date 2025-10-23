@@ -140,8 +140,24 @@ async function main() {
   const runtimeOptions = await loadRuntimeOptions();
   const isCiEnvironment = process.env.CI === "true";
   const screenshotOptions = parseScreenshotOptions(runtimeOptions.screenshots);
+
+  const envDirectoryRaw = typeof process.env.GRAVITY_SCREENSHOT_DIR === "string" ? process.env.GRAVITY_SCREENSHOT_DIR.trim() : "";
+  const envPolicyRaw = typeof process.env.GRAVITY_SCREENSHOT_POLICY === "string" ? process.env.GRAVITY_SCREENSHOT_POLICY.trim() : "";
+  const envAllowlistRaw = typeof process.env.GRAVITY_SCREENSHOT_ALLOWLIST === "string" ? process.env.GRAVITY_SCREENSHOT_ALLOWLIST.trim() : "";
+  const envForceRaw = typeof process.env.GRAVITY_SCREENSHOT_FORCE === "string" ? process.env.GRAVITY_SCREENSHOT_FORCE.trim() : "";
+
+  const shouldProvisionScreenshotDir = !isCiEnvironment &&
+    envDirectoryRaw.length === 0 &&
+    (
+      (typeof screenshotOptions.policy === "string" && screenshotOptions.policy.length > 0) ||
+      screenshotOptions.allowlist.length > 0 ||
+      envPolicyRaw.length > 0 ||
+      envAllowlistRaw.length > 0 ||
+      envForceRaw.length > 0
+    );
+
   let screenshotRunRoot = null;
-  if (!isCiEnvironment) {
+  if (shouldProvisionScreenshotDir) {
     const timestamp = createArtifactTimestamp();
     screenshotRunRoot = path.join(SCREENSHOT_ARTIFACT_ROOT, timestamp);
     await fs.mkdir(screenshotRunRoot, { recursive: true });
