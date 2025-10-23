@@ -94,6 +94,24 @@ const GN48_MARKDOWN = [
     "",
     "Double clicking different parts of the card should merely reposition the caret."
 ].join("\n");
+const GN81_CURRENT_EDIT_NOTE_ID = "inline-double-click-current-edit";
+const GN81_CURRENT_EDIT_MARKDOWN = [
+    "# Current Edit Baseline",
+    "",
+    "This note begins in edit mode so that double-clicking another card must retarget the editor correctly."
+].join("\n");
+const GN81_TARGET_NOTE_ID = "inline-double-click-target";
+const GN81_TARGET_MARKDOWN = [
+    "Alpha baseline paragraph anchors the rendered layout before interacting with other cards.",
+    "",
+    "Bravo line contains the double click anchor substring ensures mapping fidelity for caret placement.",
+    "",
+    "Charlie passage preserves additional context so the card has multiple paragraphs."
+].join("\n");
+const GN81_TRAILING_NOTE_ID = "inline-double-click-trailing";
+const GN81_TRAILING_MARKDOWN = [
+    "Trailing note confirms no other cards gain focus during the regression scenario."
+].join("\n");
 
 test.describe("Markdown inline editor", () => {
 
@@ -695,6 +713,233 @@ test.describe("Markdown inline editor", () => {
                 const removed = postClickState.editClassTransitions.some((value) => value === false);
                 assert.equal(removed, false, "Editing class should never be removed during redundant click interactions");
             }
+        } finally {
+            await teardown();
+        }
+    });
+
+    test("double clicking a different card focuses that card at the clicked location", async () => {
+        const { page, teardown } = await preparePage({
+            records: [
+                buildNoteRecord({
+                    noteId: GN81_CURRENT_EDIT_NOTE_ID,
+                    markdownText: GN81_CURRENT_EDIT_MARKDOWN
+                }),
+                buildNoteRecord({
+                    noteId: GN81_TARGET_NOTE_ID,
+                    markdownText: GN81_TARGET_MARKDOWN
+                }),
+                buildNoteRecord({
+                    noteId: GN81_TRAILING_NOTE_ID,
+                    markdownText: GN81_TRAILING_MARKDOWN
+                })
+            ]
+        });
+        const currentEditSelector = `.markdown-block[data-note-id="${GN81_CURRENT_EDIT_NOTE_ID}"]`;
+        const targetSelector = `.markdown-block[data-note-id="${GN81_TARGET_NOTE_ID}"]`;
+
+        try {
+            await page.waitForSelector(targetSelector);
+            await enterCardEditMode(page, currentEditSelector);
+            await page.waitForSelector(`${currentEditSelector}.editing-in-place`);
+
+            const clickContext = await page.$eval(
+                targetSelector,
+                (card) => {
+                    if (!(card instanceof HTMLElement)) {
+                        return null;
+                    }
+                    const htmlView = card.querySelector(".note-html-view .markdown-content");
+                    if (!(htmlView instanceof HTMLElement)) {
+                        return null;
+                    }
+                    const htmlRect = htmlView.getBoundingClientRect();
+                    const cardRect = card.getBoundingClientRect();
+                    const doc = card.ownerDocument;
+
+                    const candidates = [];
+                    for (let offsetY = cardRect.top + 4; offsetY <= cardRect.bottom - 4; offsetY += 6) {
+                        for (let offsetX = cardRect.left + 4; offsetX <= cardRect.right - 4; offsetX += 6) {
+                            if (offsetX >= htmlRect.left && offsetX <= htmlRect.right
+                                && offsetY >= htmlRect.top && offsetY <= htmlRect.bottom) {
+                                continue;
+                            }
+                            const targetElement = doc.elementFromPoint(offsetX, offsetY);
+                            if (!(targetElement instanceof Element)) {
+                                continue;
+                            }
+                            if (!card.contains(targetElement)) {
+                                continue;
+                            }
+                            if (targetElement.closest(".actions") || targetElement.closest(".note-task-checkbox")) {
+                                continue;
+                            }
+                            let container = null;
+                            if (typeof doc.caretRangeFromPoint === "function") {
+                                const range = doc.caretRangeFromPoint(offsetX, offsetY);
+                                container = range ? range.startContainer : null;
+                            } else if (typeof doc.caretPositionFromPoint === "function") {
+                                const position = doc.caretPositionFromPoint(offsetX, offsetY);
+                                container = position ? position.offsetNode : null;
+                            }
+                            if (container && htmlView.contains(container)) {
+                                continue;
+                            }
+                            candidates.push({
+                                x: offsetX,
+                                y: offsetY,
+                                distance: Math.hypot(
+                                    offsetX - (htmlRect.left + htmlRect.width / 2),
+                                    offsetY - (htmlRect.top + htmlRect.height / 2)
+                                )
+                            });
+                        }
+                    }
+                    if (candidates.length === 0) {
+                        return null;
+                    }
+                    candidates.sort((a, b) => a.distance - b.distance);
+                    const clickX = candidates[0].x;
+                    const clickY = candidates[0].y;
+
+                    const walker = doc.createTreeWalker(htmlView, NodeFilter.SHOW_TEXT);
+                    let plainOffsetBase = 0;
+                    let bestSegment = null;
+                    while (walker.nextNode()) {
+                        const node = walker.currentNode;
+                        const text = typeof node.textContent === "string" ? node.textContent : "";
+                        const length = text.length;
+                        if (length === 0) {
+                            continue;
+                        }
+                        const range = doc.createRange();
+                        range.selectNodeContents(node);
+                        const rects = Array.from(range.getClientRects());
+                        range.detach?.();
+                        if (rects.length === 0) {
+                            plainOffsetBase += length;
+                            continue;
+                        }
+                        rects.forEach((rect, index) => {
+                            const verticalDistance = clickY < rect.top
+                                ? rect.top - clickY
+                                : clickY > rect.bottom
+                                    ? clickY - rect.bottom
+                                    : 0;
+                            const horizontalDistance = clickX < rect.left
+                                ? rect.left - clickX
+                                : clickX > rect.right
+                                    ? clickX - rect.right
+                                    : 0;
+                            const distance = Math.hypot(horizontalDistance, verticalDistance);
+                            const segmentStart = plainOffsetBase + Math.floor(length * (index / rects.length));
+                            const segmentEnd = plainOffsetBase + Math.floor(length * ((index + 1) / rects.length));
+                            if (!bestSegment || distance < bestSegment.distance) {
+                                bestSegment = {
+                                    distance,
+                                    plainStart: segmentStart,
+                                    plainEnd: Math.max(segmentEnd, segmentStart + 1)
+                                };
+                            }
+                        });
+                        plainOffsetBase += length;
+                    }
+                    const plainTextLength = htmlView.textContent ? htmlView.textContent.length : 0;
+                    if (!bestSegment) {
+                        bestSegment = {
+                            distance: 0,
+                            plainStart: 0,
+                            plainEnd: Math.max(plainTextLength, 1)
+                        };
+                    }
+                    const targetOffset = Math.floor((bestSegment.plainStart + bestSegment.plainEnd) / 2);
+                    return {
+                        clickX,
+                        clickY,
+                        targetOffset,
+                        plainStart: bestSegment.plainStart,
+                        plainEnd: bestSegment.plainEnd
+                    };
+                }
+            );
+            assert.ok(clickContext, "Expected to compute click context for the control column interaction");
+
+            const caretInside = await page.evaluate((selector, context) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return null;
+                }
+                const htmlView = card.querySelector(".note-html-view .markdown-content");
+                if (!(htmlView instanceof HTMLElement)) {
+                    return null;
+                }
+                const doc = card.ownerDocument;
+                if (typeof doc.caretRangeFromPoint === "function") {
+                    const range = doc.caretRangeFromPoint(context.clickX, context.clickY);
+                    return range ? htmlView.contains(range.startContainer) : false;
+                }
+                if (typeof doc.caretPositionFromPoint === "function") {
+                    const position = doc.caretPositionFromPoint(context.clickX, context.clickY);
+                    return position ? htmlView.contains(position.offsetNode) : false;
+                }
+                return null;
+            }, targetSelector, clickContext);
+            assert.equal(caretInside, false, "Click context should fall outside htmlView text nodes for the regression scenario");
+
+            await page.mouse.click(clickContext.clickX, clickContext.clickY, { clickCount: 2 });
+
+            await page.waitForSelector(`${targetSelector}.editing-in-place`);
+            await page.waitForSelector(`${targetSelector} .CodeMirror textarea`);
+            await page.waitForFunction((selector) => {
+                const card = document.querySelector(selector);
+                return card instanceof HTMLElement && !card.classList.contains("editing-in-place");
+            }, {}, currentEditSelector);
+
+            const editingNoteId = await page.evaluate(() => {
+                const editingCard = document.querySelector(".markdown-block.editing-in-place");
+                if (!(editingCard instanceof HTMLElement)) {
+                    return null;
+                }
+                return editingCard.getAttribute("data-note-id");
+            });
+            assert.equal(editingNoteId, GN81_TARGET_NOTE_ID, "Editing must switch to the card that was double clicked");
+
+            const caretState = await page.evaluate((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return null;
+                }
+                const codeMirror = card.querySelector(".CodeMirror");
+                const host = Reflect.get(card, "__markdownHost");
+                if (!codeMirror || !host) {
+                    return null;
+                }
+                const cm = /** @type {any} */ (codeMirror).CodeMirror;
+                if (!cm || typeof cm.getDoc !== "function") {
+                    return null;
+                }
+                const doc = cm.getDoc();
+                const cursor = doc.getCursor();
+                const index = doc.indexFromPos(cursor);
+                return {
+                    index,
+                    value: doc.getValue()
+                };
+            }, targetSelector);
+            assert.ok(caretState, "Caret state should be retrievable after double clicking a different card");
+            assert.equal(caretState.value, GN81_TARGET_MARKDOWN, "Editor value must match the target card markdown");
+
+            const caretPlainOffset = computePlainOffsetForMarkdown(caretState.value, caretState.index);
+            assert.ok(
+                caretPlainOffset >= clickContext.plainStart
+                && caretPlainOffset <= clickContext.plainEnd,
+                `Caret should land within the nearest htmlView segment (plainOffset=${caretPlainOffset}, segment=[${clickContext.plainStart}, ${clickContext.plainEnd}])`
+            );
+            const tolerance = Math.max(2, Math.floor((clickContext.plainEnd - clickContext.plainStart) / 2));
+            assert.ok(
+                Math.abs(caretPlainOffset - clickContext.targetOffset) <= tolerance,
+                `Caret should align with the control column click (expected≈${clickContext.targetOffset}, actual=${caretPlainOffset}, tolerance=${tolerance})`
+            );
         } finally {
             await teardown();
         }

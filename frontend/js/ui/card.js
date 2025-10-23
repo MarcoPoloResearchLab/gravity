@@ -180,7 +180,7 @@ function calculateHtmlViewTextOffset(htmlViewElement, event) {
     }
 
     if (!range || !htmlViewElement.contains(range.startContainer)) {
-        return null;
+        return findNearestHtmlViewPlainOffset(htmlViewElement, event.clientX, event.clientY);
     }
 
     const resolved = resolveRangeEndpoint(range.startContainer, range.startOffset, htmlViewElement);
@@ -196,6 +196,82 @@ function calculateHtmlViewTextOffset(htmlViewElement, event) {
         return null;
     }
     return preRange.toString().length;
+}
+
+/**
+ * Locate the nearest plain-text offset within the rendered htmlView relative to the provided coordinates.
+ * @param {HTMLElement} root
+ * @param {number} clientX
+ * @param {number} clientY
+ * @returns {number|null}
+ */
+function findNearestHtmlViewPlainOffset(root, clientX, clientY) {
+    const doc = root.ownerDocument;
+    if (!doc) {
+        return null;
+    }
+
+    const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let plainOffsetBase = 0;
+    /** @type {{ distance: number, offset: number } | null} */
+    let bestCandidate = null;
+
+    while (walker.nextNode()) {
+        const node = walker.currentNode;
+        const textContent = typeof node.textContent === "string" ? node.textContent : "";
+        const segmentLength = textContent.length;
+        if (segmentLength === 0) {
+            continue;
+        }
+        const range = doc.createRange();
+        range.selectNodeContents(node);
+        const rects = Array.from(range.getClientRects());
+        range.detach?.();
+        if (rects.length === 0) {
+            plainOffsetBase += segmentLength;
+            continue;
+        }
+
+        rects.forEach((rect, index) => {
+            const rectStart = plainOffsetBase + Math.floor(segmentLength * (index / rects.length));
+            const rectEnd = plainOffsetBase + Math.floor(segmentLength * ((index + 1) / rects.length));
+            const segmentStart = Math.min(rectStart, rectEnd);
+            const segmentEnd = Math.max(rectStart, rectEnd, segmentStart + 1);
+
+            const horizontalDistance = clientX < rect.left
+                ? rect.left - clientX
+                : clientX > rect.right
+                    ? clientX - rect.right
+                    : 0;
+            const verticalDistance = clientY < rect.top
+                ? rect.top - clientY
+                : clientY > rect.bottom
+                    ? clientY - rect.bottom
+                    : 0;
+            const distance = Math.hypot(horizontalDistance, verticalDistance);
+
+            let projectedOffset = segmentStart;
+            if (rect.width > 0) {
+                const normalized = (clientX - rect.left) / rect.width;
+                const clamped = Math.min(Math.max(normalized, 0), 1);
+                projectedOffset = segmentStart + Math.floor(clamped * Math.max(segmentEnd - segmentStart - 1, 0));
+            }
+
+            if (!bestCandidate || distance < bestCandidate.distance) {
+                bestCandidate = {
+                    distance,
+                    offset: Math.max(segmentStart, Math.min(projectedOffset, segmentEnd))
+                };
+            }
+        });
+
+        plainOffsetBase += segmentLength;
+    }
+
+    if (!bestCandidate) {
+        return 0;
+    }
+    return Math.max(0, bestCandidate.offset);
 }
 
 /**
