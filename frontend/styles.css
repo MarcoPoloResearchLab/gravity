@@ -290,9 +290,9 @@ html, body {
 
 .note-expand-toggle {
     position: absolute;
-    right: 0.75rem;
+    left: 50%;
     bottom: 0.35rem;
-    transform: rotate(90deg);
+    transform: translateX(-50%) rotate(90deg);
     background: transparent;
     border: none;
     color: #d8e4ff;
@@ -314,7 +314,7 @@ html, body {
     color: #ffffff;
 }
 
-.note-expand-toggle[aria-expanded="true"] { transform: rotate(-90deg); }
+.note-expand-toggle[aria-expanded="true"] { transform: translateX(-50%) rotate(-90deg); }
 
 .note-task-checkbox {
     margin-right: 0.4rem;
