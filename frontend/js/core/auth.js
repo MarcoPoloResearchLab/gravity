@@ -81,7 +81,7 @@ export function createGoogleIdentityController(options) {
         identity.initialize({
             client_id: clientId,
             callback: handleCredentialResponse,
-            auto_select: true
+            auto_select: autoPrompt !== false
         });
     } catch (error) {
         logging.error(error);

@@ -62,6 +62,7 @@ test("createGoogleIdentityController initializes GSI and dispatches auth events"
     assert.ok(controller, "controller should be returned");
     assert.ok(initializeOptions, "initialize should be called");
     assert.equal(initializeOptions.client_id, appConfig.googleClientId);
+    assert.equal(initializeOptions.auto_select, false);
     assert.equal(renderCalls.length, 1);
     assert.equal(renderCalls[0].target, buttonElement);
 
@@ -85,6 +86,38 @@ test("createGoogleIdentityController initializes GSI and dispatches auth events"
 
     controller.dispose();
     assert.ok(promptCalled === false, "autoPrompt disabled should not prompt");
+});
+
+test("createGoogleIdentityController auto prompts when enabled", async () => {
+    let initializeOptions = null;
+    let promptCalled = false;
+
+    const googleStub = {
+        accounts: {
+            id: {
+                initialize(options) {
+                    initializeOptions = options;
+                },
+                renderButton() {},
+                prompt() {
+                    promptCalled = true;
+                },
+                disableAutoSelect() {}
+            }
+        }
+    };
+
+    const controller = createGoogleIdentityController({
+        clientId: appConfig.googleClientId,
+        google: googleStub,
+        autoPrompt: true
+    });
+
+    assert.ok(controller, "controller should be returned");
+    assert.ok(initializeOptions, "initialize should be called when autoPrompt enabled");
+    assert.equal(initializeOptions.auto_select, true);
+    await Promise.resolve();
+    assert.equal(promptCalled, true, "prompt should run when autoPrompt enabled");
 });
 
 function buildCredential(payload) {
