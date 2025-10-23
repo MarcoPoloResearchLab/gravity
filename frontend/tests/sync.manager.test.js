@@ -100,6 +100,7 @@ test.describe("SyncManager", () => {
 
         assert.equal(operationsHandled.length, 0, "operations should queue offline before sign-in");
 
+        const baseTimeMs = new Date("2023-11-14T21:00:00.000Z").getTime();
         const signInResult = await syncManager.handleSignIn({
             userId: "user-sync",
             credential: "stub-google-credential"
@@ -109,6 +110,11 @@ test.describe("SyncManager", () => {
         assert.equal(signInResult.queueFlushed, true, "queued operations should flush");
         assert.equal(signInResult.snapshotApplied, true, "snapshot should apply after flush");
         assert.equal(signInResult.accessToken, "backend-token", "result should expose backend token");
+        assert.equal(
+            signInResult.accessTokenExpiresAtMs,
+            baseTimeMs + 1800 * 1000,
+            "result should expose backend token expiry"
+        );
 
         assert.equal(operationsHandled.length >= 3, true, "exchange, sync, and snapshot should occur");
         assert.equal(operationsHandled[0].type, "exchange");
@@ -127,6 +133,7 @@ test.describe("SyncManager", () => {
         assert.equal(debugState.pendingOperations.length, 0);
         assert.equal(debugState.activeUserId, "user-sync");
         assert.equal(debugState.backendToken?.accessToken, "backend-token");
+        assert.equal(debugState.backendToken?.expiresAtMs, baseTimeMs + 1800 * 1000);
     });
 
     test("handleSignIn reports authentication failure when credential exchange fails", async () => {
@@ -144,6 +151,7 @@ test.describe("SyncManager", () => {
         assert.equal(result.queueFlushed, false);
         assert.equal(result.snapshotApplied, false);
         assert.equal(result.accessToken, null);
+        assert.equal(result.accessTokenExpiresAtMs, null);
 
         const debugState = syncManager.getDebugState();
         assert.equal(debugState.activeUserId, null);
@@ -170,6 +178,7 @@ test.describe("SyncManager", () => {
         const syncManager = createSyncManager({ backendClient });
         const signInResult = await syncManager.handleSignIn({ userId: "user-sync", credential: "credential" });
         assert.equal(signInResult.authenticated, true);
+        assert.equal(Number.isFinite(signInResult.accessTokenExpiresAtMs), true);
 
         const synchronizeResult = await syncManager.synchronize({ flushQueue: false });
         assert.equal(synchronizeResult.snapshotApplied, true, "snapshot should apply during forced sync");

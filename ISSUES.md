@@ -42,6 +42,14 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
   -[x] [GN-88] [P0] GN-84 was not fixed. Now the text is horizontally below the controls: ![card layout](<card layout bug.png>). Ensure that the card controls and text are independent of each other, and align both the text abnd card controls to the top. The text is aligned to the left,a nd the controls to the right (considering current styling, padding etc etc), so these are just the sense of direction — Cards now wrap badges and content inside a dedicated column so htmlView shares the first grid track with controls, the new regression guards alignment, and layout metrics stay stable even when htmlView expands.
 
+
+  -[x] [GN-89] [P0] There are thousands of logging messages on the backend in production:
+  gravity-api  | {"level":"warn","ts":1761205956.0570734,"caller":"server/router.go:432","msg":"token validation failed","error":"token has invalid claims: token is expired"}
+  gravity-api  | {"level":"warn","ts":1761205958.0639532,"caller":"server/router.go:432","msg":"token validation failed","error":"token has invalid claims: token is expired"}
+  gravity-api  | {"level":"warn","ts":1761205959.0739713,"caller":"server/router.go:432","msg":"token validation failed","error":"token has invalid claims: token is expired"}
+
+  We need to investigate and either fix the message or the underlying cause — SSE connections now disconnect before backend tokens expire, logging downgrades expired-token noise to info, and new frontend/backend regressions cover the guardrails (branch bugfix/GN-89-token-logging).
+
 ### Maintenance
 
   - [x] [GN-90] Code refactoring: we have screenshots, we have HTML view and we have markdown view. Use this rough taxonomy and revise the code to ensure there is no word previewe mentioned anywhere in the code. While working on it ensure that the code flow doesnt assume previewes, storing previews in the DOM, cahcing previewes or doing any operation wich pre-calculate views. Simplify the code where possible. Remember to rely on [marked.js](marked.js.md) and [MD](MDE.v2.19.0.md) — HTML view terminology replaces preview helpers across the UI, clipboard generation now re-renders sanitized HTML on demand, and styles/tests track the new names (branch maintenance/GN-90-rename-preview).

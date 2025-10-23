@@ -83,7 +83,7 @@ function gravityApp() {
         authPollHandle: /** @type {number|null} */ (null),
         guestExportButton: /** @type {HTMLButtonElement|null} */ (null),
         syncManager: /** @type {ReturnType<typeof createSyncManager>|null} */ (null),
-        realtimeSync: /** @type {{ connect(params: { baseUrl: string, accessToken: string }): void, disconnect(): void, dispose(): void }|null} */ (null),
+        realtimeSync: /** @type {{ connect(params: { baseUrl: string, accessToken: string, expiresAtMs?: number|null }): void, disconnect(): void, dispose(): void }|null} */ (null),
         syncIntervalHandle: /** @type {number|null} */ (null),
         lastRenderedSignature: /** @type {string|null} */ (null),
 
@@ -492,7 +492,13 @@ function gravityApp() {
                 try {
                     const result = syncManager && typeof syncManager.handleSignIn === "function"
                         ? await syncManager.handleSignIn({ userId: user.id, credential })
-                        : { authenticated: true, queueFlushed: false, snapshotApplied: false, accessToken: null };
+                        : {
+                            authenticated: true,
+                            queueFlushed: false,
+                            snapshotApplied: false,
+                            accessToken: null,
+                            accessTokenExpiresAtMs: null
+                        };
                     if (!result?.authenticated) {
                         applyGuestState();
                         this.authControls?.showError(ERROR_AUTHENTICATION_GENERIC);
@@ -501,9 +507,14 @@ function gravityApp() {
                     applySignedInState();
                     const accessToken = typeof result.accessToken === "string" ? result.accessToken : "";
                     if (accessToken) {
+                        const accessTokenExpiresAtMs = typeof result.accessTokenExpiresAtMs === "number"
+                            && Number.isFinite(result.accessTokenExpiresAtMs)
+                            ? result.accessTokenExpiresAtMs
+                            : null;
                         this.realtimeSync?.connect({
                             baseUrl: appConfig.backendBaseUrl,
-                            accessToken
+                            accessToken,
+                            expiresAtMs: accessTokenExpiresAtMs ?? undefined
                         });
                     } else {
                         this.realtimeSync?.disconnect();

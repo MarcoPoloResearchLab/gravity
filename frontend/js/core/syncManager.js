@@ -14,7 +14,7 @@ import { EVENT_SYNC_SNAPSHOT_APPLIED } from "../constants.js";
  */
 
 /**
- * @typedef {{ authenticated: boolean, queueFlushed: boolean, snapshotApplied: boolean, accessToken: string|null }} SignInResult
+ * @typedef {{ authenticated: boolean, queueFlushed: boolean, snapshotApplied: boolean, accessToken: string|null, accessTokenExpiresAtMs: number|null }} SignInResult
  */
 
 /**
@@ -128,7 +128,7 @@ export function createSyncManager(options = {}) {
          */
         async handleSignIn(params) {
             if (!params || !params.userId) {
-                return { authenticated: false, queueFlushed: false, snapshotApplied: false, accessToken: null };
+                return { authenticated: false, queueFlushed: false, snapshotApplied: false, accessToken: null, accessTokenExpiresAtMs: null };
             }
 
             const loadedMetadata = metadataStore.load(params.userId);
@@ -139,7 +139,7 @@ export function createSyncManager(options = {}) {
                 exchanged = await backendClient.exchangeGoogleCredential({ credential: params.credential });
             } catch (error) {
                 logging.error(error);
-                return { authenticated: false, queueFlushed: false, snapshotApplied: false, accessToken: null };
+                return { authenticated: false, queueFlushed: false, snapshotApplied: false, accessToken: null, accessTokenExpiresAtMs: null };
             }
 
             state.userId = params.userId;
@@ -163,7 +163,8 @@ export function createSyncManager(options = {}) {
                 authenticated: true,
                 queueFlushed,
                 snapshotApplied,
-                accessToken: state.backendToken ? state.backendToken.accessToken : null
+                accessToken: state.backendToken ? state.backendToken.accessToken : null,
+                accessTokenExpiresAtMs: state.backendToken ? state.backendToken.expiresAtMs : null
             };
         },
 
