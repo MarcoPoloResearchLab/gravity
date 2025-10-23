@@ -16,6 +16,7 @@ and are grouped by the date the work landed on `master`.
 - EasyMDE surfaces now honor the same top/left padding as htmlView, and pin toggling finalizes cards after the click handler to keep editing state consistent (GN-82).
 - Double-clicking a card now focuses the clicked note and maps to the nearest htmlView text offset using a fallback sampler, backed by a Puppeteer regression (GN-81).
 - Snapshot events skip redundant list re-renders, eliminating periodic card flicker and covered by a DOM stability regression (GN-86).
+- Card content column now stays level with the controls column and regression coverage watches for misalignment (GN-88).
 - Card controls span the full grid height so action buttons anchor to the top-right corner, with a Puppeteer regression guard (GN-84).
 
 ### Documentation

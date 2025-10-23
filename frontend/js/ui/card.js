@@ -996,6 +996,9 @@ export function renderCard(record, options = {}) {
     editor.value  = record.markdownText;
     editor.setAttribute("rows", "1");
 
+    const contentColumn = createElement("div", "card-content");
+    contentColumn.append(badges, editor);
+
     const chips = createElement("div", "meta-chips");
     applyChips(chips, record.classification);
 
@@ -1005,7 +1008,7 @@ export function renderCard(record, options = {}) {
     registerInitialAttachments(editor, initialAttachments);
     enableClipboardImagePaste(editor);
 
-    card.append(badges, editor, controlsColumn);
+    card.append(contentColumn, controlsColumn);
 
     const initialMarkdownWithAttachments = transformMarkdownWithAttachments(record.markdownText, initialAttachments);
     // Always build the HTML view from scratch when the card enters view mode.
