@@ -10,26 +10,30 @@ import { logging } from "../utils/logging.js";
 const RECONNECT_BASE_DELAY_MS = 1000;
 const RECONNECT_MAX_DELAY_MS = 30000;
 const FALLBACK_POLL_INTERVAL_MS = 3000;
+const TOKEN_EXPIRY_SKEW_MS = 1000;
 
 /**
  * Create a realtime synchronization controller.
- * @param {{ syncManager: ReturnType<typeof import("./syncManager.js").createSyncManager> }} options
- * @returns {{ connect(params: { baseUrl: string, accessToken: string }): void, disconnect(): void, dispose(): void }}
+ * @param {{ syncManager: ReturnType<typeof import("./syncManager.js").createSyncManager>, now?: () => number }} options
+ * @returns {{ connect(params: { baseUrl: string, accessToken: string, expiresAtMs?: number|null }): void, disconnect(): void, dispose(): void }}
  */
 export function createRealtimeSyncController(options) {
     const syncManager = options?.syncManager ?? null;
     if (!syncManager || typeof syncManager.synchronize !== "function") {
         throw new Error("syncManager with synchronize capability required");
     }
+    const now = typeof options?.now === "function" ? options.now : () => Date.now();
 
     /** @type {EventSource|null} */
     let source = null;
-    /** @type {{ baseUrl: string, accessToken: string }|null */
+    /** @type {{ baseUrl: string, accessToken: string, expiresAtMs: number|null }|null} */
     let activeConfig = null;
     /** @type {number|null} */
     let reconnectTimer = null;
     /** @type {number|null} */
     let pollTimer = null;
+    /** @type {number|null} */
+    let expiryTimer = null;
     let reconnectDelayMs = RECONNECT_BASE_DELAY_MS;
 
     function connect(params) {
@@ -38,14 +42,26 @@ export function createRealtimeSyncController(options) {
         if (!baseUrl || !accessToken) {
             return;
         }
-        activeConfig = { baseUrl, accessToken };
+        const expiresAtMs = typeof params?.expiresAtMs === "number" && Number.isFinite(params.expiresAtMs)
+            ? params.expiresAtMs
+            : null;
+        if (hasTokenExpired(expiresAtMs)) {
+            disconnect();
+            return;
+        }
+        activeConfig = { baseUrl, accessToken, expiresAtMs };
         reconnectDelayMs = RECONNECT_BASE_DELAY_MS;
         schedulePolling();
+        scheduleExpiryGuard();
         establishConnection();
     }
 
     function establishConnection() {
         if (!activeConfig) {
+            return;
+        }
+        if (hasTokenExpired(activeConfig.expiresAtMs)) {
+            disconnect();
             return;
         }
         clearReconnectTimer();
@@ -74,6 +90,7 @@ export function createRealtimeSyncController(options) {
             logging.error("Realtime stream encountered an error");
             scheduleReconnect();
         };
+        scheduleExpiryGuard();
     }
 
     /**
@@ -101,6 +118,7 @@ export function createRealtimeSyncController(options) {
     function disconnect() {
         clearReconnectTimer();
         clearPollingTimer();
+        clearExpiryGuard();
         if (source) {
             source.close();
             source = null;
@@ -149,6 +167,40 @@ export function createRealtimeSyncController(options) {
             clearInterval(pollTimer);
             pollTimer = null;
         }
+    }
+
+    function scheduleExpiryGuard() {
+        clearExpiryGuard();
+        if (!activeConfig || typeof activeConfig.expiresAtMs !== "number") {
+            return;
+        }
+        const remaining = activeConfig.expiresAtMs - TOKEN_EXPIRY_SKEW_MS - now();
+        if (remaining <= 0) {
+            disconnect();
+            return;
+        }
+        expiryTimer = setTimeout(() => {
+            expiryTimer = null;
+            disconnect();
+        }, remaining);
+    }
+
+    function clearExpiryGuard() {
+        if (expiryTimer !== null) {
+            clearTimeout(expiryTimer);
+            expiryTimer = null;
+        }
+    }
+
+    /**
+     * @param {number|null} expiresAtMs
+     * @returns {boolean}
+     */
+    function hasTokenExpired(expiresAtMs) {
+        if (typeof expiresAtMs !== "number") {
+            return false;
+        }
+        return expiresAtMs - TOKEN_EXPIRY_SKEW_MS <= now();
     }
 
     return Object.freeze({

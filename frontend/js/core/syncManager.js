@@ -123,7 +123,7 @@ export function createSyncManager(options = {}) {
 
         /**
          * Handle sign-in by exchanging credentials, flushing queue, and reconciling a snapshot.
-         * @param {{ userId: string, credential: string, backendToken?: { accessToken: string, expiresAtMs: number } }} params
+         * @param {{ userId: string, credential?: string, backendToken?: { accessToken: string, expiresAtMs: number } }} params
          * @returns {Promise<SignInResult>}
          */
         async handleSignIn(params) {

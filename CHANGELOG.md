@@ -19,6 +19,7 @@ and are grouped by the date the work landed on `master`.
 - Card content column now stays level with the controls column and regression coverage watches for misalignment (GN-88).
 - Hard refreshes reuse cached backend tokens so sessions survive reloads, with a regression guarding the flow (GN-87).
 - Card controls span the full grid height so action buttons anchor to the top-right corner, with a Puppeteer regression guard (GN-84).
+- Backend token expiry no longer floods warn logs: realtime SSE disconnects before expiration, expired validations log at info level, and unit tests cover both guards (GN-89).
 
 ### Documentation
 - Folded `MIGRATION.md` into `ARCHITECTURE.md`, clarifying event contracts and module guidance (GN-54).

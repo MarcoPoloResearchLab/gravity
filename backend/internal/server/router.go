@@ -15,6 +15,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/sse"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"go.uber.org/zap"
 )
 
@@ -429,7 +430,11 @@ func (h *httpHandler) authorizeRequest(c *gin.Context) {
 	}
 	subject, err := h.tokens.ValidateToken(token)
 	if err != nil {
-		h.logger.Warn("token validation failed", zap.Error(err))
+		if errors.Is(err, jwt.ErrTokenExpired) {
+			h.logger.Info("token validation failed", zap.Error(err))
+		} else {
+			h.logger.Warn("token validation failed", zap.Error(err))
+		}
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
