@@ -8,7 +8,7 @@ on:
       - "frontend/**/*.js"
       - "frontend/**/*.html"
       - "frontend/**/*.css"
-      - ".github/workflows/deploy-pages.yml"
+      - ".github/workflows/frontend-deploy.yml"
   workflow_dispatch:
 
 permissions:
