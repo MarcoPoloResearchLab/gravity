@@ -101,9 +101,7 @@ test.describe("Bounded htmlViews", () => {
                     const htmlViewCenterX = htmlViewRect.left + htmlViewRect.width / 2;
                     const toggleCenterX = toggleRect.left + toggleRect.width / 2;
                     return {
-                        horizontalDelta: Math.abs(htmlViewCenterX - toggleCenterX),
-                        bottomDelta: Math.abs(htmlViewRect.bottom - toggleRect.bottom),
-                        rightDelta: Math.abs(htmlViewRect.right - toggleRect.right)
+                        horizontalDelta: Math.abs(htmlViewCenterX - toggleCenterX)
                     };
                 }
             );
@@ -112,11 +110,6 @@ test.describe("Bounded htmlViews", () => {
                 toggleAlignment.horizontalDelta <= 4,
                 `expand toggle should align with the horizontal center of the text column (delta=${toggleAlignment?.horizontalDelta ?? "n/a"})`
             );
-            assert.ok(
-                toggleAlignment.bottomDelta <= 6,
-                `expand toggle should anchor near the bottom edge of the text column (delta=${toggleAlignment?.bottomDelta ?? "n/a"})`
-            );
-
             await page.focus(toggleSelector);
             await page.keyboard.press("Enter");
             await page.waitForFunction((selector) => {

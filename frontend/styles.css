@@ -298,10 +298,10 @@ html, body {
     color: #d8e4ff;
     cursor: pointer;
     width: 1.8rem;
-    height: 1rem;
-    font-size: 0.95rem;
+    height: 1.8rem;
+    font-size: 1.05rem;
     line-height: 1;
-    padding: 0;
+    padding: 0.15rem 0;
     display: flex;
     align-items: center;
     justify-content: center;
