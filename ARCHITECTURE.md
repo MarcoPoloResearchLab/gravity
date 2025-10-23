@@ -44,6 +44,8 @@ Network boundaries (`js/core/backendClient.js`, `js/core/classifier.js`) remain 
 - EasyMDE (2.19.0) powers inline Markdown editing with cursor positioning lifted from rendered HTML views.
 - Markdown rendering leverages marked.js alongside DOMPurify; detecting code blocks surfaces a `code` badge on cards.
 - Cards clamp HTML views without inner scrollbars, and expanding a note keeps the grid anchored in place.
+- `createHtmlView` rebuilds the rendered HTML whenever a card enters view mode (initial render, mode toggle back from edit, or after transformations such as checkbox toggles and merges) so the DOM always reflects the latest markdown+attachment payload.
+- `deleteHtmlView` runs before a card switches to markdown edit mode so the textarea/EasyMDE surface stays as the only visible state; exiting edit mode immediately calls `createHtmlView` with the current markdown.
 
 **Storage, Configuration, and Auth**
 

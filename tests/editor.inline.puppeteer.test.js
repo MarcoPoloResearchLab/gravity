@@ -179,7 +179,7 @@ test.describe("Markdown inline editor", () => {
                 if (!(container instanceof HTMLElement)) {
                     return null;
                 }
-                const htmlView = container.querySelector(".editor-htmlView-side, .editor-preview-side");
+                const htmlView = container.querySelector(".editor-preview-side");
                 if (!(htmlView instanceof HTMLElement)) {
                     return null;
                 }
