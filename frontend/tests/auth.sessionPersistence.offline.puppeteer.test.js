@@ -85,6 +85,60 @@ if (!puppeteerAvailable) {
             }
         });
 
+        test("retains session when backend exchange fails but cached token remains valid", async () => {
+            const browser = await connectSharedBrowser();
+            const context = await browser.createBrowserContext();
+            /** @type {import('puppeteer').Page|null} */
+            let page = null;
+            const requestLog = [];
+            try {
+                page = await prepareFrontendPage(context, PAGE_URL, {
+                    backendBaseUrl: STUB_BACKEND_BASE_URL,
+                    beforeNavigate: async (targetPage) => {
+                        await setupBackendStubs(targetPage, STUB_BACKEND_BASE_URL, requestLog);
+                    }
+                });
+                await waitForAppReady(page);
+
+                const userId = "cached-token-user";
+                const credential = composeTestCredential({
+                    userId,
+                    email: "cached-token@example.com",
+                    name: "Cached Token",
+                    expiresInSeconds: 10 * 60
+                });
+
+                await dispatchSignIn(page, credential, userId);
+                await waitForSyncManagerUser(page, userId);
+
+                const initialAuthCalls = requestLog.filter((entry) => entry === "auth/google").length;
+                assert.equal(initialAuthCalls, 1, "initial sign-in should exchange credential once");
+
+                await page.evaluate(() => {
+                    window.__gravityAuthExchangeOverride = () => ({
+                        status: 500,
+                        body: { error: "exchange failed" }
+                    });
+                });
+
+                await page.reload({ waitUntil: "domcontentloaded" });
+                await waitForAppReady(page);
+                await waitForSyncManagerUser(page, userId);
+
+                const persistedState = await page.evaluate(() => window.localStorage.getItem("gravityAuthState"));
+                assert.ok(persistedState, "auth state should remain persisted when backend exchange fails");
+
+                const authCallsAfter = requestLog.filter((entry) => entry === "auth/google").length;
+                assert.equal(authCallsAfter, initialAuthCalls, "cached backend token should prevent additional credential exchanges");
+            } finally {
+                if (page) {
+                    await page.close().catch(() => {});
+                }
+                await context.close().catch(() => {});
+                browser.disconnect();
+            }
+        });
+
         test("clears expired persisted credential before hydration", async () => {
             const browser = await connectSharedBrowser();
             const context = await browser.createBrowserContext();
@@ -212,13 +266,26 @@ async function setupBackendStubs(page, backendBaseUrl, requestLog = []) {
 
     await page.evaluateOnNewDocument((baseUrl) => {
         const handlers = {
-            "/auth/google": () => ({
-                status: 200,
-                body: {
-                    access_token: "offline-access-token",
-                    expires_in: 10 * 60
+            "/auth/google": () => {
+                const overrideFn = window.__gravityAuthExchangeOverride;
+                if (typeof overrideFn === "function") {
+                    try {
+                        const override = overrideFn();
+                        if (override && typeof override.status === "number") {
+                            return override;
+                        }
+                    } catch {
+                        // ignore override errors and fall back to default response
+                    }
                 }
-            }),
+                return {
+                    status: 200,
+                    body: {
+                        access_token: "offline-access-token",
+                        expires_in: 10 * 60
+                    }
+                };
+            },
             "/notes": () => ({
                 status: 200,
                 body: { notes: [] }
