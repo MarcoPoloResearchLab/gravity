@@ -30,6 +30,7 @@ and are grouped by the date the work landed on `master`.
 
 ### Changed
 - Moved the static site, npm tooling, and browser tests under `frontend/` while adjusting Docker and docs to reference the new layout (GN-92).
+- Frontend deploy workflow renamed to `frontend-deploy.yml` for naming parity (GN-96).
 
 ### Documentation
 - Folded `MIGRATION.md` into `ARCHITECTURE.md`, clarifying event contracts, module guidance, and third-party reading expectations (GN-54).
