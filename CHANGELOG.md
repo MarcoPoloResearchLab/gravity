@@ -30,6 +30,7 @@ and are grouped by the date the work landed on `master`.
 
 ### Changed
 - Moved the static site, npm tooling, and browser tests under `frontend/` while adjusting Docker and docs to reference the new layout (GN-92).
+- Frontend deploy workflow renamed to `frontend-deploy.yml` for naming parity (GN-96).
 - Backend CI now runs Go tests on every PR/push to `master`, while Docker images build only after merge (GN-94).
 - Frontend CI workflow renamed to `frontend-tests.yml` for naming parity with backend suites (GN-95).
 
