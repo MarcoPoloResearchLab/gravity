@@ -50,7 +50,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
   We need to investigate and either fix the message or the underlying cause — SSE connections now disconnect before backend tokens expire, logging downgrades expired-token noise to info, and new frontend/backend regressions cover the guardrails (branch bugfix/GN-89-token-logging).
 
-  -[ ] [GN-97] [P1] Refreshing the app triggers Google Sign-In again. After a full page reload, the Google button renders in the "Signing in" state and GIS tries to prompt even though the session was restored. Stop re-initiating the sign-in flow on refresh unless the credential actually expired.
+  -[x] [GN-97] [P1] Refreshing the app triggers Google Sign-In again. After a full page reload, the Google button renders in the "Signing in" state and GIS tries to prompt even though the session was restored. Stop re-initiating the sign-in flow on refresh unless the credential actually expired. — Restored sessions now bypass GIS auto prompt (auto-select disabled when cached credentials are fresh), and controller tests cover the toggle (branch bugfix/GN-97-refresh-autoprompt).
 
 ### Maintenance
 
