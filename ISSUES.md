@@ -38,6 +38,9 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
   - [x] [GN-86] [P0] The cards are flickering every second or so, which makes it disgusting. Investigate and find the source of flickering and remove it. Nothing must move on the screen without a user action triggering it. — Card rendering now short-circuits identical snapshots via a content signature, and a Puppeteer regression fails if snapshot events churn the DOM without data changes.
 
+  -[ ] [GN-87] [P1] Page refresh loggs off the user
+
+  -[ ] [GN-88] [P0] GN-84 was not fixed. Now the text is horizontally below the controls: ![card layout](<card layout bug.png>). Ensure that the card controls and text are independent of each other, and align both the text abnd card controls to the top. The text is aligned to the left,a nd the controls to the right (considering current styling, padding etc etc), so these are just the sense of direction
 
 ### Maintenance
 
