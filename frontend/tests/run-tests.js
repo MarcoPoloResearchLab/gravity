@@ -181,7 +181,8 @@ async function main() {
     const defaultTimeoutEntries = [
       ["fullstack.endtoend.puppeteer.test.js", 60000],
       ["persistence.backend.puppeteer.test.js", 45000],
-      ["sync.endtoend.puppeteer.test.js", 45000]
+      ["sync.endtoend.puppeteer.test.js", 45000],
+      ["editor.inline.puppeteer.test.js", 40000]
     ];
     for (const [file, value] of defaultTimeoutEntries) {
       if (!timeoutOverrides.has(file)) timeoutOverrides.set(file, value);
@@ -189,7 +190,8 @@ async function main() {
     const defaultKillEntries = [
       ["fullstack.endtoend.puppeteer.test.js", 10000],
       ["persistence.backend.puppeteer.test.js", 8000],
-      ["sync.endtoend.puppeteer.test.js", 8000]
+      ["sync.endtoend.puppeteer.test.js", 8000],
+      ["editor.inline.puppeteer.test.js", 6000]
     ];
     for (const [file, value] of defaultKillEntries) {
       if (!killOverrides.has(file)) killOverrides.set(file, value);
@@ -279,7 +281,7 @@ async function main() {
       const args = [];
       if (!raw) {
         // Run with Node test runner
-        args.push("--test", absolute, `--test-timeout=${Math.max(effectiveTimeout - 1000, 1000)}`);
+        args.push("--test", absolute, `--test-timeout=${Math.max(effectiveTimeout, 1000)}`);
         if (!minimal) {
           args.unshift("--import", guardSpecifier);
         }
