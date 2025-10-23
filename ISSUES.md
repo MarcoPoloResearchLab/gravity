@@ -18,7 +18,40 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
 ### BugFixes
 
-  - [ ] [GN-80] [P2] There are various issues logged by JS Console when working from localhost. The errors are from a browser console when everything is served through http. Analyze each, develop a plan to address it. I am unsure what configuration changes are required.
+  - [ ] [GN-81] [P1] Double-clicking opens a wrong note. Adjust the code to 
+    1. identify the card that was clicked on 
+    2. identify the position in the rendered card that the click as made 
+    3. find the closest word or character to the clicking point in this card 
+    4. open markdown editing and place the cursor on the identified position
+  
+  - [ ] [GN-82] [P0] Editing starts in a very different position than rendered HTML. Work on aligning these positions so that markdown and rendered HTML would be in the same places visually. Work on [ST-72] prior to this one.
+    - I see editing starting in the top left corner with no padding but rendering starting in the top left corner with padding both at the top and and at the left. Style markdown rendering as close to HTML rendering in terms of size and pistion is possible. Check MDE documentation.
+
+  - [x] [GN-83] Unblocked realtime multi-session sync by instrumenting `EventSource` in the Puppeteer regression, confirming backend note-change broadcasts and Alpine snapshot hydration across tabs (branch bugfix/GN-83-realtime-sync-retry).
+
+  - [ ] [GN-84] [P0] ![Card control bug](<card control bug.png>) The card control is not aligned to the top right corner of the cards, as specified in GN-72, in it instead aligned to the bottom right corner of the card. Fix the bug abnd align card controls to the top right corner of the card
+
+  - [x] [GN-85] Tests are failing on CI (GitHub Actions). Fix the tests — SSE dispatcher now prioritizes note-change payloads ahead of heartbeats and the realtime integration test awaits note-change events explicitly (branch bugfix/GN-85-ci-tests).
+
+  - [ ] [GN-86] [P0] The cards are flickering every second or so, which makes it disgusting. Investigate and find the source of flickering and remove it. Nothing must move on the screen without a user action triggering it.
+
+
+### Maintenance
+
+  - [x] [GN-90] Code refactoring: we have screenshots, we have HTML view and we have markdown view. Use this rough taxonomy and revise the code to ensure there is no word previewe mentioned anywhere in the code. While working on it ensure that the code flow doesnt assume previewes, storing previews in the DOM, cahcing previewes or doing any operation wich pre-calculate views. Simplify the code where possible. Remember to rely on [marked.js](marked.js.md) and [MD](MDE.v2.19.0.md) — HTML view terminology replaces preview helpers across the UI, clipboard generation now re-renders sanitized HTML on demand, and styles/tests track the new names (branch maintenance/GN-90-rename-preview).
+
+  - [x] [GN-91] Document the current code flow when each card calls createHTMLView when it's loaded into view and deleteHTMLView when it's unloaded from the view or is getting edited. My understanding may be incorrect -- document the correct flow details in @ARCHITECTURE.md to ensure we have an easy guidance on cards rendering in both HTML and Markdown modes. — Added HTML view lifecycle notes to `ARCHITECTURE.md`, covering creation on render/mode changes and teardown on edit entry (branch maintenance/GN-91-document-html-view-flow).
+
+  - [x] [GN-92] Restructure the repository so that the /frontend and the /backend are two separate top level folders. Consider changes to GitHub Pages through `gh` utility to continue serving front-end from the github after the change of the front-end index.html path — Frontend assets now live under `frontend/`, Docker configs point to the new directory, and README documents the GitHub Pages adjustment (branch maintenance/GN-92-restructure-repo).
+
+  - [x] [GN-93] I need to deploy the front end from the frontend folder on Github pages
+
+### Planning (do not work on these, not ready)
+
+- [ ] [GN-55] The current llm-proxy URL is wrong -- there is no such path as https://llm-proxy.mprlab.com/v1/gravity/
+  classify. There is only https://llm-proxy.mprlab.com/, and we need to be sending a system prompt to it to get classification. I have copied llm-proxy codebase under the tools folder. Prepare a system prompt for classification of the notes and send it to llm-proxy service. 
+
+- [ ] [GN-80] [P2] There are various issues logged by JS Console when working from localhost. The errors are from a browser console when everything is served through http. Analyze each, develop a plan to address it. I am unsure what configuration changes are required.
     ```
     Feature Policy: Skipping unsupported feature name “identity-credentials-get”. client:270:37
     Feature Policy: Skipping unsupported feature name “identity-credentials-get”. client:271:336
@@ -82,36 +115,3 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
     ```
     The google console screenshot is here ![Google console](<Google Console.png>)
-
-  - [ ] [GN-81] [P1] Double-clicking opens a wrong note. Adjust the code to 
-    1. identify the card that was clicked on 
-    2. identify the position in the rendered card that the click as made 
-    3. find the closest word or character to the clicking point in this card 
-    4. open markdown editing and place the cursor on the identified position
-  
-  - [ ] [GN-82] [P0] Editing starts in a very different position than rendered HTML. Work on aligning these positions so that markdown and rendered HTML would be in the same places visually. Work on [ST-72] prior to this one.
-    - I see editing starting in the top left corner with no padding but rendering starting in the top left corner with padding both at the top and and at the left. Style markdown rendering as close to HTML rendering in terms of size and pistion is possible. Check MDE documentation.
-
-  - [x] [GN-83] Unblocked realtime multi-session sync by instrumenting `EventSource` in the Puppeteer regression, confirming backend note-change broadcasts and Alpine snapshot hydration across tabs (branch bugfix/GN-83-realtime-sync-retry).
-
-  - [ ] [GN-84] [P0] ![Card control bug](<card control bug.png>) The card control is not aligned to the top right corner of the cards, as specified in GN-72, in it instead aligned to the bottom right corner of the card. Fix the bug abnd align card controls to the top right corner of the card
-
-  - [x] [GN-85] Tests are failing on CI (GitHub Actions). Fix the tests — SSE dispatcher now prioritizes note-change payloads ahead of heartbeats and the realtime integration test awaits note-change events explicitly (branch bugfix/GN-85-ci-tests).
-
-  - [ ] [GN-86] [P0] The cards are flickering every second or so, which makes it disgusting. Investigate and find the source of flickering and remove it. Nothing must move on the screen without a user action triggering it.
-
-
-### Maintenance
-
-  - [x] [GN-90] Code refactoring: we have screenshots, we have HTML view and we have markdown view. Use this rough taxonomy and revise the code to ensure there is no word previewe mentioned anywhere in the code. While working on it ensure that the code flow doesnt assume previewes, storing previews in the DOM, cahcing previewes or doing any operation wich pre-calculate views. Simplify the code where possible. Remember to rely on [marked.js](marked.js.md) and [MD](MDE.v2.19.0.md) — HTML view terminology replaces preview helpers across the UI, clipboard generation now re-renders sanitized HTML on demand, and styles/tests track the new names (branch maintenance/GN-90-rename-preview).
-
-  - [x] [GN-91] Document the current code flow when each card calls createHTMLView when it's loaded into view and deleteHTMLView when it's unloaded from the view or is getting edited. My understanding may be incorrect -- document the correct flow details in @ARCHITECTURE.md to ensure we have an easy guidance on cards rendering in both HTML and Markdown modes. — Added HTML view lifecycle notes to `ARCHITECTURE.md`, covering creation on render/mode changes and teardown on edit entry (branch maintenance/GN-91-document-html-view-flow).
-
-  - [x] [GN-92] Restructure the repository so that the /frontend and the /backend are two separate top level folders. Consider changes to GitHub Pages through `gh` utility to continue serving front-end from the github after the change of the front-end index.html path — Frontend assets now live under `frontend/`, Docker configs point to the new directory, and README documents the GitHub Pages adjustment (branch maintenance/GN-92-restructure-repo).
-
-  - [x] [GN-93] I need to deploy the front end from the frontend folder on Github pages
-
-### Planning (do not work on these, not ready)
-
-- [ ] [GN-55] The current llm-proxy URL is wrong -- there is no such path as https://llm-proxy.mprlab.com/v1/gravity/
-  classify. There is only https://llm-proxy.mprlab.com/, and we need to be sending a system prompt to it to get classification. I have copied llm-proxy codebase under the tools folder. Prepare a system prompt for classification of the notes and send it to llm-proxy service. 
