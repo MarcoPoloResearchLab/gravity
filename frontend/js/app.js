@@ -81,6 +81,7 @@ function gravityApp() {
         authController: /** @type {{ signOut(reason?: string): void, dispose(): void }|null} */ (null),
         authUser: /** @type {{ id: string, email: string|null, name: string|null, pictureUrl: string|null }|null} */ (null),
         authPollHandle: /** @type {number|null} */ (null),
+        cachedPersistedAuthState: /** @type {ReturnType<typeof loadAuthState>|null|undefined} */ (undefined),
         guestExportButton: /** @type {HTMLButtonElement|null} */ (null),
         syncManager: /** @type {ReturnType<typeof createSyncManager>|null} */ (null),
         realtimeSync: /** @type {{ connect(params: { baseUrl: string, accessToken: string, expiresAtMs?: number|null }): void, disconnect(): void, dispose(): void }|null} */ (null),
@@ -207,7 +208,9 @@ function gravityApp() {
          * @returns {boolean}
          */
         restoreAuthFromStorage() {
-            const persisted = loadAuthState();
+            const cachedState = this.cachedPersistedAuthState;
+            const persisted = typeof cachedState === "undefined" ? loadAuthState() : cachedState;
+            this.cachedPersistedAuthState = undefined;
             if (!persisted || !persisted.user || typeof persisted.user.id !== "string" || persisted.user.id.length === 0) {
                 if (persisted) {
                     clearAuthState();
@@ -269,13 +272,20 @@ function gravityApp() {
                 return;
             }
 
+            let persistedAuthState = this.cachedPersistedAuthState;
+            if (typeof persistedAuthState === "undefined") {
+                persistedAuthState = loadAuthState();
+            }
+            this.cachedPersistedAuthState = persistedAuthState ?? null;
+            const shouldAutoPrompt = !(persistedAuthState && isAuthStateFresh(persistedAuthState));
+
             const buttonHost = this.authControls?.getButtonHost() ?? null;
             this.authController = createGoogleIdentityController({
                 clientId: appConfig.googleClientId,
                 google,
                 buttonElement: buttonHost ?? undefined,
                 eventTarget: this.$el,
-                autoPrompt: true
+                autoPrompt: shouldAutoPrompt
             });
             this.stopGoogleIdentityPolling();
         },
@@ -336,6 +346,7 @@ function gravityApp() {
                 this.initializeNotes();
                 this.realtimeSync?.disconnect();
             }
+            this.cachedPersistedAuthState = undefined;
         },
 
         /**
@@ -579,6 +590,7 @@ function gravityApp() {
             this.setGuestExportVisibility(true);
             clearAuthState();
             this.realtimeSync?.disconnect();
+            this.cachedPersistedAuthState = undefined;
             if (typeof window !== "undefined" && this.syncIntervalHandle !== null) {
                 window.clearInterval(this.syncIntervalHandle);
                 this.syncIntervalHandle = null;
