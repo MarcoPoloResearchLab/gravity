@@ -20,7 +20,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
   - [ ] [GN-81] [P1] Double-clicking opens a wrong note. Adjust the code to 
     1. identify the card that was clicked on 
-    2. identify the position in the rendered card that the click as made 
+    2. identify the position in the rendered card that the click was made 
     3. find the closest word or character to the clicking point in this card 
     4. open markdown editing and place the cursor on the identified position
   
