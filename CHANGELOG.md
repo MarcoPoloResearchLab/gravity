@@ -17,6 +17,7 @@ and are grouped by the date the work landed on `master`.
 - Double-clicking a card now focuses the clicked note and maps to the nearest htmlView text offset using a fallback sampler, backed by a Puppeteer regression (GN-81).
 - Snapshot events skip redundant list re-renders, eliminating periodic card flicker and covered by a DOM stability regression (GN-86).
 - Card content column now stays level with the controls column and regression coverage watches for misalignment (GN-88).
+- Hard refreshes reuse cached backend tokens so sessions survive reloads, with a regression guarding the flow (GN-87).
 - Card controls span the full grid height so action buttons anchor to the top-right corner, with a Puppeteer regression guard (GN-84).
 - Backend token expiry no longer floods warn logs: realtime SSE disconnects before expiration, expired validations log at info level, and unit tests cover both guards (GN-89).
 
