@@ -18,9 +18,9 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
 ### BugFixes
 
-  - [ ] [GN-81] [P1] Double-clicking opens a wrong note. Adjust the code to 
+  - [x] [GN-81] [P1] Double-clicking opens a wrong note. Adjust the code to — Resolved by mapping double-click coordinates to the nearest htmlView text segment with a fallback sampler and adding Puppeteer regression coverage.
     1. identify the card that was clicked on 
-    2. identify the position in the rendered card that the click as made 
+    2. identify the position in the rendered card that the click was made 
     3. find the closest word or character to the clicking point in this card 
     4. open markdown editing and place the cursor on the identified position
   
