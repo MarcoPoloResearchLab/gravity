@@ -2,6 +2,7 @@
 // @ts-check
 
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -24,6 +25,7 @@ const TESTS_ROOT = path.dirname(CURRENT_FILE);
 const PROJECT_ROOT = path.join(TESTS_ROOT, "..");
 const RUNTIME_OPTIONS_PATH = path.join(TESTS_ROOT, "runtime-options.json");
 const SCREENSHOT_ARTIFACT_ROOT = path.join(TESTS_ROOT, "artifacts");
+const RUNTIME_MODULE_PREFIX = path.join(os.tmpdir(), "gravity-runtime-");
 
 /**
  * @param {string} root
@@ -123,10 +125,36 @@ function parseScreenshotOptions(rawOptions) {
 }
 
 /**
+ * @param {any} runtimeContext
+ */
+async function createRuntimeModule(runtimeContext) {
+  const tempDir = await fs.mkdtemp(RUNTIME_MODULE_PREFIX);
+  const modulePath = path.join(tempDir, "context.mjs");
+  const serialized = JSON.stringify(runtimeContext);
+  const moduleContents = `// auto-generated runtime context for Gravity tests
+const context = ${serialized};
+if (context && typeof context === "object" && context.screenshots && typeof context.screenshots === "object") {
+    Object.freeze(context.screenshots);
+}
+if (context && typeof context === "object" && context.environment && typeof context.environment === "object") {
+    Object.freeze(context.environment);
+}
+globalThis.__gravityRuntimeContext = Object.freeze(context);
+`;
+  await fs.writeFile(modulePath, moduleContents, "utf8");
+  return {
+    modulePath,
+    async dispose() {
+      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    }
+  };
+}
+
+/**
  * @param {string[]} argv
  * @returns {{
- *   screenshotPolicy?: string,
- *   screenshotAllowlist?: string[],
+   *   screenshotPolicy?: string,
+   *   screenshotAllowlist?: string[],
  *   screenshotDirectory?: string,
  *   screenshotForce?: boolean,
  *   passthroughArgs: string[]
@@ -319,8 +347,10 @@ async function main() {
 
   let sharedBrowserContext = null;
   let backendHandle = null;
+  const environmentCopy = Object.fromEntries(Object.entries(process.env));
   /** @type {any} */
-  let baseRuntimeContext = { ci: isCiEnvironment };
+  let baseRuntimeContext = { ci: isCiEnvironment, environment: environmentCopy };
+  publishRuntimeContext(baseRuntimeContext);
 
   const sectionHeading = (label) => `\n${cliColors.symbols.section} ${cliColors.bold(label)}`;
   const formatCount = (count, label, format) => {
@@ -335,8 +365,6 @@ async function main() {
   let passCount = 0;
   let failCount = 0;
   let timeoutCount = 0;
-
-  const previousRuntimeContextEnv = process.env.GRAVITY_RUNTIME_CONTEXT;
 
   try {
     if (!minimal && !raw) {
@@ -358,11 +386,11 @@ async function main() {
           wsEndpoint: sharedBrowserContext.wsEndpoint
         }
       };
+      publishRuntimeContext(baseRuntimeContext);
     }
     if (!baseRuntimeContext) {
       baseRuntimeContext = { ci: isCiEnvironment };
     }
-    process.env.GRAVITY_RUNTIME_CONTEXT = JSON.stringify(baseRuntimeContext);
 
     for (const relative of files) {
       const absolute = path.join(TESTS_ROOT, relative);
@@ -382,9 +410,6 @@ async function main() {
       if (!raw) {
         // Run with Node test runner
         args.push("--test", absolute, `--test-timeout=${Math.max(effectiveTimeout, 1000)}`);
-        if (!minimal) {
-          args.unshift("--import", guardSpecifier);
-        }
       } else {
         // Raw script execution (no test runner) — used to validate harness timeouts deterministically
         args.push(absolute);
@@ -401,50 +426,59 @@ async function main() {
         }
       };
 
-      const result = await runTestProcess({
-        command: process.execPath,
-        args,
-        timeoutMs: effectiveTimeout,
-        killGraceMs: effectiveKillGrace,
-        env: createChildEnv(JSON.stringify(runtimeContextForTest)),
-        onStdout: (chunk) => process.stdout.write(chunk),
-        onStderr: (chunk) => process.stderr.write(chunk)
-      });
+      const { modulePath: runtimeModulePath, dispose: disposeRuntimeModule } = await createRuntimeModule(runtimeContextForTest);
 
-      summary.push({
-        file: relative,
-        durationMs: result.durationMs,
-        timedOut: result.timedOut,
-        exitCode: result.exitCode,
-        signal: result.signal,
-        terminationReason: result.terminationReason
-      });
-      totalDurationMs += result.durationMs;
-
-      if (result.timedOut) {
-        hasFailure = true;
-        timeoutCount += 1;
-        const timeoutMessage = `${cliColors.symbols.timeout} ${cliColors.yellow(`Timed out after ${formatDuration(effectiveTimeout)}`)}`;
-        console.error(`  ${timeoutMessage}`);
-        continue;
-      }
-      if (result.exitCode !== 0) {
-        hasFailure = true;
-        failCount += 1;
-        const signalDetail = result.signal ? `signal=${result.signal}` : `exitCode=${result.exitCode}`;
-        console.error(`  ${cliColors.symbols.fail} ${cliColors.red(`Failed (${signalDetail})`)}`);
+      if (!raw) {
+        args.unshift("--import", runtimeModulePath);
+        if (!minimal) {
+          args.unshift("--import", guardSpecifier);
+        }
       } else {
-        passCount += 1;
-        const durationLabel = cliColors.dim(`(${formatDuration(result.durationMs)})`);
-        console.log(`  ${cliColors.symbols.pass} ${cliColors.green("Passed")} ${durationLabel}`);
+        args.unshift("--import", runtimeModulePath);
+      }
+
+      try {
+        const result = await runTestProcess({
+          command: process.execPath,
+          args,
+          timeoutMs: effectiveTimeout,
+          killGraceMs: effectiveKillGrace,
+          onStdout: (chunk) => process.stdout.write(chunk),
+          onStderr: (chunk) => process.stderr.write(chunk)
+        });
+
+        summary.push({
+          file: relative,
+          durationMs: result.durationMs,
+          timedOut: result.timedOut,
+          exitCode: result.exitCode,
+          signal: result.signal,
+          terminationReason: result.terminationReason
+        });
+        totalDurationMs += result.durationMs;
+
+        if (result.timedOut) {
+          hasFailure = true;
+          timeoutCount += 1;
+          const timeoutMessage = `${cliColors.symbols.timeout} ${cliColors.yellow(`Timed out after ${formatDuration(effectiveTimeout)}`)}`;
+          console.error(`  ${timeoutMessage}`);
+          continue;
+        }
+        if (result.exitCode !== 0) {
+          hasFailure = true;
+          failCount += 1;
+          const signalDetail = result.signal ? `signal=${result.signal}` : `exitCode=${result.exitCode}`;
+          console.error(`  ${cliColors.symbols.fail} ${cliColors.red(`Failed (${signalDetail})`)}`);
+        } else {
+          passCount += 1;
+          const durationLabel = cliColors.dim(`(${formatDuration(result.durationMs)})`);
+          console.log(`  ${cliColors.symbols.pass} ${cliColors.green("Passed")} ${durationLabel}`);
+        }
+      } finally {
+        await disposeRuntimeModule();
       }
     }
   } finally {
-    if (typeof previousRuntimeContextEnv === "string") {
-      process.env.GRAVITY_RUNTIME_CONTEXT = previousRuntimeContextEnv;
-    } else {
-      delete process.env.GRAVITY_RUNTIME_CONTEXT;
-    }
     if (backendHandle) await backendHandle.close().catch(() => {});
     if (sharedBrowserContext) await closeSharedBrowser().catch(() => {});
   }
@@ -502,16 +536,13 @@ function sanitizeArtifactComponent(value) {
   return normalized.length > 0 ? normalized : `${Date.now()}`;
 }
 
-function createChildEnv(runtimeContextPayload) {
-  if (typeof runtimeContextPayload === "string" && runtimeContextPayload.length > 0) {
-    return { GRAVITY_RUNTIME_CONTEXT: runtimeContextPayload };
-  }
-  return undefined;
-}
-
 function deriveShortTestName(relativePath) {
   const base = path.basename(relativePath).replace(/\.test\.js$/u, "");
   return sanitizeArtifactComponent(base);
+}
+
+function publishRuntimeContext(context) {
+  globalThis.__gravityRuntimeContext = context;
 }
 
 main()

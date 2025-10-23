@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
-import process from "node:process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
@@ -19,18 +18,6 @@ function escapeRegExp(value) {
 
 function stripAnsi(value) {
   return value.replace(/\u001B\[[0-9;]*m/g, "");
-}
-
-async function readContextSnapshot() {
-  return process.env.GRAVITY_RUNTIME_CONTEXT ?? null;
-}
-
-async function restoreContextSnapshot(snapshot) {
-  if (snapshot === null || snapshot === undefined) {
-    delete process.env.GRAVITY_RUNTIME_CONTEXT;
-    return;
-  }
-  process.env.GRAVITY_RUNTIME_CONTEXT = snapshot;
 }
 
 async function runHarnessWithOptions(options) {
@@ -83,7 +70,6 @@ async function cleanupFixtures() {
 
 test("run-tests harness reports summary for passing suites", async () => {
   await ensureFixtures();
-  const snapshot = await readContextSnapshot();
   try {
     const passingRelative = "harness/fixtures/passing.fixture.test.js";
     const result = await runHarnessWithOptions({
@@ -98,14 +84,12 @@ test("run-tests harness reports summary for passing suites", async () => {
     assert.match(plain, new RegExp(escapeRegExp(passingRelative), "u"));
     assert.doesNotMatch(plain, /\btimeout\b/i);
   } finally {
-    await restoreContextSnapshot(snapshot);
     await cleanupFixtures();
   }
 });
 
 test("run-tests harness surfaces timeouts in summary", async () => {
   await ensureFixtures();
-  const snapshot = await readContextSnapshot();
   try {
     const hangRelative = "harness/fixtures/timeout.fixture.hang.js";
     const result = await runHarnessWithOptions({
@@ -132,7 +116,6 @@ test("run-tests harness surfaces timeouts in summary", async () => {
       `unexpected terminationReason: ${String(result.terminationReason)}`
     );
   } finally {
-    await restoreContextSnapshot(snapshot);
     await cleanupFixtures();
   }
 });
