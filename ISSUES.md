@@ -28,7 +28,11 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
   - [x] [GN-83] Unblocked realtime multi-session sync by instrumenting `EventSource` in the Puppeteer regression, confirming backend note-change broadcasts and Alpine snapshot hydration across tabs (branch bugfix/GN-83-realtime-sync-retry).
 
-  - [ ] [GN-84] [P0] ![Card control bug](<card control bug.png>) The card control is not aligned to the top right corner of the cards, as specified in GN-72, in it instead aligned to the bottom right corner of the card. Fix the bug abnd align card controls to the top right corner of the card
+  - [ ] [GN-84] [P0] ![Card control bug](<card control bug.png>) The card control is not aligned to the top right corner of the cards, as specified in GN-72, in it instead aligned to the bottom right corner of the card. Fix the bug abnd align card controls to the top right corner of the card. 
+    - There is a card which takes all width of the viewport. 2/3 of that width is dedicated to the text of the note, which cab be rendered either as markdown or as HTML. 1/3 of the width of the card is dedicated to cards controls: pin, copy, move, merge etc etc etc
+    - Currently the card layout is broken: the text takes all the width (and the overflow indicator is weirdly placed closer to the right). 
+    - Currently the card layout is broken: the controls are underneath the text, with all the buttons aligned to the bottom right corner
+    - Acceptance criteria: the card is always horizontally split in two major areas: text (note) area and control area. The control areas has its elements aligned to the top right corner. The text area has overflow indicator centered by the width of the card.
 
   - [x] [GN-85] Tests are failing on CI (GitHub Actions). Fix the tests — SSE dispatcher now prioritizes note-change payloads ahead of heartbeats and the realtime integration test awaits note-change events explicitly (branch bugfix/GN-85-ci-tests).
 
