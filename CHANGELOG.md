@@ -35,7 +35,7 @@ and are grouped by the date the work landed on `master`.
 - Frontend deploy workflow renamed to `frontend-deploy.yml` for naming parity (GN-96).
 - Backend CI now runs Go tests on every PR/push to `master`, while Docker images build only after merge (GN-94).
 - Frontend CI workflow renamed to `frontend-tests.yml` for naming parity with backend suites (GN-95).
-- Puppeteer screenshot artifacts are opt-in via `GRAVITY_SCREENSHOT_POLICY` with allowlists and async context overrides, and README now documents the workflow (GN-101).
+- Puppeteer screenshot artifacts are now controlled via `--screenshots` harness flags with allowlists and async overrides, and README covers the workflow (GN-101).
 
 ### Documentation
 - Folded `MIGRATION.md` into `ARCHITECTURE.md`, clarifying event contracts, module guidance, and third-party reading expectations (GN-54).
