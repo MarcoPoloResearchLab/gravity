@@ -21,7 +21,7 @@ const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), 
 const PAGE_URL = `file://${path.join(REPO_ROOT, "index.html")}`;
 
 const TEST_USER_ID = "integration-sync-user";
-const GLOBAL_TIMEOUT_MS = readPositiveInteger(process.env.GRAVITY_TEST_TIMEOUT_MS, 30000);
+const GLOBAL_TIMEOUT_MS = 30000;
 const BACKEND_SYNC_TEST_TIMEOUT_MS = GLOBAL_TIMEOUT_MS;
 const PUPPETEER_WAIT_TIMEOUT_MS = Math.max(4000, Math.min(15000, Math.floor(GLOBAL_TIMEOUT_MS / 2)));
 
@@ -167,21 +167,6 @@ test.describe("Backend sync integration", () => {
         }
     });
 });
-
-/** 
- * @param {string | undefined} candidate
- * @param {number} fallback
- */
-function readPositiveInteger(candidate, fallback) {
-    if (!candidate) {
-        return fallback;
-    }
-    const parsed = Number.parseInt(candidate, 10);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-        return fallback;
-    }
-    return parsed;
-}
 
 function createTestDeadline(testContext, timeoutMs) {
     const controller = new AbortController();

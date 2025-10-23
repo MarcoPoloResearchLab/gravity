@@ -2,6 +2,7 @@
 // @ts-check
 
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -24,6 +25,7 @@ const TESTS_ROOT = path.dirname(CURRENT_FILE);
 const PROJECT_ROOT = path.join(TESTS_ROOT, "..");
 const RUNTIME_OPTIONS_PATH = path.join(TESTS_ROOT, "runtime-options.json");
 const SCREENSHOT_ARTIFACT_ROOT = path.join(TESTS_ROOT, "artifacts");
+const RUNTIME_MODULE_PREFIX = path.join(os.tmpdir(), "gravity-runtime-");
 
 /**
  * @param {string} root
@@ -81,6 +83,129 @@ function parseTimeout(value, fallback) {
   return parsed;
 }
 
+/**
+ * @param {unknown} value
+ * @returns {string[]}
+ */
+function normalizeStringList(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+      .filter((entry) => entry.length > 0);
+  }
+  if (typeof value === "string") {
+    return value
+      .split(/[\n,]/u)
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+  }
+  return [];
+}
+
+/**
+ * @param {unknown} rawOptions
+ * @returns {{ policy: "enabled" | "disabled" | "allowlist" | null, allowlist: string[] }}
+ */
+function parseScreenshotOptions(rawOptions) {
+  if (!rawOptions || typeof rawOptions !== "object") {
+    return { policy: null, allowlist: [] };
+  }
+  let policy = null;
+  if ("policy" in rawOptions && typeof /** @type {any} */ (rawOptions).policy === "string") {
+    const normalized = /** @type {any} */ (rawOptions).policy.trim().toLowerCase();
+    if (normalized === "enabled" || normalized === "disabled" || normalized === "allowlist") {
+      policy = normalized;
+    }
+  }
+  const allowlist = normalizeStringList(/** @type {any} */ (rawOptions).allowlist);
+  if (!policy && allowlist.length > 0) {
+    policy = "allowlist";
+  }
+  return { policy, allowlist };
+}
+
+/**
+ * @param {any} runtimeContext
+ */
+async function createRuntimeModule(runtimeContext) {
+  const tempDir = await fs.mkdtemp(RUNTIME_MODULE_PREFIX);
+  const modulePath = path.join(tempDir, "context.mjs");
+  const serialized = JSON.stringify(runtimeContext);
+  const moduleContents = `// auto-generated runtime context for Gravity tests
+const context = ${serialized};
+if (context && typeof context === "object" && context.screenshots && typeof context.screenshots === "object") {
+    Object.freeze(context.screenshots);
+}
+if (context && typeof context === "object" && context.environment && typeof context.environment === "object") {
+    Object.freeze(context.environment);
+}
+globalThis.__gravityRuntimeContext = Object.freeze(context);
+`;
+  await fs.writeFile(modulePath, moduleContents, "utf8");
+  return {
+    modulePath,
+    async dispose() {
+      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    }
+  };
+}
+
+/**
+ * @param {string[]} argv
+ * @returns {{
+   *   screenshotPolicy?: string,
+   *   screenshotAllowlist?: string[],
+ *   screenshotDirectory?: string,
+ *   screenshotForce?: boolean,
+ *   passthroughArgs: string[]
+ * }}
+ */
+function parseCommandLineArguments(argv) {
+  const parsed = {
+    screenshotPolicy: undefined,
+    screenshotAllowlist: undefined,
+    screenshotDirectory: undefined,
+    screenshotForce: undefined,
+    passthroughArgs: []
+  };
+
+  for (const argument of argv) {
+    if (typeof argument !== "string") {
+      continue;
+    }
+    if (argument.startsWith("--screenshots=")) {
+      const value = argument.slice("--screenshots=".length).trim().toLowerCase();
+      if (value.length > 0) {
+        parsed.screenshotPolicy = value;
+      }
+      continue;
+    }
+    if (argument === "--screenshots") {
+      parsed.screenshotPolicy = "enabled";
+      continue;
+    }
+    if (argument.startsWith("--screenshot-allowlist=")) {
+      const raw = argument.slice("--screenshot-allowlist=".length);
+      parsed.screenshotAllowlist = normalizeStringList(raw);
+      continue;
+    }
+    if (argument.startsWith("--screenshot-dir=")) {
+      const rawDir = argument.slice("--screenshot-dir=".length).trim();
+      if (rawDir.length > 0) {
+        parsed.screenshotDirectory = rawDir;
+      }
+      continue;
+    }
+    if (argument === "--screenshot-force") {
+      parsed.screenshotForce = true;
+      continue;
+    }
+    parsed.passthroughArgs.push(argument);
+  }
+
+  return parsed;
+}
+
 async function loadRuntimeOptions() {
   try {
     const raw = await fs.readFile(RUNTIME_OPTIONS_PATH, "utf8");
@@ -96,10 +221,49 @@ async function loadRuntimeOptions() {
 }
 
 async function main() {
+  const cliArguments = parseCommandLineArguments(process.argv.slice(2));
+  process.argv.splice(2, process.argv.length - 2, ...cliArguments.passthroughArgs);
+
   const runtimeOptions = await loadRuntimeOptions();
   const isCiEnvironment = process.env.CI === "true";
+
+  /** @type {{ policy?: string, allowlist?: string[] }} */
+  const mergedScreenshotConfig = {};
+  if (runtimeOptions.screenshots && typeof runtimeOptions.screenshots === "object") {
+    if ("policy" in runtimeOptions.screenshots) {
+      mergedScreenshotConfig.policy = runtimeOptions.screenshots.policy;
+    }
+    if ("allowlist" in runtimeOptions.screenshots) {
+      mergedScreenshotConfig.allowlist = normalizeStringList(runtimeOptions.screenshots.allowlist);
+    }
+  }
+  if (typeof cliArguments.screenshotPolicy === "string") {
+    mergedScreenshotConfig.policy = cliArguments.screenshotPolicy;
+  }
+  if (Array.isArray(cliArguments.screenshotAllowlist)) {
+    mergedScreenshotConfig.allowlist = cliArguments.screenshotAllowlist;
+  }
+
+  let screenshotDirectorySetting = typeof cliArguments.screenshotDirectory === "string" ? cliArguments.screenshotDirectory : null;
+  if (!screenshotDirectorySetting && runtimeOptions.screenshots && typeof runtimeOptions.screenshots.directory === "string") {
+    screenshotDirectorySetting = runtimeOptions.screenshots.directory;
+  }
+
+  const screenshotOptions = parseScreenshotOptions(mergedScreenshotConfig);
+  const screenshotForce = Boolean(cliArguments.screenshotForce || (runtimeOptions.screenshots && runtimeOptions.screenshots.force));
+
+  const shouldAutoProvision = !isCiEnvironment && !screenshotDirectorySetting && (
+    screenshotForce ||
+    screenshotOptions.policy === "enabled" ||
+    (screenshotOptions.policy === "allowlist" && screenshotOptions.allowlist.length > 0)
+  );
+
   let screenshotRunRoot = null;
-  if (!isCiEnvironment) {
+  if (screenshotDirectorySetting) {
+    const resolvedDirectory = path.resolve(process.cwd(), screenshotDirectorySetting);
+    await fs.mkdir(resolvedDirectory, { recursive: true });
+    screenshotRunRoot = resolvedDirectory;
+  } else if (shouldAutoProvision) {
     const timestamp = createArtifactTimestamp();
     screenshotRunRoot = path.join(SCREENSHOT_ARTIFACT_ROOT, timestamp);
     await fs.mkdir(screenshotRunRoot, { recursive: true });
@@ -139,7 +303,8 @@ async function main() {
     const defaultTimeoutEntries = [
       ["fullstack.endtoend.puppeteer.test.js", 60000],
       ["persistence.backend.puppeteer.test.js", 45000],
-      ["sync.endtoend.puppeteer.test.js", 45000]
+      ["sync.endtoend.puppeteer.test.js", 45000],
+      ["editor.inline.puppeteer.test.js", 40000]
     ];
     for (const [file, value] of defaultTimeoutEntries) {
       if (!timeoutOverrides.has(file)) timeoutOverrides.set(file, value);
@@ -147,7 +312,8 @@ async function main() {
     const defaultKillEntries = [
       ["fullstack.endtoend.puppeteer.test.js", 10000],
       ["persistence.backend.puppeteer.test.js", 8000],
-      ["sync.endtoend.puppeteer.test.js", 8000]
+      ["sync.endtoend.puppeteer.test.js", 8000],
+      ["editor.inline.puppeteer.test.js", 6000]
     ];
     for (const [file, value] of defaultKillEntries) {
       if (!killOverrides.has(file)) killOverrides.set(file, value);
@@ -181,7 +347,10 @@ async function main() {
 
   let sharedBrowserContext = null;
   let backendHandle = null;
-  let runtimeContextPayload = null;
+  const environmentCopy = Object.fromEntries(Object.entries(process.env));
+  /** @type {any} */
+  let baseRuntimeContext = { ci: isCiEnvironment, environment: environmentCopy };
+  publishRuntimeContext(baseRuntimeContext);
 
   const sectionHeading = (label) => `\n${cliColors.symbols.section} ${cliColors.bold(label)}`;
   const formatCount = (count, label, format) => {
@@ -197,8 +366,6 @@ async function main() {
   let failCount = 0;
   let timeoutCount = 0;
 
-  const previousRuntimeContextEnv = process.env.GRAVITY_RUNTIME_CONTEXT;
-
   try {
     if (!minimal && !raw) {
       sharedBrowserContext = await launchSharedBrowser();
@@ -207,7 +374,8 @@ async function main() {
       if (!backendHandle.signingKeyPem || !backendHandle.signingKeyId) {
         throw new Error("Shared backend did not expose signing metadata.");
       }
-      runtimeContextPayload = JSON.stringify({
+      baseRuntimeContext = {
+        ...baseRuntimeContext,
         backend: {
           baseUrl: backendHandle.baseUrl,
           googleClientId: backendHandle.googleClientId,
@@ -217,8 +385,11 @@ async function main() {
         browser: {
           wsEndpoint: sharedBrowserContext.wsEndpoint
         }
-      });
-      process.env.GRAVITY_RUNTIME_CONTEXT = runtimeContextPayload;
+      };
+      publishRuntimeContext(baseRuntimeContext);
+    }
+    if (!baseRuntimeContext) {
+      baseRuntimeContext = { ci: isCiEnvironment };
     }
 
     for (const relative of files) {
@@ -238,59 +409,76 @@ async function main() {
       const args = [];
       if (!raw) {
         // Run with Node test runner
-        args.push("--test", absolute, `--test-timeout=${Math.max(effectiveTimeout - 1000, 1000)}`);
-        if (!minimal) {
-          args.unshift("--import", guardSpecifier);
-        }
+        args.push("--test", absolute, `--test-timeout=${Math.max(effectiveTimeout, 1000)}`);
       } else {
         // Raw script execution (no test runner) — used to validate harness timeouts deterministically
         args.push(absolute);
       }
 
-      const result = await runTestProcess({
-        command: process.execPath,
-        args,
-        timeoutMs: effectiveTimeout,
-        killGraceMs: effectiveKillGrace,
-        env: createChildEnv(runtimeContextPayload, screenshotDirectoryForTest, relative),
-        onStdout: (chunk) => process.stdout.write(chunk),
-        onStderr: (chunk) => process.stderr.write(chunk)
-      });
+      const runtimeContextForTest = {
+        ...baseRuntimeContext,
+        test: { file: relative },
+        screenshots: {
+          directory: screenshotDirectoryForTest,
+          policy: screenshotOptions.policy ?? null,
+          allowlist: Array.isArray(screenshotOptions.allowlist) ? screenshotOptions.allowlist : [],
+          force: screenshotForce
+        }
+      };
 
-      summary.push({
-        file: relative,
-        durationMs: result.durationMs,
-        timedOut: result.timedOut,
-        exitCode: result.exitCode,
-        signal: result.signal,
-        terminationReason: result.terminationReason
-      });
-      totalDurationMs += result.durationMs;
+      const { modulePath: runtimeModulePath, dispose: disposeRuntimeModule } = await createRuntimeModule(runtimeContextForTest);
 
-      if (result.timedOut) {
-        hasFailure = true;
-        timeoutCount += 1;
-        const timeoutMessage = `${cliColors.symbols.timeout} ${cliColors.yellow(`Timed out after ${formatDuration(effectiveTimeout)}`)}`;
-        console.error(`  ${timeoutMessage}`);
-        continue;
-      }
-      if (result.exitCode !== 0) {
-        hasFailure = true;
-        failCount += 1;
-        const signalDetail = result.signal ? `signal=${result.signal}` : `exitCode=${result.exitCode}`;
-        console.error(`  ${cliColors.symbols.fail} ${cliColors.red(`Failed (${signalDetail})`)}`);
+      if (!raw) {
+        args.unshift("--import", runtimeModulePath);
+        if (!minimal) {
+          args.unshift("--import", guardSpecifier);
+        }
       } else {
-        passCount += 1;
-        const durationLabel = cliColors.dim(`(${formatDuration(result.durationMs)})`);
-        console.log(`  ${cliColors.symbols.pass} ${cliColors.green("Passed")} ${durationLabel}`);
+        args.unshift("--import", runtimeModulePath);
+      }
+
+      try {
+        const result = await runTestProcess({
+          command: process.execPath,
+          args,
+          timeoutMs: effectiveTimeout,
+          killGraceMs: effectiveKillGrace,
+          onStdout: (chunk) => process.stdout.write(chunk),
+          onStderr: (chunk) => process.stderr.write(chunk)
+        });
+
+        summary.push({
+          file: relative,
+          durationMs: result.durationMs,
+          timedOut: result.timedOut,
+          exitCode: result.exitCode,
+          signal: result.signal,
+          terminationReason: result.terminationReason
+        });
+        totalDurationMs += result.durationMs;
+
+        if (result.timedOut) {
+          hasFailure = true;
+          timeoutCount += 1;
+          const timeoutMessage = `${cliColors.symbols.timeout} ${cliColors.yellow(`Timed out after ${formatDuration(effectiveTimeout)}`)}`;
+          console.error(`  ${timeoutMessage}`);
+          continue;
+        }
+        if (result.exitCode !== 0) {
+          hasFailure = true;
+          failCount += 1;
+          const signalDetail = result.signal ? `signal=${result.signal}` : `exitCode=${result.exitCode}`;
+          console.error(`  ${cliColors.symbols.fail} ${cliColors.red(`Failed (${signalDetail})`)}`);
+        } else {
+          passCount += 1;
+          const durationLabel = cliColors.dim(`(${formatDuration(result.durationMs)})`);
+          console.log(`  ${cliColors.symbols.pass} ${cliColors.green("Passed")} ${durationLabel}`);
+        }
+      } finally {
+        await disposeRuntimeModule();
       }
     }
   } finally {
-    if (typeof previousRuntimeContextEnv === "string") {
-      process.env.GRAVITY_RUNTIME_CONTEXT = previousRuntimeContextEnv;
-    } else {
-      delete process.env.GRAVITY_RUNTIME_CONTEXT;
-    }
     if (backendHandle) await backendHandle.close().catch(() => {});
     if (sharedBrowserContext) await closeSharedBrowser().catch(() => {});
   }
@@ -348,21 +536,13 @@ function sanitizeArtifactComponent(value) {
   return normalized.length > 0 ? normalized : `${Date.now()}`;
 }
 
-function createChildEnv(runtimeContextPayload, screenshotDirectory, relativePath) {
-  const overrides = {};
-  if (typeof runtimeContextPayload === "string" && runtimeContextPayload.length > 0) {
-    overrides.GRAVITY_RUNTIME_CONTEXT = runtimeContextPayload;
-  }
-  if (typeof screenshotDirectory === "string" && screenshotDirectory.length > 0) {
-    overrides.GRAVITY_SCREENSHOT_DIR = screenshotDirectory;
-    overrides.GRAVITY_SCREENSHOT_TEST_FILE = relativePath;
-  }
-  return Object.keys(overrides).length > 0 ? overrides : undefined;
-}
-
 function deriveShortTestName(relativePath) {
   const base = path.basename(relativePath).replace(/\.test\.js$/u, "");
   return sanitizeArtifactComponent(base);
+}
+
+function publishRuntimeContext(context) {
+  globalThis.__gravityRuntimeContext = context;
 }
 
 main()

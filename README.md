@@ -206,6 +206,12 @@ Note: When serving the app from a custom domain, ensure the hostname detection r
   for `persistence.backend`, `sync.endtoend`, and `fullstack.endtoend` suites so they can bootstrap the Go backend.
 - `npm test` (run from `frontend/`) drives the Node test suite, including Puppeteer coverage for the inline editor, bounded HTML views, and
   the notification flow.
+- Continuous integration runs must export `CI=true` so the harness marks the runtime as CI, enabling Chromium sandbox flags and other CI-only safeguards.
+- Screenshot artifacts are opt-in. Run `npm test -- --screenshots=enabled` to capture for every suite, or
+  `npm test -- --screenshots=allowlist --screenshot-allowlist="editor.duplicateRendering.puppeteer.test.js,helpers/local-only.test.js"`
+  to target specific files. Append `--screenshot-dir=/tmp/gravity-artifacts` to choose the output directory, or
+  `--screenshot-force` to allow `withScreenshotCapture(() => ...)` blocks inside a test to persist artifacts without enabling screenshots globally.
+  Individual tests can import `withScreenshotCapture` from `tests/helpers/screenshotArtifacts.js` to wrap the exact steps that should emit screenshots.
 - `frontend/tests/htmlView.bounded.puppeteer.test.js` now guards the viewport anchoring behaviour—expanding a rendered note keeps
   the card in place even if the browser attempts to scroll to the bottom of the HTML view.
 - `frontend/tests/sync.endtoend.puppeteer.test.js` starts the Go backend harness and uses the real UI to create notes, asserting

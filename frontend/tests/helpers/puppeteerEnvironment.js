@@ -5,6 +5,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { readRuntimeContext } from "./runtimeContext.js";
+
 const SANDBOX_ROOT = path.join(os.tmpdir(), "gravity-puppeteer-cache");
 const ACTIVE_BASE_DIRS = new Set();
 const AVAILABLE_BASE_DIRS = new Set();
@@ -95,6 +97,12 @@ export async function cleanupPuppeteerSandbox(sandbox) {
  * @returns {import("puppeteer").LaunchOptions & import("puppeteer").BrowserLaunchArgumentOptions & import("puppeteer").BrowserConnectOptions}
  */
 export function createSandboxedLaunchOptions(sandbox, overrides) {
+    const runtime = readRuntimeContext();
+    const overrideEnv = overrides?.environment ?? {};
+    const baseEnv = runtime && typeof runtime === "object" && runtime.environment && typeof runtime.environment === "object"
+        ? runtime.environment
+        : {};
+    const isCiEnvironment = Boolean(runtime && runtime.ci);
     const baseArgs = [
         "--allow-file-access-from-files",
         "--disable-crashpad",
@@ -107,15 +115,15 @@ export function createSandboxedLaunchOptions(sandbox, overrides) {
     const args = overrides?.additionalArgs
         ? baseArgs.concat(overrides.additionalArgs)
         : baseArgs.slice();
-    if (process.env.CI) {
+    if (isCiEnvironment) {
         args.push("--no-sandbox", "--disable-setuid-sandbox");
     }
     const env = {
-        ...process.env,
+        ...baseEnv,
         HOME: sandbox.homeDir,
         XDG_CACHE_HOME: sandbox.cacheDir,
         XDG_CONFIG_HOME: sandbox.configDir,
-        ...(overrides?.environment ?? {})
+        ...overrideEnv
     };
     const launchOptions = {
         headless: overrides?.headless ?? "new",
