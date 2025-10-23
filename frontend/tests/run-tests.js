@@ -81,6 +81,47 @@ function parseTimeout(value, fallback) {
   return parsed;
 }
 
+/**
+ * @param {unknown} value
+ * @returns {string[]}
+ */
+function normalizeStringList(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+      .filter((entry) => entry.length > 0);
+  }
+  if (typeof value === "string") {
+    return value
+      .split(/[\n,]/u)
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+  }
+  return [];
+}
+
+/**
+ * @param {unknown} rawOptions
+ * @returns {{ policy: "enabled" | "disabled" | "allowlist" | null, allowlist: string[] }}
+ */
+function parseScreenshotOptions(rawOptions) {
+  if (!rawOptions || typeof rawOptions !== "object") {
+    return { policy: null, allowlist: [] };
+  }
+  let policy = null;
+  if ("policy" in rawOptions && typeof /** @type {any} */ (rawOptions).policy === "string") {
+    const normalized = /** @type {any} */ (rawOptions).policy.trim().toLowerCase();
+    if (normalized === "enabled" || normalized === "disabled" || normalized === "allowlist") {
+      policy = normalized;
+    }
+  }
+  const allowlist = normalizeStringList(/** @type {any} */ (rawOptions).allowlist);
+  if (!policy && allowlist.length > 0) {
+    policy = "allowlist";
+  }
+  return { policy, allowlist };
+}
+
 async function loadRuntimeOptions() {
   try {
     const raw = await fs.readFile(RUNTIME_OPTIONS_PATH, "utf8");
@@ -98,6 +139,7 @@ async function loadRuntimeOptions() {
 async function main() {
   const runtimeOptions = await loadRuntimeOptions();
   const isCiEnvironment = process.env.CI === "true";
+  const screenshotOptions = parseScreenshotOptions(runtimeOptions.screenshots);
   let screenshotRunRoot = null;
   if (!isCiEnvironment) {
     const timestamp = createArtifactTimestamp();
@@ -229,7 +271,6 @@ async function main() {
       if (screenshotRunRoot) {
         const shortName = deriveShortTestName(relative);
         screenshotDirectoryForTest = path.join(screenshotRunRoot, shortName);
-        await fs.mkdir(screenshotDirectoryForTest, { recursive: true });
       }
 
       console.log(sectionHeading(relative));
@@ -252,7 +293,7 @@ async function main() {
         args,
         timeoutMs: effectiveTimeout,
         killGraceMs: effectiveKillGrace,
-        env: createChildEnv(runtimeContextPayload, screenshotDirectoryForTest, relative),
+        env: createChildEnv(runtimeContextPayload, screenshotDirectoryForTest, relative, screenshotOptions),
         onStdout: (chunk) => process.stdout.write(chunk),
         onStderr: (chunk) => process.stderr.write(chunk)
       });
@@ -348,7 +389,7 @@ function sanitizeArtifactComponent(value) {
   return normalized.length > 0 ? normalized : `${Date.now()}`;
 }
 
-function createChildEnv(runtimeContextPayload, screenshotDirectory, relativePath) {
+function createChildEnv(runtimeContextPayload, screenshotDirectory, relativePath, screenshotOptions) {
   const overrides = {};
   if (typeof runtimeContextPayload === "string" && runtimeContextPayload.length > 0) {
     overrides.GRAVITY_RUNTIME_CONTEXT = runtimeContextPayload;
@@ -356,6 +397,14 @@ function createChildEnv(runtimeContextPayload, screenshotDirectory, relativePath
   if (typeof screenshotDirectory === "string" && screenshotDirectory.length > 0) {
     overrides.GRAVITY_SCREENSHOT_DIR = screenshotDirectory;
     overrides.GRAVITY_SCREENSHOT_TEST_FILE = relativePath;
+  }
+  if (screenshotOptions && typeof screenshotOptions === "object") {
+    if (screenshotOptions.policy) {
+      overrides.GRAVITY_SCREENSHOT_POLICY = screenshotOptions.policy;
+    }
+    if (Array.isArray(screenshotOptions.allowlist) && screenshotOptions.allowlist.length > 0) {
+      overrides.GRAVITY_SCREENSHOT_ALLOWLIST = screenshotOptions.allowlist.join(",");
+    }
   }
   return Object.keys(overrides).length > 0 ? overrides : undefined;
 }

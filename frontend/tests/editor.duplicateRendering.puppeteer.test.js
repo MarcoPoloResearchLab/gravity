@@ -7,7 +7,7 @@ import { PNG } from "pngjs";
 
 import { appConfig } from "../js/core/config.js";
 import { createSharedPage } from "./helpers/browserHarness.js";
-import { saveScreenshotArtifact } from "./helpers/screenshotArtifacts.js";
+import { saveScreenshotArtifact, withScreenshotCapture } from "./helpers/screenshotArtifacts.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
@@ -42,135 +42,137 @@ test.describe("GN-58 duplicate markdown rendering", () => {
         ];
         const { page, teardown } = await openPageWithRecords(seededRecords);
         try {
-            const cardSelector = `.markdown-block[data-note-id="${GN58_NOTE_ID}"]`;
-            await page.waitForSelector(cardSelector);
+            await withScreenshotCapture(async () => {
+                const cardSelector = `.markdown-block[data-note-id="${GN58_NOTE_ID}"]`;
+                await page.waitForSelector(cardSelector);
 
-            const htmlViewCleanBuffer = await captureCardScreenshot(page, cardSelector);
-            await saveScreenshotArtifact("htmlView-clean", htmlViewCleanBuffer);
+                const htmlViewCleanBuffer = await captureCardScreenshot(page, cardSelector);
+                await saveScreenshotArtifact("htmlView-clean", htmlViewCleanBuffer);
 
-            await highlightRenderedCheckboxes(page, cardSelector);
-            const htmlViewHtmlSnapshot = await getHtmlViewHtml(page, cardSelector);
-            const htmlViewDebugBuffer = await captureCardScreenshot(page, cardSelector);
-            const checkboxClusterCount = countHighlightedCheckboxClusters(htmlViewDebugBuffer);
-            await saveScreenshotArtifact("htmlView-debug", htmlViewDebugBuffer);
-            assert.equal(
-                checkboxClusterCount,
-                2,
-                `rendered htmlView screenshot shows exactly two highlighted checkboxes: ${htmlViewHtmlSnapshot}`
-            );
+                await highlightRenderedCheckboxes(page, cardSelector);
+                const htmlViewHtmlSnapshot = await getHtmlViewHtml(page, cardSelector);
+                const htmlViewDebugBuffer = await captureCardScreenshot(page, cardSelector);
+                const checkboxClusterCount = countHighlightedCheckboxClusters(htmlViewDebugBuffer);
+                await saveScreenshotArtifact("htmlView-debug", htmlViewDebugBuffer);
+                assert.equal(
+                    checkboxClusterCount,
+                    2,
+                    `rendered htmlView screenshot shows exactly two highlighted checkboxes: ${htmlViewHtmlSnapshot}`
+                );
 
-            const htmlViewOccurrences = await countHtmlViewOccurrences(page, cardSelector, UNIQUE_TASK_TEXT);
-            assert.equal(htmlViewOccurrences, 1, `htmlView renders ${UNIQUE_TASK_TEXT} exactly once`);
+                const htmlViewOccurrences = await countHtmlViewOccurrences(page, cardSelector, UNIQUE_TASK_TEXT);
+                assert.equal(htmlViewOccurrences, 1, `htmlView renders ${UNIQUE_TASK_TEXT} exactly once`);
 
-            const htmlViewCheckboxCount = await countHtmlViewCheckboxes(page, cardSelector);
-            assert.equal(htmlViewCheckboxCount, 2, "htmlView exposes two checklist inputs");
+                const htmlViewCheckboxCount = await countHtmlViewCheckboxes(page, cardSelector);
+                assert.equal(htmlViewCheckboxCount, 2, "htmlView exposes two checklist inputs");
 
-            await enterEditMode(page, cardSelector);
+                await enterEditMode(page, cardSelector);
 
-            const htmlViewDuringEditCount = await countHtmlViewWrappers(page, cardSelector);
-            assert.equal(htmlViewDuringEditCount, 0, "entering edit mode removes htmlView wrapper");
+                const htmlViewDuringEditCount = await countHtmlViewWrappers(page, cardSelector);
+                assert.equal(htmlViewDuringEditCount, 0, "entering edit mode removes htmlView wrapper");
 
-            const editCleanBuffer = await captureCardScreenshot(page, cardSelector);
-            await saveScreenshotArtifact("edit-clean", editCleanBuffer);
+                const editCleanBuffer = await captureCardScreenshot(page, cardSelector);
+                await saveScreenshotArtifact("edit-clean", editCleanBuffer);
 
-            const editHighlightMetrics = await highlightEditorModeSurface(
-                page,
-                cardSelector,
-                UNIQUE_TASK_TEXT,
-                EDIT_WORD_HIGHLIGHT_RGB,
-                SCROLLBAR_ALERT_RGB,
-                DUPLICATE_SURFACE_ALERT_RGB
-            );
-            assert.equal(
-                editHighlightMetrics.highlightCount,
-                1,
-                `editing state highlights ${UNIQUE_TASK_TEXT} exactly once`
-            );
-            const editDebugBuffer = await captureCardScreenshot(page, cardSelector);
-            await saveScreenshotArtifact("edit-debug", editDebugBuffer);
-            const highlightedWordClusters = countColorClusters(editDebugBuffer, {
-                targetColor: EDIT_WORD_HIGHLIGHT_RGB,
-                tolerance: 18,
-                columnGapThreshold: 6,
-                rowGapThreshold: 40,
-                columnWeightThreshold: 70,
-                rowWeightThreshold: 30
+                const editHighlightMetrics = await highlightEditorModeSurface(
+                    page,
+                    cardSelector,
+                    UNIQUE_TASK_TEXT,
+                    EDIT_WORD_HIGHLIGHT_RGB,
+                    SCROLLBAR_ALERT_RGB,
+                    DUPLICATE_SURFACE_ALERT_RGB
+                );
+                assert.equal(
+                    editHighlightMetrics.highlightCount,
+                    1,
+                    `editing state highlights ${UNIQUE_TASK_TEXT} exactly once`
+                );
+                const editDebugBuffer = await captureCardScreenshot(page, cardSelector);
+                await saveScreenshotArtifact("edit-debug", editDebugBuffer);
+                const highlightedWordClusters = countColorClusters(editDebugBuffer, {
+                    targetColor: EDIT_WORD_HIGHLIGHT_RGB,
+                    tolerance: 18,
+                    columnGapThreshold: 6,
+                    rowGapThreshold: 40,
+                    columnWeightThreshold: 70,
+                    rowWeightThreshold: 30
+                });
+                assert.equal(highlightedWordClusters, 1, "edit screenshot shows the unique checklist text once");
+                const duplicateSurfaceClusters = countColorClusters(editDebugBuffer, {
+                    targetColor: DUPLICATE_SURFACE_ALERT_RGB,
+                    tolerance: 20,
+                    columnGapThreshold: 8,
+                    rowGapThreshold: 60,
+                    columnWeightThreshold: 40,
+                    rowWeightThreshold: 24
+                });
+                assert.equal(duplicateSurfaceClusters, 0, "edit screenshot contains no duplicate markdown surface");
+                const scrollbarIndicatorClusters = countColorClusters(editDebugBuffer, {
+                    targetColor: SCROLLBAR_ALERT_RGB,
+                    tolerance: 18,
+                    columnGapThreshold: 6,
+                    rowGapThreshold: 40,
+                    columnWeightThreshold: 40,
+                    rowWeightThreshold: 24
+                });
+                const overflowMetrics = editHighlightMetrics.overflowMetrics ?? { vertical: 0, horizontal: 0 };
+                assert.equal(
+                    scrollbarIndicatorClusters,
+                    0,
+                    `edit screenshot contains no scrollbar indicator color (verticalOverflow=${overflowMetrics.vertical}, horizontalOverflow=${overflowMetrics.horizontal}, overflowY="${overflowMetrics.overflowY}", overflowX="${overflowMetrics.overflowX}", inlineHeight="${overflowMetrics.inlineHeight}", computedHeight="${overflowMetrics.computedHeight}", clusters=${scrollbarIndicatorClusters})`
+                );
+
+                const initialMarkdownValue = await getMarkdownValue(page, cardSelector);
+                assert.equal(
+                    initialMarkdownValue,
+                    INITIAL_MARKDOWN,
+                    "editing surface loads the original markdown including trailing empty task"
+                );
+
+                await finalizeEditing(page, cardSelector);
+                const htmlViewAfterFinalize = await countHtmlViewWrappers(page, cardSelector);
+                assert.equal(htmlViewAfterFinalize, 1, "htmlView wrapper reattaches after finalizing edit");
+
+                await page.click(`${cardSelector} input[data-task-index="0"]`);
+                await waitForMarkdownValue(page, cardSelector, FIRST_TOGGLE_MARKDOWN);
+
+                const firstToggleMarkdown = await getMarkdownValue(page, cardSelector);
+                assert.equal(firstToggleMarkdown, FIRST_TOGGLE_MARKDOWN, "toggling first checkbox persists markdown state");
+
+                const firstCheckboxChecked = await isCheckboxChecked(page, cardSelector, 0);
+                assert.equal(firstCheckboxChecked, true, "first htmlView checkbox reflects the toggled state");
+
+                await enterEditMode(page, cardSelector);
+                const htmlViewDuringFirstToggleEdit = await countHtmlViewWrappers(page, cardSelector);
+                assert.equal(htmlViewDuringFirstToggleEdit, 0, "htmlView remains destroyed while editing after toggle");
+
+                const markdownInFirstToggleEdit = await getMarkdownValue(page, cardSelector);
+                assert.equal(markdownInFirstToggleEdit, FIRST_TOGGLE_MARKDOWN, "editor reflects first toggle markdown");
+                await finalizeEditing(page, cardSelector);
+
+                await page.click(`${cardSelector} input[data-task-index="1"]`);
+                await waitForMarkdownValue(page, cardSelector, SECOND_TOGGLE_MARKDOWN);
+
+                const secondToggleMarkdown = await getMarkdownValue(page, cardSelector);
+                assert.equal(secondToggleMarkdown, SECOND_TOGGLE_MARKDOWN, "toggling second checkbox persists markdown state");
+
+                const secondCheckboxChecked = await isCheckboxChecked(page, cardSelector, 1);
+                assert.equal(secondCheckboxChecked, true, "second htmlView checkbox reflects the toggled state");
+
+                await enterEditMode(page, cardSelector);
+                const htmlViewDuringSecondToggleEdit = await countHtmlViewWrappers(page, cardSelector);
+                assert.equal(htmlViewDuringSecondToggleEdit, 0, "htmlView does not reappear in edit mode after second toggle");
+
+                const markdownInSecondToggleEdit = await getMarkdownValue(page, cardSelector);
+                assert.equal(markdownInSecondToggleEdit, SECOND_TOGGLE_MARKDOWN, "editor reflects fully toggled markdown");
+                await finalizeEditing(page, cardSelector);
+
+                const finalCheckboxCount = await countHtmlViewCheckboxes(page, cardSelector);
+                assert.equal(finalCheckboxCount, 2, "htmlView retains two interactive checkboxes after edits");
+
+                const finalHtmlViewOccurrences = await countHtmlViewOccurrences(page, cardSelector, UNIQUE_TASK_TEXT);
+                assert.equal(finalHtmlViewOccurrences, 1, `final htmlView renders ${UNIQUE_TASK_TEXT} once without duplication`);
             });
-            assert.equal(highlightedWordClusters, 1, "edit screenshot shows the unique checklist text once");
-            const duplicateSurfaceClusters = countColorClusters(editDebugBuffer, {
-                targetColor: DUPLICATE_SURFACE_ALERT_RGB,
-                tolerance: 20,
-                columnGapThreshold: 8,
-                rowGapThreshold: 60,
-                columnWeightThreshold: 40,
-                rowWeightThreshold: 24
-            });
-            assert.equal(duplicateSurfaceClusters, 0, "edit screenshot contains no duplicate markdown surface");
-            const scrollbarIndicatorClusters = countColorClusters(editDebugBuffer, {
-                targetColor: SCROLLBAR_ALERT_RGB,
-                tolerance: 18,
-                columnGapThreshold: 6,
-                rowGapThreshold: 40,
-                columnWeightThreshold: 40,
-                rowWeightThreshold: 24
-            });
-            const overflowMetrics = editHighlightMetrics.overflowMetrics ?? { vertical: 0, horizontal: 0 };
-            assert.equal(
-                scrollbarIndicatorClusters,
-                0,
-                `edit screenshot contains no scrollbar indicator color (verticalOverflow=${overflowMetrics.vertical}, horizontalOverflow=${overflowMetrics.horizontal}, overflowY="${overflowMetrics.overflowY}", overflowX="${overflowMetrics.overflowX}", inlineHeight="${overflowMetrics.inlineHeight}", computedHeight="${overflowMetrics.computedHeight}", clusters=${scrollbarIndicatorClusters})`
-            );
-
-            const initialMarkdownValue = await getMarkdownValue(page, cardSelector);
-            assert.equal(
-                initialMarkdownValue,
-                INITIAL_MARKDOWN,
-                "editing surface loads the original markdown including trailing empty task"
-            );
-
-            await finalizeEditing(page, cardSelector);
-            const htmlViewAfterFinalize = await countHtmlViewWrappers(page, cardSelector);
-            assert.equal(htmlViewAfterFinalize, 1, "htmlView wrapper reattaches after finalizing edit");
-
-            await page.click(`${cardSelector} input[data-task-index="0"]`);
-            await waitForMarkdownValue(page, cardSelector, FIRST_TOGGLE_MARKDOWN);
-
-            const firstToggleMarkdown = await getMarkdownValue(page, cardSelector);
-            assert.equal(firstToggleMarkdown, FIRST_TOGGLE_MARKDOWN, "toggling first checkbox persists markdown state");
-
-            const firstCheckboxChecked = await isCheckboxChecked(page, cardSelector, 0);
-            assert.equal(firstCheckboxChecked, true, "first htmlView checkbox reflects the toggled state");
-
-            await enterEditMode(page, cardSelector);
-            const htmlViewDuringFirstToggleEdit = await countHtmlViewWrappers(page, cardSelector);
-            assert.equal(htmlViewDuringFirstToggleEdit, 0, "htmlView remains destroyed while editing after toggle");
-
-            const markdownInFirstToggleEdit = await getMarkdownValue(page, cardSelector);
-            assert.equal(markdownInFirstToggleEdit, FIRST_TOGGLE_MARKDOWN, "editor reflects first toggle markdown");
-            await finalizeEditing(page, cardSelector);
-
-            await page.click(`${cardSelector} input[data-task-index="1"]`);
-            await waitForMarkdownValue(page, cardSelector, SECOND_TOGGLE_MARKDOWN);
-
-            const secondToggleMarkdown = await getMarkdownValue(page, cardSelector);
-            assert.equal(secondToggleMarkdown, SECOND_TOGGLE_MARKDOWN, "toggling second checkbox persists markdown state");
-
-            const secondCheckboxChecked = await isCheckboxChecked(page, cardSelector, 1);
-            assert.equal(secondCheckboxChecked, true, "second htmlView checkbox reflects the toggled state");
-
-            await enterEditMode(page, cardSelector);
-            const htmlViewDuringSecondToggleEdit = await countHtmlViewWrappers(page, cardSelector);
-            assert.equal(htmlViewDuringSecondToggleEdit, 0, "htmlView does not reappear in edit mode after second toggle");
-
-            const markdownInSecondToggleEdit = await getMarkdownValue(page, cardSelector);
-            assert.equal(markdownInSecondToggleEdit, SECOND_TOGGLE_MARKDOWN, "editor reflects fully toggled markdown");
-            await finalizeEditing(page, cardSelector);
-
-            const finalCheckboxCount = await countHtmlViewCheckboxes(page, cardSelector);
-            assert.equal(finalCheckboxCount, 2, "htmlView retains two interactive checkboxes after edits");
-
-            const finalHtmlViewOccurrences = await countHtmlViewOccurrences(page, cardSelector, UNIQUE_TASK_TEXT);
-            assert.equal(finalHtmlViewOccurrences, 1, `final htmlView renders ${UNIQUE_TASK_TEXT} once without duplication`);
         } finally {
             await teardown();
         }

@@ -15,6 +15,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
     5. Clicking outside of the note finishes editing 
     6. The height of expanded rendered note and the height of markedown note must be identical. Work on the stling that gurantees that the size of markdown and rendered note are the same.
   - [x] [GN-72] Front-end redesign — note cards now use a 2:1 text-to-controls grid, classification badges live in the control column, and the expand indicator aligns to the preview footer with refreshed Puppeteer layout coverage (branch improvement/GN-72-layout).
+  - [x] [GN-101] Make Puppeteer screenshot capture optional, configurable per test, and refactor the harness helper so the pattern can be reused across repositories. Document the configuration contract once implemented. — Screenshot policy now supports disabled/enabled/allowlist modes with async context overrides, harness env wiring, updated Puppeteer tests, and README guidance.
 
 ### BugFixes
 
