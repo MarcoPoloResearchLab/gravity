@@ -18,7 +18,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
 ### BugFixes
 
-  - [ ] [GN-80] There are various issues logged by JS Console when working from localhost. The errors are from a browser console when everything is served through http. Analyze each, develop a plan to address it. I am unsure what configuration changes are required.
+  - [ ] [GN-80] [P2] There are various issues logged by JS Console when working from localhost. The errors are from a browser console when everything is served through http. Analyze each, develop a plan to address it. I am unsure what configuration changes are required.
     ```
     Feature Policy: Skipping unsupported feature name “identity-credentials-get”. client:270:37
     Feature Policy: Skipping unsupported feature name “identity-credentials-get”. client:271:336
@@ -83,48 +83,23 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
     ```
     The google console screenshot is here ![Google console](<Google Console.png>)
 
-  - [ ] [GN-81] Double-clicking opens a wrong note. Adjust the code to 
+  - [ ] [GN-81] [P1] Double-clicking opens a wrong note. Adjust the code to 
     1. identify the card that was clicked on 
     2. identify the position in the rendered card that the click as made 
     3. find the closest word or character to the clicking point in this card 
     4. open markdown editing and place the cursor on the identified position
   
-  - [ ] [GN-82] Editing starts in a very different position than rendered HTML. Work on aligning these positions so that markdown and rendered HTML would be in the same places visually. Work on [ST-72] prior to this one.
+  - [ ] [GN-82] [P0] Editing starts in a very different position than rendered HTML. Work on aligning these positions so that markdown and rendered HTML would be in the same places visually. Work on [ST-72] prior to this one.
+    - I see editing starting in the top left corner with no padding but rendering starting in the top left corner with padding both at the top and and at the left. Style markdown rendering as close to HTML rendering in terms of size and pistion is possible. Check MDE documentation.
 
   - [x] [GN-83] Unblocked realtime multi-session sync by instrumenting `EventSource` in the Puppeteer regression, confirming backend note-change broadcasts and Alpine snapshot hydration across tabs (branch bugfix/GN-83-realtime-sync-retry).
 
-  - [ ] [GN-84] ![Card control bug](<card control bug.png>) The card control is not aligned to the top right corner of the cards, as specified in GN-72, in it instead aligned to the bottom right corner of the card. Fix the bug abnd align card controls to the top right corner of the card
+  - [ ] [GN-84] [P0] ![Card control bug](<card control bug.png>) The card control is not aligned to the top right corner of the cards, as specified in GN-72, in it instead aligned to the bottom right corner of the card. Fix the bug abnd align card controls to the top right corner of the card
 
   - [x] [GN-85] Tests are failing on CI (GitHub Actions). Fix the tests — SSE dispatcher now prioritizes note-change payloads ahead of heartbeats and the realtime integration test awaits note-change events explicitly (branch bugfix/GN-85-ci-tests).
-  ```
-  go: downloading github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec
-  ?   	github.com/MarcoPoloResearchLab/gravity/backend/cmd/gravity-api	[no test files]
-  ok  	github.com/MarcoPoloResearchLab/gravity/backend/internal/auth	0.176s
-  ?   	github.com/MarcoPoloResearchLab/gravity/backend/internal/config	[no test files]
-  ?   	github.com/MarcoPoloResearchLab/gravity/backend/internal/database	[no test files]
-  ?   	github.com/MarcoPoloResearchLab/gravity/backend/internal/logging	[no test files]
-  ok  	github.com/MarcoPoloResearchLab/gravity/backend/internal/notes	0.009s
-  Warning: g] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
-  - using env:	export GIN_MODE=release
-  - using code:	gin.SetMode(gin.ReleaseMode)
 
-  [GIN-debug] POST   /auth/google              --> github.com/MarcoPoloResearchLab/gravity/backend/internal/server.(*httpHandler).handleGoogleAuth-fm (3 handlers)
-  [GIN-debug] POST   /notes/sync               --> github.com/MarcoPoloResearchLab/gravity/backend/internal/server.(*httpHandler).handleNotesSync-fm (4 handlers)
-  [GIN-debug] GET    /notes                    --> github.com/MarcoPoloResearchLab/gravity/backend/internal/server.(*httpHandler).handleListNotes-fm (4 handlers)
-  [GIN-debug] GET    /notes/stream             --> github.com/MarcoPoloResearchLab/gravity/backend/internal/server.(*httpHandler).handleNotesStream-fm (4 handlers)
-  {"level":"info","msg":"realtime stream subscribed","user_id":"user-123"}
+  - [ ] [GN-86] [P0] The cards are flickering every second or so, which makes it disgusting. Investigate and find the source of flickering and remove it. Nothing must move on the screen without a user action triggering it.
 
-  2025/10/22 18:15:14 /home/runner/work/gravity/gravity/backend/internal/notes/service.go:99 record not found
-  [0.115ms] [rows:0] SELECT * FROM `notes` WHERE user_id = "user-123" AND note_id = "note-1" LIMIT 1 
-  {"level":"info","msg":"broadcasting realtime note change","user_id":"user-123","note_ids":["note-1"]}
-  --- FAIL: TestRealtimeStreamEmitsNoteChangeEvents (25.03s)
-      realtime_integration_test.go:125: unexpected note identifiers: []string(nil)
-  FAIL
-  FAIL	github.com/MarcoPoloResearchLab/gravity/backend/internal/server	25.236s
-  ok  	github.com/MarcoPoloResearchLab/gravity/backend/tests/integration	0.011s
-  FAIL
-  Error: Process completed with exit code 1.
-  ```
 
 ### Maintenance
 
@@ -134,7 +109,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
   - [x] [GN-92] Restructure the repository so that the /frontend and the /backend are two separate top level folders. Consider changes to GitHub Pages through `gh` utility to continue serving front-end from the github after the change of the front-end index.html path — Frontend assets now live under `frontend/`, Docker configs point to the new directory, and README documents the GitHub Pages adjustment (branch maintenance/GN-92-restructure-repo).
 
-  - [ ] [GN-93] I need to deploy the front end from the frontend folder on Github pages
+  - [x] [GN-93] I need to deploy the front end from the frontend folder on Github pages
 
 ### Planning (do not work on these, not ready)
 
