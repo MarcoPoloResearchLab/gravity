@@ -98,16 +98,18 @@ test.describe("Bounded htmlViews", () => {
                     }
                     const htmlViewRect = htmlView.getBoundingClientRect();
                     const toggleRect = toggle.getBoundingClientRect();
+                    const htmlViewCenter = htmlViewRect.top + htmlViewRect.height / 2;
+                    const toggleCenter = toggleRect.top + toggleRect.height / 2;
                     return {
-                        bottomDelta: Math.abs(htmlViewRect.bottom - toggleRect.bottom),
+                        verticalDelta: Math.abs(htmlViewCenter - toggleCenter),
                         rightDelta: Math.abs(htmlViewRect.right - toggleRect.right)
                     };
                 }
             );
             assert.ok(toggleAlignment, "expand toggle should render alongside the htmlView");
             assert.ok(
-                toggleAlignment.bottomDelta <= 4,
-                `expand toggle should align with the bottom edge of the text column (delta=${toggleAlignment?.bottomDelta ?? "n/a"})`
+                toggleAlignment.verticalDelta <= 4,
+                `expand toggle should align with the vertical center of the text column (delta=${toggleAlignment?.verticalDelta ?? "n/a"})`
             );
 
             await page.focus(toggleSelector);
