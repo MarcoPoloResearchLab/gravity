@@ -134,6 +134,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
   - [x] [GN-92] Restructure the repository so that the /frontend and the /backend are two separate top level folders. Consider changes to GitHub Pages through `gh` utility to continue serving front-end from the github after the change of the front-end index.html path — Frontend assets now live under `frontend/`, Docker configs point to the new directory, and README documents the GitHub Pages adjustment (branch maintenance/GN-92-restructure-repo).
 
+  - [ ] [GN-93] I need to deploy the front end from the frontend folder on Github pages
+
 ### Planning (do not work on these, not ready)
 
 - [ ] [GN-55] The current llm-proxy URL is wrong -- there is no such path as https://llm-proxy.mprlab.com/v1/gravity/
