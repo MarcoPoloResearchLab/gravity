@@ -14,7 +14,7 @@ import { EVENT_SYNC_SNAPSHOT_APPLIED } from "../constants.js";
  */
 
 /**
- * @typedef {{ authenticated: boolean, queueFlushed: boolean, snapshotApplied: boolean, accessToken: string|null }} SignInResult
+ * @typedef {{ authenticated: boolean, queueFlushed: boolean, snapshotApplied: boolean, accessToken: string|null, accessTokenExpiresAtMs: number|null }} SignInResult
  */
 
 /**
@@ -123,32 +123,54 @@ export function createSyncManager(options = {}) {
 
         /**
          * Handle sign-in by exchanging credentials, flushing queue, and reconciling a snapshot.
-         * @param {{ userId: string, credential: string }} params
+         * @param {{ userId: string, credential: string, backendToken?: { accessToken: string, expiresAtMs: number } }} params
          * @returns {Promise<SignInResult>}
          */
         async handleSignIn(params) {
             if (!params || !params.userId) {
-                return { authenticated: false, queueFlushed: false, snapshotApplied: false, accessToken: null };
+                return { authenticated: false, queueFlushed: false, snapshotApplied: false, accessToken: null, accessTokenExpiresAtMs: null };
             }
 
             const loadedMetadata = metadataStore.load(params.userId);
             const loadedQueue = queueStore.load(params.userId);
+            const now = clock().getTime();
 
-            let exchanged;
-            try {
-                exchanged = await backendClient.exchangeGoogleCredential({ credential: params.credential });
-            } catch (error) {
-                logging.error(error);
-                return { authenticated: false, queueFlushed: false, snapshotApplied: false, accessToken: null };
+            let backendToken = null;
+            const providedToken = params.backendToken;
+            if (providedToken
+                && typeof providedToken.accessToken === "string"
+                && providedToken.accessToken.length > 0
+                && typeof providedToken.expiresAtMs === "number"
+                && Number.isFinite(providedToken.expiresAtMs)
+                && providedToken.expiresAtMs > now) {
+                backendToken = {
+                    accessToken: providedToken.accessToken,
+                    expiresAtMs: providedToken.expiresAtMs
+                };
+            }
+
+            if (!backendToken) {
+                if (typeof params.credential !== "string" || params.credential.length === 0) {
+                    logging.error("Missing credential for backend token exchange");
+                    return { authenticated: false, queueFlushed: false, snapshotApplied: false, accessToken: null, accessTokenExpiresAtMs: null };
+                }
+                let exchanged;
+                try {
+                    exchanged = await backendClient.exchangeGoogleCredential({ credential: params.credential });
+                } catch (error) {
+                    logging.error(error);
+                    return { authenticated: false, queueFlushed: false, snapshotApplied: false, accessToken: null, accessTokenExpiresAtMs: null };
+                }
+                backendToken = {
+                    accessToken: exchanged.accessToken,
+                    expiresAtMs: now + exchanged.expiresIn * 1000
+                };
             }
 
             state.userId = params.userId;
             state.metadata = loadedMetadata;
             state.queue = loadedQueue;
-            state.backendToken = {
-                accessToken: exchanged.accessToken,
-                expiresAtMs: clock().getTime() + exchanged.expiresIn * 1000
-            };
+            state.backendToken = backendToken;
 
             seedInitialOperations();
             persistState();
@@ -163,7 +185,8 @@ export function createSyncManager(options = {}) {
                 authenticated: true,
                 queueFlushed,
                 snapshotApplied,
-                accessToken: state.backendToken ? state.backendToken.accessToken : null
+                accessToken: state.backendToken ? state.backendToken.accessToken : null,
+                accessTokenExpiresAtMs: state.backendToken ? state.backendToken.expiresAtMs : null
             };
         },
 

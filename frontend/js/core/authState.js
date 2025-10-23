@@ -9,7 +9,9 @@ import { appConfig } from "./config.js";
  * @typedef {{
  *   user: { id: string, email: string|null, name: string|null, pictureUrl: string|null },
  *   credential: string,
- *   clientId?: string|null
+ *   clientId?: string|null,
+ *   backendAccessToken?: string|null,
+ *   backendAccessTokenExpiresAtMs?: number|null
  * }} PersistedAuthState
  */
 
@@ -165,6 +167,10 @@ export function validatePersistedAuthState(candidate) {
         const email = selectPreferredString(payload.email, typed.user.email);
         const name = selectPreferredString(payload.name, typed.user.name ?? email);
         const pictureUrl = selectPreferredString(payload.picture, typed.user.pictureUrl);
+        const backendAccessToken = normalizeOptionalString(typed.backendAccessToken);
+        const backendExpiresAtMs = typeof typed.backendAccessTokenExpiresAtMs === "number" && Number.isFinite(typed.backendAccessTokenExpiresAtMs)
+            ? typed.backendAccessTokenExpiresAtMs
+            : null;
         return {
             user: {
                 id: subject,
@@ -173,7 +179,9 @@ export function validatePersistedAuthState(candidate) {
                 pictureUrl
             },
             credential: typed.credential,
-            clientId: normalizedAudience
+            clientId: normalizedAudience,
+            backendAccessToken,
+            backendAccessTokenExpiresAtMs: backendExpiresAtMs
         };
     } catch (error) {
         logging.error(error);
@@ -228,7 +236,11 @@ function sanitizeForPersistence(state) {
         const email = selectPreferredString(payload.email, state.user.email);
         const name = selectPreferredString(payload.name, state.user.name ?? email);
         const pictureUrl = selectPreferredString(payload.picture, state.user.pictureUrl);
-        return {
+        const backendAccessToken = normalizeOptionalString(state.backendAccessToken);
+        const backendExpiresAtMs = typeof state.backendAccessTokenExpiresAtMs === "number" && Number.isFinite(state.backendAccessTokenExpiresAtMs)
+            ? state.backendAccessTokenExpiresAtMs
+            : null;
+        const persisted = {
             user: {
                 id: subject,
                 email,
@@ -238,6 +250,11 @@ function sanitizeForPersistence(state) {
             credential: state.credential,
             clientId: audience
         };
+        if (backendAccessToken && typeof backendExpiresAtMs === "number") {
+            persisted.backendAccessToken = backendAccessToken;
+            persisted.backendAccessTokenExpiresAtMs = backendExpiresAtMs;
+        }
+        return persisted;
     } catch (error) {
         logging.error(error);
         return null;

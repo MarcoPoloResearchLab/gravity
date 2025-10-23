@@ -233,7 +233,11 @@ function gravityApp() {
                     detail: {
                         user: persisted.user,
                         credential: persisted.credential,
-                        restored: true
+                        restored: true,
+                        backendAccessToken: typeof persisted.backendAccessToken === "string" ? persisted.backendAccessToken : null,
+                        backendAccessTokenExpiresAtMs: typeof persisted.backendAccessTokenExpiresAtMs === "number"
+                            ? persisted.backendAccessTokenExpiresAtMs
+                            : null
                     }
                 }));
                 return true;
@@ -437,12 +441,21 @@ function gravityApp() {
         });
 
         root.addEventListener(EVENT_AUTH_SIGN_IN, (event) => {
-            const detail = /** @type {{ user?: { id?: string, email?: string|null, name?: string|null, pictureUrl?: string|null }, credential?: string, restored?: boolean }} */ (event?.detail ?? {});
+            const detail = /** @type {{ user?: { id?: string, email?: string|null, name?: string|null, pictureUrl?: string|null }, credential?: string, restored?: boolean, backendAccessToken?: string|null, backendAccessTokenExpiresAtMs?: number|null }} */ (event?.detail ?? {});
             const user = detail?.user;
             if (!user || !user.id) {
                 return;
             }
             const credential = typeof detail?.credential === "string" ? detail.credential : "";
+            const existingBackendAccessToken = typeof detail?.backendAccessToken === "string" && detail.backendAccessToken.length > 0
+                ? detail.backendAccessToken
+                : null;
+            const existingBackendAccessTokenExpiresAtMs = typeof detail?.backendAccessTokenExpiresAtMs === "number"
+                && Number.isFinite(detail.backendAccessTokenExpiresAtMs)
+                ? detail.backendAccessTokenExpiresAtMs
+                : null;
+            let latestBackendAccessToken = existingBackendAccessToken;
+            let latestBackendTokenExpiresAtMs = existingBackendAccessTokenExpiresAtMs;
 
             const applyGuestState = () => {
                 this.authUser = null;
@@ -477,13 +490,26 @@ function gravityApp() {
                         name: this.authUser.name,
                         pictureUrl: this.authUser.pictureUrl
                     },
-                    credential
+                    credential,
+                    backendAccessToken: typeof latestBackendAccessToken === "string" ? latestBackendAccessToken : null,
+                    backendAccessTokenExpiresAtMs: typeof latestBackendTokenExpiresAtMs === "number"
+                        ? latestBackendTokenExpiresAtMs
+                        : null
                 });
             };
 
             const syncManager = this.syncManager;
             const attemptSignIn = async () => {
-                if (!credential) {
+                const backendTokenHint = typeof latestBackendAccessToken === "string"
+                    && latestBackendAccessToken.length > 0
+                    && typeof latestBackendTokenExpiresAtMs === "number"
+                    && Number.isFinite(latestBackendTokenExpiresAtMs)
+                    ? {
+                        accessToken: latestBackendAccessToken,
+                        expiresAtMs: latestBackendTokenExpiresAtMs
+                    }
+                    : null;
+                if (!credential && !backendTokenHint) {
                     applyGuestState();
                     this.authControls?.showError(ERROR_AUTHENTICATION_GENERIC);
                     return;
@@ -491,15 +517,23 @@ function gravityApp() {
                 GravityStore.setUserScope(user.id);
                 try {
                     const result = syncManager && typeof syncManager.handleSignIn === "function"
-                        ? await syncManager.handleSignIn({ userId: user.id, credential })
+                        ? await syncManager.handleSignIn({ userId: user.id, credential, backendToken: backendTokenHint ?? undefined })
                         : { authenticated: true, queueFlushed: false, snapshotApplied: false, accessToken: null };
                     if (!result?.authenticated) {
                         applyGuestState();
                         this.authControls?.showError(ERROR_AUTHENTICATION_GENERIC);
                         return;
                     }
+                    if (typeof result.accessToken === "string" && result.accessToken.length > 0) {
+                        latestBackendAccessToken = result.accessToken;
+                    }
+                    if (typeof result.accessTokenExpiresAtMs === "number" && Number.isFinite(result.accessTokenExpiresAtMs)) {
+                        latestBackendTokenExpiresAtMs = result.accessTokenExpiresAtMs;
+                    }
                     applySignedInState();
-                    const accessToken = typeof result.accessToken === "string" ? result.accessToken : "";
+                    const accessToken = typeof latestBackendAccessToken === "string" && latestBackendAccessToken.length > 0
+                        ? latestBackendAccessToken
+                        : "";
                     if (accessToken) {
                         this.realtimeSync?.connect({
                             baseUrl: appConfig.backendBaseUrl,
