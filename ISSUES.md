@@ -36,7 +36,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
   - [x] [GN-85] Tests are failing on CI (GitHub Actions). Fix the tests — SSE dispatcher now prioritizes note-change payloads ahead of heartbeats and the realtime integration test awaits note-change events explicitly (branch bugfix/GN-85-ci-tests).
 
-  - [ ] [GN-86] [P0] The cards are flickering every second or so, which makes it disgusting. Investigate and find the source of flickering and remove it. Nothing must move on the screen without a user action triggering it.
+  - [x] [GN-86] [P0] The cards are flickering every second or so, which makes it disgusting. Investigate and find the source of flickering and remove it. Nothing must move on the screen without a user action triggering it. — Card rendering now short-circuits identical snapshots via a content signature, and a Puppeteer regression fails if snapshot events churn the DOM without data changes.
 
 
 ### Maintenance

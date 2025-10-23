@@ -85,6 +85,7 @@ function gravityApp() {
         syncManager: /** @type {ReturnType<typeof createSyncManager>|null} */ (null),
         realtimeSync: /** @type {{ connect(params: { baseUrl: string, accessToken: string }): void, disconnect(): void, dispose(): void }|null} */ (null),
         syncIntervalHandle: /** @type {number|null} */ (null),
+        lastRenderedSignature: /** @type {string|null} */ (null),
 
         init() {
             this.notesContainer = this.$refs.notesContainer ?? document.getElementById("notes-container");
@@ -574,17 +575,23 @@ function gravityApp() {
                 return;
             }
 
-            container.innerHTML = "";
-            const sortedRecords = [...records];
+            const sortedRecords = Array.isArray(records) ? [...records] : [];
             sortedRecords.sort((a, b) => (b.lastActivityIso || "").localeCompare(a.lastActivityIso || ""));
             const pinnedRecords = sortedRecords.filter((record) => record.pinned === true);
             const unpinnedRecords = sortedRecords.filter((record) => record.pinned !== true);
             const orderedRecords = [...pinnedRecords, ...unpinnedRecords];
+            const signature = createRenderSignature(orderedRecords);
+            if (this.lastRenderedSignature === signature) {
+                return;
+            }
+
+            container.innerHTML = "";
             for (const record of orderedRecords) {
                 const card = renderCard(record, { notesContainer: container });
                 container.appendChild(card);
             }
             updateActionButtons(container);
+            this.lastRenderedSignature = signature;
         },
 
         /**
@@ -706,4 +713,79 @@ function isNoteRecord(candidate) {
         && record.noteId.trim().length > 0
         && typeof record.markdownText === "string"
         && record.markdownText.trim().length > 0;
+}
+
+/**
+ * Create a deterministic signature representing the rendered note order and content.
+ * @param {import("./types.d.js").NoteRecord[]} records
+ * @returns {string}
+ */
+function createRenderSignature(records) {
+    if (!Array.isArray(records) || records.length === 0) {
+        return "[]";
+    }
+    const summary = records.map((record) => {
+        const contentHash = hashString(typeof record?.markdownText === "string" ? record.markdownText : "");
+        const attachmentsFingerprint = stableStringify(record?.attachments ?? {});
+        const classificationFingerprint = stableStringify(record?.classification ?? null);
+        return {
+            id: typeof record?.noteId === "string" ? record.noteId : "",
+            updatedAt: typeof record?.updatedAtIso === "string" ? record.updatedAtIso : "",
+            lastActivity: typeof record?.lastActivityIso === "string" ? record.lastActivityIso : "",
+            pinned: record?.pinned === true,
+            contentHash,
+            attachmentsHash: hashString(attachmentsFingerprint),
+            classification: classificationFingerprint
+        };
+    });
+    return JSON.stringify(summary);
+}
+
+/**
+ * Convert a value into a canonical JSON string for comparison.
+ * @param {unknown} value
+ * @returns {string}
+ */
+function stableStringify(value) {
+    const canonical = canonicalizeForSignature(value);
+    return JSON.stringify(canonical);
+}
+
+/**
+ * Recursively sort object keys and normalise primitive fallbacks.
+ * @param {unknown} value
+ * @returns {unknown}
+ */
+function canonicalizeForSignature(value) {
+    if (Array.isArray(value)) {
+        return value.map(canonicalizeForSignature);
+    }
+    if (value && typeof value === "object") {
+        const sortedKeys = Object.keys(value).sort();
+        const result = {};
+        for (const key of sortedKeys) {
+            result[key] = canonicalizeForSignature(value[key]);
+        }
+        return result;
+    }
+    if (typeof value === "undefined") {
+        return null;
+    }
+    return value;
+}
+
+/**
+ * Generate a stable hash for textual content.
+ * @param {string} value
+ * @returns {number}
+ */
+function hashString(value) {
+    if (typeof value !== "string" || value.length === 0) {
+        return 0;
+    }
+    let hash = 0;
+    for (let index = 0; index < value.length; index += 1) {
+        hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+    }
+    return hash;
 }
