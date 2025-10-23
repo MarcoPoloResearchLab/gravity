@@ -10,14 +10,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
 
-const CHECKLIST_NOTE_ID = "preview-checklist-primary";
+const CHECKLIST_NOTE_ID = "htmlView-checklist-primary";
 const CHECKLIST_MARKDOWN = [
     "# Checklist regression guard",
     "",
     "- [ ] Track first task",
     "- [x] Track second task"
 ].join("\n");
-const SECOND_NOTE_ID = "preview-checklist-secondary";
+const SECOND_NOTE_ID = "htmlView-checklist-secondary";
 const SECOND_MARKDOWN = [
     "# Secondary checklist",
     "",
@@ -25,8 +25,8 @@ const SECOND_MARKDOWN = [
 ].join("\n");
 const RAPID_TOGGLE_ITERATIONS = 4;
 
-test.describe("Checklist preview interactions", () => {
-    test("preview checkbox toggle keeps a single persisted note", async () => {
+test.describe("Checklist htmlView interactions", () => {
+    test("htmlView checkbox toggle keeps a single persisted note", async () => {
         const initialRecords = [
             buildNoteRecord({
                 noteId: CHECKLIST_NOTE_ID,
@@ -40,7 +40,7 @@ test.describe("Checklist preview interactions", () => {
             const cardSelector = `.markdown-block[data-note-id="${CHECKLIST_NOTE_ID}"]`;
             await page.waitForSelector(cardSelector);
 
-            const checkboxSelector = `${cardSelector} .note-preview input[data-task-index="0"]`;
+            const checkboxSelector = `${cardSelector} .note-html-view input[data-task-index="0"]`;
             await page.click(checkboxSelector);
 
             await page.evaluate((delayMs) => new Promise((resolve) => {
@@ -76,7 +76,7 @@ test.describe("Checklist preview interactions", () => {
         }
     });
 
-    test("rapid preview toggles keep records unique across notes", async () => {
+    test("rapid htmlView toggles keep records unique across notes", async () => {
         const seededRecords = [
             buildNoteRecord({
                 noteId: CHECKLIST_NOTE_ID,
@@ -92,8 +92,8 @@ test.describe("Checklist preview interactions", () => {
 
         const { page, teardown } = await openChecklistPage(seededRecords);
         try {
-            const firstSelector = `.markdown-block[data-note-id="${CHECKLIST_NOTE_ID}"] .note-preview input[data-task-index="0"]`;
-            const secondSelector = `.markdown-block[data-note-id="${SECOND_NOTE_ID}"] .note-preview input[data-task-index="0"]`;
+            const firstSelector = `.markdown-block[data-note-id="${CHECKLIST_NOTE_ID}"] .note-html-view input[data-task-index="0"]`;
+            const secondSelector = `.markdown-block[data-note-id="${SECOND_NOTE_ID}"] .note-html-view input[data-task-index="0"]`;
 
             await Promise.all([
                 page.waitForSelector(`.markdown-block[data-note-id="${CHECKLIST_NOTE_ID}"]`),

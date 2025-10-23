@@ -48,7 +48,7 @@ const CLOSING_BRACKETS = new Set(Object.values(BRACKET_PAIRS));
  * @typedef {{
  *   container: HTMLElement,
  *   textarea: HTMLTextAreaElement,
- *   previewElement: HTMLElement,
+ *   htmlViewElement: HTMLElement,
  *   initialMode?: MarkdownEditorMode,
  *   showToolbar?: boolean
  * }} MarkdownEditorOptions
@@ -81,13 +81,13 @@ export function createMarkdownEditorHost(options) {
     const {
         container,
         textarea,
-        previewElement,
+        htmlViewElement,
         initialMode = MODE_VIEW,
         showToolbar = true
     } = options;
     if (!(container instanceof HTMLElement)) throw new Error("Markdown editor host requires a container element.");
     if (!(textarea instanceof HTMLTextAreaElement)) throw new Error("Markdown editor host requires a textarea element.");
-    if (!(previewElement instanceof HTMLElement)) throw new Error("Markdown editor host requires a preview element.");
+    if (!(htmlViewElement instanceof HTMLElement)) throw new Error("Markdown editor host requires an HTML view element.");
 
     const listeners = new Map();
     /**
@@ -390,9 +390,9 @@ export function createMarkdownEditorHost(options) {
     function configureEasyMde(instance, { syncTextareaValue }) {
         const { codemirror } = instance;
 
-        const previewPane = instance?.gui?.preview;
-        if (previewPane instanceof HTMLElement) {
-            previewPane.remove();
+        const htmlViewPane = instance?.gui?.preview;
+        if (htmlViewPane instanceof HTMLElement) {
+            htmlViewPane.remove();
             if (instance.gui) {
                 instance.gui.preview = null;
             }

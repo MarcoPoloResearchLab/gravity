@@ -14,15 +14,15 @@ const NOTE_ID = "inline-fixture";
 const INITIAL_MARKDOWN = `# Inline Fixture\n\nThis note verifies inline editing.`;
 const CARET_NOTE_ID = "inline-caret-fixture";
 const CARET_MARKDOWN = `First paragraph line one.\nSecond paragraph line two.\nThird line to ensure scrolling.`;
-const PREVIEW_CARET_NOTE_ID = "inline-preview-caret-fixture";
+const PREVIEW_CARET_NOTE_ID = "inline-htmlView-caret-fixture";
 const PREVIEW_CARET_MARKDOWN = "Alpha **bold** bravo [link](https://example.com) charlie delta.";
-const PREVIEW_COMPLEX_NOTE_ID = "inline-preview-complex-fixture";
+const PREVIEW_COMPLEX_NOTE_ID = "inline-htmlView-complex-fixture";
 const PREVIEW_COMPLEX_MARKDOWN = [
-    "Alpha anchor paragraph lines the preview.",
+    "Alpha anchor paragraph lines the htmlView.",
     "Second pass mixes **bold**, `inline code`, and [link targets](https://example.com) for caret mapping.",
     "Third stanza finishes the markdown sample."
 ].join("\n");
-const PREVIEW_LIST_NOTE_ID = "inline-preview-list-fixture";
+const PREVIEW_LIST_NOTE_ID = "inline-htmlView-list-fixture";
 const PREVIEW_LIST_MARKDOWN = [
     "* Alpha baseline list item",
     "* Beta caret mapping check",
@@ -78,9 +78,9 @@ const GN47_MARKDOWN = [
     "",
     "Caret anchor **landing zone** ensures mapping works with [links](https://example.com) inline.",
     "",
-    "Follow-up paragraph with extended detail so the preview truncates before editing takes place, including `inline code` and additional emphasis for measurement.",
+    "Follow-up paragraph with extended detail so the htmlView truncates before editing takes place, including `inline code` and additional emphasis for measurement.",
     "",
-    "Supporting paragraph three elaborates on measurements and ensures the preview develops a fade-out overlay in view mode.",
+    "Supporting paragraph three elaborates on measurements and ensures the htmlView develops a fade-out overlay in view mode.",
     "",
     "Closing paragraph adds further depth to guarantee the card must grow downward rather than shifting upward."
 ].join("\n");
@@ -88,7 +88,7 @@ const GN48_NOTE_ID = "inline-editing-click-fixture";
 const GN48_MARKDOWN = [
     "# Editing Click Fixture",
     "",
-    "This note validates that re-clicking an already-editing card keeps the editor in place without flickering back to preview.",
+    "This note validates that re-clicking an already-editing card keeps the editor in place without flickering back to htmlView.",
     "",
     "The body includes multiple paragraphs so the editor has height and padding beyond the CodeMirror viewport.",
     "",
@@ -167,25 +167,29 @@ test.describe("Markdown inline editor", () => {
         }
     });
 
-    test("top editor hides EasyMDE preview pane", async () => {
+    test("top editor hides EasyMDE htmlView pane", async () => {
         const { page, teardown } = await preparePage({
             records: []
         });
 
         try {
             await page.waitForSelector("#top-editor .EasyMDEContainer");
-            const previewVisibility = await page.evaluate(() => {
-                const preview = document.querySelector("#top-editor .EasyMDEContainer .editor-preview-side");
-                if (!(preview instanceof HTMLElement)) {
+            const htmlViewVisibility = await page.evaluate(() => {
+                const container = document.querySelector("#top-editor .EasyMDEContainer");
+                if (!(container instanceof HTMLElement)) {
                     return null;
                 }
-                const computed = window.getComputedStyle(preview);
+                const htmlView = container.querySelector(".editor-htmlView-side, .editor-preview-side");
+                if (!(htmlView instanceof HTMLElement)) {
+                    return null;
+                }
+                const computed = window.getComputedStyle(htmlView);
                 return { display: computed.display, width: computed.width };
             });
 
-            assert.ok(previewVisibility, "Preview element should exist in DOM for measurement");
-            assert.equal(previewVisibility.display, "none", "EasyMDE preview pane must remain hidden in the top editor");
-            assert.equal(previewVisibility.width, "0px", "EasyMDE preview pane should not consume horizontal space");
+            assert.ok(htmlViewVisibility, "HtmlView element should exist in DOM for measurement");
+            assert.equal(htmlViewVisibility.display, "none", "EasyMDE htmlView pane must remain hidden in the top editor");
+            assert.equal(htmlViewVisibility.width, "0px", "EasyMDE htmlView pane should not consume horizontal space");
         } finally {
             await teardown();
         }
@@ -323,7 +327,7 @@ test.describe("Markdown inline editor", () => {
         }
     });
 
-    test("single click expands an overflowing preview without starting edit mode", async () => {
+    test("single click expands an overflowing htmlView without starting edit mode", async () => {
         const expandNoteId = "inline-expand-behaviour";
         const noteRecord = buildNoteRecord({
             noteId: expandNoteId,
@@ -333,35 +337,35 @@ test.describe("Markdown inline editor", () => {
             records: [noteRecord]
         });
         const cardSelector = `.markdown-block[data-note-id="${expandNoteId}"]`;
-        const previewSelector = `${cardSelector} .note-preview`;
+        const htmlViewSelector = `${cardSelector} .note-html-view`;
 
         try {
             await page.waitForSelector(cardSelector);
 
-            const initialState = await page.$eval(previewSelector, (element) => {
+            const initialState = await page.$eval(htmlViewSelector, (element) => {
                 if (!(element instanceof HTMLElement)) {
                     return null;
                 }
                 return {
-                    overflow: element.classList.contains("note-preview--overflow"),
-                    expanded: element.classList.contains("note-preview--expanded")
+                    overflow: element.classList.contains("note-html-view--overflow"),
+                    expanded: element.classList.contains("note-html-view--expanded")
                 };
             });
             assert.ok(initialState);
             assert.equal(initialState.overflow, true, "fixture should overflow to require expansion");
-            assert.equal(initialState.expanded, false, "preview must start collapsed");
+            assert.equal(initialState.expanded, false, "htmlView must start collapsed");
 
-            await page.click(previewSelector);
-            await page.waitForSelector(`${previewSelector}.note-preview--expanded`);
+            await page.click(htmlViewSelector);
+            await page.waitForSelector(`${htmlViewSelector}.note-html-view--expanded`);
 
             const editingAfterClick = await page.$(`${cardSelector}.editing-in-place`);
             assert.equal(editingAfterClick, null, "single click must not start editing");
 
-            await page.click(previewSelector);
+            await page.click(htmlViewSelector);
             await page.waitForFunction((selector) => {
                 const element = document.querySelector(selector);
-                return element instanceof HTMLElement && !element.classList.contains("note-preview--expanded");
-            }, {}, previewSelector);
+                return element instanceof HTMLElement && !element.classList.contains("note-html-view--expanded");
+            }, {}, htmlViewSelector);
         } finally {
             await teardown();
         }
@@ -463,7 +467,7 @@ test.describe("Markdown inline editor", () => {
         }
     });
 
-    test("preview click enters edit mode at click point without shifting card upward", async () => {
+    test("htmlView click enters edit mode at click point without shifting card upward", async () => {
         const noteRecord = buildNoteRecord({
             noteId: GN47_NOTE_ID,
             markdownText: GN47_MARKDOWN
@@ -551,13 +555,13 @@ test.describe("Markdown inline editor", () => {
                 targetSubstring
             );
             if (!clickPoint) {
-                const previewText = await page.$eval(`${cardSelector} .markdown-content`, (element) => {
+                const htmlViewText = await page.$eval(`${cardSelector} .markdown-content`, (element) => {
                     if (!(element instanceof HTMLElement)) {
                         return "";
                     }
                     return element.textContent || "";
                 });
-                assert.fail(`The preview should expose the target substring for clicking. preview="${previewText}" target="${targetSubstring}"`);
+                assert.fail(`The htmlView should expose the target substring for clicking. htmlView="${htmlViewText}" target="${targetSubstring}"`);
             }
 
             await page.mouse.click(clickPoint.x, clickPoint.y, { clickCount: 2 });
@@ -763,7 +767,7 @@ test.describe("Markdown inline editor", () => {
         }
     });
 
-    test("finalizing inline edit rebuilds preview without badge errors", async () => {
+    test("finalizing inline edit rebuilds htmlView without badge errors", async () => {
         const seededRecords = [buildNoteRecord({
             noteId: NOTE_ID,
             markdownText: INITIAL_MARKDOWN
@@ -789,7 +793,7 @@ test.describe("Markdown inline editor", () => {
             await page.keyboard.up("Shift");
 
             await page.waitForSelector(`${cardSelector}:not(.editing-in-place)`);
-            await page.waitForSelector(`${cardSelector} .note-preview .markdown-content`);
+            await page.waitForSelector(`${cardSelector} .note-html-view .markdown-content`);
             const badgeCount = await page.$$eval(`${cardSelector} .note-badges`, (elements) => elements.length);
             assert.equal(badgeCount, 1, "Card should retain a single badge container after finalizing");
             assert.equal(capturedErrors.length, 0, `Expected no page errors, received: ${capturedErrors.join(" | ")}`);
@@ -851,8 +855,8 @@ test.describe("Markdown inline editor", () => {
                 }
             }
 
-            const updatedPreview = await page.$eval(`${cardSelector} .markdown-content`, (element) => element.textContent || "");
-            assert.ok(updatedPreview.includes("Additional content line"), "Shift+Enter should submit edits and update the preview");
+            const updatedHtmlView = await page.$eval(`${cardSelector} .markdown-content`, (element) => element.textContent || "");
+            assert.ok(updatedHtmlView.includes("Additional content line"), "Shift+Enter should submit edits and update the htmlView");
         } finally {
             await teardown();
         }
@@ -911,7 +915,7 @@ test.describe("Markdown inline editor", () => {
                 const codeMirrorRect = codeMirror.getBoundingClientRect();
                 const cardRect = card.getBoundingClientRect();
                 const content = card.querySelector(".markdown-content");
-                const previewDisplay = content instanceof HTMLElement
+                const htmlViewDisplay = content instanceof HTMLElement
                     ? window.getComputedStyle(content).display
                     : "none";
                 return {
@@ -920,7 +924,7 @@ test.describe("Markdown inline editor", () => {
                     codeMirrorLeft: codeMirrorRect.left,
                     codeMirrorRight: codeMirrorRect.right,
                     cardLeft: cardRect.left,
-                    previewDisplay
+                    htmlViewDisplay
                 };
             }, cardSelector);
             assert.ok(layoutAfterEdit, "Layout after entering edit mode should be measurable");
@@ -928,7 +932,7 @@ test.describe("Markdown inline editor", () => {
             assert.ok(Math.abs(layoutAfterEdit.actionsLeft - baseline.actionsLeft) <= 1, "Actions column must stay anchored");
             assert.ok(Math.abs(layoutAfterEdit.actionsWidth - baseline.actionsWidth) <= 1, "Actions column width must remain unchanged");
 
-            assert.equal(layoutAfterEdit.previewDisplay, "none", "Rendered preview hides when editing");
+            assert.equal(layoutAfterEdit.htmlViewDisplay, "none", "Rendered htmlView hides when editing");
             assert.ok(layoutAfterEdit.codeMirrorLeft <= baseline.contentLeft + 1, "Editor should align with original content column");
             assert.ok(layoutAfterEdit.codeMirrorRight <= baseline.actionsLeft - 4, "Editor must not overlap the actions column");
             assert.ok(layoutAfterEdit.codeMirrorLeft < layoutAfterEdit.actionsLeft, "Editor must remain left of the actions controls");
@@ -979,7 +983,7 @@ test.describe("Markdown inline editor", () => {
             }
         });
 
-        test("checkbox toggles from preview persist to markdown", async () => {
+        test("checkbox toggles from htmlView persist to markdown", async () => {
             const seededRecords = [buildNoteRecord({
                 noteId: TASK_NOTE_ID,
                 markdownText: TASK_MARKDOWN,
@@ -1193,7 +1197,7 @@ test.describe("Markdown inline editor", () => {
 
 
 async function enterCardEditMode(page, cardSelector) {
-    await page.click(`${cardSelector} .note-preview`, { clickCount: 2 });
+    await page.click(`${cardSelector} .note-html-view`, { clickCount: 2 });
     await page.waitForSelector(`${cardSelector}.editing-in-place`);
     const codeMirrorTextarea = `${cardSelector} .CodeMirror textarea`;
     await page.waitForSelector(codeMirrorTextarea);
@@ -1264,7 +1268,7 @@ async function ensureCardInViewMode(page, cardSelector, originalMarkdown) {
     }, {}, cardSelector);
 }
 
-async function preparePage({ records, previewBubbleDelayMs, waitUntil = "domcontentloaded" }) {
+async function preparePage({ records, htmlViewBubbleDelayMs, waitUntil = "domcontentloaded" }) {
     const { page, teardown } = await createSharedPage();
     const serialized = JSON.stringify(Array.isArray(records) ? records : []);
     await page.evaluateOnNewDocument((storageKey, payload, bubbleDelay) => {
@@ -1273,9 +1277,9 @@ async function preparePage({ records, previewBubbleDelayMs, waitUntil = "domcont
         window.localStorage.setItem(storageKey, payload);
         window.__gravityForceMarkdownEditor = true;
         if (typeof bubbleDelay === "number") {
-            window.__gravityPreviewBubbleDelayMs = bubbleDelay;
+            window.__gravityHtmlViewBubbleDelayMs = bubbleDelay;
         }
-    }, appConfig.storageKey, serialized, typeof previewBubbleDelayMs === "number" ? previewBubbleDelayMs : null);
+    }, appConfig.storageKey, serialized, typeof htmlViewBubbleDelayMs === "number" ? htmlViewBubbleDelayMs : null);
 
     await page.goto(PAGE_URL, { waitUntil });
     await page.waitForSelector("#top-editor .CodeMirror textarea");

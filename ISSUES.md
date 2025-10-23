@@ -128,7 +128,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
 ### Maintenance
 
-  - [ ] [GN-90] Code refactoring: we have screenshots, we have HTML view and we have markdown view. Use this rough taxonomy and revise the code to ensure there is no word previewe mentioned anywhere in the code. While working on it ensure that the code flow doesnt assume previewes, storing previews in the DOM, cahcing previewes or doing any operation wich pre-calculate views. Simplify the code where possible. Remember to rely on [marked.js](marked.js.md) and [MD](MDE.v2.19.0.md)
+  - [x] [GN-90] Code refactoring: we have screenshots, we have HTML view and we have markdown view. Use this rough taxonomy and revise the code to ensure there is no word previewe mentioned anywhere in the code. While working on it ensure that the code flow doesnt assume previewes, storing previews in the DOM, cahcing previewes or doing any operation wich pre-calculate views. Simplify the code where possible. Remember to rely on [marked.js](marked.js.md) and [MD](MDE.v2.19.0.md) — HTML view terminology replaces preview helpers across the UI, clipboard generation now re-renders sanitized HTML on demand, and styles/tests track the new names (branch maintenance/GN-90-rename-preview).
 
   - [ ] [GN-91] Document the current code flow when each card calls createHTMLView when it's loaded into view and deleteHTMLView when it's unloaded from the view or is getting edited. My understanding may be incorrect -- document the correct flow details in @ARCHITECTURE.md to ensure we have an easy guidance on cards rendering in both HTML and Markdown modes.
 
