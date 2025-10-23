@@ -216,19 +216,23 @@ async function main() {
     mergedScreenshotConfig.allowlist = cliArguments.screenshotAllowlist;
   }
 
-  const screenshotOptions = parseScreenshotOptions(mergedScreenshotConfig);
-  const screenshotForce = Boolean(cliArguments.screenshotForce);
+  let screenshotDirectorySetting = typeof cliArguments.screenshotDirectory === "string" ? cliArguments.screenshotDirectory : null;
+  if (!screenshotDirectorySetting && runtimeOptions.screenshots && typeof runtimeOptions.screenshots.directory === "string") {
+    screenshotDirectorySetting = runtimeOptions.screenshots.directory;
+  }
 
-  const envDirectoryRaw = typeof process.env.GRAVITY_SCREENSHOT_DIR === "string" ? process.env.GRAVITY_SCREENSHOT_DIR.trim() : "";
-  const shouldAutoProvision = !isCiEnvironment && !cliArguments.screenshotDirectory && envDirectoryRaw.length === 0 && (
+  const screenshotOptions = parseScreenshotOptions(mergedScreenshotConfig);
+  const screenshotForce = Boolean(cliArguments.screenshotForce || (runtimeOptions.screenshots && runtimeOptions.screenshots.force));
+
+  const shouldAutoProvision = !isCiEnvironment && !screenshotDirectorySetting && (
     screenshotForce ||
     screenshotOptions.policy === "enabled" ||
     (screenshotOptions.policy === "allowlist" && screenshotOptions.allowlist.length > 0)
   );
 
   let screenshotRunRoot = null;
-  if (cliArguments.screenshotDirectory) {
-    const resolvedDirectory = path.resolve(process.cwd(), cliArguments.screenshotDirectory);
+  if (screenshotDirectorySetting) {
+    const resolvedDirectory = path.resolve(process.cwd(), screenshotDirectorySetting);
     await fs.mkdir(resolvedDirectory, { recursive: true });
     screenshotRunRoot = resolvedDirectory;
   } else if (shouldAutoProvision) {
@@ -315,7 +319,8 @@ async function main() {
 
   let sharedBrowserContext = null;
   let backendHandle = null;
-  let runtimeContextPayload = null;
+  /** @type {any} */
+  let baseRuntimeContext = { ci: isCiEnvironment };
 
   const sectionHeading = (label) => `\n${cliColors.symbols.section} ${cliColors.bold(label)}`;
   const formatCount = (count, label, format) => {
@@ -341,7 +346,8 @@ async function main() {
       if (!backendHandle.signingKeyPem || !backendHandle.signingKeyId) {
         throw new Error("Shared backend did not expose signing metadata.");
       }
-      runtimeContextPayload = JSON.stringify({
+      baseRuntimeContext = {
+        ...baseRuntimeContext,
         backend: {
           baseUrl: backendHandle.baseUrl,
           googleClientId: backendHandle.googleClientId,
@@ -351,9 +357,12 @@ async function main() {
         browser: {
           wsEndpoint: sharedBrowserContext.wsEndpoint
         }
-      });
-      process.env.GRAVITY_RUNTIME_CONTEXT = runtimeContextPayload;
+      };
     }
+    if (!baseRuntimeContext) {
+      baseRuntimeContext = { ci: isCiEnvironment };
+    }
+    process.env.GRAVITY_RUNTIME_CONTEXT = JSON.stringify(baseRuntimeContext);
 
     for (const relative of files) {
       const absolute = path.join(TESTS_ROOT, relative);
@@ -363,6 +372,7 @@ async function main() {
       if (screenshotRunRoot) {
         const shortName = deriveShortTestName(relative);
         screenshotDirectoryForTest = path.join(screenshotRunRoot, shortName);
+        await fs.mkdir(screenshotDirectoryForTest, { recursive: true });
       }
 
       console.log(sectionHeading(relative));
@@ -380,18 +390,23 @@ async function main() {
         args.push(absolute);
       }
 
+      const runtimeContextForTest = {
+        ...baseRuntimeContext,
+        test: { file: relative },
+        screenshots: {
+          directory: screenshotDirectoryForTest,
+          policy: screenshotOptions.policy ?? null,
+          allowlist: Array.isArray(screenshotOptions.allowlist) ? screenshotOptions.allowlist : [],
+          force: screenshotForce
+        }
+      };
+
       const result = await runTestProcess({
         command: process.execPath,
         args,
         timeoutMs: effectiveTimeout,
         killGraceMs: effectiveKillGrace,
-        env: createChildEnv({
-          runtimeContext: runtimeContextPayload,
-          screenshotDirectory: screenshotDirectoryForTest,
-          relativePath: relative,
-          screenshotOptions,
-          screenshotForce
-        }),
+        env: createChildEnv(JSON.stringify(runtimeContextForTest)),
         onStdout: (chunk) => process.stdout.write(chunk),
         onStderr: (chunk) => process.stderr.write(chunk)
       });
@@ -487,27 +502,11 @@ function sanitizeArtifactComponent(value) {
   return normalized.length > 0 ? normalized : `${Date.now()}`;
 }
 
-function createChildEnv({ runtimeContext, screenshotDirectory, relativePath, screenshotOptions, screenshotForce }) {
-  const overrides = {};
-  if (typeof runtimeContext === "string" && runtimeContext.length > 0) {
-    overrides.GRAVITY_RUNTIME_CONTEXT = runtimeContext;
+function createChildEnv(runtimeContextPayload) {
+  if (typeof runtimeContextPayload === "string" && runtimeContextPayload.length > 0) {
+    return { GRAVITY_RUNTIME_CONTEXT: runtimeContextPayload };
   }
-  if (typeof screenshotDirectory === "string" && screenshotDirectory.length > 0) {
-    overrides.GRAVITY_SCREENSHOT_DIR = screenshotDirectory;
-    overrides.GRAVITY_SCREENSHOT_TEST_FILE = relativePath;
-  }
-  if (screenshotOptions && typeof screenshotOptions === "object") {
-    if (screenshotOptions.policy) {
-      overrides.GRAVITY_SCREENSHOT_POLICY = screenshotOptions.policy;
-    }
-    if (Array.isArray(screenshotOptions.allowlist) && screenshotOptions.allowlist.length > 0) {
-      overrides.GRAVITY_SCREENSHOT_ALLOWLIST = screenshotOptions.allowlist.join(",");
-    }
-  }
-  if (screenshotForce) {
-    overrides.GRAVITY_SCREENSHOT_FORCE = "true";
-  }
-  return Object.keys(overrides).length > 0 ? overrides : undefined;
+  return undefined;
 }
 
 function deriveShortTestName(relativePath) {

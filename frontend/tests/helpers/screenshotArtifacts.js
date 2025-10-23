@@ -3,230 +3,247 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs/promises";
 import path from "node:path";
-import process from "node:process";
 
-const PNG_EXTENSION = ".png";
+import { readRuntimeContext } from "./runtimeContext.js";
+
 const SCREENSHOT_POLICIES = Object.freeze({
     disabled: "disabled",
     enabled: "enabled",
     allowlist: "allowlist"
 });
 
-const DEFAULT_ENV_NAMES = Object.freeze({
-    directoryEnv: "GRAVITY_SCREENSHOT_DIR",
-    policyEnv: "GRAVITY_SCREENSHOT_POLICY",
-    allowlistEnv: "GRAVITY_SCREENSHOT_ALLOWLIST",
-    testFileEnv: "GRAVITY_SCREENSHOT_TEST_FILE",
-    forceEnv: "GRAVITY_SCREENSHOT_FORCE"
-});
+/**
+ * @typedef {Object} ScreenshotConfiguration
+ * @property {boolean} ci
+ * @property {string | null} directory
+ * @property {"disabled" | "enabled" | "allowlist"} policy
+ * @property {string[]} allowlist
+ * @property {string | null} testFile
+ * @property {boolean} force
+ */
 
 /**
- * @param {{
- *   directoryEnv?: string,
- *   policyEnv?: string,
- *   allowlistEnv?: string,
- *   testFileEnv?: string,
- *   forceEnv?: string
- * }} [options]
+ * @typedef {Object} ScreenshotOverrides
+ * @property {string | null | undefined} [directory]
+ * @property {"disabled" | "enabled" | "allowlist" | undefined} [policy]
+ * @property {string[] | undefined} [allowlist]
+ * @property {string | null | undefined} [testFile]
+ * @property {boolean | undefined} [force]
+ * @property {boolean | undefined} [ci]
  */
-export function createScreenshotArtifactsController(options = {}) {
-    const config = {
-        ...DEFAULT_ENV_NAMES,
-        ...options
+
+/**
+ * @param {*} value
+ * @returns {"disabled" | "enabled" | "allowlist"}
+ */
+function normalizePolicy(value) {
+    const raw = typeof value === "string" ? value.trim().toLowerCase() : "";
+    if (raw === SCREENSHOT_POLICIES.enabled) return SCREENSHOT_POLICIES.enabled;
+    if (raw === SCREENSHOT_POLICIES.allowlist) return SCREENSHOT_POLICIES.allowlist;
+    return SCREENSHOT_POLICIES.disabled;
+}
+
+/**
+ * @param {*} value
+ * @returns {string | null}
+ */
+function normalizeDirectory(value) {
+    if (typeof value !== "string") return null;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * @param {*} value
+ * @returns {string | null}
+ */
+function normalizeTestFile(value) {
+    if (typeof value !== "string") return null;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * @param {*} value
+ * @returns {string[]}
+ */
+function normalizeAllowlist(value) {
+    if (!Array.isArray(value)) return [];
+    return value
+        .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+        .filter((entry) => entry.length > 0);
+}
+
+/**
+ * @param {*} value
+ * @returns {boolean}
+ */
+function normalizeBoolean(value) {
+    return value === true;
+}
+
+/**
+ * @param {*} rawConfig
+ * @returns {ScreenshotConfiguration}
+ */
+function normalizeConfiguration(rawConfig) {
+    const config = typeof rawConfig === "object" && rawConfig !== null ? rawConfig : {};
+    return {
+        ci: Boolean(config.ci),
+        directory: normalizeDirectory(config.directory),
+        policy: normalizePolicy(config.policy),
+        allowlist: normalizeAllowlist(config.allowlist),
+        testFile: normalizeTestFile(config.testFile),
+        force: Boolean(config.force)
     };
+}
+
+/**
+ * @param {ScreenshotOverrides | undefined} overrides
+ * @returns {ScreenshotOverrides | null}
+ */
+function normalizeOverrides(overrides) {
+    if (!overrides || typeof overrides !== "object") {
+        return null;
+    }
+    /** @type {ScreenshotOverrides} */
+    const normalized = {};
+    if ("directory" in overrides) {
+        normalized.directory = normalizeDirectory(overrides.directory);
+    }
+    if ("policy" in overrides) {
+        normalized.policy = normalizePolicy(overrides.policy);
+    }
+    if ("allowlist" in overrides) {
+        normalized.allowlist = normalizeAllowlist(overrides.allowlist);
+    }
+    if ("testFile" in overrides) {
+        normalized.testFile = normalizeTestFile(overrides.testFile);
+    }
+    if ("force" in overrides) {
+        normalized.force = Boolean(overrides.force);
+    }
+    if ("ci" in overrides) {
+        normalized.ci = Boolean(overrides.ci);
+    }
+    return normalized;
+}
+
+/**
+ * @param {string} candidate
+ * @param {string} target
+ */
+function doesAllowlistEntryMatch(candidate, target) {
+    const normalizedCandidate = candidate.replace(/\\/g, "/");
+    const normalizedTarget = target.replace(/\\/g, "/");
+    if (normalizedCandidate === normalizedTarget) {
+        return true;
+    }
+    return normalizedCandidate === path.basename(normalizedTarget);
+}
+
+/**
+ * @param {() => ScreenshotConfiguration} resolver
+ */
+export function createScreenshotArtifactsController(resolver) {
+    if (typeof resolver !== "function") {
+        throw new Error("Screenshot configuration resolver must be a function.");
+    }
 
     const forcedContext = new AsyncLocalStorage();
+    /** @type {ScreenshotOverrides | null} */
+    let overrides = null;
 
     /**
-     * @param {NodeJS.ProcessEnv} env
-     * @param {string} key
-     * @returns {string | undefined}
+     * @returns {ScreenshotConfiguration}
      */
-    function getEnvValue(env, key) {
-        const raw = env[key];
-        return typeof raw === "string" ? raw : undefined;
+    function resolveEffectiveConfiguration() {
+        const baseConfig = normalizeConfiguration(resolver());
+        if (overrides) {
+            if ("ci" in overrides) {
+                baseConfig.ci = Boolean(overrides.ci);
+            }
+            if ("directory" in overrides) {
+                baseConfig.directory = overrides.directory ?? baseConfig.directory;
+            }
+            if ("policy" in overrides && overrides.policy) {
+                baseConfig.policy = overrides.policy;
+            }
+            if ("allowlist" in overrides && overrides.allowlist) {
+                baseConfig.allowlist = overrides.allowlist.slice();
+            }
+            if ("testFile" in overrides) {
+                baseConfig.testFile = overrides.testFile ?? baseConfig.testFile;
+            }
+            if ("force" in overrides) {
+                baseConfig.force = Boolean(overrides.force);
+            }
+        }
+        const store = forcedContext.getStore();
+        if (store && store.forced === true) {
+            baseConfig.force = true;
+        }
+        return baseConfig;
     }
 
-    /**
-     * @param {NodeJS.ProcessEnv} [env]
-     */
-    function getScreenshotArtifactsDirectory(env = process.env) {
-        const directory = getEnvValue(env, config.directoryEnv);
-        if (!directory) {
-            return null;
-        }
-        const trimmed = directory.trim();
-        return trimmed.length > 0 ? trimmed : null;
-    }
-
-    /**
-     * @param {NodeJS.ProcessEnv} [env]
-     * @returns {"disabled" | "enabled" | "allowlist"}
-     */
-    function resolvePolicy(env = process.env) {
-        const raw = getEnvValue(env, config.policyEnv);
-        if (!raw) {
-            return SCREENSHOT_POLICIES.disabled;
-        }
-        const normalized = raw.trim().toLowerCase();
-        if (normalized === "enabled" || normalized === "always") {
-            return SCREENSHOT_POLICIES.enabled;
-        }
-        if (
-            normalized === "allowlist" ||
-            normalized === "allow-listed" ||
-            normalized === "allow-list" ||
-            normalized === "allow list"
-        ) {
-            return SCREENSHOT_POLICIES.allowlist;
-        }
-        if (normalized === "disabled" || normalized === "never" || normalized === "off") {
-            return SCREENSHOT_POLICIES.disabled;
-        }
-        return SCREENSHOT_POLICIES.disabled;
-    }
-
-    /**
-     * @param {NodeJS.ProcessEnv} [env]
-     */
-    function parseAllowlist(env = process.env) {
-        const raw = getEnvValue(env, config.allowlistEnv);
-        if (!raw) {
-            return new Set();
-        }
-        const entries = raw
-            .split(/[\n,]/u)
-            .map((value) => value.trim())
-            .filter((value) => value.length > 0);
-        return new Set(entries);
-    }
-
-    /**
-     * @param {unknown} value
-     */
-    function normalizePathValue(value) {
-        if (typeof value !== "string") {
-            return null;
-        }
-        return value.replace(/\\/g, "/");
-    }
-
-    /**
-     * @param {string | undefined} testFile
-     * @param {Set<string>} allowlist
-     */
-    function isTestInAllowlist(testFile, allowlist) {
-        if (!testFile || allowlist.size === 0) {
+    function shouldCaptureScreenshots() {
+        const config = resolveEffectiveConfiguration();
+        if (config.ci) {
             return false;
         }
-        const normalized = normalizePathValue(testFile);
-        if (!normalized) {
+        if (!config.directory) {
             return false;
         }
-        if (allowlist.has(normalized)) {
+        if (config.force) {
             return true;
         }
-        const base = path.basename(normalized);
-        return allowlist.has(base);
-    }
-
-    /**
-     * @param {NodeJS.ProcessEnv} [env]
-     */
-    function isForced(env = process.env) {
-        const context = forcedContext.getStore();
-        if (context && context.forced === true) {
+        if (config.policy === SCREENSHOT_POLICIES.enabled) {
             return true;
         }
-        const raw = getEnvValue(env, config.forceEnv);
-        if (!raw) {
-            return false;
-        }
-        const normalized = raw.trim().toLowerCase();
-        return normalized === "1" ||
-            normalized === "true" ||
-            normalized === "yes" ||
-            normalized === "on" ||
-            normalized === "enabled";
-    }
-
-    /**
-     * Determine whether screenshots should be saved for the current test process.
-     * @param {NodeJS.ProcessEnv} [env]
-     * @returns {boolean}
-     */
-    function shouldCaptureScreenshots(env = process.env) {
-        if (env.CI === "true") {
-            return false;
-        }
-        const directory = getScreenshotArtifactsDirectory(env);
-        if (!directory) {
-            return false;
-        }
-        if (isForced(env)) {
-            return true;
-        }
-        const policy = resolvePolicy(env);
-        if (policy === SCREENSHOT_POLICIES.enabled) {
-            return true;
-        }
-        if (policy === SCREENSHOT_POLICIES.allowlist) {
-            const allowlist = parseAllowlist(env);
-            const testFile = getEnvValue(env, config.testFileEnv);
-            return isTestInAllowlist(testFile, allowlist);
+        if (config.policy === SCREENSHOT_POLICIES.allowlist) {
+            if (!config.testFile) {
+                return false;
+            }
+            return config.allowlist.some((entry) => doesAllowlistEntryMatch(entry, config.testFile || ""));
         }
         return false;
     }
 
-    /**
-     * Run the provided callback with screenshot capture forced on.
-     * @template T
-     * @param {() => Promise<T> | T} callback
-     * @returns {Promise<T>}
-     */
-    async function withScreenshotCapture(callback) {
-        if (typeof callback !== "function") {
-            throw new Error("withScreenshotCapture requires a callback function.");
-        }
-        return forcedContext.run({ forced: true }, async () => {
-            return await callback();
-        });
+    function getScreenshotArtifactsDirectory() {
+        const config = resolveEffectiveConfiguration();
+        return config.directory;
     }
 
     /**
-     * Persist a PNG screenshot buffer if capturing is enabled.
      * @param {string} label
      * @param {Buffer | Uint8Array | ArrayBuffer} buffer
-     * @returns {Promise<string | null>}
      */
     async function saveScreenshotArtifact(label, buffer) {
         if (!shouldCaptureScreenshots()) {
             return null;
         }
         const directory = getScreenshotArtifactsDirectory();
-        if (!directory || !label || typeof label !== "string") {
+        if (!directory) {
             return null;
         }
-        const normalized = normalizeBuffer(buffer);
-        if (!normalized) {
+        const normalizedBuffer = normalizeBuffer(buffer);
+        if (!normalizedBuffer) {
             return null;
         }
         const safeLabel = sanitizeLabel(label);
-        const filePath = path.join(directory, `${safeLabel}${PNG_EXTENSION}`);
+        const filePath = path.join(directory, `${safeLabel}.png`);
         await fs.mkdir(directory, { recursive: true });
-        await fs.writeFile(filePath, normalized);
+        await fs.writeFile(filePath, normalizedBuffer);
         return filePath;
     }
 
     /**
-     * Capture a puppeteer screenshot and persist it when enabled.
      * @param {import("puppeteer").Page} page
      * @param {{
      *   label: string,
      *   selector?: string,
      *   clip?: import("puppeteer").BoundingBox
      * }} options
-     * @returns {Promise<string | null>}
      */
     async function captureElementScreenshot(page, options) {
         if (!shouldCaptureScreenshots()) {
@@ -243,7 +260,7 @@ export function createScreenshotArtifactsController(options = {}) {
             throw new Error("Screenshot label must be a non-empty string.");
         }
 
-        if (selector && typeof selector === "string" && selector.trim().length > 0) {
+        if (typeof selector === "string" && selector.trim().length > 0) {
             const handle = await page.$(selector);
             if (!handle) {
                 throw new Error(`Unable to locate element for selector: ${selector}`);
@@ -271,16 +288,65 @@ export function createScreenshotArtifactsController(options = {}) {
         return saveScreenshotArtifact(label, normalizedPageScreenshot);
     }
 
-    return {
+    /**
+     * @template T
+     * @param {() => Promise<T> | T} callback
+     * @returns {Promise<T>}
+     */
+    async function withScreenshotCapture(callback) {
+        if (typeof callback !== "function") {
+            throw new Error("withScreenshotCapture requires a callback function.");
+        }
+        return forcedContext.run({ forced: true }, async () => {
+            return await callback();
+        });
+    }
+
+    /**
+     * @param {ScreenshotOverrides | undefined} nextOverrides
+     */
+    function setOverrides(nextOverrides) {
+        overrides = normalizeOverrides(nextOverrides) ?? null;
+    }
+
+    function clearOverrides() {
+        overrides = null;
+    }
+
+    return Object.freeze({
         shouldCaptureScreenshots,
         getScreenshotArtifactsDirectory,
         saveScreenshotArtifact,
         captureElementScreenshot,
         withScreenshotCapture,
-        resolvePolicy,
-        parseAllowlist
-    };
+        setOverrides,
+        clearOverrides
+    });
 }
+
+const defaultController = createScreenshotArtifactsController(() => {
+    const runtime = readRuntimeContext();
+    const screenshots = typeof runtime === "object" && runtime !== null ? runtime.screenshots : null;
+    const testInfo = typeof runtime === "object" && runtime !== null ? runtime.test : null;
+    return {
+        ci: Boolean(runtime && typeof runtime === "object" && runtime.ci),
+        directory: normalizeDirectory(screenshots && screenshots.directory),
+        policy: normalizePolicy(screenshots && screenshots.policy),
+        allowlist: normalizeAllowlist(screenshots && screenshots.allowlist),
+        testFile: normalizeTestFile(testInfo && testInfo.file),
+        force: Boolean(screenshots && screenshots.force)
+    };
+});
+
+const {
+    shouldCaptureScreenshots: defaultShouldCapture,
+    getScreenshotArtifactsDirectory: defaultGetDirectory,
+    saveScreenshotArtifact: defaultSaveArtifact,
+    captureElementScreenshot: defaultCaptureElement,
+    withScreenshotCapture: defaultWithScreenshotCapture,
+    setOverrides: setDefaultOverrides,
+    clearOverrides: clearDefaultOverrides
+} = defaultController;
 
 /**
  * @param {unknown} value
@@ -301,7 +367,6 @@ function normalizeBuffer(value) {
 
 /**
  * @param {string} label
- * @returns {string}
  */
 function sanitizeLabel(label) {
     return label
@@ -312,20 +377,12 @@ function sanitizeLabel(label) {
         .replace(/_+$/u, "") || "screenshot";
 }
 
-const defaultController = createScreenshotArtifactsController();
-
-const {
-    shouldCaptureScreenshots: defaultShouldCapture,
-    getScreenshotArtifactsDirectory: defaultGetDirectory,
-    saveScreenshotArtifact: defaultSaveArtifact,
-    captureElementScreenshot: defaultCaptureElement,
-    withScreenshotCapture: defaultWithCapture
-} = defaultController;
-
 export {
     defaultShouldCapture as shouldCaptureScreenshots,
     defaultGetDirectory as getScreenshotArtifactsDirectory,
     defaultSaveArtifact as saveScreenshotArtifact,
     defaultCaptureElement as captureElementScreenshot,
-    defaultWithCapture as withScreenshotCapture
+    defaultWithScreenshotCapture as withScreenshotCapture,
+    setDefaultOverrides as setScreenshotTestOverrides,
+    clearDefaultOverrides as clearScreenshotTestOverrides
 };

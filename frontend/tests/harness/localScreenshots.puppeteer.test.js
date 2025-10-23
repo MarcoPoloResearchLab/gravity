@@ -8,10 +8,13 @@ import test from "node:test";
 import { createSharedPage } from "../helpers/browserHarness.js";
 import {
     captureElementScreenshot,
+    clearScreenshotTestOverrides,
     getScreenshotArtifactsDirectory,
+    setScreenshotTestOverrides,
     shouldCaptureScreenshots,
     withScreenshotCapture
 } from "../helpers/screenshotArtifacts.js";
+import { readRuntimeContext } from "../helpers/runtimeContext.js";
 
 const CURRENT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(CURRENT_DIR, "..", "..");
@@ -19,20 +22,20 @@ const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
 const TMP_PREFIX = "gravity-screenshots-";
 
 test("captures local screenshot artifacts for puppeteer-driven areas", async (t) => {
-    if (process.env.CI === "true") {
+    const runtimeContext = readRuntimeContext();
+    if (runtimeContext && runtimeContext.ci) {
         t.skip("Screenshot artifacts are not produced on CI.");
         return;
     }
 
-    const existingDirectory = process.env.GRAVITY_SCREENSHOT_DIR;
-    let temporaryDirectory = null;
-    try {
-        if (!existingDirectory || existingDirectory.trim().length === 0) {
-            const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), TMP_PREFIX));
-            temporaryDirectory = tempRoot;
-            process.env.GRAVITY_SCREENSHOT_DIR = tempRoot;
-        }
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), TMP_PREFIX));
+    const artifactsDirectory = path.join(tempRoot, "artifacts");
 
+    setScreenshotTestOverrides({
+        directory: artifactsDirectory
+    });
+
+    try {
         assert.equal(
             shouldCaptureScreenshots(),
             false,
@@ -46,8 +49,8 @@ test("captures local screenshot artifacts for puppeteer-driven areas", async (t)
                 "expected forced context to enable screenshot capturing"
             );
 
-            const artifactsDirectory = getScreenshotArtifactsDirectory();
-            assert.ok(artifactsDirectory, "expected screenshot artifacts directory to be defined");
+            const directory = getScreenshotArtifactsDirectory();
+            assert.ok(directory, "expected screenshot artifacts directory to be defined");
 
             const { page, teardown } = await createSharedPage();
             try {
@@ -68,11 +71,7 @@ test("captures local screenshot artifacts for puppeteer-driven areas", async (t)
             }
         });
     } finally {
-        if (temporaryDirectory) {
-            await fs.rm(temporaryDirectory, { recursive: true, force: true }).catch(() => {});
-            delete process.env.GRAVITY_SCREENSHOT_DIR;
-        } else if (typeof existingDirectory === "string") {
-            process.env.GRAVITY_SCREENSHOT_DIR = existingDirectory;
-        }
+        clearScreenshotTestOverrides();
+        await fs.rm(tempRoot, { recursive: true, force: true }).catch(() => {});
     }
 });
