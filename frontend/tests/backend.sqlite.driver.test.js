@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = path.resolve(__dirname, "..");
+const PROJECT_ROOT = path.resolve(__dirname, "..", "..");
 const GO_MOD_PATH = path.join(PROJECT_ROOT, "backend", "go.mod");
 
 test("backend uses CGO-free sqlite driver", async () => {

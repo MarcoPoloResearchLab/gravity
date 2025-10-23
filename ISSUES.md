@@ -132,7 +132,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
   - [x] [GN-91] Document the current code flow when each card calls createHTMLView when it's loaded into view and deleteHTMLView when it's unloaded from the view or is getting edited. My understanding may be incorrect -- document the correct flow details in @ARCHITECTURE.md to ensure we have an easy guidance on cards rendering in both HTML and Markdown modes. — Added HTML view lifecycle notes to `ARCHITECTURE.md`, covering creation on render/mode changes and teardown on edit entry (branch maintenance/GN-91-document-html-view-flow).
 
-  - [ ] [GN-92] Restructure the repository so that the /frontend and the /backend are two separate top level folders. Consider changes to GitHub Pages through `gh` utility to continue serving front-end from the github after the change of the front-end index.html path
+  - [x] [GN-92] Restructure the repository so that the /frontend and the /backend are two separate top level folders. Consider changes to GitHub Pages through `gh` utility to continue serving front-end from the github after the change of the front-end index.html path — Frontend assets now live under `frontend/`, Docker configs point to the new directory, and README documents the GitHub Pages adjustment (branch maintenance/GN-92-restructure-repo).
 
 ### Planning (do not work on these, not ready)
 

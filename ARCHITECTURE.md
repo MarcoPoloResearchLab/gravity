@@ -12,7 +12,7 @@
 
 ### Frontend
 
-Gravity boots through the Alpine composition root in `js/app.js`. The root wires stores, event bridges, and DOM-scoped
+Gravity boots through the Alpine composition root in `frontend/js/app.js`. The root wires stores, event bridges, and DOM-scoped
 listeners so every surface keeps its own `x-data` state while shared behaviour flows through `$dispatch` / `$listen`.
 Network boundaries (`js/core/backendClient.js`, `js/core/classifier.js`) remain injectable so tests can stub effects.
 
@@ -33,11 +33,11 @@ Network boundaries (`js/core/backendClient.js`, `js/core/classifier.js`) remain 
 
 **Module Guidelines**
 
-- `js/ui/topEditor.js` composes new note records and dispatches `gravity:note-create`; it never mutates storage directly.
-- `js/ui/card.js` emits update, delete, and pin events while delegating persistence to `syncStoreFromDom`.
-- `js/ui/importExport.js` translates JSON flows into `gravity:notes-imported` events and raises `gravity:notify` feedback.
-- `js/ui/authControls.js` renders Google Identity Services, proxies sign-out requests, and raises the auth events.
-- `js/ui/menu/avatarMenu.js` encapsulates dropdown presentation, outside-click dismissal, and focus hand-off.
+- `frontend/js/ui/topEditor.js` composes new note records and dispatches `gravity:note-create`; it never mutates storage directly.
+- `frontend/js/ui/card.js` emits update, delete, and pin events while delegating persistence to `syncStoreFromDom`.
+- `frontend/js/ui/importExport.js` translates JSON flows into `gravity:notes-imported` events and raises `gravity:notify` feedback.
+- `frontend/js/ui/authControls.js` renders Google Identity Services, proxies sign-out requests, and raises the auth events.
+- `frontend/js/ui/menu/avatarMenu.js` encapsulates dropdown presentation, outside-click dismissal, and focus hand-off.
 
 **Rendering & Editing**
 
@@ -70,7 +70,7 @@ Network boundaries (`js/core/backendClient.js`, `js/core/classifier.js`) remain 
 
 ### Testing & Tooling
 
-- The Node harness (`tests/run-tests.js`) orchestrates per-file timeouts, shared Chromium instances, and coloured output.
+- The Node harness (`frontend/tests/run-tests.js`) orchestrates per-file timeouts, shared Chromium instances, and coloured output.
 - Puppeteer suites cover inline editing, bounded HTML views, notifications, auth persistence, and backend sync flows.
 - Runtime config injection keeps tests deterministic by mocking `fetch` for `data/runtime.config.*.json` lookups.
 - Backend integration tests spin up the Go API to validate credential exchange and conflict resolution end-to-end.
@@ -126,7 +126,7 @@ Network boundaries (`js/core/backendClient.js`, `js/core/classifier.js`) remain 
 - GN-48: Clicking an already-editing card only repositions the cursor; no flicker or mode switch.
 - GN-49: Shift+Enter ends editing and returns to render mode.
 
-Acceptance criteria for the above should be captured in Puppeteer tests under `tests/` and CSS expectations pinned in `tests/css.validity.test.js` when applicable.
+Acceptance criteria for the above should be captured in Puppeteer tests under `frontend/tests/` and CSS expectations pinned in `tests/css.validity.test.js` when applicable.
 
 ## Roadmap (Next 3 Steps)
 

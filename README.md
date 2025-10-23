@@ -25,6 +25,12 @@ with bounded HTML views, and every note edits inline—no modal overlays or cont
   another's notes. Sessions survive page refreshes, keeping the last active account signed in until you explicitly sign
   out.
 
+## Repository Layout
+
+- `frontend/` — the static site, browser tests, and npm tooling.
+- `backend/` — the Go API and supporting infra.
+- GitHub Pages deployments should point at the `frontend/` directory (e.g., `gh pages set --source gh-pages --branch main --path frontend`).
+
 ## How to Use
 
 1. **Capture a note:** Place the cursor in the blank card anchored beneath the header and start writing Markdown. The
@@ -95,8 +101,11 @@ No installation is required to view the app—open `index.html` in any modern br
 the Node tooling:
 
 ```shell
+cd frontend
 npm install
 ```
+
+Run all subsequent npm-based tasks from `frontend/`.
 
 ### Local Environment
 
@@ -189,19 +198,19 @@ Note: When serving the app from a custom domain, ensure the hostname detection r
 
 ## Testing
 
-- The test harness (`node tests/run-tests.js`) executes each suite in isolation with a 30 s watchdog and renders a
+- The test harness (run from `frontend/` as `node tests/run-tests.js`) executes each suite in isolation with a 30 s watchdog and renders a
   coloured summary. Adjust the default timeout or kill grace via `GRAVITY_TEST_TIMEOUT_MS` and
-  `GRAVITY_TEST_KILL_GRACE_MS`, narrow the run with `GRAVITY_TEST_PATTERN="editor.inline" npm test`, or provide
+  `GRAVITY_TEST_KILL_GRACE_MS`, narrow the run with `GRAVITY_TEST_PATTERN="editor.inline" npm test (from frontend/)`, or provide
   per-file overrides using `GRAVITY_TEST_TIMEOUT_OVERRIDES` /
   `GRAVITY_TEST_KILL_GRACE_OVERRIDES` (comma-separated `file=testTimeoutMs`). The harness already relaxes the budget
   for `persistence.backend`, `sync.endtoend`, and `fullstack.endtoend` suites so they can bootstrap the Go backend.
-- `npm test` drives the Node test suite, including Puppeteer coverage for the inline editor, bounded HTML views, and
+- `npm test` (run from `frontend/`) drives the Node test suite, including Puppeteer coverage for the inline editor, bounded HTML views, and
   the notification flow.
-- `tests/htmlView.bounded.puppeteer.test.js` now guards the viewport anchoring behaviour—expanding a rendered note keeps
+- `frontend/tests/htmlView.bounded.puppeteer.test.js` now guards the viewport anchoring behaviour—expanding a rendered note keeps
   the card in place even if the browser attempts to scroll to the bottom of the HTML view.
-- `tests/sync.endtoend.puppeteer.test.js` starts the Go backend harness and uses the real UI to create notes, asserting
+- `frontend/tests/sync.endtoend.puppeteer.test.js` starts the Go backend harness and uses the real UI to create notes, asserting
   that operations propagate through `createSyncManager` to the server snapshot.
-- `tests/auth.sessionPersistence.puppeteer.test.js` signs in via the event bridge, reloads the page, and verifies the
+- `frontend/tests/auth.sessionPersistence.puppeteer.test.js` signs in via the event bridge, reloads the page, and verifies the
   persisted auth state restores the user scope without a second Google prompt.
 - Run `npx puppeteer browsers install chrome` once to download the Chromium binary that Puppeteer uses during the
   end-to-end tests.
