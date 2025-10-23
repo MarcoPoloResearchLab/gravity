@@ -146,6 +146,37 @@ test("control column anchors to second grid track and keeps vertical controls", 
     }
 });
 
+test("card controls anchor to the card's top-right corner", async () => {
+    const { page, teardown, cardSelector } = await preparePage();
+    try {
+        await page.waitForSelector(`${cardSelector} .card-controls`);
+        const placement = await page.evaluate((selector) => {
+            const card = document.querySelector(selector);
+            if (!(card instanceof HTMLElement)) {
+                return null;
+            }
+            const controls = card.querySelector(".card-controls");
+            if (!(controls instanceof HTMLElement)) {
+                return null;
+            }
+            const cardStyle = window.getComputedStyle(card);
+            const cardRect = card.getBoundingClientRect();
+            const controlsRect = controls.getBoundingClientRect();
+            const paddingTop = parseFloat(cardStyle.paddingTop) || 0;
+            const paddingRight = parseFloat(cardStyle.paddingRight) || 0;
+            return {
+                topOffset: controlsRect.top - (cardRect.top + paddingTop),
+                rightOffset: (cardRect.right - paddingRight) - controlsRect.right
+            };
+        }, cardSelector);
+        assert.ok(placement, "Expected to capture control placement");
+        assert.ok(Math.abs(placement.topOffset) <= 2, `Controls should align with the card's top padding (observed ${placement.topOffset?.toFixed(2)}px).`);
+        assert.ok(Math.abs(placement.rightOffset) <= 2, `Controls should align with the card's right padding (observed ${placement.rightOffset?.toFixed(2)}px).`);
+    } finally {
+        await teardown();
+    }
+});
+
 test("action buttons inherit compact styling", async () => {
     const { page, teardown, cardSelector } = await preparePage();
     try {
