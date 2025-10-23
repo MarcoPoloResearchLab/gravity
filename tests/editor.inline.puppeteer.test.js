@@ -175,7 +175,7 @@ test.describe("Markdown inline editor", () => {
         try {
             await page.waitForSelector("#top-editor .EasyMDEContainer");
             const htmlViewVisibility = await page.evaluate(() => {
-                const htmlView = document.querySelector("#top-editor .EasyMDEContainer .editor-htmlView-side");
+                const htmlView = document.querySelector("#top-editor .EasyMDEContainer .editor-preview-side");
                 if (!(htmlView instanceof HTMLElement)) {
                     return null;
                 }
