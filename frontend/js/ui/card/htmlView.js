@@ -151,11 +151,16 @@ export function deleteHtmlView(card) {
 
 function insertHtmlViewWrapper(card, wrapper) {
     const textarea = card.querySelector(".markdown-editor");
-    if (textarea instanceof HTMLElement && textarea.parentElement === card) {
-        card.insertBefore(wrapper, textarea);
-    } else {
+    if (!(textarea instanceof HTMLElement)) {
         card.appendChild(wrapper);
+        return;
     }
+    const parent = textarea.parentElement;
+    if (parent instanceof HTMLElement) {
+        parent.insertBefore(wrapper, textarea);
+        return;
+    }
+    card.appendChild(wrapper);
 }
 
 function createExpandToggle(card, wrapper) {
@@ -365,14 +370,21 @@ export function applyHtmlViewBadges(container, meta) {
     if (!(container instanceof HTMLElement)) {
         return;
     }
+    const card = container.closest(".markdown-block");
     container.innerHTML = "";
     if (!meta) {
+        if (card instanceof HTMLElement) {
+            card.classList.remove("card--has-badges");
+        }
         return;
     }
 
     if (meta.hasCode) {
         const codeBadge = createBadge(BADGE_LABEL_CODE, "note-badge--code");
         container.appendChild(codeBadge);
+    }
+    if (card instanceof HTMLElement) {
+        card.classList.toggle("card--has-badges", container.childElementCount > 0);
     }
 }
 

@@ -40,7 +40,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
   -[ ] [GN-87] [P1] The hard page refresh loggs off the user. That shouldnt log off the user.
 
-  -[ ] [GN-88] [P0] GN-84 was not fixed. Now the text is horizontally below the controls: ![card layout](<card layout bug.png>). Ensure that the card controls and text are independent of each other, and align both the text abnd card controls to the top. The text is aligned to the left,a nd the controls to the right (considering current styling, padding etc etc), so these are just the sense of direction
+  -[x] [GN-88] [P0] GN-84 was not fixed. Now the text is horizontally below the controls: ![card layout](<card layout bug.png>). Ensure that the card controls and text are independent of each other, and align both the text abnd card controls to the top. The text is aligned to the left,a nd the controls to the right (considering current styling, padding etc etc), so these are just the sense of direction — Cards now wrap badges and content inside a dedicated column so htmlView shares the first grid track with controls, the new regression guards alignment, and layout metrics stay stable even when htmlView expands.
 
 ### Maintenance
 

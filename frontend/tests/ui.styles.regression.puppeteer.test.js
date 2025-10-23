@@ -99,7 +99,7 @@ test("note cards preserve 2:1 grid proportion between content and controls", asy
         const ratio = metrics.contentTrackWidth / metrics.controlsTrackWidth;
         assert.ok(ratio >= 1.9 && ratio <= 2.2, `Content column should remain close to a 2:1 ratio (observed ${ratio.toFixed(2)}).`);
         assert.ok(metrics.columnGap >= 10 && metrics.columnGap <= 14, "Column gap should remain close to 0.75rem");
-        assert.ok(metrics.rowGap >= 5 && metrics.rowGap <= 7, "Row gap should remain close to 0.35rem");
+        assert.ok(metrics.rowGap >= 0 && metrics.rowGap <= 2, "Grid row gap should remain near zero after restructuring column content.");
         assert.equal(metrics.alignItems, "start");
         assert.ok(metrics.paddingLeft >= 15 && metrics.paddingLeft <= 18);
         assert.ok(metrics.paddingRight >= 15 && metrics.paddingRight <= 18);
@@ -177,6 +177,78 @@ test("card controls anchor to the card's top-right corner", async () => {
     }
 });
 
+test("card content stays top-aligned with controls column", async () => {
+    const { page, teardown, cardSelector } = await preparePage();
+    try {
+        await page.waitForSelector(`${cardSelector} .note-html-view, ${cardSelector} .markdown-editor`);
+        const metrics = await page.evaluate((selector) => {
+            const card = document.querySelector(selector);
+            if (!(card instanceof HTMLElement)) {
+                return null;
+            }
+            const controls = card.querySelector(".card-controls");
+            const htmlView = card.querySelector(".note-html-view");
+            const editor = card.querySelector(".markdown-editor");
+            const badges = card.querySelector(".note-badges");
+            const markdownContent = card.querySelector(".note-html-view .markdown-content");
+            const primaryContent = htmlView instanceof HTMLElement
+                ? htmlView
+                : editor instanceof HTMLElement
+                    ? editor
+                    : null;
+            if (!(controls instanceof HTMLElement) || !(primaryContent instanceof HTMLElement)) {
+                return null;
+            }
+            const controlsTop = controls.getBoundingClientRect().top;
+            const contentTop = primaryContent.getBoundingClientRect().top;
+            return {
+                cardTop: card.getBoundingClientRect().top,
+                controlsTop,
+                contentTop,
+                delta: contentTop - controlsTop,
+                badgeHeight: badges instanceof HTMLElement ? badges.getBoundingClientRect().height : 0,
+                markdownTop: markdownContent instanceof HTMLElement ? markdownContent.getBoundingClientRect().top : null,
+                markdownMarginTop: (() => {
+                    if (!(markdownContent instanceof HTMLElement)) return null;
+                    const firstChild = markdownContent.firstElementChild;
+                    return firstChild instanceof HTMLElement ? parseFloat(getComputedStyle(firstChild).marginTop || "0") : null;
+                })(),
+                containerMarginTop: (() => {
+                    if (!(primaryContent instanceof HTMLElement)) return null;
+                    return parseFloat(getComputedStyle(primaryContent).marginTop || "0");
+                })(),
+                children: Array.from(card.children, (child) => {
+                    if (!(child instanceof HTMLElement)) {
+                        return null;
+                    }
+                    const rect = child.getBoundingClientRect();
+                    return {
+                        className: child.className,
+                        display: getComputedStyle(child).display,
+                        top: rect.top,
+                        height: rect.height
+                    };
+                }).filter(Boolean)
+            };
+        }, cardSelector);
+        assert.ok(metrics, "Expected to measure card alignment");
+        assert.ok(Math.abs(metrics.delta) <= 2, [
+            `Content column should align with controls top`,
+            `delta ${metrics.delta.toFixed(2)}px`,
+            `badge height ${metrics.badgeHeight.toFixed(2)}px`,
+            `card top ${metrics.cardTop.toFixed(2)}px`,
+            `controls top ${metrics.controlsTop.toFixed(2)}px`,
+            `content top ${metrics.contentTop.toFixed(2)}px`,
+            `markdown top ${metrics.markdownTop ? metrics.markdownTop.toFixed(2) : "n/a"}px`,
+            `container margin ${metrics.containerMarginTop ?? "n/a"}`,
+            `first child margin ${metrics.markdownMarginTop ?? "n/a"}`,
+            `children ${JSON.stringify(metrics.children)}`
+        ].join("; ") + ".");
+    } finally {
+        await teardown();
+    }
+});
+
 test("action buttons inherit compact styling", async () => {
     const { page, teardown, cardSelector } = await preparePage();
     try {
@@ -222,22 +294,13 @@ test("content and control columns stay anchored to their grid tracks", async () 
                 };
             };
             return {
-                content: [
-                    collectColumn(card.querySelector(".note-badges"), ".note-badges"),
-                    collectColumn(card.querySelector(".note-html-view"), ".note-html-view"),
-                    collectColumn(card.querySelector(".markdown-editor"), ".markdown-editor")
-                ],
+                content: collectColumn(card.querySelector(".card-content"), ".card-content"),
                 controls: collectColumn(card.querySelector(".card-controls"), ".card-controls")
             };
         }, cardSelector);
-        assert.ok(layout && Array.isArray(layout.content), "Expected layout metadata for note card columns");
-        layout.content.forEach((entry) => {
-            if (!entry) {
-                return;
-            }
-            assert.equal(entry.start, "1", `${entry.selector} should start in column 1`);
-            assert.equal(entry.end, "auto", `${entry.selector} should rely on implicit end column`);
-        });
+        assert.ok(layout && layout.content, "Expected layout metadata for note card columns");
+        assert.equal(layout.content.start, "1", "Content column should start in column 1");
+        assert.equal(layout.content.end, "auto", "Content column should rely on implicit end column");
         assert.ok(layout.controls, "Expected control column metadata");
         assert.equal(layout.controls.start, "2", "Control column should start in column 2");
         assert.equal(layout.controls.end, "auto", "Control column should rely on implicit end column");

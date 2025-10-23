@@ -178,7 +178,7 @@ html, body {
     grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); /* text | controls (2/3 vs 1/3) */
     align-items: start;
     column-gap: 0.75rem;
-    row-gap: 0.35rem;
+    row-gap: 0;
     border: 0;
     border-bottom: 1px solid rgba(58, 68, 94, 0.7);
     padding: 0.6rem 1rem 0.9rem 1rem;
@@ -191,6 +191,28 @@ html, body {
 .markdown-content,
 .markdown-editor,
 .note-badges { grid-column: 1; }
+
+.card-content {
+    grid-column: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    align-self: stretch;
+}
+
+.card-content .note-html-view,
+.card-content .markdown-editor {
+    grid-column: auto;
+}
+
+.note-badges:not(:empty) {
+    margin-bottom: 0.35rem;
+}
+
+.card--has-badges .card-controls {
+    margin-top: 0.35rem;
+}
+
 .meta-chips {
     display: flex;
     flex-wrap: wrap;

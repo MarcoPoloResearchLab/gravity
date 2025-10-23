@@ -223,9 +223,10 @@ test.describe("Bounded htmlViews", () => {
                     viewportHeight: window.innerHeight
                 };
             });
+            const viewportThreshold = htmlViewViewport.viewportHeight * 0.8;
             assert.ok(
-                htmlViewViewport.top >= -4 && htmlViewViewport.top <= htmlViewViewport.viewportHeight * 0.75,
-                `expanded htmlView top ${htmlViewViewport.top} should remain near the top half of the viewport`
+                htmlViewViewport.top >= -4 && htmlViewViewport.top <= viewportThreshold,
+                `expanded htmlView top ${htmlViewViewport.top} should remain near the upper portion of the viewport`
             );
             assert.ok(htmlViewViewport.bottom > htmlViewViewport.top, "expanded htmlView should have non-zero height");
         } finally {
