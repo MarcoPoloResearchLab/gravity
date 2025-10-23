@@ -1,0 +1,38 @@
+name: Backend Tests
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'backend/**/*.go'
+      - 'backend/go.mod'
+      - 'backend/go.sum'
+      - '.github/workflows/backend-tests.yml'
+  pull_request:
+    branches:
+      - master
+    paths:
+      - 'backend/**/*.go'
+      - 'backend/go.mod'
+      - 'backend/go.sum'
+      - '.github/workflows/backend-tests.yml'
+
+jobs:
+  go-tests:
+    name: Run Go unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          check-latest: true
+          cache: true
+
+      - name: Run go test ./...
+        working-directory: backend
+        run: go test ./...

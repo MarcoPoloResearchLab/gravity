@@ -30,6 +30,7 @@ and are grouped by the date the work landed on `master`.
 
 ### Changed
 - Moved the static site, npm tooling, and browser tests under `frontend/` while adjusting Docker and docs to reference the new layout (GN-92).
+- Backend CI now runs Go tests on every PR/push to `master`, while Docker images build only after merge (GN-94).
 
 ### Documentation
 - Folded `MIGRATION.md` into `ARCHITECTURE.md`, clarifying event contracts, module guidance, and third-party reading expectations (GN-54).
