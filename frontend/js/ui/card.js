@@ -85,9 +85,16 @@ const TRAILING_WHITESPACE_PATTERN = /[ \t]+$/;
 
 let pointerTrackingInitialized = false;
 let lastPointerDownTarget = null;
+let lastPointerDownDetail = 0;
+let lastDoubleClickTarget = null;
 const NON_EDITABLE_CARD_SURFACE_SELECTORS = Object.freeze([
     ".actions",
     ".note-expand-toggle"
+]);
+const INLINE_EDITOR_SURFACE_SELECTORS = Object.freeze([
+    ".markdown-editor",
+    ".EasyMDEContainer",
+    ".CodeMirror"
 ]);
 
 function initializePointerTracking() {
@@ -96,6 +103,16 @@ function initializePointerTracking() {
     }
     document.addEventListener("pointerdown", (event) => {
         lastPointerDownTarget = event && event.target instanceof Node ? event.target : null;
+        lastPointerDownDetail = typeof event?.detail === "number" ? event.detail : 0;
+    }, true);
+    document.addEventListener("mousedown", (event) => {
+        if (event && event.target instanceof Node) {
+            lastPointerDownTarget = event.target;
+        }
+        lastPointerDownDetail = typeof event?.detail === "number" ? event.detail : 0;
+    }, true);
+    document.addEventListener("dblclick", (event) => {
+        lastDoubleClickTarget = event && event.target instanceof Node ? event.target : null;
     }, true);
     pointerTrackingInitialized = true;
 }
@@ -112,7 +129,16 @@ function shouldKeepEditingAfterBlur(card) {
         return true;
     }
     if (lastPointerDownTarget instanceof Node && card.contains(lastPointerDownTarget)) {
+        if (typeof lastPointerDownDetail === "number" && lastPointerDownDetail > 1) {
+            return true;
+        }
         return isPointerWithinInlineEditorSurface(card, lastPointerDownTarget);
+    }
+    if (lastDoubleClickTarget instanceof Node && card.contains(lastDoubleClickTarget)) {
+        if (lastPointerDownTarget instanceof Node && !card.contains(lastPointerDownTarget)) {
+            return false;
+        }
+        return true;
     }
     return false;
 }
@@ -143,19 +169,38 @@ function isPointerWithinInlineEditorSurface(card, pointerTarget) {
     if (!card.contains(pointerTarget)) {
         return false;
     }
-    if (!(pointerTarget instanceof Element)) {
-        const parentElement = pointerTarget.parentElement;
-        if (!parentElement) {
-            return false;
-        }
-        return isPointerWithinInlineEditorSurface(card, parentElement);
+    const elementTarget = pointerTarget instanceof Element
+        ? pointerTarget
+        : pointerTarget.parentElement;
+    if (!(elementTarget instanceof Element)) {
+        return false;
     }
     for (const selector of NON_EDITABLE_CARD_SURFACE_SELECTORS) {
-        if (pointerTarget.closest(selector)) {
+        if (elementTarget.closest(selector)) {
             return false;
         }
     }
-    return true;
+    const contentSurface = elementTarget.closest(".card-content");
+    if (contentSurface instanceof HTMLElement && card.contains(contentSurface)) {
+        return true;
+    }
+    for (const selector of INLINE_EDITOR_SURFACE_SELECTORS) {
+        const surface = elementTarget.closest(selector);
+        if (!(surface instanceof HTMLElement)) {
+            continue;
+        }
+        const host = surface.closest(".markdown-editor-host");
+        if (host === card) {
+            if (selector === ".EasyMDEContainer") {
+                const containedCodeMirror = surface.querySelector(".CodeMirror");
+                if (containedCodeMirror instanceof HTMLElement && !containedCodeMirror.contains(elementTarget)) {
+                    continue;
+                }
+            }
+            return true;
+        }
+    }
+    return false;
 }
 
 function calculateHtmlViewTextOffset(htmlViewElement, event) {
@@ -1170,6 +1215,8 @@ export function renderCard(record, options = {}) {
         window.requestAnimationFrame(() => {
             const maintainEditing = shouldKeepEditingAfterBlur(card);
             lastPointerDownTarget = null;
+            lastPointerDownDetail = 0;
+            lastDoubleClickTarget = null;
             if (maintainEditing) {
                 if (editorHost.getMode() !== MARKDOWN_MODE_EDIT) {
                     editorHost.setMode(MARKDOWN_MODE_EDIT);
