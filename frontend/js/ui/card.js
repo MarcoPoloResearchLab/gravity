@@ -1020,6 +1020,27 @@ export function renderCard(record, options = {}) {
     configurePinnedLayout(notesContainer);
     applyPinnedState(card, initialPinned, notesContainer, { setPinnedButtonState: updatePinButtonState });
 
+    const COLLAPSE_DEBOUNCE_MS = 180;
+    const cancelPendingCollapse = () => {
+        if (typeof card.__pendingCollapseTimer === "number") {
+            clearTimeout(card.__pendingCollapseTimer);
+            card.__pendingCollapseTimer = null;
+        }
+    };
+
+    const scheduleCollapse = () => {
+        cancelPendingCollapse();
+        if (typeof window === "undefined" || typeof window.setTimeout !== "function") {
+            setHtmlViewExpanded(card, false);
+            return;
+        }
+        const timerId = window.setTimeout(() => {
+            card.__pendingCollapseTimer = null;
+            setHtmlViewExpanded(card, false);
+        }, COLLAPSE_DEBOUNCE_MS);
+        card.__pendingCollapseTimer = timerId;
+    };
+
     const handleCardClick = (event) => {
         const target = /** @type {HTMLElement} */ (event.target);
         if (shouldIgnoreCardPointerTarget(target)) {
@@ -1031,6 +1052,7 @@ export function renderCard(record, options = {}) {
         if (card.classList.contains("editing-in-place")) {
             return;
         }
+        cancelPendingCollapse();
         const htmlViewWrapper = card.querySelector(".note-html-view");
         if (!(htmlViewWrapper instanceof HTMLElement)) {
             return;
@@ -1041,7 +1063,11 @@ export function renderCard(record, options = {}) {
             return;
         }
         const expandNext = !htmlViewWrapper.classList.contains("note-html-view--expanded");
-        setHtmlViewExpanded(card, expandNext);
+        if (!expandNext) {
+            scheduleCollapse();
+            return;
+        }
+        setHtmlViewExpanded(card, true);
     };
 
     const handleCardDoubleClick = (event) => {
@@ -1052,6 +1078,8 @@ export function renderCard(record, options = {}) {
         if (card.classList.contains("editing-in-place")) {
             return;
         }
+
+        cancelPendingCollapse();
 
         let caretPlacement = CARET_PLACEMENT_END;
         const htmlViewElement = card.querySelector(".markdown-content");
@@ -1065,6 +1093,7 @@ export function renderCard(record, options = {}) {
             }
         }
 
+        setHtmlViewExpanded(card, true);
         focusCardEditor(card, notesContainer, {
             caretPlacement,
             bubblePreviousCardToTop: true
@@ -1471,6 +1500,29 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
         contentHeight: expandedContentHeight
     });
 
+    if (editorHost && typeof editorHost.on === "function" && typeof editorHost.off === "function") {
+        if (typeof card.__editingHeightCleanup === "function") {
+            try {
+                card.__editingHeightCleanup();
+            } catch (error) {
+                logging.error(error);
+            }
+            card.__editingHeightCleanup = null;
+        }
+        const synchronizeEditingHeight = () => {
+            const rect = card.getBoundingClientRect();
+            const currentCardHeight = normalizeHeight(rect?.height);
+            lockEditingSurfaceHeight(card, {
+                cardHeight: currentCardHeight > 0 ? currentCardHeight : expandedCardHeight,
+                contentHeight: 0
+            });
+        };
+        editorHost.on("change", synchronizeEditingHeight);
+        card.__editingHeightCleanup = () => {
+            editorHost.off("change", synchronizeEditingHeight);
+        };
+    }
+
     if (bubbleSelfToTop) {
         const firstCard = notesContainer.firstElementChild;
         if (firstCard && firstCard !== card) {
@@ -1523,37 +1575,64 @@ function lockEditingSurfaceHeight(card, measurements) {
         releaseEditingSurfaceHeight(card);
         return;
     }
-    const resolvedContentHeight = normalizedContentHeight > 0 ? normalizedContentHeight : normalizedCardHeight;
-    card.style.setProperty("--note-expanded-edit-height", `${normalizedCardHeight}px`);
-    const apply = () => {
-        card.style.minHeight = `${normalizedCardHeight}px`;
-        card.style.maxHeight = `${normalizedCardHeight}px`;
+    const computedStyle = typeof window !== "undefined" && typeof window.getComputedStyle === "function"
+        ? window.getComputedStyle(card)
+        : null;
+    const paddingTop = computedStyle ? Number.parseFloat(computedStyle.paddingTop || "0") || 0 : 0;
+    const paddingBottom = computedStyle ? Number.parseFloat(computedStyle.paddingBottom || "0") || 0 : 0;
+    const verticalPadding = paddingTop + paddingBottom;
+    const interiorCardHeight = normalizedCardHeight > 0 ? Math.max(normalizedCardHeight - verticalPadding, 0) : 0;
+    const resolvedContentHeightBase = normalizedContentHeight > 0 ? normalizedContentHeight : interiorCardHeight;
+    const apply = (syncToContent = false) => {
         const codeMirrorScroll = card.querySelector(".CodeMirror-scroll");
-        if (codeMirrorScroll instanceof HTMLElement) {
-            codeMirrorScroll.style.minHeight = `${resolvedContentHeight}px`;
-            codeMirrorScroll.style.maxHeight = `${resolvedContentHeight}px`;
-            codeMirrorScroll.style.height = `${resolvedContentHeight}px`;
-            codeMirrorScroll.style.overflowY = "auto";
-        }
         const codeMirror = card.querySelector(".CodeMirror");
-        if (codeMirror instanceof HTMLElement) {
-            codeMirror.style.minHeight = `${resolvedContentHeight}px`;
-            codeMirror.style.maxHeight = `${resolvedContentHeight}px`;
-            codeMirror.style.height = `${resolvedContentHeight}px`;
-        }
         const textarea = card.querySelector(".markdown-editor");
+        let contentHeight = resolvedContentHeightBase;
+        if (syncToContent) {
+            let naturalHeight = 0;
+            if (codeMirrorScroll instanceof HTMLElement) {
+                naturalHeight = normalizeHeight(codeMirrorScroll.scrollHeight);
+            } else if (codeMirror instanceof HTMLElement) {
+                naturalHeight = normalizeHeight(codeMirror.scrollHeight);
+            } else if (textarea instanceof HTMLElement) {
+                naturalHeight = normalizeHeight(textarea.scrollHeight);
+            }
+            if (naturalHeight > 0 && naturalHeight > contentHeight) {
+                contentHeight = naturalHeight;
+            }
+        }
+        const resolvedContentHeight = contentHeight > 0 ? contentHeight : 0;
+        const targetCardHeight = resolvedContentHeight > 0 ? resolvedContentHeight + verticalPadding : normalizedCardHeight;
+        card.style.setProperty("--note-expanded-edit-height", `${targetCardHeight}px`);
+        card.style.minHeight = `${targetCardHeight}px`;
+        card.style.maxHeight = "";
+        card.style.height = `${targetCardHeight}px`;
+        if (codeMirrorScroll instanceof HTMLElement) {
+            codeMirrorScroll.style.minHeight = `${contentHeight}px`;
+            codeMirrorScroll.style.maxHeight = "";
+            codeMirrorScroll.style.height = `${contentHeight}px`;
+            codeMirrorScroll.style.overflowY = "";
+        }
+        if (codeMirror instanceof HTMLElement) {
+            codeMirror.style.minHeight = `${contentHeight}px`;
+            codeMirror.style.maxHeight = "";
+            codeMirror.style.height = `${contentHeight}px`;
+        }
         if (textarea instanceof HTMLElement) {
-            textarea.style.minHeight = `${resolvedContentHeight}px`;
-            textarea.style.maxHeight = `${resolvedContentHeight}px`;
-            textarea.style.height = `${resolvedContentHeight}px`;
+            textarea.style.minHeight = `${contentHeight}px`;
+            textarea.style.maxHeight = "";
+            textarea.style.height = `${contentHeight}px`;
         }
     };
     apply();
+    apply(true);
     if (typeof requestAnimationFrame === "function") {
         requestAnimationFrame(() => {
             apply();
-            requestAnimationFrame(apply);
+            requestAnimationFrame(() => apply(true));
         });
+    } else {
+        apply(true);
     }
 }
 
@@ -1572,6 +1651,7 @@ function releaseEditingSurfaceHeight(card) {
     card.style.removeProperty("--note-expanded-edit-height");
     card.style.minHeight = "";
     card.style.maxHeight = "";
+    card.style.height = "";
     const codeMirrorScroll = card.querySelector(".CodeMirror-scroll");
     if (codeMirrorScroll instanceof HTMLElement) {
         codeMirrorScroll.style.minHeight = "";
@@ -1590,6 +1670,19 @@ function releaseEditingSurfaceHeight(card) {
         textarea.style.minHeight = "";
         textarea.style.maxHeight = "";
         textarea.style.height = "";
+    }
+
+    if (typeof card.__pendingCollapseTimer === "number") {
+        clearTimeout(card.__pendingCollapseTimer);
+        card.__pendingCollapseTimer = null;
+    }
+
+    if (typeof card.__editingHeightCleanup === "function") {
+        try {
+            card.__editingHeightCleanup();
+        } finally {
+            card.__editingHeightCleanup = null;
+        }
     }
 }
 

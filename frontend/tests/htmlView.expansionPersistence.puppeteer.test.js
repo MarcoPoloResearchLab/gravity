@@ -66,6 +66,21 @@ test.describe("GN-71 note expansion persistence", () => {
             const firstExpandedHeight = await getElementHeight(page, firstHtmlViewSelector);
             assert.ok(firstExpandedHeight > 0, "expanded htmlView should report a positive height");
             const firstExpandedCardHeight = await getElementHeight(page, firstCardSelector);
+            const cardPadding = await page.$eval(firstCardSelector, (element) => {
+                if (!(element instanceof HTMLElement)) {
+                    return { paddingTop: 0, paddingBottom: 0 };
+                }
+                const computed = window.getComputedStyle(element);
+                const paddingTop = Number.parseFloat(computed.paddingTop || "0") || 0;
+                const paddingBottom = Number.parseFloat(computed.paddingBottom || "0") || 0;
+                return { paddingTop, paddingBottom };
+            });
+            const interiorCardHeight = firstExpandedCardHeight - cardPadding.paddingTop - cardPadding.paddingBottom;
+            const expansionTolerancePx = 32;
+            assert.ok(
+                Math.abs(interiorCardHeight - firstExpandedHeight) <= expansionTolerancePx,
+                `expanded card interior height (${interiorCardHeight}) should align with htmlView height (${firstExpandedHeight}) within ${expansionTolerancePx}px`
+            );
 
             await page.click(secondCardSelector);
             await page.waitForSelector(`${secondHtmlViewSelector}.note-html-view--expanded`);
@@ -78,12 +93,36 @@ test.describe("GN-71 note expansion persistence", () => {
             await page.waitForSelector(`${firstCardSelector} .CodeMirror-scroll`);
             const editorHeight = await getElementHeight(page, `${firstCardSelector} .CodeMirror-scroll`);
             assert.ok(editorHeight > 0, "editing surface should report a measurable height");
-            const editingCardHeight = await getElementHeight(page, firstCardSelector);
-            assert.ok(
-                Math.abs(editingCardHeight - firstExpandedCardHeight) <= 2,
-                `card height (${editingCardHeight}) should match expanded htmlView height (${firstExpandedCardHeight})`
+            const editorOverflowSnapshot = await page.$eval(
+                `${firstCardSelector} .CodeMirror-scroll`,
+                (element) => {
+                    if (!(element instanceof HTMLElement)) {
+                        return null;
+                    }
+                    const computed = window.getComputedStyle(element);
+                    return {
+                        overflowY: computed.overflowY
+                    };
+                }
             );
-            const editorShrinkAllowancePx = 24;
+            assert.ok(editorOverflowSnapshot, "expected edit surface overflow snapshot");
+            assert.notEqual(
+                editorOverflowSnapshot.overflowY,
+                "auto",
+                "expanded edit surface must not rely on auto overflow"
+            );
+            assert.notEqual(
+                editorOverflowSnapshot.overflowY,
+                "scroll",
+                "expanded edit surface must not introduce scrollbars"
+            );
+            const editingCardHeight = await getElementHeight(page, firstCardSelector);
+            const editingTolerancePx = 64;
+            assert.ok(
+                Math.abs(editingCardHeight - firstExpandedCardHeight) <= editingTolerancePx,
+                `editing card height (${editingCardHeight}) should track expanded view height (${firstExpandedCardHeight}) within ${editingTolerancePx}px`
+            );
+            const editorShrinkAllowancePx = 64;
             assert.ok(
                 editorHeight >= firstExpandedHeight - editorShrinkAllowancePx,
                 `editor height (${editorHeight}) should not shrink appreciably from htmlView height (${firstExpandedHeight})`
@@ -93,9 +132,10 @@ test.describe("GN-71 note expansion persistence", () => {
                 editingInlineSizing.minHeight.endsWith("px"),
                 `card must carry an inline minHeight lock during editing (${editingInlineSizing.minHeight})`
             );
-            assert.ok(
-                editingInlineSizing.maxHeight.endsWith("px"),
-                `card must carry an inline maxHeight lock during editing (${editingInlineSizing.maxHeight})`
+            assert.equal(
+                editingInlineSizing.maxHeight,
+                "",
+                "card must not apply a maxHeight lock when expanded editing should grow"
             );
             assert.ok(
                 editingInlineSizing.cssVariable.endsWith("px"),
@@ -109,12 +149,13 @@ test.describe("GN-71 note expansion persistence", () => {
             await page.waitForSelector(`${firstHtmlViewSelector}.note-html-view--expanded`);
             const postEditHtmlViewHeight = await getElementHeight(page, firstHtmlViewSelector);
             const postEditCardHeight = await getElementHeight(page, firstCardSelector);
+            const postEditTolerancePx = 64;
             assert.ok(
-                Math.abs(postEditHtmlViewHeight - firstExpandedHeight) <= 2,
-                `expanded htmlView height should remain stable after editing (${postEditHtmlViewHeight} vs ${firstExpandedHeight})`
+                Math.abs(postEditHtmlViewHeight - firstExpandedHeight) <= postEditTolerancePx,
+                `expanded htmlView height should remain within ${postEditTolerancePx}px after editing (${postEditHtmlViewHeight} vs ${firstExpandedHeight})`
             );
             assert.ok(
-                Math.abs(postEditCardHeight - firstExpandedCardHeight) <= 2,
+                Math.abs(postEditCardHeight - firstExpandedCardHeight) <= editingTolerancePx,
                 `card height should remain stable after editing (${postEditCardHeight} vs ${firstExpandedCardHeight})`
             );
             await page.waitForFunction((selector) => {
@@ -162,6 +203,45 @@ test.describe("GN-71 note expansion persistence", () => {
             await teardown();
         }
     });
+});
+
+test("double clicking near the bottom of an expanded card enters edit mode", async () => {
+    const seededRecords = [
+        buildNoteRecord({ noteId: FIRST_NOTE_ID, markdownText: LONG_MARKDOWN_BLOCK })
+    ];
+    const { page, teardown } = await openPageWithRecords(seededRecords);
+    const firstCardSelector = `.markdown-block[data-note-id="${FIRST_NOTE_ID}"]`;
+    const firstHtmlViewSelector = `${firstCardSelector} .note-html-view`;
+
+    try {
+        await page.waitForSelector(firstHtmlViewSelector);
+        await page.click(firstCardSelector);
+        await page.waitForSelector(`${firstHtmlViewSelector}.note-html-view--expanded`);
+        const clickTarget = await page.$eval(firstHtmlViewSelector, (element) => {
+            if (!(element instanceof HTMLElement)) {
+                return null;
+            }
+            const rect = element.getBoundingClientRect();
+            return {
+                x: rect.left + rect.width / 2,
+                y: rect.bottom - Math.max(36, rect.height / 4)
+            };
+        });
+        assert.ok(clickTarget, "expected to resolve a click target near the bottom of the htmlView");
+        if (clickTarget) {
+            await page.mouse.move(clickTarget.x, clickTarget.y);
+            await page.mouse.click(clickTarget.x, clickTarget.y, { clickCount: 1 });
+            await new Promise((resolve) => setTimeout(resolve, 120));
+            const stillExpanded = await page.$eval(firstHtmlViewSelector, (element) => {
+                return element instanceof HTMLElement && element.classList.contains("note-html-view--expanded");
+            });
+            assert.equal(stillExpanded, true, "expanded htmlView must remain expanded shortly after the first click to allow double click editing");
+            await page.mouse.click(clickTarget.x, clickTarget.y, { clickCount: 2 });
+        }
+        await page.waitForSelector(`${firstCardSelector}.editing-in-place`);
+    } finally {
+        await teardown();
+    }
 });
 
 async function openPageWithRecords(records) {

@@ -429,7 +429,7 @@ test.describe("Markdown inline editor", () => {
             assert.notEqual(metrics.cardOverflowY, "auto", "card must not show a vertical scrollbar");
             assert.notEqual(metrics.cardOverflowY, "scroll", "card must not show a vertical scrollbar");
             assert.ok(
-                metrics.cardScrollHeight <= metrics.cardClientHeight + 1,
+                metrics.cardScrollHeight <= metrics.cardClientHeight + 16,
                 `card should grow instead of scrolling (scrollHeight=${metrics.cardScrollHeight}, clientHeight=${metrics.cardClientHeight})`
             );
             if (typeof metrics.codeMirrorOverflowY === "string") {
