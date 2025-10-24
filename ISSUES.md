@@ -17,7 +17,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - [x] [GN-72] Front-end redesign — note cards now use a 2:1 text-to-controls grid, classification badges live in the control column, and the expand indicator aligns to the preview footer with refreshed Puppeteer layout coverage (branch improvement/GN-72-layout).
   - [x] [GN-101] Make Puppeteer screenshot capture optional, configurable per test, and refactor the harness helper so the pattern can be reused across repositories. Document the configuration contract once implemented. — Screenshot policy now supports disabled/enabled/allowlist modes with async context overrides, harness env wiring, updated Puppeteer tests, and README guidance.
   - [x] [GN-105] Clicking outside the markdown editing area must complete editing — single-clicking card chrome now finalizes inline edits while existing double-click flows keep edit mode; new Puppeteer coverage guards the regression.
-  - [ ] [GN-106] ` charachter must enclolse the selected text e.g. `text`, and ```sequence must  enclose the ```text``` too
+  - [x] [GN-106] ` character now wraps highlighted markdown with balanced backtick fences—inline code gains single backticks, selections containing backticks escalate to longer fences, and new Puppeteer coverage locks both cases.
   - [ ] [GN-108] Have grammar check work in markdow editing mode. Consuld MDE / marked.js documentation
   - [ ] [GN-109] Implement the change of behaviour: Clicking on a lower area as tall as the double shevron sign (pretty narrow) unfolds or folds the note. Single clicking In the note when its in HTML mode switches to editing markdown and expans the note to the full height
 

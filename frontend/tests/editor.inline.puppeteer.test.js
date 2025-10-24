@@ -126,6 +126,10 @@ const GN105_MARKDOWN = [
     "",
     "A trailing paragraph keeps the card tall so clicks can land on surrounding chrome."
 ].join("\n");
+const GN106_INLINE_WRAP_NOTE_ID = "inline-backtick-wrap";
+const GN106_INLINE_WRAP_MARKDOWN = "Backtick wrapping baseline text";
+const GN106_NESTED_WRAP_NOTE_ID = "inline-backtick-nested";
+const GN106_NESTED_WRAP_MARKDOWN = "Nested `inline` snippet baseline";
 const GN105_SECOND_NOTE_ID = "inline-outside-click-dismiss-secondary";
 const GN105_SECOND_MARKDOWN = [
     "# Outside Click Secondary",
@@ -993,6 +997,147 @@ test.describe("Markdown inline editor", () => {
             assert.equal(finalTelemetry.hasEditingClass, false, "Editing class must be removed after outside card click");
 
             await page.waitForSelector(`${secondCardSelector}:not(.editing-in-place)`, { timeout: 1000 });
+        } finally {
+            await teardown();
+        }
+    });
+
+    test("pressing backtick wraps the selected text with inline code", async () => {
+        const noteRecord = buildNoteRecord({
+            noteId: GN106_INLINE_WRAP_NOTE_ID,
+            markdownText: GN106_INLINE_WRAP_MARKDOWN
+        });
+        const { page, teardown } = await preparePage({
+            records: [noteRecord]
+        });
+        const cardSelector = `.markdown-block[data-note-id="${GN106_INLINE_WRAP_NOTE_ID}"]`;
+
+        try {
+            await page.waitForSelector(cardSelector, { timeout: 5000 });
+            await enterCardEditMode(page, cardSelector);
+            await page.evaluate((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return;
+                }
+                const host = /** @type {any} */ (card).__markdownHost;
+                if (!host) {
+                    return;
+                }
+                const value = host.getValue();
+                const target = "wrapping";
+                const startIndex = value.indexOf(target);
+                if (startIndex < 0) {
+                    return;
+                }
+                const endIndex = startIndex + target.length;
+                const cmElement = card.querySelector(".CodeMirror");
+                const cmInstance = cmElement && typeof /** @type {any} */ (cmElement).CodeMirror !== "undefined"
+                    ? /** @type {any} */ (cmElement).CodeMirror
+                    : null;
+                if (!cmInstance || typeof cmInstance.getDoc !== "function") {
+                    return;
+                }
+                const doc = cmInstance.getDoc();
+                const startPos = doc.posFromIndex(startIndex);
+                const endPos = doc.posFromIndex(endIndex);
+                doc.setSelection(startPos, endPos);
+                cmInstance.focus();
+            }, cardSelector);
+
+            await page.keyboard.press("Backquote");
+
+            const editorState = await page.evaluate((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return null;
+                }
+                const host = /** @type {any} */ (card).__markdownHost;
+                if (!host || typeof host.getValue !== "function") {
+                    return null;
+                }
+                const cmElement = card.querySelector(".CodeMirror");
+                const cmInstance = cmElement && typeof /** @type {any} */ (cmElement).CodeMirror !== "undefined"
+                    ? /** @type {any} */ (cmElement).CodeMirror
+                    : null;
+                const doc = cmInstance && typeof cmInstance.getDoc === "function"
+                    ? cmInstance.getDoc()
+                    : null;
+                const selections = doc ? doc.listSelections() : [];
+                const selectedText = doc ? doc.getSelection() : "";
+                return {
+                    value: host.getValue(),
+                    selectedText,
+                    selectionCount: Array.isArray(selections) ? selections.length : 0
+                };
+            }, cardSelector);
+
+            assert.ok(editorState, "Expected to capture editor state after wrapping");
+            assert.equal(editorState.value, "Backtick `wrapping` baseline text");
+            assert.equal(editorState.selectedText, "wrapping", "Selection should remain on the original text");
+            assert.equal(editorState.selectionCount, 1, "Single selection range expected");
+        } finally {
+            await teardown();
+        }
+    });
+
+    test("backticks expand the wrapper around existing markdown", async () => {
+        const noteRecord = buildNoteRecord({
+            noteId: GN106_NESTED_WRAP_NOTE_ID,
+            markdownText: GN106_NESTED_WRAP_MARKDOWN
+        });
+        const { page, teardown } = await preparePage({
+            records: [noteRecord]
+        });
+        const cardSelector = `.markdown-block[data-note-id="${GN106_NESTED_WRAP_NOTE_ID}"]`;
+
+        try {
+            await page.waitForSelector(cardSelector, { timeout: 5000 });
+            await enterCardEditMode(page, cardSelector);
+            await page.evaluate((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return;
+                }
+                const host = /** @type {any} */ (card).__markdownHost;
+                if (!host) {
+                    return;
+                }
+                const value = host.getValue();
+                const target = "`inline`";
+                const startIndex = value.indexOf(target);
+                if (startIndex < 0) {
+                    return;
+                }
+                const endIndex = startIndex + target.length;
+                const cmElement = card.querySelector(".CodeMirror");
+                const cmInstance = cmElement && typeof /** @type {any} */ (cmElement).CodeMirror !== "undefined"
+                    ? /** @type {any} */ (cmElement).CodeMirror
+                    : null;
+                if (!cmInstance || typeof cmInstance.getDoc !== "function") {
+                    return;
+                }
+                const doc = cmInstance.getDoc();
+                const startPos = doc.posFromIndex(startIndex);
+                const endPos = doc.posFromIndex(endIndex);
+                doc.setSelection(startPos, endPos);
+                cmInstance.focus();
+            }, cardSelector);
+
+            await page.keyboard.press("Backquote");
+
+            const markdownValue = await page.evaluate((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return null;
+                }
+                const host = /** @type {any} */ (card).__markdownHost;
+                return host && typeof host.getValue === "function"
+                    ? host.getValue()
+                    : null;
+            }, cardSelector);
+
+            assert.equal(markdownValue, "Nested ```inline``` snippet baseline");
         } finally {
             await teardown();
         }
