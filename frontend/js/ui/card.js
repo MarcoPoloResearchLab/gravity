@@ -1607,11 +1607,14 @@ function lockEditingSurfaceHeight(card, measurements) {
         card.style.minHeight = `${targetCardHeight}px`;
         card.style.maxHeight = "";
         card.style.height = `${targetCardHeight}px`;
+        card.style.overflow = "hidden";
+        card.style.overflowY = "hidden";
         if (codeMirrorScroll instanceof HTMLElement) {
             codeMirrorScroll.style.minHeight = `${contentHeight}px`;
             codeMirrorScroll.style.maxHeight = "";
             codeMirrorScroll.style.height = `${contentHeight}px`;
-            codeMirrorScroll.style.overflowY = "";
+            codeMirrorScroll.style.overflow = "hidden";
+            codeMirrorScroll.style.overflowY = "hidden";
         }
         if (codeMirror instanceof HTMLElement) {
             codeMirror.style.minHeight = `${contentHeight}px`;
@@ -1652,11 +1655,14 @@ function releaseEditingSurfaceHeight(card) {
     card.style.minHeight = "";
     card.style.maxHeight = "";
     card.style.height = "";
+    card.style.overflow = "";
+    card.style.overflowY = "";
     const codeMirrorScroll = card.querySelector(".CodeMirror-scroll");
     if (codeMirrorScroll instanceof HTMLElement) {
         codeMirrorScroll.style.minHeight = "";
         codeMirrorScroll.style.maxHeight = "";
         codeMirrorScroll.style.height = "";
+        codeMirrorScroll.style.overflow = "";
         codeMirrorScroll.style.overflowY = "";
     }
     const codeMirror = card.querySelector(".CodeMirror");
