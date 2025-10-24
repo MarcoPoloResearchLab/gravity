@@ -249,6 +249,16 @@ export function setHtmlViewExpanded(card, shouldExpand) {
             toggle.setAttribute("aria-expanded", "true");
             toggle.setAttribute("aria-label", LABEL_COLLAPSE_NOTE);
         }
+        const viewRect = viewElement.getBoundingClientRect();
+        const cardRect = card.getBoundingClientRect();
+        const targetHeight = Math.max(
+            Math.round(viewElement.scrollHeight),
+            Math.round(viewRect.height),
+            Math.round(cardRect.height)
+        );
+        if (targetHeight > 0) {
+            viewElement.style.minHeight = `${targetHeight}px`;
+        }
     } else {
         viewElement.classList.remove("note-html-view--expanded");
         card.dataset.htmlViewExpanded = "false";
@@ -256,6 +266,7 @@ export function setHtmlViewExpanded(card, shouldExpand) {
             toggle.setAttribute("aria-expanded", "false");
             toggle.setAttribute("aria-label", LABEL_EXPAND_NOTE);
         }
+        viewElement.style.minHeight = "";
     }
     scheduleHtmlViewOverflowCheck(viewElement, content, toggle);
 

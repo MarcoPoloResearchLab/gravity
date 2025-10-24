@@ -1575,12 +1575,19 @@ function lockEditingSurfaceHeight(card, measurements) {
         releaseEditingSurfaceHeight(card);
         return;
     }
-    const resolvedContentHeight = normalizedContentHeight > 0 ? normalizedContentHeight : normalizedCardHeight;
+    const computedStyle = typeof window !== "undefined" && typeof window.getComputedStyle === "function"
+        ? window.getComputedStyle(card)
+        : null;
+    const paddingTop = computedStyle ? Number.parseFloat(computedStyle.paddingTop || "0") || 0 : 0;
+    const paddingBottom = computedStyle ? Number.parseFloat(computedStyle.paddingBottom || "0") || 0 : 0;
+    const verticalPadding = paddingTop + paddingBottom;
+    const interiorCardHeight = normalizedCardHeight > 0 ? Math.max(normalizedCardHeight - verticalPadding, 0) : 0;
+    const resolvedContentHeightBase = normalizedContentHeight > 0 ? normalizedContentHeight : interiorCardHeight;
     const apply = (syncToContent = false) => {
         const codeMirrorScroll = card.querySelector(".CodeMirror-scroll");
         const codeMirror = card.querySelector(".CodeMirror");
         const textarea = card.querySelector(".markdown-editor");
-        let contentHeight = resolvedContentHeight;
+        let contentHeight = resolvedContentHeightBase;
         if (syncToContent) {
             let naturalHeight = 0;
             if (codeMirrorScroll instanceof HTMLElement) {
@@ -1594,7 +1601,8 @@ function lockEditingSurfaceHeight(card, measurements) {
                 contentHeight = naturalHeight;
             }
         }
-        const targetCardHeight = Math.max(normalizedCardHeight, contentHeight);
+        const resolvedContentHeight = contentHeight > 0 ? contentHeight : 0;
+        const targetCardHeight = resolvedContentHeight > 0 ? resolvedContentHeight + verticalPadding : normalizedCardHeight;
         card.style.setProperty("--note-expanded-edit-height", `${targetCardHeight}px`);
         card.style.minHeight = `${targetCardHeight}px`;
         card.style.maxHeight = "";
