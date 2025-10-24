@@ -167,6 +167,54 @@ test.describe("Bounded htmlViews", () => {
         }
     });
 
+    test("chevron toggle handles expansion while content clicks enter edit mode", async () => {
+        const { page, teardown } = await openHtmlViewHarness(createBaselineRecords());
+        const cardSelector = `[data-note-id="${LONG_NOTE_ID}"]`;
+        const htmlViewSelector = `${cardSelector} .note-html-view`;
+        const toggleSelector = `${cardSelector} .note-expand-toggle`;
+        try {
+            await collapseAllHtmlViews(page);
+            await page.waitForSelector(toggleSelector, { timeout: 5000 });
+            await page.waitForFunction((selector) => {
+                const node = document.querySelector(selector);
+                return node instanceof HTMLElement && !node.classList.contains("note-html-view--expanded");
+            }, {}, htmlViewSelector);
+
+            await page.click(toggleSelector);
+            await page.waitForFunction((selector) => {
+                const node = document.querySelector(selector);
+                return node instanceof HTMLElement && node.classList.contains("note-html-view--expanded");
+            }, {}, htmlViewSelector);
+
+            await page.click(toggleSelector);
+            await page.waitForFunction((selector) => {
+                const node = document.querySelector(selector);
+                return node instanceof HTMLElement && !node.classList.contains("note-html-view--expanded");
+            }, {}, htmlViewSelector);
+
+            await page.$eval(`${cardSelector} .markdown-content`, (element) => {
+                element.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+            });
+            await page.waitForFunction((selector) => {
+                const card = document.querySelector(selector);
+                return card instanceof HTMLElement && card.classList.contains("editing-in-place");
+            }, { timeout: 4000 }, cardSelector);
+
+            const htmlViewDuringEdit = await page.$(htmlViewSelector);
+            assert.equal(htmlViewDuringEdit, null, "htmlView should be removed while editing in place");
+
+            await page.keyboard.down("Control");
+            await page.keyboard.press("Enter");
+            await page.keyboard.up("Control");
+            await page.waitForFunction((selector) => {
+                const card = document.querySelector(selector);
+                return !(card instanceof HTMLElement) || !card.classList.contains("editing-in-place");
+            }, { timeout: 4000 }, cardSelector);
+        } finally {
+            await teardown();
+        }
+    });
+
     test("expanding htmlView preserves viewport position", async () => {
         const { page, teardown } = await openHtmlViewHarness(createBaselineRecords());
         try {

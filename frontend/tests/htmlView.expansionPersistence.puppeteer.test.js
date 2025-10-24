@@ -61,7 +61,7 @@ test.describe("GN-71 note expansion persistence", () => {
             await page.waitForSelector(firstHtmlViewSelector);
             await page.waitForSelector(secondHtmlViewSelector);
 
-            await page.click(firstCardSelector);
+            await page.click(`${firstCardSelector} .note-expand-toggle`);
             await page.waitForSelector(`${firstHtmlViewSelector}.note-html-view--expanded`);
             const firstExpandedHeight = await getElementHeight(page, firstHtmlViewSelector);
             assert.ok(firstExpandedHeight > 0, "expanded htmlView should report a positive height");
@@ -82,7 +82,7 @@ test.describe("GN-71 note expansion persistence", () => {
                 `expanded card interior height (${interiorCardHeight}) should align with htmlView height (${firstExpandedHeight}) within ${expansionTolerancePx}px`
             );
 
-            await page.click(secondCardSelector);
+            await page.click(`${secondCardSelector} .note-expand-toggle`);
             await page.waitForSelector(`${secondHtmlViewSelector}.note-html-view--expanded`);
 
             const firstStillExpanded = await isHtmlViewExpanded(page, firstHtmlViewSelector);
@@ -189,7 +189,7 @@ test.describe("GN-71 note expansion persistence", () => {
             const secondStillExpanded = await isHtmlViewExpanded(page, secondHtmlViewSelector);
             assert.equal(secondStillExpanded, true, "second card should remain expanded after editing the first card");
 
-            await page.click(firstCardSelector);
+            await page.click(`${firstCardSelector} .note-expand-toggle`);
             await page.waitForFunction((selector) => {
                 const htmlView = document.querySelector(selector);
                 return !(htmlView instanceof HTMLElement) || !htmlView.classList.contains("note-html-view--expanded");
@@ -205,7 +205,7 @@ test.describe("GN-71 note expansion persistence", () => {
     });
 });
 
-test("double clicking near the bottom of an expanded card enters edit mode", async () => {
+test("clicking near the bottom of an expanded card enters edit mode", async () => {
     const seededRecords = [
         buildNoteRecord({ noteId: FIRST_NOTE_ID, markdownText: LONG_MARKDOWN_BLOCK })
     ];
@@ -215,7 +215,7 @@ test("double clicking near the bottom of an expanded card enters edit mode", asy
 
     try {
         await page.waitForSelector(firstHtmlViewSelector);
-        await page.click(firstCardSelector);
+        await page.click(`${firstCardSelector} .note-expand-toggle`);
         await page.waitForSelector(`${firstHtmlViewSelector}.note-html-view--expanded`);
         const clickTarget = await page.$eval(firstHtmlViewSelector, (element) => {
             if (!(element instanceof HTMLElement)) {
@@ -231,14 +231,8 @@ test("double clicking near the bottom of an expanded card enters edit mode", asy
         if (clickTarget) {
             await page.mouse.move(clickTarget.x, clickTarget.y);
             await page.mouse.click(clickTarget.x, clickTarget.y, { clickCount: 1 });
-            await new Promise((resolve) => setTimeout(resolve, 120));
-            const stillExpanded = await page.$eval(firstHtmlViewSelector, (element) => {
-                return element instanceof HTMLElement && element.classList.contains("note-html-view--expanded");
-            });
-            assert.equal(stillExpanded, true, "expanded htmlView must remain expanded shortly after the first click to allow double click editing");
-            await page.mouse.click(clickTarget.x, clickTarget.y, { clickCount: 2 });
         }
-        await page.waitForSelector(`${firstCardSelector}.editing-in-place`);
+        await page.waitForSelector(`${firstCardSelector}.editing-in-place`, { timeout: 4000 });
     } finally {
         await teardown();
     }
