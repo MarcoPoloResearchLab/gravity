@@ -391,6 +391,24 @@ export function createMarkdownEditorHost(options) {
     function configureEasyMde(instance, { syncTextareaValue }) {
         const { codemirror } = instance;
 
+        const ensureInputAttributes = () => {
+            const inputField = typeof codemirror.getInputField === "function"
+                ? codemirror.getInputField()
+                : null;
+            if (inputField instanceof HTMLElement) {
+                inputField.setAttribute("spellcheck", "true");
+                inputField.setAttribute("autocorrect", "on");
+                inputField.setAttribute("autocapitalize", "sentences");
+                inputField.setAttribute("data-gramm", "true");
+            }
+            if (textarea instanceof HTMLTextAreaElement) {
+                textarea.setAttribute("spellcheck", "true");
+                textarea.setAttribute("autocorrect", "on");
+                textarea.setAttribute("autocapitalize", "sentences");
+            }
+        };
+        ensureInputAttributes();
+
         const htmlViewPane = instance?.gui?.preview;
         if (htmlViewPane instanceof HTMLElement) {
             htmlViewPane.remove();
@@ -577,6 +595,7 @@ export function createMarkdownEditorHost(options) {
                     syncTextareaValue();
                 }
             }
+            ensureInputAttributes();
             syncTextareaValue();
             emitChange();
         });
@@ -585,6 +604,8 @@ export function createMarkdownEditorHost(options) {
             normalizeOrderedLists();
             emit("blur");
         });
+
+        codemirror.on("refresh", ensureInputAttributes);
 
         codemirror.on("cursorActivity", () => {
             syncTextareaSelectionFromCodeMirror();
