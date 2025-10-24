@@ -3,13 +3,11 @@ import path from "node:path";
 import test from "node:test";
 
 import {
-    EVENT_NOTE_CREATE
-} from "../js/constants.js";
-import {
     prepareFrontendPage,
     dispatchSignIn,
     waitForSyncManagerUser,
-    extractSyncDebugState
+    extractSyncDebugState,
+    dispatchNoteCreate
 } from "./helpers/syncTestUtils.js";
 import {
     startTestBackend,
@@ -134,9 +132,15 @@ test.describe("Backend sync integration", () => {
                 const noteId = "backend-sync-note";
                 const timestampIso = new Date().toISOString();
                 await raceWithSignal(deadlineSignal, dispatchNoteCreate(page, {
-                    noteId,
-                    markdownText: "Integration test note",
-                    timestampIso
+                    record: {
+                        noteId,
+                        markdownText: "Integration test note",
+                        createdAtIso: timestampIso,
+                        updatedAtIso: timestampIso,
+                        lastActivityIso: timestampIso
+                    },
+                    storeUpdated: false,
+                    shouldRender: false
                 }));
                 const debugState = await raceWithSignal(deadlineSignal, extractSyncDebugState(page));
                 assert.ok(debugState, "sync manager debug state available");
@@ -223,26 +227,5 @@ function raceWithSignal(signal, candidate) {
             }
         );
         signal.addEventListener("abort", handleAbort, { once: true });
-    });
-}
-
-async function dispatchNoteCreate(page, { noteId, markdownText, timestampIso }) {
-    await page.evaluate((eventName, detail) => {
-        const root = document.querySelector("body");
-        if (!root) return;
-        root.dispatchEvent(new CustomEvent(eventName, {
-            detail,
-            bubbles: true
-        }));
-    }, EVENT_NOTE_CREATE, {
-        record: {
-            noteId,
-            markdownText,
-            createdAtIso: timestampIso,
-            updatedAtIso: timestampIso,
-            lastActivityIso: timestampIso
-        },
-        storeUpdated: false,
-        shouldRender: false
     });
 }

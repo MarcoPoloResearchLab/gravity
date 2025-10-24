@@ -3,7 +3,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { appConfig } from "../../js/core/config.js";
-import { EVENT_AUTH_SIGN_IN } from "../../js/constants.js";
+import {
+    EVENT_AUTH_SIGN_IN,
+    EVENT_NOTE_CREATE,
+    EVENT_NOTE_UPDATE
+} from "../../js/constants.js";
 import { startTestBackend } from "./backendHarness.js";
 import { connectSharedBrowser, injectRuntimeConfig } from "./browserHarness.js";
 
@@ -18,14 +22,15 @@ const DEFAULT_JWT_AUDIENCE = appConfig.googleClientId;
  * Prepare a new browser page configured for backend synchronization tests.
  * @param {import('puppeteer').Browser | import('puppeteer').BrowserContext} browser
  * @param {string} pageUrl
- * @param {{ backendBaseUrl: string, llmProxyUrl?: string }} options
+ * @param {{ backendBaseUrl: string, llmProxyUrl?: string, preserveLocalStorage?: boolean }} options
  * @returns {Promise<import('puppeteer').Page>}
  */
 export async function prepareFrontendPage(browser, pageUrl, options) {
     const {
         backendBaseUrl,
         llmProxyUrl = "",
-        beforeNavigate
+        beforeNavigate,
+        preserveLocalStorage = false
     } = options;
     const page = await browser.newPage();
     if (typeof beforeNavigate === "function") {
@@ -37,16 +42,18 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
             llmProxyUrl
         }
     });
-    await page.evaluateOnNewDocument((storageKey) => {
+    await page.evaluateOnNewDocument((storageKey, shouldPreserve) => {
         const initialized = window.sessionStorage.getItem("__gravityTestInitialized") === "true";
         if (!initialized) {
-            window.localStorage.clear();
+            if (!shouldPreserve) {
+                window.localStorage.clear();
+            }
             window.sessionStorage.setItem("__gravityTestInitialized", "true");
         }
         if (!window.localStorage.getItem(storageKey)) {
             window.localStorage.setItem(storageKey, "[]");
         }
-    }, appConfig.storageKey);
+    }, appConfig.storageKey, preserveLocalStorage === true);
 
     await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
     await waitForAppReady(page);
@@ -337,6 +344,52 @@ export async function waitForSyncManagerBootstrap(page, timeoutMs) {
         const syncManager = alpineComponent?.syncManager;
         return Boolean(syncManager && typeof syncManager.handleSignIn === "function");
     }, typeof timeoutMs === "number" && Number.isFinite(timeoutMs) ? { timeout: timeoutMs } : {});
+}
+
+/**
+ * Dispatch a note creation event to the application root.
+ * @param {import('puppeteer').Page} page
+ * @param {{ record: import("../../js/types.d.js").NoteRecord, storeUpdated?: boolean, shouldRender?: boolean }} detail
+ * @returns {Promise<void>}
+ */
+export async function dispatchNoteCreate(page, detail) {
+    if (!detail?.record || typeof detail.record.noteId !== "string") {
+        throw new Error("dispatchNoteCreate requires a record with noteId.");
+    }
+    await dispatchNoteEvent(page, EVENT_NOTE_CREATE, detail);
+}
+
+/**
+ * Dispatch a note update event to the application root.
+ * @param {import('puppeteer').Page} page
+ * @param {{ noteId: string, record: import("../../js/types.d.js").NoteRecord, storeUpdated?: boolean, shouldRender?: boolean }} detail
+ * @returns {Promise<void>}
+ */
+export async function dispatchNoteUpdate(page, detail) {
+    if (!detail || typeof detail.noteId !== "string" || !detail.record) {
+        throw new Error("dispatchNoteUpdate requires noteId and record.");
+    }
+    await dispatchNoteEvent(page, EVENT_NOTE_UPDATE, detail);
+}
+
+/**
+ * Dispatch a custom event against the application root element.
+ * @param {import('puppeteer').Page} page
+ * @param {string} eventName
+ * @param {Record<string, unknown>} detail
+ * @returns {Promise<void>}
+ */
+async function dispatchNoteEvent(page, eventName, detail) {
+    await page.evaluate((name, payload) => {
+        const root = document.querySelector("body");
+        if (!root) {
+            throw new Error("Application root not found.");
+        }
+        root.dispatchEvent(new CustomEvent(name, {
+            detail: payload,
+            bubbles: true
+        }));
+    }, eventName, detail);
 }
 
 /**
