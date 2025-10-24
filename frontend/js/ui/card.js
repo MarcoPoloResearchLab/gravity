@@ -1471,6 +1471,29 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
         contentHeight: expandedContentHeight
     });
 
+    if (editorHost && typeof editorHost.on === "function" && typeof editorHost.off === "function") {
+        if (typeof card.__editingHeightCleanup === "function") {
+            try {
+                card.__editingHeightCleanup();
+            } catch (error) {
+                logging.error(error);
+            }
+            card.__editingHeightCleanup = null;
+        }
+        const synchronizeEditingHeight = () => {
+            const rect = card.getBoundingClientRect();
+            const currentCardHeight = normalizeHeight(rect?.height);
+            lockEditingSurfaceHeight(card, {
+                cardHeight: currentCardHeight > 0 ? currentCardHeight : expandedCardHeight,
+                contentHeight: 0
+            });
+        };
+        editorHost.on("change", synchronizeEditingHeight);
+        card.__editingHeightCleanup = () => {
+            editorHost.off("change", synchronizeEditingHeight);
+        };
+    }
+
     if (bubbleSelfToTop) {
         const firstCard = notesContainer.firstElementChild;
         if (firstCard && firstCard !== card) {
@@ -1524,36 +1547,55 @@ function lockEditingSurfaceHeight(card, measurements) {
         return;
     }
     const resolvedContentHeight = normalizedContentHeight > 0 ? normalizedContentHeight : normalizedCardHeight;
-    card.style.setProperty("--note-expanded-edit-height", `${normalizedCardHeight}px`);
-    const apply = () => {
-        card.style.minHeight = `${normalizedCardHeight}px`;
-        card.style.maxHeight = `${normalizedCardHeight}px`;
+    const apply = (syncToContent = false) => {
         const codeMirrorScroll = card.querySelector(".CodeMirror-scroll");
-        if (codeMirrorScroll instanceof HTMLElement) {
-            codeMirrorScroll.style.minHeight = `${resolvedContentHeight}px`;
-            codeMirrorScroll.style.maxHeight = `${resolvedContentHeight}px`;
-            codeMirrorScroll.style.height = `${resolvedContentHeight}px`;
-            codeMirrorScroll.style.overflowY = "auto";
-        }
         const codeMirror = card.querySelector(".CodeMirror");
-        if (codeMirror instanceof HTMLElement) {
-            codeMirror.style.minHeight = `${resolvedContentHeight}px`;
-            codeMirror.style.maxHeight = `${resolvedContentHeight}px`;
-            codeMirror.style.height = `${resolvedContentHeight}px`;
-        }
         const textarea = card.querySelector(".markdown-editor");
+        let contentHeight = resolvedContentHeight;
+        if (syncToContent) {
+            let naturalHeight = 0;
+            if (codeMirrorScroll instanceof HTMLElement) {
+                naturalHeight = normalizeHeight(codeMirrorScroll.scrollHeight);
+            } else if (codeMirror instanceof HTMLElement) {
+                naturalHeight = normalizeHeight(codeMirror.scrollHeight);
+            } else if (textarea instanceof HTMLElement) {
+                naturalHeight = normalizeHeight(textarea.scrollHeight);
+            }
+            if (naturalHeight > 0 && naturalHeight > contentHeight) {
+                contentHeight = naturalHeight;
+            }
+        }
+        const targetCardHeight = Math.max(normalizedCardHeight, contentHeight);
+        card.style.setProperty("--note-expanded-edit-height", `${targetCardHeight}px`);
+        card.style.minHeight = `${targetCardHeight}px`;
+        card.style.maxHeight = "";
+        card.style.height = `${targetCardHeight}px`;
+        if (codeMirrorScroll instanceof HTMLElement) {
+            codeMirrorScroll.style.minHeight = `${contentHeight}px`;
+            codeMirrorScroll.style.maxHeight = "";
+            codeMirrorScroll.style.height = `${contentHeight}px`;
+            codeMirrorScroll.style.overflowY = "";
+        }
+        if (codeMirror instanceof HTMLElement) {
+            codeMirror.style.minHeight = `${contentHeight}px`;
+            codeMirror.style.maxHeight = "";
+            codeMirror.style.height = `${contentHeight}px`;
+        }
         if (textarea instanceof HTMLElement) {
-            textarea.style.minHeight = `${resolvedContentHeight}px`;
-            textarea.style.maxHeight = `${resolvedContentHeight}px`;
-            textarea.style.height = `${resolvedContentHeight}px`;
+            textarea.style.minHeight = `${contentHeight}px`;
+            textarea.style.maxHeight = "";
+            textarea.style.height = `${contentHeight}px`;
         }
     };
     apply();
+    apply(true);
     if (typeof requestAnimationFrame === "function") {
         requestAnimationFrame(() => {
             apply();
-            requestAnimationFrame(apply);
+            requestAnimationFrame(() => apply(true));
         });
+    } else {
+        apply(true);
     }
 }
 
@@ -1572,6 +1614,7 @@ function releaseEditingSurfaceHeight(card) {
     card.style.removeProperty("--note-expanded-edit-height");
     card.style.minHeight = "";
     card.style.maxHeight = "";
+    card.style.height = "";
     const codeMirrorScroll = card.querySelector(".CodeMirror-scroll");
     if (codeMirrorScroll instanceof HTMLElement) {
         codeMirrorScroll.style.minHeight = "";
@@ -1590,6 +1633,14 @@ function releaseEditingSurfaceHeight(card) {
         textarea.style.minHeight = "";
         textarea.style.maxHeight = "";
         textarea.style.height = "";
+    }
+
+    if (typeof card.__editingHeightCleanup === "function") {
+        try {
+            card.__editingHeightCleanup();
+        } finally {
+            card.__editingHeightCleanup = null;
+        }
     }
 }
 

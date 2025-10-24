@@ -55,12 +55,12 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
   -[x] [GN-98] [P1] The double chevron expand indicator sits off-center on note cards. Align the indicator vertically in the middle of the card so the icon consistently mirrors card height. — Toggle now centers via CSS transform, and `htmlView.bounded.puppeteer.test.js` asserts vertical alignment (branch bugfix/GN-98-chevron-alignment).
 
-- [ ] [GN-103] Scrollers
+- [x] [GN-103] Scrollers — expanded cards keep their growth footprint without scrollbars; editing height now resyncs to content and Puppeteer guards the regression.
 	- Safari has a scroller on the first note. There shouldnt be scrollers
 	- Safari stops scrolling and had a fixed height of the note. There shouldnt be scrollers and the note shall grow.
 	- Firefox displays a scroller after certaing height. There shouldnt be scrollers and the note shall grow.
 	- The scrollers are non functional (cant scroll). There shouldnt be scrollers and the note shall grow.
-	- [ ] Ensure that notes grow as needed in both HTML rendering and markdown modes
+	- [x] Ensure that notes grow as needed in both HTML rendering and markdown modes
 - [ ] [GN-104] Clicking on a lower area closes the expanded note and thus doubleclick intended to enter the editing mode is not working when clicking closer to the end of the note
 
 ### Maintenance
@@ -144,5 +144,4 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
     ```
     The google console screenshot is here ![Google console](<Google Console.png>)
-
 

@@ -78,6 +78,29 @@ test.describe("GN-71 note expansion persistence", () => {
             await page.waitForSelector(`${firstCardSelector} .CodeMirror-scroll`);
             const editorHeight = await getElementHeight(page, `${firstCardSelector} .CodeMirror-scroll`);
             assert.ok(editorHeight > 0, "editing surface should report a measurable height");
+            const editorOverflowSnapshot = await page.$eval(
+                `${firstCardSelector} .CodeMirror-scroll`,
+                (element) => {
+                    if (!(element instanceof HTMLElement)) {
+                        return null;
+                    }
+                    const computed = window.getComputedStyle(element);
+                    return {
+                        overflowY: computed.overflowY
+                    };
+                }
+            );
+            assert.ok(editorOverflowSnapshot, "expected edit surface overflow snapshot");
+            assert.notEqual(
+                editorOverflowSnapshot.overflowY,
+                "auto",
+                "expanded edit surface must not rely on auto overflow"
+            );
+            assert.notEqual(
+                editorOverflowSnapshot.overflowY,
+                "scroll",
+                "expanded edit surface must not introduce scrollbars"
+            );
             const editingCardHeight = await getElementHeight(page, firstCardSelector);
             assert.ok(
                 Math.abs(editingCardHeight - firstExpandedCardHeight) <= 2,
@@ -93,9 +116,10 @@ test.describe("GN-71 note expansion persistence", () => {
                 editingInlineSizing.minHeight.endsWith("px"),
                 `card must carry an inline minHeight lock during editing (${editingInlineSizing.minHeight})`
             );
-            assert.ok(
-                editingInlineSizing.maxHeight.endsWith("px"),
-                `card must carry an inline maxHeight lock during editing (${editingInlineSizing.maxHeight})`
+            assert.equal(
+                editingInlineSizing.maxHeight,
+                "",
+                "card must not apply a maxHeight lock when expanded editing should grow"
             );
             assert.ok(
                 editingInlineSizing.cssVariable.endsWith("px"),
