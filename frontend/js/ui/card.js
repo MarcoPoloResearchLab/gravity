@@ -135,6 +135,9 @@ function shouldKeepEditingAfterBlur(card) {
         return isPointerWithinInlineEditorSurface(card, lastPointerDownTarget);
     }
     if (lastDoubleClickTarget instanceof Node && card.contains(lastDoubleClickTarget)) {
+        if (lastPointerDownTarget instanceof Node && !card.contains(lastPointerDownTarget)) {
+            return false;
+        }
         return true;
     }
     return false;

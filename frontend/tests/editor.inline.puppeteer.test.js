@@ -126,6 +126,14 @@ const GN105_MARKDOWN = [
     "",
     "A trailing paragraph keeps the card tall so clicks can land on surrounding chrome."
 ].join("\n");
+const GN105_SECOND_NOTE_ID = "inline-outside-click-dismiss-secondary";
+const GN105_SECOND_MARKDOWN = [
+    "# Outside Click Secondary",
+    "",
+    "This companion note provides a nearby htmlView to receive the outside pointer interaction.",
+    "",
+    "Single clicking this card must finalize the first note without requiring an extra pointer press."
+].join("\n");
 
 test.describe("Markdown inline editor", () => {
 
@@ -920,6 +928,71 @@ test.describe("Markdown inline editor", () => {
             assert.ok(finalTelemetry, "Expected to collect telemetry after exiting edit mode");
             assert.equal(finalTelemetry.mode, "view", "Card should return to view mode after outside click");
             assert.equal(finalTelemetry.hasEditingClass, false, "Editing class must be removed after outside click");
+        } finally {
+            await teardown();
+        }
+    });
+
+    test("single clicking a different card after double click editing finalizes the current card", async () => {
+        const firstNote = buildNoteRecord({
+            noteId: GN105_NOTE_ID,
+            markdownText: GN105_MARKDOWN
+        });
+        const secondNote = buildNoteRecord({
+            noteId: GN105_SECOND_NOTE_ID,
+            markdownText: GN105_SECOND_MARKDOWN
+        });
+        const { page, teardown } = await preparePage({
+            records: [firstNote, secondNote]
+        });
+        const firstCardSelector = `.markdown-block[data-note-id="${GN105_NOTE_ID}"]`;
+        const secondCardSelector = `.markdown-block[data-note-id="${GN105_SECOND_NOTE_ID}"]`;
+        const secondHtmlViewSelector = `${secondCardSelector} .note-html-view`;
+
+        try {
+            await page.waitForSelector(firstCardSelector, { timeout: 5000 });
+            await page.waitForSelector(secondCardSelector, { timeout: 5000 });
+            await enterCardEditMode(page, firstCardSelector);
+            await page.waitForSelector(`${firstCardSelector}.editing-in-place`, { timeout: 5000 });
+
+            const baselineTelemetry = await beginCardEditingTelemetry(page, firstCardSelector);
+            assert.ok(baselineTelemetry, "Expected to begin telemetry for the editing card");
+            assert.equal(baselineTelemetry.mode, "edit", "Card should be in edit mode before outside click");
+            assert.equal(baselineTelemetry.hasEditingClass, true, "Card must have the editing indicator before outside click");
+
+            const clickPoint = await page.$eval(secondHtmlViewSelector, (element) => {
+                if (!(element instanceof HTMLElement)) {
+                    return null;
+                }
+                const rect = element.getBoundingClientRect();
+                return {
+                    x: rect.left + Math.min(rect.width / 2, 24),
+                    y: rect.top + Math.min(rect.height / 2, 24)
+                };
+            });
+            assert.ok(clickPoint, "Second card click target should resolve");
+
+            await page.mouse.click(clickPoint.x, clickPoint.y);
+            await pause(page, 50);
+
+            await page.waitForFunction((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return false;
+                }
+                if (card.classList.contains("editing-in-place")) {
+                    return false;
+                }
+                const host = Reflect.get(card, "__markdownHost");
+                return Boolean(host && typeof host.getMode === "function" && host.getMode() === "view");
+            }, { timeout: 1500 }, firstCardSelector);
+
+            const finalTelemetry = await collectCardEditingTelemetry(page, firstCardSelector);
+            assert.ok(finalTelemetry, "Expected to collect telemetry after exiting edit mode");
+            assert.equal(finalTelemetry.mode, "view", "Card should return to view mode after outside card click");
+            assert.equal(finalTelemetry.hasEditingClass, false, "Editing class must be removed after outside card click");
+
+            await page.waitForSelector(`${secondCardSelector}:not(.editing-in-place)`, { timeout: 1000 });
         } finally {
             await teardown();
         }
