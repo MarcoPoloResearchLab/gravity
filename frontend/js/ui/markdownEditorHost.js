@@ -32,7 +32,8 @@ const BRACKET_PAIRS = Object.freeze({
     "[": "]",
     "{": "}",
     '"': '"',
-    "'": "'"
+    "'": "'",
+    "`": "`"
 });
 const CLOSING_BRACKETS = new Set(Object.values(BRACKET_PAIRS));
 
@@ -1026,7 +1027,9 @@ function loadImage(source) {
 
 function handleBracketAutoClose(cm, openChar, closeChar) {
     if (typeof closeChar !== "string") return false;
-    const selections = cm.listSelections();
+    const doc = typeof cm.getDoc === "function" ? cm.getDoc() : null;
+    if (!doc) return false;
+    const selections = doc.listSelections();
     if (!Array.isArray(selections) || selections.length === 0) return false;
     let handled = false;
     cm.operation(() => {
@@ -1040,35 +1043,71 @@ function handleBracketAutoClose(cm, openChar, closeChar) {
             const isSquarePair = openChar === "[" && closeChar === "]";
 
             if (!isEmpty) {
-                const selectedText = cm.getRange(start, end);
-                cm.replaceRange(`${openChar}${selectedText}${closeChar}`, start, end, "+autoCloseBracket");
-                const startCursor = { line: start.line, ch: start.ch + 1 };
-                const endCursor = { line: startCursor.line, ch: startCursor.ch + selectedText.length };
-                cm.setSelection(startCursor, endCursor);
+                const selectedText = doc.getRange(start, end);
+                if (openChar === "`" && closeChar === "`") {
+                    const requiredTicks = computeBacktickWrapperLength(selectedText);
+                    const fence = "`".repeat(requiredTicks);
+                    doc.replaceRange(`${fence}${selectedText}${fence}`, start, end, "+autoCloseBacktick");
+                    const startIndex = doc.indexFromPos(start) + fence.length;
+                    const endIndex = startIndex + selectedText.length;
+                    const selectionStart = doc.posFromIndex(startIndex);
+                    const selectionEnd = doc.posFromIndex(endIndex);
+                    doc.setSelection(selectionStart, selectionEnd);
+                } else {
+                    doc.replaceRange(`${openChar}${selectedText}${closeChar}`, start, end, "+autoCloseBracket");
+                    const startIndex = doc.indexFromPos(start) + openChar.length;
+                    const endIndex = startIndex + selectedText.length;
+                    const selectionStart = doc.posFromIndex(startIndex);
+                    const selectionEnd = doc.posFromIndex(endIndex);
+                    doc.setSelection(selectionStart, selectionEnd);
+                }
                 handled = true;
                 continue;
             }
 
-            const cursor = cm.getCursor();
-            const nextChar = cm.getRange(cursor, { line: cursor.line, ch: cursor.ch + 1 });
+            const cursor = doc.getCursor();
+            if (openChar === "`" && closeChar === "`") {
+                continue;
+            }
+            const nextPosition = { line: cursor.line, ch: cursor.ch + closeChar.length };
+            const nextChar = doc.getRange(cursor, nextPosition);
             if (nextChar === closeChar) {
-                cm.setCursor({ line: cursor.line, ch: cursor.ch + 1 });
+                doc.setCursor(nextPosition);
                 handled = true;
                 continue;
             }
 
             if (isSquarePair) {
                 const insertion = "[ ] ";
-                cm.replaceRange(insertion, cursor, cursor, "+autoCloseBracket");
-                cm.setCursor({ line: cursor.line, ch: cursor.ch + insertion.length });
+                doc.replaceRange(insertion, cursor, cursor, "+autoCloseBracket");
+                doc.setCursor({ line: cursor.line, ch: cursor.ch + insertion.length });
             } else {
-                cm.replaceRange(`${openChar}${closeChar}`, cursor, cursor, "+autoCloseBracket");
-                cm.setCursor({ line: cursor.line, ch: cursor.ch + 1 });
+                doc.replaceRange(`${openChar}${closeChar}`, cursor, cursor, "+autoCloseBracket");
+                doc.setCursor({ line: cursor.line, ch: cursor.ch + openChar.length });
             }
             handled = true;
         }
     });
     return handled;
+}
+
+function computeBacktickWrapperLength(selectedText) {
+    if (typeof selectedText !== "string" || selectedText.length === 0) {
+        return 1;
+    }
+    let longestRun = 0;
+    let currentRun = 0;
+    for (const character of selectedText) {
+        if (character === "`") {
+            currentRun += 1;
+            if (currentRun > longestRun) {
+                longestRun = currentRun;
+            }
+        } else {
+            currentRun = 0;
+        }
+    }
+    return Math.max(1, longestRun + 1);
 }
 
 function skipExistingClosingBracket(cm, closeChar) {

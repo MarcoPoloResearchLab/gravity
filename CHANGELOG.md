@@ -11,6 +11,7 @@ and are grouped by the date the work landed on `master`.
 - Local test runs now capture Puppeteer screenshots per suite while skipping CI to aid debugging (GN-70).
 
 ### Fixed
+- Inline editor now wraps selected text with matching backtick fences and escalates when the selection already contains backticks, covering GN-106 with new regression tests.
 - Inline editing now completes when clicking card chrome outside the markdown surface, while double-click flows stay in edit mode; covered by a Puppeteer regression (GN-105).
 - Note HTML view expansion now persists until manually collapsed, and inline editing preserves the expanded height envelope (GN-71).
 - Realtime multi-session regression suite now spies on `EventSource` connections to confirm SSE propagation and unblock GN-83.
