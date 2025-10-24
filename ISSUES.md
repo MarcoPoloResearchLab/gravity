@@ -134,3 +134,5 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
     ```
     The google console screenshot is here ![Google console](<Google Console.png>)
+
+- [x] [GN-102] Expand synchronization regression coverage across multi-session scenarios: comprehensive Puppeteer suites now verify snapshot application, dual-client editing, offline queue replay, and session bootstrap flows for both freshly authenticated and returning users; helpers gained reusable note event utilities and existing persistence tests consume them, with targeted sync suites executed successfully.

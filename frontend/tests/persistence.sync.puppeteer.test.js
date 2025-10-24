@@ -3,13 +3,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { EVENT_NOTE_CREATE } from "../js/constants.js";
 import {
     prepareFrontendPage,
     dispatchSignIn,
     waitForSyncManagerUser,
     waitForPendingOperations,
-    extractSyncDebugState
+    extractSyncDebugState,
+    dispatchNoteCreate
 } from "./helpers/syncTestUtils.js";
 import { startTestBackend, waitForBackendNote } from "./helpers/backendHarness.js";
 import { connectSharedBrowser } from "./helpers/browserHarness.js";
@@ -56,10 +56,17 @@ test.describe("Backend persistence", () => {
             await waitForSyncManagerUser(pageA, TEST_USER_ID);
             await waitForPendingOperations(pageA);
 
+            const timestampIso = new Date().toISOString();
             await dispatchNoteCreate(pageA, {
-                noteId: NOTE_IDENTIFIER,
-                markdownText: NOTE_MARKDOWN,
-                timestampIso: new Date().toISOString()
+                record: {
+                    noteId: NOTE_IDENTIFIER,
+                    markdownText: NOTE_MARKDOWN,
+                    createdAtIso: timestampIso,
+                    updatedAtIso: timestampIso,
+                    lastActivityIso: timestampIso
+                },
+                storeUpdated: false,
+                shouldRender: false
             });
             await waitForPendingOperations(pageA);
 
@@ -100,24 +107,3 @@ test.describe("Backend persistence", () => {
         }
     });
 });
-
-async function dispatchNoteCreate(page, { noteId, markdownText, timestampIso }) {
-    await page.evaluate((eventName, detail) => {
-        const root = document.querySelector("body");
-        if (!root) return;
-        root.dispatchEvent(new CustomEvent(eventName, {
-            detail,
-            bubbles: true
-        }));
-    }, EVENT_NOTE_CREATE, {
-        record: {
-            noteId,
-            markdownText,
-            createdAtIso: timestampIso,
-            updatedAtIso: timestampIso,
-            lastActivityIso: timestampIso
-        },
-        storeUpdated: false,
-        shouldRender: false
-    });
-}
