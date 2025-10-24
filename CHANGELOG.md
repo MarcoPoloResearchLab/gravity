@@ -19,6 +19,7 @@ and are grouped by the date the work landed on `master`.
 - Card content column now stays level with the controls column and regression coverage watches for misalignment (GN-88).
 - Hard refreshes reuse cached backend tokens so sessions survive reloads, with a regression guarding the flow (GN-87).
 - Expanded cards on Safari and Firefox no longer render phantom scrollbars; editing height locks now resync to content and new Puppeteer coverage checks expanded-mode growth (GN-103).
+- Double-clicking near a note footer no longer collapses the expanded htmlView before entering edit mode; debounce logic preserves expansion and new regression coverage targets the footer region (GN-104).
 - Card controls span the full grid height so action buttons anchor to the top-right corner, with a Puppeteer regression guard (GN-84).
 - Backend token expiry no longer floods warn logs: realtime SSE disconnects before expiration, expired validations log at info level, and unit tests cover both guards (GN-89).
 - Refreshing the app no longer re-triggers Google Sign-In when a session is restored from storage; GIS auto prompt stays disabled until credentials expire (GN-97).

@@ -61,7 +61,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 	- Firefox displays a scroller after certaing height. There shouldnt be scrollers and the note shall grow.
 	- The scrollers are non functional (cant scroll). There shouldnt be scrollers and the note shall grow.
 	- [x] Ensure that notes grow as needed in both HTML rendering and markdown modes
-- [ ] [GN-104] Clicking on a lower area closes the expanded note and thus doubleclick intended to enter the editing mode is not working when clicking closer to the end of the note
+- [x] [GN-104] Clicking on a lower area closes the expanded note and thus doubleclick intended to enter the editing mode is not working when clicking closer to the end of the note — double-clicks now debounce collapse, ensuring expanded htmlView stays open through edit entry; new Puppeteer coverage exercises the footer double-click.
 
 ### Maintenance
 
@@ -144,4 +144,3 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
     ```
     The google console screenshot is here ![Google console](<Google Console.png>)
-

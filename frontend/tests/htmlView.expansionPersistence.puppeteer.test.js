@@ -188,6 +188,45 @@ test.describe("GN-71 note expansion persistence", () => {
     });
 });
 
+test("double clicking near the bottom of an expanded card enters edit mode", async () => {
+    const seededRecords = [
+        buildNoteRecord({ noteId: FIRST_NOTE_ID, markdownText: LONG_MARKDOWN_BLOCK })
+    ];
+    const { page, teardown } = await openPageWithRecords(seededRecords);
+    const firstCardSelector = `.markdown-block[data-note-id="${FIRST_NOTE_ID}"]`;
+    const firstHtmlViewSelector = `${firstCardSelector} .note-html-view`;
+
+    try {
+        await page.waitForSelector(firstHtmlViewSelector);
+        await page.click(firstCardSelector);
+        await page.waitForSelector(`${firstHtmlViewSelector}.note-html-view--expanded`);
+        const clickTarget = await page.$eval(firstHtmlViewSelector, (element) => {
+            if (!(element instanceof HTMLElement)) {
+                return null;
+            }
+            const rect = element.getBoundingClientRect();
+            return {
+                x: rect.left + rect.width / 2,
+                y: rect.bottom - Math.max(36, rect.height / 4)
+            };
+        });
+        assert.ok(clickTarget, "expected to resolve a click target near the bottom of the htmlView");
+        if (clickTarget) {
+            await page.mouse.move(clickTarget.x, clickTarget.y);
+            await page.mouse.click(clickTarget.x, clickTarget.y, { clickCount: 1 });
+            await new Promise((resolve) => setTimeout(resolve, 120));
+            const stillExpanded = await page.$eval(firstHtmlViewSelector, (element) => {
+                return element instanceof HTMLElement && element.classList.contains("note-html-view--expanded");
+            });
+            assert.equal(stillExpanded, true, "expanded htmlView must remain expanded shortly after the first click to allow double click editing");
+            await page.mouse.click(clickTarget.x, clickTarget.y, { clickCount: 2 });
+        }
+        await page.waitForSelector(`${firstCardSelector}.editing-in-place`);
+    } finally {
+        await teardown();
+    }
+});
+
 async function openPageWithRecords(records) {
     const { page, teardown } = await createSharedPage();
     const serialized = JSON.stringify(Array.isArray(records) ? records : []);

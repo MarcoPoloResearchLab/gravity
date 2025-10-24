@@ -1020,6 +1020,27 @@ export function renderCard(record, options = {}) {
     configurePinnedLayout(notesContainer);
     applyPinnedState(card, initialPinned, notesContainer, { setPinnedButtonState: updatePinButtonState });
 
+    const COLLAPSE_DEBOUNCE_MS = 180;
+    const cancelPendingCollapse = () => {
+        if (typeof card.__pendingCollapseTimer === "number") {
+            clearTimeout(card.__pendingCollapseTimer);
+            card.__pendingCollapseTimer = null;
+        }
+    };
+
+    const scheduleCollapse = () => {
+        cancelPendingCollapse();
+        if (typeof window === "undefined" || typeof window.setTimeout !== "function") {
+            setHtmlViewExpanded(card, false);
+            return;
+        }
+        const timerId = window.setTimeout(() => {
+            card.__pendingCollapseTimer = null;
+            setHtmlViewExpanded(card, false);
+        }, COLLAPSE_DEBOUNCE_MS);
+        card.__pendingCollapseTimer = timerId;
+    };
+
     const handleCardClick = (event) => {
         const target = /** @type {HTMLElement} */ (event.target);
         if (shouldIgnoreCardPointerTarget(target)) {
@@ -1031,6 +1052,7 @@ export function renderCard(record, options = {}) {
         if (card.classList.contains("editing-in-place")) {
             return;
         }
+        cancelPendingCollapse();
         const htmlViewWrapper = card.querySelector(".note-html-view");
         if (!(htmlViewWrapper instanceof HTMLElement)) {
             return;
@@ -1041,7 +1063,11 @@ export function renderCard(record, options = {}) {
             return;
         }
         const expandNext = !htmlViewWrapper.classList.contains("note-html-view--expanded");
-        setHtmlViewExpanded(card, expandNext);
+        if (!expandNext) {
+            scheduleCollapse();
+            return;
+        }
+        setHtmlViewExpanded(card, true);
     };
 
     const handleCardDoubleClick = (event) => {
@@ -1052,6 +1078,8 @@ export function renderCard(record, options = {}) {
         if (card.classList.contains("editing-in-place")) {
             return;
         }
+
+        cancelPendingCollapse();
 
         let caretPlacement = CARET_PLACEMENT_END;
         const htmlViewElement = card.querySelector(".markdown-content");
@@ -1065,6 +1093,7 @@ export function renderCard(record, options = {}) {
             }
         }
 
+        setHtmlViewExpanded(card, true);
         focusCardEditor(card, notesContainer, {
             caretPlacement,
             bubblePreviousCardToTop: true
@@ -1633,6 +1662,11 @@ function releaseEditingSurfaceHeight(card) {
         textarea.style.minHeight = "";
         textarea.style.maxHeight = "";
         textarea.style.height = "";
+    }
+
+    if (typeof card.__pendingCollapseTimer === "number") {
+        clearTimeout(card.__pendingCollapseTimer);
+        card.__pendingCollapseTimer = null;
     }
 
     if (typeof card.__editingHeightCleanup === "function") {
