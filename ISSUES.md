@@ -16,6 +16,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
     6. The height of expanded rendered note and the height of markedown note must be identical. Work on the stling that gurantees that the size of markdown and rendered note are the same.
   - [x] [GN-72] Front-end redesign — note cards now use a 2:1 text-to-controls grid, classification badges live in the control column, and the expand indicator aligns to the preview footer with refreshed Puppeteer layout coverage (branch improvement/GN-72-layout).
   - [x] [GN-101] Make Puppeteer screenshot capture optional, configurable per test, and refactor the harness helper so the pattern can be reused across repositories. Document the configuration contract once implemented. — Screenshot policy now supports disabled/enabled/allowlist modes with async context overrides, harness env wiring, updated Puppeteer tests, and README guidance.
+  - [ ] [GN-105] Clicking outside the markdown editing area must complete editing
 
 ### BugFixes
 
@@ -43,7 +44,6 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
   -[x] [GN-88] [P0] GN-84 was not fixed. Now the text is horizontally below the controls: ![card layout](<card layout bug.png>). Ensure that the card controls and text are independent of each other, and align both the text abnd card controls to the top. The text is aligned to the left,a nd the controls to the right (considering current styling, padding etc etc), so these are just the sense of direction — Cards now wrap badges and content inside a dedicated column so htmlView shares the first grid track with controls, the new regression guards alignment, and layout metrics stay stable even when htmlView expands.
 
-
   -[x] [GN-89] [P0] There are thousands of logging messages on the backend in production:
   gravity-api  | {"level":"warn","ts":1761205956.0570734,"caller":"server/router.go:432","msg":"token validation failed","error":"token has invalid claims: token is expired"}
   gravity-api  | {"level":"warn","ts":1761205958.0639532,"caller":"server/router.go:432","msg":"token validation failed","error":"token has invalid claims: token is expired"}
@@ -55,6 +55,14 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
   -[x] [GN-98] [P1] The double chevron expand indicator sits off-center on note cards. Align the indicator vertically in the middle of the card so the icon consistently mirrors card height. — Toggle now centers via CSS transform, and `htmlView.bounded.puppeteer.test.js` asserts vertical alignment (branch bugfix/GN-98-chevron-alignment).
 
+- [ ] [GN-103] Scrollers
+	- Safari has a scroller on the first note. There shouldnt be scrollers
+	- Safari stops scrolling and had a fixed height of the note. There shouldnt be scrollers and the note shall grow.
+	- Firefox displays a scroller after certaing height. There shouldnt be scrollers and the note shall grow.
+	- The scrollers are non functional (cant scroll). There shouldnt be scrollers and the note shall grow.
+	- [ ] Ensure that notes grow as needed in both HTML rendering and markdown modes
+- [ ] [GN-104] Clicking on a lower area closes the expanded note and thus doubleclick intended to enter the editing mode is not working when clicking closer to the end of the note
+
 ### Maintenance
 
   - [x] [GN-90] Code refactoring: we have screenshots, we have HTML view and we have markdown view. Use this rough taxonomy and revise the code to ensure there is no word previewe mentioned anywhere in the code. While working on it ensure that the code flow doesnt assume previewes, storing previews in the DOM, cahcing previewes or doing any operation wich pre-calculate views. Simplify the code where possible. Remember to rely on [marked.js](marked.js.md) and [MD](MDE.v2.19.0.md) — HTML view terminology replaces preview helpers across the UI, clipboard generation now re-renders sanitized HTML on demand, and styles/tests track the new names (branch maintenance/GN-90-rename-preview).
@@ -64,6 +72,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - [x] [GN-92] Restructure the repository so that the /frontend and the /backend are two separate top level folders. Consider changes to GitHub Pages through `gh` utility to continue serving front-end from the github after the change of the front-end index.html path — Frontend assets now live under `frontend/`, Docker configs point to the new directory, and README documents the GitHub Pages adjustment (branch maintenance/GN-92-restructure-repo).
 
   - [x] [GN-93] I need to deploy the front end from the frontend folder on Github pages
+
+  - [x] [GN-102] Expand synchronization regression coverage across multi-session scenarios: comprehensive Puppeteer suites now verify snapshot application, dual-client editing, offline queue replay, and session bootstrap flows for both freshly authenticated and returning users; helpers gained reusable note event utilities and existing persistence tests consume them, with targeted sync suites executed successfully.
 
 ### Planning (do not work on these, not ready)
 
@@ -135,4 +145,4 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
     ```
     The google console screenshot is here ![Google console](<Google Console.png>)
 
-- [x] [GN-102] Expand synchronization regression coverage across multi-session scenarios: comprehensive Puppeteer suites now verify snapshot application, dual-client editing, offline queue replay, and session bootstrap flows for both freshly authenticated and returning users; helpers gained reusable note event utilities and existing persistence tests consume them, with targeted sync suites executed successfully.
+
