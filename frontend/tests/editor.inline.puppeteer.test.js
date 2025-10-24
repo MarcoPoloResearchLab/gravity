@@ -504,7 +504,7 @@ test.describe("Markdown inline editor", () => {
         }
     });
 
-    test("single click expands an overflowing htmlView without starting edit mode", async () => {
+    test("single click enters edit mode and expands overflowing htmlView", async () => {
         const expandNoteId = "inline-expand-behaviour";
         const noteRecord = buildNoteRecord({
             noteId: expandNoteId,
@@ -533,16 +533,23 @@ test.describe("Markdown inline editor", () => {
             assert.equal(initialState.expanded, false, "htmlView must start collapsed");
 
             await page.click(htmlViewSelector);
-            await page.waitForSelector(`${htmlViewSelector}.note-html-view--expanded`);
+            await page.waitForSelector(`${cardSelector}.editing-in-place`, { timeout: 4000 });
 
-            const editingAfterClick = await page.$(`${cardSelector}.editing-in-place`);
-            assert.equal(editingAfterClick, null, "single click must not start editing");
+            const htmlViewDuringEdit = await page.$(htmlViewSelector);
+            assert.equal(htmlViewDuringEdit, null, "htmlView should be removed while editing after single click");
 
-            await page.click(htmlViewSelector);
-            await page.waitForFunction((selector) => {
-                const element = document.querySelector(selector);
-                return element instanceof HTMLElement && !element.classList.contains("note-html-view--expanded");
-            }, {}, htmlViewSelector);
+            const expandedHeight = await page.$eval(cardSelector, (element) => {
+                if (!(element instanceof HTMLElement)) {
+                    return "";
+                }
+                return element.style.getPropertyValue("--note-expanded-edit-height");
+            });
+            assert.notEqual(expandedHeight, "", "editing-in-place should lock the expanded edit height variable");
+
+            await page.keyboard.down("Control");
+            await page.keyboard.press("Enter");
+            await page.keyboard.up("Control");
+            await page.waitForSelector(`${cardSelector}.editing-in-place`, { hidden: true, timeout: 4000 });
         } finally {
             await teardown();
         }
@@ -964,19 +971,12 @@ test.describe("Markdown inline editor", () => {
             assert.equal(baselineTelemetry.mode, "edit", "Card should be in edit mode before outside click");
             assert.equal(baselineTelemetry.hasEditingClass, true, "Card must have the editing indicator before outside click");
 
-            const clickPoint = await page.$eval(secondHtmlViewSelector, (element) => {
+            await page.$eval(secondHtmlViewSelector, (element) => {
                 if (!(element instanceof HTMLElement)) {
-                    return null;
+                    return;
                 }
-                const rect = element.getBoundingClientRect();
-                return {
-                    x: rect.left + Math.min(rect.width / 2, 24),
-                    y: rect.top + Math.min(rect.height / 2, 24)
-                };
+                element.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
             });
-            assert.ok(clickPoint, "Second card click target should resolve");
-
-            await page.mouse.click(clickPoint.x, clickPoint.y);
             await pause(page, 50);
 
             await page.waitForFunction((selector) => {
@@ -996,7 +996,7 @@ test.describe("Markdown inline editor", () => {
             assert.equal(finalTelemetry.mode, "view", "Card should return to view mode after outside card click");
             assert.equal(finalTelemetry.hasEditingClass, false, "Editing class must be removed after outside card click");
 
-            await page.waitForSelector(`${secondCardSelector}:not(.editing-in-place)`, { timeout: 1000 });
+            await page.waitForSelector(`${secondCardSelector}.editing-in-place`, { timeout: 2000 });
         } finally {
             await teardown();
         }

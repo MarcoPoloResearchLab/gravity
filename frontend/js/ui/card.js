@@ -1098,21 +1098,40 @@ export function renderCard(record, options = {}) {
             return;
         }
         cancelPendingCollapse();
+        const toggleTarget = target instanceof HTMLElement ? target.closest(".note-expand-toggle") : null;
         const htmlViewWrapper = card.querySelector(".note-html-view");
         if (!(htmlViewWrapper instanceof HTMLElement)) {
             return;
         }
         const shouldToggleExpansion = htmlViewWrapper.classList.contains("note-html-view--overflow")
             || htmlViewWrapper.classList.contains("note-html-view--expanded");
-        if (!shouldToggleExpansion) {
+        if (toggleTarget instanceof HTMLElement) {
+            if (!shouldToggleExpansion) {
+                return;
+            }
+            const expandNext = !htmlViewWrapper.classList.contains("note-html-view--expanded");
+            if (!expandNext) {
+                scheduleCollapse();
+                return;
+            }
+            setHtmlViewExpanded(card, true);
             return;
         }
-        const expandNext = !htmlViewWrapper.classList.contains("note-html-view--expanded");
-        if (!expandNext) {
-            scheduleCollapse();
-            return;
+        const host = editorHosts.get(card);
+        let caretPlacement = CARET_PLACEMENT_END;
+        const htmlViewElement = card.querySelector(".markdown-content");
+        if (htmlViewElement instanceof HTMLElement && host) {
+            const offset = calculateHtmlViewTextOffset(htmlViewElement, event);
+            if (offset !== null) {
+                const markdownValue = host.getValue();
+                caretPlacement = mapPlainTextOffsetToMarkdown(markdownValue, offset);
+            }
         }
         setHtmlViewExpanded(card, true);
+        focusCardEditor(card, notesContainer, {
+            caretPlacement,
+            bubblePreviousCardToTop: true
+        });
     };
 
     const handleCardDoubleClick = (event) => {
