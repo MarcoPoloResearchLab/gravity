@@ -1143,6 +1143,77 @@ test.describe("Markdown inline editor", () => {
         }
     });
 
+    test("markdown editors expose browser grammar hints", async () => {
+        const noteRecord = buildNoteRecord({
+            noteId: "inline-grammar-check-fixture",
+            markdownText: "Grammar baseline note."
+        });
+        const { page, teardown } = await preparePage({
+            records: [noteRecord]
+        });
+        const cardSelector = `.markdown-block[data-note-id="inline-grammar-check-fixture"]`;
+
+        try {
+            await page.waitForSelector("#top-editor .CodeMirror textarea", { timeout: 5000 });
+            const topEditorAttributes = await page.evaluate(() => {
+                const wrapper = document.querySelector("#top-editor .CodeMirror");
+                const cm = wrapper ? /** @type {any} */ (wrapper).CodeMirror : null;
+                const inputField = cm && typeof cm.getInputField === "function" ? cm.getInputField() : null;
+                const textarea = document.querySelector("#top-editor .markdown-editor");
+                return {
+                    inputSpellcheck: inputField?.getAttribute("spellcheck") ?? null,
+                    inputAutocorrect: inputField?.getAttribute("autocorrect") ?? null,
+                    inputAutocapitalize: inputField?.getAttribute("autocapitalize") ?? null,
+                    textareaSpellcheck: textarea?.getAttribute("spellcheck") ?? null,
+                    textareaAutocorrect: textarea?.getAttribute("autocorrect") ?? null,
+                    textareaAutocapitalize: textarea?.getAttribute("autocapitalize") ?? null
+                };
+            });
+            assert.deepEqual(topEditorAttributes, {
+                inputSpellcheck: "true",
+                inputAutocorrect: "on",
+                inputAutocapitalize: "sentences",
+                textareaSpellcheck: "true",
+                textareaAutocorrect: "on",
+                textareaAutocapitalize: "sentences"
+            });
+
+            await page.waitForSelector(cardSelector, { timeout: 5000 });
+            await enterCardEditMode(page, cardSelector);
+
+            const cardAttributes = await page.evaluate((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return null;
+                }
+                const cmElement = card.querySelector(".CodeMirror");
+                const cm = cmElement ? /** @type {any} */ (cmElement).CodeMirror : null;
+                const inputField = cm && typeof cm.getInputField === "function" ? cm.getInputField() : null;
+                const textarea = card.querySelector(".markdown-editor");
+                return {
+                    inputSpellcheck: inputField?.getAttribute("spellcheck") ?? null,
+                    inputAutocorrect: inputField?.getAttribute("autocorrect") ?? null,
+                    inputAutocapitalize: inputField?.getAttribute("autocapitalize") ?? null,
+                    textareaSpellcheck: textarea?.getAttribute("spellcheck") ?? null,
+                    textareaAutocorrect: textarea?.getAttribute("autocorrect") ?? null,
+                    textareaAutocapitalize: textarea?.getAttribute("autocapitalize") ?? null
+                };
+            }, cardSelector);
+
+            assert.ok(cardAttributes, "Card attribute snapshot should resolve");
+            assert.deepEqual(cardAttributes, {
+                inputSpellcheck: "true",
+                inputAutocorrect: "on",
+                inputAutocapitalize: "sentences",
+                textareaSpellcheck: "true",
+                textareaAutocorrect: "on",
+                textareaAutocapitalize: "sentences"
+            });
+        } finally {
+            await teardown();
+        }
+    });
+
     test("double clicking a different card focuses that card at the clicked location", async () => {
         const { page, teardown } = await preparePage({
             records: [
