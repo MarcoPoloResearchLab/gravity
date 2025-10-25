@@ -2,9 +2,9 @@
 
 Entries record newly discovered requests or changes, with their outcomes. No instructive content lives here. Read @NOTES.md for the process to follow when fixing issues.
 
-### Features
+## Features
 
-### Improvements
+## Improvements
 
   - [x] [GN-70] Use screenshots of the areas that tests run on when in local enviornment. CI environment is defined as an enviornment that has an env var CI=true. Do not save screenshots on CI. — Automated local screenshot artifacts per Puppeteer suite with new helper and harness test (branch improvement/GN-70-local-screenshots).
   - [x] [GN-71] The changes in the notes height must only happen in response to user actions. If a note was clicked on and extended in height, it stays so untill the user clicks and folds the note back in. The note does not auto resizes back when the user clicks or edits another note. Apply the logc to thwe UI: only users actions change the height of the cards containing notes: — per-card expansions persist across interactions, editing locks to the expanded footprint, and new Puppeteer coverage guards the flow (branch improvement/GN-71-note-height-behavior).
@@ -21,7 +21,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - [x] [GN-108] Grammar hints are restored in markdown mode by enabling the CodeMirror input's spellcheck/autocorrect attributes; new Puppeteer checks confirm top editor and cards expose those browser hooks.
   - [x] [GN-109] Chevron toggle remains the only expansion affordance while single clicks on card content enter inline edit mode; new regression coverage verifies both behaviours.
 
-### BugFixes
+## BugFixes
 
   - [x] [GN-81] [P1] Double-clicking opens a wrong note. Adjust the code to — Resolved by mapping double-click coordinates to the nearest htmlView text segment with a fallback sampler and adding Puppeteer regression coverage.
     1. identify the card that was clicked on 
@@ -68,7 +68,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
 - [ ] [GN-107] All browsers show a scroller on the right of the note when the texted s being edited and the markdown is being selected. The scroller never goes away. Desired outcome: make scroller never show up
 
-### Maintenance
+## Maintenance
 
   - [x] [GN-90] Code refactoring: we have screenshots, we have HTML view and we have markdown view. Use this rough taxonomy and revise the code to ensure there is no word previewe mentioned anywhere in the code. While working on it ensure that the code flow doesnt assume previewes, storing previews in the DOM, cahcing previewes or doing any operation wich pre-calculate views. Simplify the code where possible. Remember to rely on [marked.js](marked.js.md) and [MD](MDE.v2.19.0.md) — HTML view terminology replaces preview helpers across the UI, clipboard generation now re-renders sanitized HTML on demand, and styles/tests track the new names (branch maintenance/GN-90-rename-preview).
 
@@ -80,7 +80,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
   - [x] [GN-102] Expand synchronization regression coverage across multi-session scenarios: comprehensive Puppeteer suites now verify snapshot application, dual-client editing, offline queue replay, and session bootstrap flows for both freshly authenticated and returning users; helpers gained reusable note event utilities and existing persistence tests consume them, with targeted sync suites executed successfully.
 
-### Planning (do not work on these, not ready)
+## Planning (do not work on these, not ready)
 
 - [ ] [GN-55] The current llm-proxy URL is wrong -- there is no such path as https://llm-proxy.mprlab.com/v1/gravity/
   classify. There is only https://llm-proxy.mprlab.com/, and we need to be sending a system prompt to it to get classification. I have copied llm-proxy codebase under the tools folder. Prepare a system prompt for classification of the notes and send it to llm-proxy service. 
