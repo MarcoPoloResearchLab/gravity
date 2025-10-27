@@ -79,6 +79,7 @@ const editorHosts = new WeakMap();
 const finalizeSuppression = new WeakMap();
 const suppressionState = new WeakMap();
 const copyFeedbackTimers = new WeakMap();
+const pendingHeightFrames = new WeakMap();
 const COPY_FEEDBACK_DURATION_MS = 1800;
 const LINE_ENDING_NORMALIZE_PATTERN = /\r\n/g;
 const TRAILING_WHITESPACE_PATTERN = /[ \t]+$/;
@@ -1631,6 +1632,28 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
     updateActionButtons(notesContainer);
 }
 
+function registerPendingHeightFrame(card, frameId) {
+    if (typeof frameId !== "number") {
+        return;
+    }
+    let handles = pendingHeightFrames.get(card);
+    if (!handles) {
+        handles = [];
+        pendingHeightFrames.set(card, handles);
+    }
+    handles.push(frameId);
+}
+
+function cancelPendingHeightFrames(card) {
+    const handles = pendingHeightFrames.get(card);
+    if (handles && typeof cancelAnimationFrame === "function") {
+        for (const handle of handles) {
+            cancelAnimationFrame(handle);
+        }
+    }
+    pendingHeightFrames.delete(card);
+}
+
 function lockEditingSurfaceHeight(card, measurements) {
     if (!(card instanceof HTMLElement)) {
         return;
@@ -1650,6 +1673,9 @@ function lockEditingSurfaceHeight(card, measurements) {
     const interiorCardHeight = normalizedCardHeight > 0 ? Math.max(normalizedCardHeight - verticalPadding, 0) : 0;
     const resolvedContentHeightBase = normalizedContentHeight > 0 ? normalizedContentHeight : interiorCardHeight;
     const apply = (syncToContent = false) => {
+        if (!card.classList.contains("editing-in-place")) {
+            return;
+        }
         const codeMirrorScroll = card.querySelector(".CodeMirror-scroll");
         const codeMirror = card.querySelector(".CodeMirror");
         const textarea = card.querySelector(".markdown-editor");
@@ -1690,13 +1716,29 @@ function lockEditingSurfaceHeight(card, measurements) {
             textarea.style.height = `${contentHeight}px`;
         }
     };
+    cancelPendingHeightFrames(card);
+
     apply();
     apply(true);
     if (typeof requestAnimationFrame === "function") {
-        requestAnimationFrame(() => {
+        const firstFrame = requestAnimationFrame(() => {
+            if (!card.classList.contains("editing-in-place")) {
+                return;
+            }
             apply();
-            requestAnimationFrame(() => apply(true));
+            if (typeof requestAnimationFrame === "function") {
+                const secondFrame = requestAnimationFrame(() => {
+                    if (!card.classList.contains("editing-in-place")) {
+                        return;
+                    }
+                    apply(true);
+                });
+                registerPendingHeightFrame(card, secondFrame);
+            } else {
+                apply(true);
+            }
         });
+        registerPendingHeightFrame(card, firstFrame);
     } else {
         apply(true);
     }
@@ -1714,6 +1756,7 @@ function releaseEditingSurfaceHeight(card) {
     if (!(card instanceof HTMLElement)) {
         return;
     }
+    cancelPendingHeightFrames(card);
     card.style.removeProperty("--note-expanded-edit-height");
     card.style.minHeight = "";
     card.style.maxHeight = "";

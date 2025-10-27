@@ -43,6 +43,7 @@ const TASK_MARKDOWN = "- [ ] Pending task\n- [x] Completed task";
 const LONG_NOTE_ID = "inline-long-fixture";
 const LONG_NOTE_PARAGRAPH_COUNT = 18;
 const LONG_NOTE_MARKDOWN = Array.from({ length: LONG_NOTE_PARAGRAPH_COUNT }, (_, index) => `Paragraph ${index + 1} maintains scroll state.`).join("\n\n");
+const HEIGHT_RESET_NOTE_ID = "inline-height-reset";
 const BRACKET_NOTE_ID = "inline-bracket-fixture";
 const BRACKET_MARKDOWN = "Bracket baseline";
 const DELETE_LINE_NOTE_ID = "inline-delete-line-fixture";
@@ -484,6 +485,59 @@ test.describe("Markdown inline editor", () => {
                     `editor should not rely on large internal scroll areas (scrollHeight=${metrics.codeMirrorScrollHeight}, clientHeight=${metrics.codeMirrorClientHeight})`
                 );
             }
+        } finally {
+            await teardown();
+        }
+    });
+
+    test("finalizing long edits clears height constraints", async () => {
+        const seededRecords = [
+            buildNoteRecord({
+                noteId: HEIGHT_RESET_NOTE_ID,
+                markdownText: LONG_NOTE_MARKDOWN
+            })
+        ];
+        const { page, teardown } = await preparePage({ records: seededRecords });
+        const cardSelector = `.markdown-block[data-note-id="${HEIGHT_RESET_NOTE_ID}"]`;
+        const editorSelector = `${cardSelector} .CodeMirror textarea`;
+
+        try {
+            await enterCardEditMode(page, cardSelector);
+            await page.waitForSelector(editorSelector, { timeout: 5000 });
+            await page.type(editorSelector, " ");
+
+            await page.keyboard.down("Shift");
+            await page.keyboard.press("Enter");
+            await page.keyboard.up("Shift");
+
+            await page.waitForSelector(`${cardSelector}.editing-in-place`, { hidden: true, timeout: 2000 });
+
+            const postFinalizeState = await page.evaluate((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return null;
+                }
+                const computed = window.getComputedStyle(card);
+                return {
+                    heightVar: card.style.getPropertyValue("--note-expanded-edit-height"),
+                    inlineHeight: card.style.height,
+                    inlineMinHeight: card.style.minHeight,
+                    inlineMaxHeight: card.style.maxHeight,
+                    overflowY: computed.overflowY,
+                    scrollHeight: card.scrollHeight,
+                    clientHeight: card.clientHeight
+                };
+            }, cardSelector);
+
+            assert.ok(postFinalizeState, "expected to capture card metrics after finalizing");
+            assert.equal(postFinalizeState.heightVar, "", "height lock variable should clear after finalizing edit");
+            assert.equal(postFinalizeState.inlineHeight, "", "card inline height should reset after finalizing");
+            assert.equal(postFinalizeState.inlineMinHeight, "", "card inline min-height should reset after finalizing");
+            assert.equal(postFinalizeState.inlineMaxHeight, "", "card inline max-height should reset after finalizing");
+            assert.ok(
+                postFinalizeState.scrollHeight <= postFinalizeState.clientHeight + 8,
+                `card should not retain artificial gaps after edit (scrollHeight=${postFinalizeState.scrollHeight}, clientHeight=${postFinalizeState.clientHeight})`
+            );
         } finally {
             await teardown();
         }

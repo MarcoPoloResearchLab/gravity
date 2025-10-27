@@ -94,6 +94,7 @@ and are grouped by the date the work landed on `master`.
 ## Fixed
 - Preserved in-progress inline edits when sync snapshots re-render notes so typing and paste remain responsive.
 - Added regression coverage for the snapshot flow and replaced the external PNG dependency with an in-repo decoder to keep image assertions working during tests.
+- Cleared lingering editor height locks after inline edits to avoid blank gutters beneath cards and verified with a Puppeteer regression.
 
 ## 2025-09-25
 

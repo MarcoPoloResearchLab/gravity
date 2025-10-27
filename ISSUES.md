@@ -23,7 +23,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
 - [x] [GN-300] Typing is sometimes blocked (can't type) or paste.  Unsure of the use case, seems haphazard. Review the code to see if you can find the potential cause
   - Resolved by preserving in-progress inline edits during note re-renders and adding regression coverage for the snapshot flow (`frontend/js/app.js`, `frontend/tests/editor.inline.puppeteer.test.js`).
-- [ ] [GN-302] A large space is left under the markdown notes from time to time. Ensure we are aware of the real height of the note and can measure the height needed. Check with MDE if the editor we use exposes an ability to measure the text's height
+- [x] [GN-302] A large space is left under the markdown notes from time to time. Ensure we are aware of the real height of the note and can measure the height needed. Check with MDE if the editor we use exposes an ability to measure the text's height
+  - Eliminated delayed height reapplication and added regression coverage so cards release their edit lock without leaving empty gaps (`frontend/js/ui/card.js`, `frontend/tests/editor.inline.puppeteer.test.js`).
 - [ ] [GN-303] The synchronization doesn't refresh. I just added a note on another device then logged in a computer where a session was already running and got no note there. When I opened the console I saw a lof of message about expired authentication. We shall look into how do we keep the account logged in.
 - [ ] [GN-304] Clicking on a note starts it for editing (expected behavior) and places the cursor in the right place but it yanks the note to the top (unexpected behavior).
 	- Solutions:
