@@ -89,6 +89,12 @@ and are grouped by the date the work landed on `master`.
 - Updated CI to publish backend images from `master` and reference the canonical tag throughout the compose workflow.
 - Improved test harness timeout reporting to highlight budget usage (GN-41).
 
+# 2025-10-27
+
+## Fixed
+- Preserved in-progress inline edits when sync snapshots re-render notes so typing and paste remain responsive.
+- Added regression coverage for the snapshot flow and replaced the external PNG dependency with an in-repo decoder to keep image assertions working during tests.
+
 ## 2025-09-25
 
 ### Added

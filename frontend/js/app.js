@@ -646,11 +646,49 @@ function gravityApp() {
                 return;
             }
 
-            container.innerHTML = "";
+            /** @type {Map<string, HTMLElement>} */
+            const existingCards = new Map();
+            for (const element of container.querySelectorAll(".markdown-block[data-note-id]")) {
+                if (!(element instanceof HTMLElement)) continue;
+                const noteId = element.getAttribute("data-note-id");
+                if (typeof noteId === "string" && noteId.length > 0) {
+                    existingCards.set(noteId, element);
+                }
+            }
+
+            const desiredOrder = [];
+
             for (const record of orderedRecords) {
-                const card = renderCard(record, { notesContainer: container });
+                const noteId = record.noteId;
+                const existingCard = existingCards.get(noteId);
+                const isEditing = existingCard?.classList?.contains("editing-in-place") ?? false;
+
+                if (existingCard && isEditing) {
+                    existingCard.dataset.pinned = record.pinned ? "true" : "false";
+                    if (typeof record.createdAtIso === "string") existingCard.dataset.createdAtIso = record.createdAtIso;
+                    if (typeof record.updatedAtIso === "string") existingCard.dataset.updatedAtIso = record.updatedAtIso;
+                    if (typeof record.lastActivityIso === "string") existingCard.dataset.lastActivityIso = record.lastActivityIso;
+                    desiredOrder.push(existingCard);
+                    existingCards.delete(noteId);
+                    continue;
+                }
+
+                const freshCard = renderCard(record, { notesContainer: container });
+                desiredOrder.push(freshCard);
+                if (existingCard) {
+                    existingCard.replaceWith(freshCard);
+                    existingCards.delete(noteId);
+                }
+            }
+
+            for (const leftover of existingCards.values()) {
+                leftover.remove();
+            }
+
+            for (const card of desiredOrder) {
                 container.appendChild(card);
             }
+
             updateActionButtons(container);
             this.lastRenderedSignature = signature;
         },

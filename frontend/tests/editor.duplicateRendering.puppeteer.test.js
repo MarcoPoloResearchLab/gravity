@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { PNG } from "pngjs";
+import { decodePng } from "./helpers/png.js";
 
 import { appConfig } from "../js/core/config.js";
 import { createSharedPage } from "./helpers/browserHarness.js";
@@ -392,10 +392,9 @@ function countColorClusters(buffer, options) {
     if (!Array.isArray(targetColor) || targetColor.length !== 3) {
         return 0;
     }
-    const png = PNG.sync.read(buffer);
     const columnWeights = new Map();
     const rowWeights = new Map();
-    const { width, height, data } = png;
+    const { width, height, data } = decodePng(buffer);
     for (let y = 0; y < height; y += 1) {
         for (let x = 0; x < width; x += 1) {
             const index = (y * width + x) * 4;

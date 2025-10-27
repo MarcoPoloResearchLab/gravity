@@ -426,6 +426,28 @@ test.describe("Markdown inline editor", () => {
         try {
             await enterCardEditMode(page, cardSelector);
 
+            await page.waitForFunction((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return false;
+                }
+                const cardStyle = window.getComputedStyle(card);
+                if (cardStyle.overflowY === "auto" || cardStyle.overflowY === "scroll") {
+                    return false;
+                }
+                const cmScroll = card.querySelector(".CodeMirror-scroll");
+                if (!(cmScroll instanceof HTMLElement)) {
+                    return false;
+                }
+                const cmStyle = window.getComputedStyle(cmScroll);
+                if (cmStyle.overflowY === "auto" || cmStyle.overflowY === "scroll") {
+                    return false;
+                }
+                const cardWithinBounds = card.scrollHeight <= card.clientHeight + 16;
+                const cmWithinBounds = cmScroll.scrollHeight <= cmScroll.clientHeight + 64;
+                return cardWithinBounds && cmWithinBounds;
+            }, { timeout: 1000 }, cardSelector);
+
             const metrics = await page.evaluate((selector) => {
                 const card = document.querySelector(selector);
                 if (!(card instanceof HTMLElement)) {
@@ -1015,6 +1037,7 @@ test.describe("Markdown inline editor", () => {
         try {
             await page.waitForSelector(cardSelector, { timeout: 5000 });
             await enterCardEditMode(page, cardSelector);
+            await pause(page, 80);
             await page.evaluate((selector) => {
                 const card = document.querySelector(selector);
                 if (!(card instanceof HTMLElement)) {
@@ -1044,6 +1067,30 @@ test.describe("Markdown inline editor", () => {
                 doc.setSelection(startPos, endPos);
                 cmInstance.focus();
             }, cardSelector);
+
+            const selectionBefore = await page.evaluate((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return null;
+                }
+                const cmElement = card.querySelector(".CodeMirror");
+                const cmInstance = cmElement && typeof /** @type {any} */ (cmElement).CodeMirror !== "undefined"
+                    ? /** @type {any} */ (cmElement).CodeMirror
+                    : null;
+                if (!cmInstance || typeof cmInstance.getDoc !== "function") {
+                    return null;
+                }
+                const doc = cmInstance.getDoc();
+                const selection = doc.getSelection();
+                const primary = doc.listSelections()?.[0] ?? null;
+                return {
+                    selection,
+                    anchor: primary?.anchor ?? null,
+                    head: primary?.head ?? null
+                };
+            }, cardSelector);
+            assert.ok(selectionBefore, "Expected to capture selection state before wrapping");
+            assert.equal(selectionBefore.selection, "wrapping", "Selection should target the wrapping token before inserting backticks");
 
             await page.keyboard.press("Backquote");
 
@@ -1094,6 +1141,7 @@ test.describe("Markdown inline editor", () => {
         try {
             await page.waitForSelector(cardSelector, { timeout: 5000 });
             await enterCardEditMode(page, cardSelector);
+            await pause(page, 80);
             await page.evaluate((selector) => {
                 const card = document.querySelector(selector);
                 if (!(card instanceof HTMLElement)) {
@@ -1124,6 +1172,30 @@ test.describe("Markdown inline editor", () => {
                 cmInstance.focus();
             }, cardSelector);
 
+            const selectionBefore = await page.evaluate((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return null;
+                }
+                const cmElement = card.querySelector(".CodeMirror");
+                const cmInstance = cmElement && typeof /** @type {any} */ (cmElement).CodeMirror !== "undefined"
+                    ? /** @type {any} */ (cmElement).CodeMirror
+                    : null;
+                if (!cmInstance || typeof cmInstance.getDoc !== "function") {
+                    return null;
+                }
+                const doc = cmInstance.getDoc();
+                const selection = doc.getSelection();
+                const primary = doc.listSelections()?.[0] ?? null;
+                return {
+                    selection,
+                    anchor: primary?.anchor ?? null,
+                    head: primary?.head ?? null
+                };
+            }, cardSelector);
+            assert.ok(selectionBefore, "Expected to capture selection state before expanding backticks");
+            assert.equal(selectionBefore.selection, "`inline`", "Selection should target the inline snippet before expanding wrapper");
+
             await page.keyboard.press("Backquote");
 
             const markdownValue = await page.evaluate((selector) => {
@@ -1138,6 +1210,81 @@ test.describe("Markdown inline editor", () => {
             }, cardSelector);
 
             assert.equal(markdownValue, "Nested ```inline``` snippet baseline");
+        } finally {
+            await teardown();
+        }
+    });
+
+    test("inline editing survives sync snapshot re-render", async () => {
+        const noteId = "inline-sync-snapshot";
+        const noteRecord = buildNoteRecord({
+            noteId,
+            markdownText: "Snapshot baseline paragraph."
+        });
+        const { page, teardown } = await preparePage({
+            records: [noteRecord]
+        });
+        const cardSelector = `.markdown-block[data-note-id="${noteId}"]`;
+        const editorSelector = `${cardSelector} .CodeMirror textarea`;
+
+        try {
+            await page.waitForSelector(cardSelector, { timeout: 5000 });
+            await enterCardEditMode(page, cardSelector);
+            await page.click(editorSelector);
+            await page.type(editorSelector, " Local draft");
+
+            const draftValue = await page.evaluate((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return null;
+                }
+                const host = /** @type {any} */ (card).__markdownHost;
+                if (!host || typeof host.getValue !== "function") {
+                    return null;
+                }
+                return host.getValue();
+            }, cardSelector);
+            assert.ok(draftValue && draftValue.endsWith(" Local draft"), "typed draft should be present before snapshot");
+
+            await page.evaluate(() => {
+                const root = document.querySelector("[x-data]");
+                if (!root) {
+                    throw new Error("application root not found");
+                }
+                root.dispatchEvent(new CustomEvent("gravity:sync-snapshot-applied"));
+            });
+
+            await pause(page, 150);
+
+            const postSnapshotState = await page.evaluate((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return { editing: false, value: null };
+                }
+                const host = /** @type {any} */ (card).__markdownHost;
+                const mode = host && typeof host.getMode === "function" ? host.getMode() : null;
+                const value = host && typeof host.getValue === "function" ? host.getValue() : null;
+                return {
+                    editing: card.classList.contains("editing-in-place") && mode === "edit",
+                    value
+                };
+            }, cardSelector);
+            assert.equal(postSnapshotState.editing, true, "card should remain in edit mode after snapshot");
+            assert.equal(postSnapshotState.value, draftValue, "unsaved draft should survive snapshot");
+
+            await page.type(editorSelector, " continues");
+            const continuedDraft = await page.evaluate((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return null;
+                }
+                const host = /** @type {any} */ (card).__markdownHost;
+                if (!host || typeof host.getValue !== "function") {
+                    return null;
+                }
+                return host.getValue();
+            }, cardSelector);
+            assert.ok(continuedDraft && continuedDraft.endsWith(" Local draft continues"), "further typing should still be captured");
         } finally {
             await teardown();
         }
