@@ -4,7 +4,20 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
 ## Features (120–199)
 
+- [ ] [GN-120] Search in a note: have a shortcut and render a search filed in the right top corner of the text editing area. Check with MDE if built in tools can be leveraged
+- [ ] [GN-121] Search across notes. Use Cntr + Space to display a search dialog. The search works as a gravity point that pushes the irrelevant notes down and raises the relevant notes up. The search dialog is situated in the footer. The gravity point disappears when the search dialog is closed
+
 ## Improvements (200–299)
+
+- [ ] [GN-200] Change the double chevron sign to an "arrow down in a circle", the way it is in ChatGPT.  to fold in the same arrow in a circle but pointing up
+- [ ] [GN-201] Ensure it works for the area where the sign is, so a rectangular area of the card limited by the height of the sign, not just the imidiate sign  
+- [ ] [GN-202] Treat a doubleclick, a tap and a click the same:
+- enters editing mode on a card
+- finishes editing mode outside the text area
+- [ ] [GN-203] Change the responsive mobile design to keep note control above the note on small screens
+- [ ] [GN-204] Add an ability for an app to run in full-screen mode. Have an icon in the header that switches the app in and out of the full screen mode. use a diagonal line with aroows at the end to indicate expansion to the full screen and a diagonal line with "chicken paws" at the end to indicate the contraction
+- [ ] [GN-205] Have built-in browser grammar check work. There is no grammar check working in the markdown mode now, and there should be.
+
 
 ## BugFixes (300–399)
 
@@ -12,6 +25,9 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 - [ ] [GN-302] A large space is left under the markdown notes from time to time. Ensure we are aware of the real height of the note and can measure the height needed. Check with MDE if the editor we use exposes an ability to measure the text's height
 - [ ] [GN-303] The synchronization doesn't refresh. I just added a note on another device then logged in a computer where a session was already running and got no not there. When I opened the console I saw a lof of message about expired authentication.
 - [ ] [GN-304] Clicking on a note starts it for editing (expected behavior) and places the cursor in the right place but it yanks the note to the top (unexpected behavior).
+	- Solutions:
+		- Center the whole scroll around the active card. Introduce a notion of a card being active, if not already. Consider active being last selected, e.g. the card stays immobile but the feed around it moves. So a card that finished editing doesnt move but all other cards moved underneath it. 
+    - Effectively clicking on a card freezes it on the screen after moving it to the vewport. So if I click on a large renderedHTML view, I expect to get the rendered markdown view with the cursor in the place of my click, and no movement as the point of click was clearly in the view when I clicked on it
 - [ ] [GN-305] I can still see scrollers ![scroller screenshot](scroller.png). There should be no scrollers.
 
 ## Maintenance (400–499)
