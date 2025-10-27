@@ -86,6 +86,9 @@ function gravityApp() {
         syncManager: /** @type {ReturnType<typeof createSyncManager>|null} */ (null),
         realtimeSync: /** @type {{ connect(params: { baseUrl: string, accessToken: string, expiresAtMs?: number|null }): void, disconnect(): void, dispose(): void }|null} */ (null),
         syncIntervalHandle: /** @type {number|null} */ (null),
+        backendAccessToken: /** @type {string|null} */ (null),
+        backendAccessTokenExpiresAtMs: /** @type {number|null} */ (null),
+        latestCredential: /** @type {string|null} */ (null),
         lastRenderedSignature: /** @type {string|null} */ (null),
 
         init() {
@@ -104,7 +107,12 @@ function gravityApp() {
             this.initializeAuth();
             this.initializeTopEditor();
             this.initializeImportExport();
-            this.syncManager = createSyncManager({ eventTarget: this.$el ?? null });
+            this.syncManager = createSyncManager({
+                eventTarget: this.$el ?? null,
+                onBackendTokenRefreshed: (token) => {
+                    this.handleBackendTokenRefresh(token);
+                }
+            });
             this.realtimeSync = createRealtimeSyncController({ syncManager: this.syncManager });
             if (typeof window !== "undefined") {
                 window.addEventListener("storage", (event) => {
@@ -134,6 +142,52 @@ function gravityApp() {
                 this.setGuestExportVisibility(true);
             }
             initializeKeyboardShortcutsModal();
+        },
+
+        /**
+         * Handle backend token refreshes bubbling up from the sync manager.
+         * @param {{ accessToken: string, expiresAtMs: number }} token
+         * @returns {void}
+         */
+        handleBackendTokenRefresh(token) {
+            if (!token || typeof token.accessToken !== "string" || token.accessToken.length === 0) {
+                return;
+            }
+            this.backendAccessToken = token.accessToken;
+            this.backendAccessTokenExpiresAtMs = typeof token.expiresAtMs === "number" && Number.isFinite(token.expiresAtMs)
+                ? token.expiresAtMs
+                : null;
+            if (this.authUser && typeof this.latestCredential === "string" && this.latestCredential.length > 0) {
+                this.persistAuthState();
+            }
+            this.realtimeSync?.connect({
+                baseUrl: appConfig.backendBaseUrl,
+                accessToken: this.backendAccessToken,
+                expiresAtMs: this.backendAccessTokenExpiresAtMs ?? undefined
+            });
+        },
+
+        /**
+         * Persist the active authentication state to storage.
+         * @returns {void}
+         */
+        persistAuthState() {
+            if (!this.authUser || typeof this.latestCredential !== "string" || this.latestCredential.length === 0) {
+                return;
+            }
+            saveAuthState({
+                user: {
+                    id: this.authUser.id,
+                    email: this.authUser.email,
+                    name: this.authUser.name,
+                    pictureUrl: this.authUser.pictureUrl
+                },
+                credential: this.latestCredential,
+                backendAccessToken: typeof this.backendAccessToken === "string" ? this.backendAccessToken : null,
+                backendAccessTokenExpiresAtMs: typeof this.backendAccessTokenExpiresAtMs === "number"
+                    ? this.backendAccessTokenExpiresAtMs
+                    : null
+            });
         },
 
         /**
@@ -347,6 +401,9 @@ function gravityApp() {
                 this.realtimeSync?.disconnect();
             }
             this.cachedPersistedAuthState = undefined;
+            this.backendAccessToken = null;
+            this.backendAccessTokenExpiresAtMs = null;
+            this.latestCredential = null;
         },
 
         /**
@@ -458,15 +515,18 @@ function gravityApp() {
                 return;
             }
             const credential = typeof detail?.credential === "string" ? detail.credential : "";
-            const existingBackendAccessToken = typeof detail?.backendAccessToken === "string" && detail.backendAccessToken.length > 0
+            if (credential.length > 0) {
+                this.latestCredential = credential;
+            }
+            const providedBackendToken = typeof detail?.backendAccessToken === "string" && detail.backendAccessToken.length > 0
                 ? detail.backendAccessToken
                 : null;
-            const existingBackendAccessTokenExpiresAtMs = typeof detail?.backendAccessTokenExpiresAtMs === "number"
+            const providedBackendTokenExpiresAtMs = typeof detail?.backendAccessTokenExpiresAtMs === "number"
                 && Number.isFinite(detail.backendAccessTokenExpiresAtMs)
                 ? detail.backendAccessTokenExpiresAtMs
                 : null;
-            let latestBackendAccessToken = existingBackendAccessToken;
-            let latestBackendTokenExpiresAtMs = existingBackendAccessTokenExpiresAtMs;
+            this.backendAccessToken = providedBackendToken;
+            this.backendAccessTokenExpiresAtMs = providedBackendTokenExpiresAtMs;
 
             const applyGuestState = () => {
                 this.authUser = null;
@@ -476,6 +536,9 @@ function gravityApp() {
                 GravityStore.setUserScope(null);
                 this.initializeNotes();
                 this.setGuestExportVisibility(true);
+                this.backendAccessToken = null;
+                this.backendAccessTokenExpiresAtMs = null;
+                this.latestCredential = null;
                 clearAuthState();
                 this.realtimeSync?.disconnect();
             };
@@ -494,30 +557,18 @@ function gravityApp() {
                 GravityStore.setUserScope(this.authUser.id);
                 this.initializeNotes();
                 this.setGuestExportVisibility(false);
-                saveAuthState({
-                    user: {
-                        id: this.authUser.id,
-                        email: this.authUser.email,
-                        name: this.authUser.name,
-                        pictureUrl: this.authUser.pictureUrl
-                    },
-                    credential,
-                    backendAccessToken: typeof latestBackendAccessToken === "string" ? latestBackendAccessToken : null,
-                    backendAccessTokenExpiresAtMs: typeof latestBackendTokenExpiresAtMs === "number"
-                        ? latestBackendTokenExpiresAtMs
-                        : null
-                });
+                this.persistAuthState();
             };
 
             const syncManager = this.syncManager;
             const attemptSignIn = async () => {
-                const backendTokenHint = typeof latestBackendAccessToken === "string"
-                    && latestBackendAccessToken.length > 0
-                    && typeof latestBackendTokenExpiresAtMs === "number"
-                    && Number.isFinite(latestBackendTokenExpiresAtMs)
+                const backendTokenHint = typeof this.backendAccessToken === "string"
+                    && this.backendAccessToken.length > 0
+                    && typeof this.backendAccessTokenExpiresAtMs === "number"
+                    && Number.isFinite(this.backendAccessTokenExpiresAtMs)
                     ? {
-                        accessToken: latestBackendAccessToken,
-                        expiresAtMs: latestBackendTokenExpiresAtMs
+                        accessToken: this.backendAccessToken,
+                        expiresAtMs: this.backendAccessTokenExpiresAtMs
                     }
                     : null;
                 if (!credential && !backendTokenHint) {
@@ -546,14 +597,14 @@ function gravityApp() {
                         return;
                     }
                     if (typeof result.accessToken === "string" && result.accessToken.length > 0) {
-                        latestBackendAccessToken = result.accessToken;
+                        this.backendAccessToken = result.accessToken;
                     }
                     if (typeof result.accessTokenExpiresAtMs === "number" && Number.isFinite(result.accessTokenExpiresAtMs)) {
-                        latestBackendTokenExpiresAtMs = result.accessTokenExpiresAtMs;
+                        this.backendAccessTokenExpiresAtMs = result.accessTokenExpiresAtMs;
                     }
                     applySignedInState();
-                    const accessToken = typeof latestBackendAccessToken === "string" && latestBackendAccessToken.length > 0
-                        ? latestBackendAccessToken
+                    const accessToken = typeof this.backendAccessToken === "string" && this.backendAccessToken.length > 0
+                        ? this.backendAccessToken
                         : "";
                     if (accessToken) {
                         const accessTokenExpiresAtMs = typeof result.accessTokenExpiresAtMs === "number"
@@ -591,38 +642,41 @@ function gravityApp() {
             clearAuthState();
             this.realtimeSync?.disconnect();
             this.cachedPersistedAuthState = undefined;
+            this.backendAccessToken = null;
+            this.backendAccessTokenExpiresAtMs = null;
+            this.latestCredential = null;
             if (typeof window !== "undefined" && this.syncIntervalHandle !== null) {
                 window.clearInterval(this.syncIntervalHandle);
                 this.syncIntervalHandle = null;
             }
         });
 
-            root.addEventListener(EVENT_AUTH_ERROR, (event) => {
-                const detail = /** @type {{ error?: unknown, reason?: unknown }} */ (event?.detail ?? {});
-                const errorMessage = typeof detail.error === "string"
-                    ? detail.error
-                    : typeof detail.reason === "string"
-                        ? String(detail.reason)
-                        : ERROR_AUTHENTICATION_GENERIC;
-                this.authControls?.showError(errorMessage);
-            });
+        root.addEventListener(EVENT_AUTH_ERROR, (event) => {
+            const detail = /** @type {{ error?: unknown, reason?: unknown }} */ (event?.detail ?? {});
+            const errorMessage = typeof detail.error === "string"
+                ? detail.error
+                : typeof detail.reason === "string"
+                    ? String(detail.reason)
+                    : ERROR_AUTHENTICATION_GENERIC;
+            this.authControls?.showError(errorMessage);
+        });
 
-            root.addEventListener(EVENT_NOTIFICATION_REQUEST, (event) => {
-                const detail = /** @type {{ message?: string, durationMs?: number }|undefined} */ (event?.detail);
-                if (!detail || typeof detail.message !== "string" || detail.message.length === 0) {
-                    return;
-                }
-                const duration = typeof detail.durationMs === "number" && Number.isFinite(detail.durationMs)
-                    ? detail.durationMs
-                    : NOTIFICATION_DEFAULT_DURATION_MS;
-                this.emitNotification(detail.message, duration);
-            });
+        root.addEventListener(EVENT_NOTIFICATION_REQUEST, (event) => {
+            const detail = /** @type {{ message?: string, durationMs?: number }|undefined} */ (event?.detail);
+            if (!detail || typeof detail.message !== "string" || detail.message.length === 0) {
+                return;
+            }
+            const duration = typeof detail.durationMs === "number" && Number.isFinite(detail.durationMs)
+                ? detail.durationMs
+                : NOTIFICATION_DEFAULT_DURATION_MS;
+            this.emitNotification(detail.message, duration);
+        });
 
-            root.addEventListener(EVENT_SYNC_SNAPSHOT_APPLIED, () => {
-                const refreshedRecords = GravityStore.loadAllNotes();
-                initializeNotesState(refreshedRecords);
-                this.renderNotes(refreshedRecords);
-            });
+        root.addEventListener(EVENT_SYNC_SNAPSHOT_APPLIED, () => {
+            const refreshedRecords = GravityStore.loadAllNotes();
+            initializeNotesState(refreshedRecords);
+            this.renderNotes(refreshedRecords);
+        });
         },
 
         /**
