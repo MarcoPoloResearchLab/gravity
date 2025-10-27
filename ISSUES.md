@@ -2,13 +2,13 @@
 
 Entries record newly discovered requests or changes, with their outcomes. No instructive content lives here. Read @NOTES.md for the process to follow when fixing issues.
 
-## Features
+## Features (120–199)
 
-## Improvements
+## Improvements (200–299)
 
-## BugFixes (110)
+## BugFixes (300–399)
 
-## Maintenance
+## Maintenance (400–499)
 
 ## Planning (do not work on these, not ready)
 
