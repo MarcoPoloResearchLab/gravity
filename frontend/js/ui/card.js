@@ -79,9 +79,12 @@ const editorHosts = new WeakMap();
 const finalizeSuppression = new WeakMap();
 const suppressionState = new WeakMap();
 const copyFeedbackTimers = new WeakMap();
+const pendingHeightFrames = new WeakMap();
 const COPY_FEEDBACK_DURATION_MS = 1800;
 const LINE_ENDING_NORMALIZE_PATTERN = /\r\n/g;
 const TRAILING_WHITESPACE_PATTERN = /[ \t]+$/;
+const VIEWPORT_ANCHOR_MARGIN_PX = 24;
+const VIEWPORT_STABILITY_ATTEMPTS = 12;
 
 let pointerTrackingInitialized = false;
 let lastPointerDownTarget = null;
@@ -437,6 +440,127 @@ function clamp(value, min, max) {
         return max;
     }
     return value;
+}
+
+/**
+ * Capture basic viewport metrics for a card prior to layout changes.
+ * @param {HTMLElement} card
+ * @returns {{ top: number, bottom: number, height: number, viewportHeight: number }|null}
+ */
+function captureViewportAnchor(card) {
+    if (!(card instanceof HTMLElement) || typeof window === "undefined") {
+        return null;
+    }
+    const rect = card.getBoundingClientRect();
+    const viewportHeight = typeof window.innerHeight === "number"
+        ? window.innerHeight
+        : document.documentElement?.clientHeight ?? 0;
+    return {
+        top: rect.top,
+        bottom: rect.bottom,
+        height: rect.height,
+        viewportHeight
+    };
+}
+
+/**
+ * Decide whether a card should be centered when entering edit mode.
+ * @param {{ top: number, bottom: number, viewportHeight: number }|null} anchor
+ * @returns {boolean}
+ */
+function shouldCenterCard(anchor) {
+    if (!anchor) {
+        return true;
+    }
+    const viewportHeight = anchor.viewportHeight;
+    if (viewportHeight <= 0) {
+        return true;
+    }
+    const margin = Math.max(viewportHeight * 0.05, VIEWPORT_ANCHOR_MARGIN_PX);
+    const effectiveViewportHeight = viewportHeight - margin * 2;
+    if (!Number.isFinite(anchor.height) || anchor.height <= 0) {
+        return anchor.top < margin || anchor.bottom > viewportHeight - margin;
+    }
+    if (effectiveViewportHeight <= 0 || anchor.height >= effectiveViewportHeight) {
+        return false;
+    }
+    const topThreshold = margin;
+    const bottomThreshold = viewportHeight - margin;
+    return anchor.top < topThreshold || anchor.bottom > bottomThreshold;
+}
+
+/**
+ * Compute a centered top offset for a card given the viewport height.
+ * @param {number} cardHeight
+ * @param {number} viewportHeight
+ * @returns {number}
+ */
+function computeCenteredCardTop(cardHeight, viewportHeight) {
+    if (!Number.isFinite(cardHeight) || !Number.isFinite(viewportHeight)) {
+        return 0;
+    }
+    const minTop = VIEWPORT_ANCHOR_MARGIN_PX * -1;
+    const maxTop = Math.max(viewportHeight - cardHeight - VIEWPORT_ANCHOR_MARGIN_PX, minTop);
+    const centered = (viewportHeight - cardHeight) / 2;
+    return clamp(centered, minTop, maxTop);
+}
+
+/**
+ * Adjust the viewport so the provided card maintains its intended position.
+ * @param {HTMLElement} card
+ * @param {{ behavior?: "center"|"preserve", baselineTop?: number|null, attempts?: number }} [options]
+ * @returns {void}
+ */
+function maintainCardViewport(card, options = {}) {
+    if (!(card instanceof HTMLElement) || typeof window === "undefined") {
+        return;
+    }
+    const {
+        behavior = "preserve",
+        baselineTop = null,
+        attempts = VIEWPORT_STABILITY_ATTEMPTS
+    } = options;
+    const scroller = document.scrollingElement || document.documentElement || document.body;
+    if (!(scroller instanceof HTMLElement)) {
+        return;
+    }
+    let remaining = Math.max(attempts, 1);
+
+    const adjust = () => {
+        if (!card.isConnected) {
+            return;
+        }
+        const viewportHeight = typeof window.innerHeight === "number"
+            ? window.innerHeight
+            : document.documentElement?.clientHeight ?? 0;
+        if (viewportHeight <= 0) {
+            return;
+        }
+        const rect = card.getBoundingClientRect();
+        let targetTop;
+        if (behavior === "center") {
+            targetTop = computeCenteredCardTop(rect.height, viewportHeight);
+        } else if (typeof baselineTop === "number") {
+            const minTop = VIEWPORT_ANCHOR_MARGIN_PX * -1;
+            const maxTop = Math.max(viewportHeight - rect.height - VIEWPORT_ANCHOR_MARGIN_PX, minTop);
+            targetTop = clamp(baselineTop, minTop, maxTop);
+        } else {
+            targetTop = rect.top;
+        }
+        const delta = rect.top - targetTop;
+        if (Math.abs(delta) > 0.5) {
+            const currentScroll = window.scrollY || window.pageYOffset || 0;
+            const maxScroll = Math.max(0, scroller.scrollHeight - viewportHeight);
+            const nextScroll = clamp(currentScroll + delta, 0, maxScroll);
+            window.scrollTo(0, nextScroll);
+        }
+        remaining -= 1;
+        if (remaining > 0) {
+            requestAnimationFrame(adjust);
+        }
+    };
+
+    requestAnimationFrame(adjust);
 }
 
 function mapPlainTextOffsetToMarkdown(source, plainOffset) {
@@ -1127,6 +1251,9 @@ export function renderCard(record, options = {}) {
                 caretPlacement = mapPlainTextOffsetToMarkdown(markdownValue, offset);
             }
         }
+        if (shouldCenterCard(captureViewportAnchor(card))) {
+            card.dataset.suppressHtmlViewScroll = "true";
+        }
         setHtmlViewExpanded(card, true);
         focusCardEditor(card, notesContainer, {
             caretPlacement,
@@ -1157,6 +1284,9 @@ export function renderCard(record, options = {}) {
             }
         }
 
+        if (shouldCenterCard(captureViewportAnchor(card))) {
+            card.dataset.suppressHtmlViewScroll = "true";
+        }
         setHtmlViewExpanded(card, true);
         focusCardEditor(card, notesContainer, {
             caretPlacement,
@@ -1412,6 +1542,10 @@ function persistCardState(card, notesContainer, markdownText, options = {}) {
         return false;
     }
 
+    const viewportAnchor = bubbleToTop && card.classList.contains("editing-in-place")
+        ? captureViewportAnchor(card)
+        : null;
+
     const timestamp = nowIso();
 
     const createdAtIso = isNonBlankString(card.dataset.createdAtIso)
@@ -1439,6 +1573,12 @@ function persistCardState(card, notesContainer, markdownText, options = {}) {
         if (bubbleToTop) {
             const htmlViewSource = transformMarkdownWithAttachments(markdownText, attachments);
             bubbleCardToTop(card, notesContainer, htmlViewSource, record);
+            if (viewportAnchor) {
+                maintainCardViewport(card, {
+                    behavior: "preserve",
+                    baselineTop: viewportAnchor.top
+                });
+            }
         } else {
             const htmlViewSource = transformMarkdownWithAttachments(markdownText, attachments);
             createHtmlView(card, {
@@ -1498,17 +1638,8 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
         bubblePreviousCardToTop = true,
         bubbleSelfToTop = false
     } = options;
-    const shouldRestoreScroll = !bubbleSelfToTop && typeof window !== "undefined" && typeof document !== "undefined";
-    const initialViewportTop = shouldRestoreScroll ? card.getBoundingClientRect().top : 0;
-    const initialScrollY = shouldRestoreScroll ? window.scrollY : 0;
-    const scrollingElement = shouldRestoreScroll
-        ? document.scrollingElement || document.documentElement || document.body
-        : null;
-    const targetScrollY = shouldRestoreScroll ? initialScrollY : 0;
-    const canRestoreScroll = shouldRestoreScroll
-        && scrollingElement instanceof HTMLElement
-        && initialViewportTop >= 0
-        && initialViewportTop <= window.innerHeight;
+    const viewportAnchor = !bubbleSelfToTop ? captureViewportAnchor(card) : null;
+    const centerCardOnEntry = !bubbleSelfToTop && shouldCenterCard(viewportAnchor);
 
     const wasEditing = card.classList.contains("editing-in-place");
     const htmlViewWrapper = card.querySelector(".note-html-view");
@@ -1601,34 +1732,38 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
     // Focus after paint; then release the height lock
     requestAnimationFrame(() => {
         editorHost?.focus();
-        if (canRestoreScroll) {
-            let remainingAttempts = 6;
-            const applyScrollRestoration = () => {
-                const maxScroll = Math.max(
-                    0,
-                    (scrollingElement?.scrollHeight ?? 0) - window.innerHeight
-                );
-                const clampedScroll = Math.min(Math.max(targetScrollY, 0), maxScroll);
-                window.scrollTo(0, clampedScroll);
-                remainingAttempts -= 1;
-                if (remainingAttempts > 0) {
-                    requestAnimationFrame(applyScrollRestoration);
-                }
-            };
-            const finalizeRestoration = () => {
-                const maxScroll = Math.max(
-                    0,
-                    (scrollingElement?.scrollHeight ?? 0) - window.innerHeight
-                );
-                const clampedScroll = Math.min(Math.max(targetScrollY, 0), maxScroll);
-                window.scrollTo(0, clampedScroll);
-            };
-            requestAnimationFrame(applyScrollRestoration);
-            setTimeout(finalizeRestoration, 0);
+        if (!bubbleSelfToTop) {
+            const baselineTop = typeof viewportAnchor?.top === "number" ? viewportAnchor.top : null;
+            maintainCardViewport(card, {
+                behavior: centerCardOnEntry ? "center" : "preserve",
+                baselineTop
+            });
         }
     });
 
     updateActionButtons(notesContainer);
+}
+
+function registerPendingHeightFrame(card, frameId) {
+    if (typeof frameId !== "number") {
+        return;
+    }
+    let handles = pendingHeightFrames.get(card);
+    if (!handles) {
+        handles = [];
+        pendingHeightFrames.set(card, handles);
+    }
+    handles.push(frameId);
+}
+
+function cancelPendingHeightFrames(card) {
+    const handles = pendingHeightFrames.get(card);
+    if (handles && typeof cancelAnimationFrame === "function") {
+        for (const handle of handles) {
+            cancelAnimationFrame(handle);
+        }
+    }
+    pendingHeightFrames.delete(card);
 }
 
 function lockEditingSurfaceHeight(card, measurements) {
@@ -1650,6 +1785,9 @@ function lockEditingSurfaceHeight(card, measurements) {
     const interiorCardHeight = normalizedCardHeight > 0 ? Math.max(normalizedCardHeight - verticalPadding, 0) : 0;
     const resolvedContentHeightBase = normalizedContentHeight > 0 ? normalizedContentHeight : interiorCardHeight;
     const apply = (syncToContent = false) => {
+        if (!card.classList.contains("editing-in-place")) {
+            return;
+        }
         const codeMirrorScroll = card.querySelector(".CodeMirror-scroll");
         const codeMirror = card.querySelector(".CodeMirror");
         const textarea = card.querySelector(".markdown-editor");
@@ -1690,13 +1828,29 @@ function lockEditingSurfaceHeight(card, measurements) {
             textarea.style.height = `${contentHeight}px`;
         }
     };
+    cancelPendingHeightFrames(card);
+
     apply();
     apply(true);
     if (typeof requestAnimationFrame === "function") {
-        requestAnimationFrame(() => {
+        const firstFrame = requestAnimationFrame(() => {
+            if (!card.classList.contains("editing-in-place")) {
+                return;
+            }
             apply();
-            requestAnimationFrame(() => apply(true));
+            if (typeof requestAnimationFrame === "function") {
+                const secondFrame = requestAnimationFrame(() => {
+                    if (!card.classList.contains("editing-in-place")) {
+                        return;
+                    }
+                    apply(true);
+                });
+                registerPendingHeightFrame(card, secondFrame);
+            } else {
+                apply(true);
+            }
         });
+        registerPendingHeightFrame(card, firstFrame);
     } else {
         apply(true);
     }
@@ -1714,6 +1868,7 @@ function releaseEditingSurfaceHeight(card) {
     if (!(card instanceof HTMLElement)) {
         return;
     }
+    cancelPendingHeightFrames(card);
     card.style.removeProperty("--note-expanded-edit-height");
     card.style.minHeight = "";
     card.style.maxHeight = "";
