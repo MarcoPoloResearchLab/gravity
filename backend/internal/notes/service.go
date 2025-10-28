@@ -50,15 +50,15 @@ func NewService(cfg ServiceConfig) *Service {
 }
 
 type ChangeOutcome struct {
-	Request ChangeRequest
-	Outcome ConflictOutcome
+	Envelope ChangeEnvelope
+	Outcome  ConflictOutcome
 }
 
 type SyncResult struct {
 	ChangeOutcomes []ChangeOutcome
 }
 
-func (s *Service) ApplyChanges(ctx context.Context, userID UserID, changes []ChangeRequest) (SyncResult, error) {
+func (s *Service) ApplyChanges(ctx context.Context, userID UserID, changes []ChangeEnvelope) (SyncResult, error) {
 	if s.db == nil {
 		return SyncResult{}, errMissingDatabase
 	}
@@ -69,13 +69,10 @@ func (s *Service) ApplyChanges(ctx context.Context, userID UserID, changes []Cha
 	result := SyncResult{ChangeOutcomes: make([]ChangeOutcome, 0, len(changes))}
 	txErr := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		for _, change := range changes {
-			prepared := change
-			prepared.UserID = userID
-
 			var existing Note
 			var existingPtr *Note
 			err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-				Where("user_id = ? AND note_id = ?", userID.String(), prepared.NoteID.String()).
+				Where("user_id = ? AND note_id = ?", userID.String(), change.NoteID().String()).
 				Take(&existing).Error
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				existingPtr = nil
@@ -86,14 +83,14 @@ func (s *Service) ApplyChanges(ctx context.Context, userID UserID, changes []Cha
 			}
 
 			appliedAt := s.clock().UTC()
-			outcome, err := resolveChange(existingPtr, prepared, appliedAt)
+			outcome, err := resolveChange(existingPtr, change, appliedAt)
 			if err != nil {
 				return err
 			}
 
 			if outcome.Accepted {
 				outcome.UpdatedNote.UserID = userID.String()
-				outcome.UpdatedNote.NoteID = prepared.NoteID.String()
+				outcome.UpdatedNote.NoteID = change.NoteID().String()
 
 				if err := tx.Save(outcome.UpdatedNote).Error; err != nil {
 					return err
@@ -106,7 +103,7 @@ func (s *Service) ApplyChanges(ctx context.Context, userID UserID, changes []Cha
 					}
 					outcome.AuditRecord.ChangeID = changeID
 					outcome.AuditRecord.UserID = userID.String()
-					outcome.AuditRecord.NoteID = prepared.NoteID.String()
+					outcome.AuditRecord.NoteID = change.NoteID().String()
 					if err := tx.Create(outcome.AuditRecord).Error; err != nil {
 						return err
 					}
@@ -114,8 +111,8 @@ func (s *Service) ApplyChanges(ctx context.Context, userID UserID, changes []Cha
 			}
 
 			result.ChangeOutcomes = append(result.ChangeOutcomes, ChangeOutcome{
-				Request: prepared,
-				Outcome: outcome,
+				Envelope: change,
+				Outcome:  outcome,
 			})
 		}
 		return nil

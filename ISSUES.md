@@ -58,8 +58,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Created `REFACTORING_PLAN.md` outlining backend domain-type work, frontend module decomposition, and required test additions to satisfy POLICY invariants.
 - [x] [GN-403] Enforce edge validation for notes service inputs before ApplyChanges
   - Added domain constructors for user, note, and timestamp identifiers, moved sync payload validation into `handleNotesSync`, refactored `ApplyChanges`/`resolveChange` to rely on typed values, and extended unit plus HTTP tests so empty identifiers now return `400` instead of leaking into the service layer.
-- [ ] [GN-404] Replace primitive change resolution with typed envelopes
-  - Define a `ChangeEnvelope` domain struct produced after edge validation and refactor `backend/internal/notes/conflict.go` and `backend/internal/notes/service.go` to consume typed fields, updating unit/integration tests to cover invalid envelopes.
+- [x] [GN-404] Replace primitive change resolution with typed envelopes
+  - Introduced `ChangeEnvelope` smart constructor enforcing operation/edit-sequence invariants, refactored service/conflict logic and sync handler to consume the typed envelopes, and expanded unit plus HTTP tests to cover invalid envelopes and negative client sequences.
 - [ ] [GN-405] Harden notes service constructor dependency validation
   - Make `backend/internal/notes/service.go`'s `NewService` return an error when dependencies are nil, update call sites in `backend/cmd/gravity-api/main.go` and integration tests, and add coverage for nil dependency rejection.
 - [ ] [GN-406] Wrap notes service errors with operation codes

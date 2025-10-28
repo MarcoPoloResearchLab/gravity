@@ -204,7 +204,7 @@ func (h *httpHandler) handleNotesSync(c *gin.Context) {
 		return
 	}
 
-	changes := make([]notes.ChangeRequest, 0, len(request.Operations))
+	changes := make([]notes.ChangeEnvelope, 0, len(request.Operations))
 	now := time.Now().UTC()
 	for _, op := range request.Operations {
 		opType, err := parseOperation(op.Operation)
@@ -243,17 +243,23 @@ func (h *httpHandler) handleNotesSync(c *gin.Context) {
 		if len(op.Payload) > 0 {
 			payloadJSON = string(op.Payload)
 		}
-		changes = append(changes, notes.ChangeRequest{
-			UserID:            userID,
-			NoteID:            noteID,
-			Operation:         opType,
-			ClientEditSeq:     op.ClientEditSeq,
-			ClientDevice:      op.ClientDevice,
-			ClientTimeSeconds: clientTimestamp,
-			CreatedAtSeconds:  createdTimestamp,
-			UpdatedAtSeconds:  updatedTimestamp,
-			PayloadJSON:       payloadJSON,
+		envelope, err := notes.NewChangeEnvelope(notes.ChangeEnvelopeConfig{
+			UserID:          userID,
+			NoteID:          noteID,
+			Operation:       opType,
+			ClientEditSeq:   op.ClientEditSeq,
+			ClientDevice:    op.ClientDevice,
+			ClientTimestamp: clientTimestamp,
+			CreatedAt:       createdTimestamp,
+			UpdatedAt:       updatedTimestamp,
+			PayloadJSON:     payloadJSON,
+			IsDeleted:       opType == notes.OperationTypeDelete,
 		})
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_change"})
+			return
+		}
+		changes = append(changes, envelope)
 	}
 
 	result, err := h.notesService.ApplyChanges(c.Request.Context(), userID, changes)

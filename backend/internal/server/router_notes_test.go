@@ -37,3 +37,30 @@ func TestHandleNotesSyncRejectsEmptyNoteID(t *testing.T) {
 		t.Fatalf("unexpected response body: %s", recorder.Body.String())
 	}
 }
+
+func TestHandleNotesSyncRejectsNegativeEditSeq(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Set(userIDContextKey, "user-1")
+
+	body := `{"operations":[{"note_id":"note-1","operation":"upsert","client_edit_seq":-5,"client_device":"device","client_time_s":1710000000,"created_at_s":1710000000,"updated_at_s":1710000000,"payload":{"text":"hello"}}]}`
+	request := httptest.NewRequest(http.MethodPost, "/notes/sync", strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	context.Request = request
+
+	handler := &httpHandler{
+		notesService: notes.NewService(notes.ServiceConfig{}),
+		logger:       zap.NewNop(),
+	}
+
+	handler.handleNotesSync(context)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected bad request status, got %d", recorder.Code)
+	}
+	expected := `{"error":"invalid_change"}`
+	if recorder.Body.String() != expected {
+		t.Fatalf("unexpected response body: %s", recorder.Body.String())
+	}
+}

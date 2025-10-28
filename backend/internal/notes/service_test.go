@@ -1,6 +1,7 @@
 package notes
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
@@ -19,17 +20,17 @@ func TestResolveChangeAcceptsHigherEditSequence(t *testing.T) {
 		LastWriterDevice:  "phone",
 		CreatedAtSeconds:  1699990000,
 	}
-	change := ChangeRequest{
-		UserID:            userID,
-		NoteID:            noteID,
-		Operation:         OperationTypeUpsert,
-		ClientEditSeq:     5,
-		ClientDevice:      "web",
-		ClientTimeSeconds: mustTimestamp(t, 1700000500),
-		CreatedAtSeconds:  mustTimestamp(t, 1700000400),
-		UpdatedAtSeconds:  mustTimestamp(t, 1700000500),
-		PayloadJSON:       `{"content":"incoming"}`,
-	}
+	change := mustEnvelope(t, ChangeEnvelopeConfig{
+		UserID:          userID,
+		NoteID:          noteID,
+		Operation:       OperationTypeUpsert,
+		ClientEditSeq:   5,
+		ClientDevice:    "web",
+		ClientTimestamp: mustTimestamp(t, 1700000500),
+		CreatedAt:       mustTimestamp(t, 1700000400),
+		UpdatedAt:       mustTimestamp(t, 1700000500),
+		PayloadJSON:     `{"content":"incoming"}`,
+	})
 
 	outcome, err := resolveChange(existing, change, time.Unix(1700000600, 0).UTC())
 	if err != nil {
@@ -72,17 +73,17 @@ func TestResolveChangeRejectsLowerEditSequence(t *testing.T) {
 		LastWriterEditSeq: 10,
 		PayloadJSON:       `{"content":"stored"}`,
 	}
-	change := ChangeRequest{
-		UserID:            userID,
-		NoteID:            noteID,
-		Operation:         OperationTypeUpsert,
-		ClientEditSeq:     8,
-		ClientDevice:      "tablet",
-		ClientTimeSeconds: mustTimestamp(t, 1700000001),
-		CreatedAtSeconds:  mustTimestamp(t, 1699999000),
-		UpdatedAtSeconds:  mustTimestamp(t, 1700000001),
-		PayloadJSON:       `{"content":"incoming"}`,
-	}
+	change := mustEnvelope(t, ChangeEnvelopeConfig{
+		UserID:          userID,
+		NoteID:          noteID,
+		Operation:       OperationTypeUpsert,
+		ClientEditSeq:   8,
+		ClientDevice:    "tablet",
+		ClientTimestamp: mustTimestamp(t, 1700000001),
+		CreatedAt:       mustTimestamp(t, 1699999000),
+		UpdatedAt:       mustTimestamp(t, 1700000001),
+		PayloadJSON:     `{"content":"incoming"}`,
+	})
 
 	outcome, err := resolveChange(existing, change, time.Unix(1700000600, 0).UTC())
 	if err != nil {
@@ -144,17 +145,17 @@ func TestResolveChangeBreaksTieByUpdatedAt(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			change := ChangeRequest{
-				UserID:            userID,
-				NoteID:            noteID,
-				Operation:         OperationTypeDelete,
-				ClientEditSeq:     7,
-				ClientDevice:      "wearable",
-				ClientTimeSeconds: mustTimestamp(t, tt.clientUpdatedAt),
-				CreatedAtSeconds:  mustTimestamp(t, 1699990000),
-				UpdatedAtSeconds:  mustTimestamp(t, tt.clientUpdatedAt),
-				PayloadJSON:       "",
-			}
+			change := mustEnvelope(t, ChangeEnvelopeConfig{
+				UserID:          userID,
+				NoteID:          noteID,
+				Operation:       OperationTypeDelete,
+				ClientEditSeq:   7,
+				ClientDevice:    "wearable",
+				ClientTimestamp: mustTimestamp(t, tt.clientUpdatedAt),
+				CreatedAt:       mustTimestamp(t, 1699990000),
+				UpdatedAt:       mustTimestamp(t, tt.clientUpdatedAt),
+				PayloadJSON:     "",
+			})
 			outcome, err := resolveChange(existing, change, time.Unix(1700000600, 0).UTC())
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -168,10 +169,46 @@ func TestResolveChangeBreaksTieByUpdatedAt(t *testing.T) {
 			if outcome.UpdatedNote.LastWriterEditSeq != tt.expectedEditSeq {
 				t.Fatalf("unexpected edit seq %d", outcome.UpdatedNote.LastWriterEditSeq)
 			}
-			if outcome.Accepted && change.Operation == OperationTypeDelete && outcome.UpdatedNote.IsDeleted != true {
+			if outcome.Accepted && change.Operation() == OperationTypeDelete && outcome.UpdatedNote.IsDeleted != true {
 				t.Fatalf("accepted delete should mark note as deleted")
 			}
 		})
+	}
+}
+
+func TestNewChangeEnvelopeRejectsNegativeEditSeq(t *testing.T) {
+	userID := mustUserID(t, "user-1")
+	noteID := mustNoteID(t, "note-1")
+	_, err := NewChangeEnvelope(ChangeEnvelopeConfig{
+		UserID:          userID,
+		NoteID:          noteID,
+		Operation:       OperationTypeUpsert,
+		ClientEditSeq:   -1,
+		ClientDevice:    "device",
+		ClientTimestamp: mustTimestamp(t, 1700000000),
+		CreatedAt:       mustTimestamp(t, 1700000000),
+		UpdatedAt:       mustTimestamp(t, 1700000000),
+	})
+	if !errors.Is(err, ErrInvalidChangeEnvelope) {
+		t.Fatalf("expected invalid change envelope error, got %v", err)
+	}
+}
+
+func TestNewChangeEnvelopeRejectsUnsupportedOperation(t *testing.T) {
+	userID := mustUserID(t, "user-1")
+	noteID := mustNoteID(t, "note-1")
+	_, err := NewChangeEnvelope(ChangeEnvelopeConfig{
+		UserID:          userID,
+		NoteID:          noteID,
+		Operation:       OperationType("truncate"),
+		ClientEditSeq:   1,
+		ClientDevice:    "device",
+		ClientTimestamp: mustTimestamp(t, 1700000000),
+		CreatedAt:       mustTimestamp(t, 1700000000),
+		UpdatedAt:       mustTimestamp(t, 1700000000),
+	})
+	if !errors.Is(err, ErrInvalidChangeEnvelope) {
+		t.Fatalf("expected invalid change envelope error, got %v", err)
 	}
 }
 
@@ -200,4 +237,13 @@ func mustTimestamp(t *testing.T, value int64) UnixTimestamp {
 		t.Fatalf("unexpected timestamp error: %v", err)
 	}
 	return ts
+}
+
+func mustEnvelope(t *testing.T, cfg ChangeEnvelopeConfig) ChangeEnvelope {
+	t.Helper()
+	envelope, err := NewChangeEnvelope(cfg)
+	if err != nil {
+		t.Fatalf("unexpected envelope error: %v", err)
+	}
+	return envelope
 }
