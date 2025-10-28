@@ -8,25 +8,17 @@ import (
 
 var (
 	errUnsupportedOperation = errors.New("unsupported operation type")
-	errMissingNoteID        = errors.New("note identifier is required")
-	errMissingUserID        = errors.New("user identifier is required")
 )
 
 func resolveChange(existing *Note, change ChangeRequest, appliedAt time.Time) (ConflictOutcome, error) {
-	if change.NoteID == "" {
-		return ConflictOutcome{}, errMissingNoteID
-	}
-	if change.UserID == "" {
-		return ConflictOutcome{}, errMissingUserID
-	}
 	if change.Operation != OperationTypeUpsert && change.Operation != OperationTypeDelete {
 		return ConflictOutcome{}, fmt.Errorf("%w: %s", errUnsupportedOperation, change.Operation)
 	}
 
 	stored := Note{
-		UserID:            change.UserID,
-		NoteID:            change.NoteID,
-		CreatedAtSeconds:  change.CreatedAtSeconds,
+		UserID:            change.UserID.String(),
+		NoteID:            change.NoteID.String(),
+		CreatedAtSeconds:  change.CreatedAtSeconds.Int64(),
 		UpdatedAtSeconds:  0,
 		PayloadJSON:       "",
 		IsDeleted:         false,
@@ -41,7 +33,7 @@ func resolveChange(existing *Note, change ChangeRequest, appliedAt time.Time) (C
 
 	serverEditSeq := stored.LastWriterEditSeq
 	clientEditSeq := change.ClientEditSeq
-	clientUpdatedAt := change.UpdatedAtSeconds
+	clientUpdatedAt := change.UpdatedAtSeconds.Int64()
 	serverUpdatedAt := stored.UpdatedAtSeconds
 
 	acceptChange := false
@@ -73,10 +65,10 @@ func resolveChange(existing *Note, change ChangeRequest, appliedAt time.Time) (C
 
 	updated := stored
 	if updated.CreatedAtSeconds == 0 {
-		if change.CreatedAtSeconds > 0 {
-			updated.CreatedAtSeconds = change.CreatedAtSeconds
-		} else if change.UpdatedAtSeconds > 0 {
-			updated.CreatedAtSeconds = change.UpdatedAtSeconds
+		if change.CreatedAtSeconds.Int64() > 0 {
+			updated.CreatedAtSeconds = change.CreatedAtSeconds.Int64()
+		} else if change.UpdatedAtSeconds.Int64() > 0 {
+			updated.CreatedAtSeconds = change.UpdatedAtSeconds.Int64()
 		} else {
 			updated.CreatedAtSeconds = appliedAt.Unix()
 		}
@@ -124,7 +116,7 @@ func resolveChange(existing *Note, change ChangeRequest, appliedAt time.Time) (C
 		NoteID:            updated.NoteID,
 		AppliedAtSeconds:  appliedAt.Unix(),
 		ClientDevice:      change.ClientDevice,
-		ClientTimeSeconds: change.ClientTimeSeconds,
+		ClientTimeSeconds: change.ClientTimeSeconds.Int64(),
 		Operation:         change.Operation,
 		PayloadJSON:       updated.PayloadJSON,
 		PreviousVersion:   nil,

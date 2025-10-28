@@ -185,9 +185,16 @@ type snapshotResultPayload struct {
 }
 
 func (h *httpHandler) handleNotesSync(c *gin.Context) {
-	userID := c.GetString(userIDContextKey)
-	if userID == "" {
+	userIDValue := c.GetString(userIDContextKey)
+	if userIDValue == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	userID, err := notes.NewUserID(userIDValue)
+	if err != nil {
+		h.logger.Error("invalid user identifier in context", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "sync_failed"})
 		return
 	}
 
@@ -198,25 +205,53 @@ func (h *httpHandler) handleNotesSync(c *gin.Context) {
 	}
 
 	changes := make([]notes.ChangeRequest, 0, len(request.Operations))
+	now := time.Now().UTC()
 	for _, op := range request.Operations {
 		opType, err := parseOperation(op.Operation)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_operation"})
 			return
 		}
+
+		noteID, err := notes.NewNoteID(op.NoteID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_note_id"})
+			return
+		}
+
+		clientSeconds, createdSeconds, updatedSeconds := normalizeOperationTimestamps(op, now)
+
+		clientTimestamp, err := notes.NewUnixTimestamp(clientSeconds)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_client_time"})
+			return
+		}
+
+		createdTimestamp, err := notes.NewUnixTimestamp(createdSeconds)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_created_time"})
+			return
+		}
+
+		updatedTimestamp, err := notes.NewUnixTimestamp(updatedSeconds)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_updated_time"})
+			return
+		}
+
 		payloadJSON := ""
 		if len(op.Payload) > 0 {
 			payloadJSON = string(op.Payload)
 		}
 		changes = append(changes, notes.ChangeRequest{
 			UserID:            userID,
-			NoteID:            op.NoteID,
+			NoteID:            noteID,
 			Operation:         opType,
 			ClientEditSeq:     op.ClientEditSeq,
 			ClientDevice:      op.ClientDevice,
-			ClientTimeSeconds: op.ClientTimeSeconds,
-			CreatedAtSeconds:  op.CreatedAtSeconds,
-			UpdatedAtSeconds:  op.UpdatedAtSeconds,
+			ClientTimeSeconds: clientTimestamp,
+			CreatedAtSeconds:  createdTimestamp,
+			UpdatedAtSeconds:  updatedTimestamp,
 			PayloadJSON:       payloadJSON,
 		})
 	}
@@ -243,8 +278,41 @@ func (h *httpHandler) handleNotesSync(c *gin.Context) {
 		})
 	}
 
-	h.broadcastNoteChanges(userID, result)
+	h.broadcastNoteChanges(userID.String(), result)
 	c.JSON(http.StatusOK, response)
+}
+
+func normalizeOperationTimestamps(op syncOperationPayload, now time.Time) (clientSeconds int64, createdSeconds int64, updatedSeconds int64) {
+	clientSeconds = op.ClientTimeSeconds
+	if clientSeconds <= 0 {
+		clientSeconds = now.Unix()
+	}
+
+	createdSeconds = op.CreatedAtSeconds
+	if createdSeconds <= 0 {
+		switch {
+		case op.ClientTimeSeconds > 0:
+			createdSeconds = op.ClientTimeSeconds
+		case op.UpdatedAtSeconds > 0:
+			createdSeconds = op.UpdatedAtSeconds
+		default:
+			createdSeconds = clientSeconds
+		}
+	}
+
+	updatedSeconds = op.UpdatedAtSeconds
+	if updatedSeconds <= 0 {
+		switch {
+		case op.ClientTimeSeconds > 0:
+			updatedSeconds = op.ClientTimeSeconds
+		case createdSeconds > 0:
+			updatedSeconds = createdSeconds
+		default:
+			updatedSeconds = clientSeconds
+		}
+	}
+
+	return clientSeconds, createdSeconds, updatedSeconds
 }
 
 func (h *httpHandler) broadcastNoteChanges(userID string, result notes.SyncResult) {

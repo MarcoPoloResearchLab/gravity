@@ -56,8 +56,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Architecture guide now covers the full-screen controller, keyboard shortcuts modal, analytics bootstrap, and version refresh utility so documentation mirrors the active code.
 - [x] [GN-402] Review @POLICY.md and verify what code areas need improvements and refactoring. Prepare a detailed plan of refactoring. Check for bugs, missing tests, poor coding practices, uplication and slop. Ensure strong encapsulation and following the principles og @AGENTS.md and policies of @POLICY.md
   - Created `REFACTORING_PLAN.md` outlining backend domain-type work, frontend module decomposition, and required test additions to satisfy POLICY invariants.
-- [ ] [GN-403] Enforce edge validation for notes service inputs before ApplyChanges
-  - Add smart constructors for `NoteID`, `UserID`, and `Timestamp` in `backend/internal/notes/model.go`, update `backend/internal/server/router.go` to validate payloads and pass typed values, and adjust `backend/internal/notes/service.go` plus tests to assume pre-validated domain types.
+- [x] [GN-403] Enforce edge validation for notes service inputs before ApplyChanges
+  - Added domain constructors for user, note, and timestamp identifiers, moved sync payload validation into `handleNotesSync`, refactored `ApplyChanges`/`resolveChange` to rely on typed values, and extended unit plus HTTP tests so empty identifiers now return `400` instead of leaking into the service layer.
 - [ ] [GN-404] Replace primitive change resolution with typed envelopes
   - Define a `ChangeEnvelope` domain struct produced after edge validation and refactor `backend/internal/notes/conflict.go` and `backend/internal/notes/service.go` to consume typed fields, updating unit/integration tests to cover invalid envelopes.
 - [ ] [GN-405] Harden notes service constructor dependency validation

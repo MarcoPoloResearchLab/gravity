@@ -6,9 +6,11 @@ import (
 )
 
 func TestResolveChangeAcceptsHigherEditSequence(t *testing.T) {
+	userID := mustUserID(t, "user-1")
+	noteID := mustNoteID(t, "note-1")
 	existing := &Note{
-		UserID:            "user-1",
-		NoteID:            "note-1",
+		UserID:            userID.String(),
+		NoteID:            noteID.String(),
 		UpdatedAtSeconds:  1700000000,
 		Version:           2,
 		LastWriterEditSeq: 4,
@@ -18,13 +20,14 @@ func TestResolveChangeAcceptsHigherEditSequence(t *testing.T) {
 		CreatedAtSeconds:  1699990000,
 	}
 	change := ChangeRequest{
-		UserID:            existing.UserID,
-		NoteID:            existing.NoteID,
+		UserID:            userID,
+		NoteID:            noteID,
 		Operation:         OperationTypeUpsert,
 		ClientEditSeq:     5,
 		ClientDevice:      "web",
-		ClientTimeSeconds: 1700000500,
-		UpdatedAtSeconds:  1700000500,
+		ClientTimeSeconds: mustTimestamp(t, 1700000500),
+		CreatedAtSeconds:  mustTimestamp(t, 1700000400),
+		UpdatedAtSeconds:  mustTimestamp(t, 1700000500),
 		PayloadJSON:       `{"content":"incoming"}`,
 	}
 
@@ -59,22 +62,25 @@ func TestResolveChangeAcceptsHigherEditSequence(t *testing.T) {
 }
 
 func TestResolveChangeRejectsLowerEditSequence(t *testing.T) {
+	userID := mustUserID(t, "user-1")
+	noteID := mustNoteID(t, "note-1")
 	existing := &Note{
-		UserID:            "user-1",
-		NoteID:            "note-1",
+		UserID:            userID.String(),
+		NoteID:            noteID.String(),
 		UpdatedAtSeconds:  1700000000,
 		Version:           6,
 		LastWriterEditSeq: 10,
 		PayloadJSON:       `{"content":"stored"}`,
 	}
 	change := ChangeRequest{
-		UserID:            existing.UserID,
-		NoteID:            existing.NoteID,
+		UserID:            userID,
+		NoteID:            noteID,
 		Operation:         OperationTypeUpsert,
 		ClientEditSeq:     8,
 		ClientDevice:      "tablet",
-		ClientTimeSeconds: 1700000001,
-		UpdatedAtSeconds:  1700000001,
+		ClientTimeSeconds: mustTimestamp(t, 1700000001),
+		CreatedAtSeconds:  mustTimestamp(t, 1699999000),
+		UpdatedAtSeconds:  mustTimestamp(t, 1700000001),
 		PayloadJSON:       `{"content":"incoming"}`,
 	}
 
@@ -94,9 +100,11 @@ func TestResolveChangeRejectsLowerEditSequence(t *testing.T) {
 }
 
 func TestResolveChangeBreaksTieByUpdatedAt(t *testing.T) {
+	userID := mustUserID(t, "user-1")
+	noteID := mustNoteID(t, "note-1")
 	existing := &Note{
-		UserID:            "user-1",
-		NoteID:            "note-1",
+		UserID:            userID.String(),
+		NoteID:            noteID.String(),
 		UpdatedAtSeconds:  1700000000,
 		Version:           4,
 		LastWriterEditSeq: 7,
@@ -137,13 +145,14 @@ func TestResolveChangeBreaksTieByUpdatedAt(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			change := ChangeRequest{
-				UserID:            existing.UserID,
-				NoteID:            existing.NoteID,
+				UserID:            userID,
+				NoteID:            noteID,
 				Operation:         OperationTypeDelete,
 				ClientEditSeq:     7,
 				ClientDevice:      "wearable",
-				ClientTimeSeconds: tt.clientUpdatedAt,
-				UpdatedAtSeconds:  tt.clientUpdatedAt,
+				ClientTimeSeconds: mustTimestamp(t, tt.clientUpdatedAt),
+				CreatedAtSeconds:  mustTimestamp(t, 1699990000),
+				UpdatedAtSeconds:  mustTimestamp(t, tt.clientUpdatedAt),
 				PayloadJSON:       "",
 			}
 			outcome, err := resolveChange(existing, change, time.Unix(1700000600, 0).UTC())
@@ -164,4 +173,31 @@ func TestResolveChangeBreaksTieByUpdatedAt(t *testing.T) {
 			}
 		})
 	}
+}
+
+func mustUserID(t *testing.T, value string) UserID {
+	t.Helper()
+	id, err := NewUserID(value)
+	if err != nil {
+		t.Fatalf("unexpected user id error: %v", err)
+	}
+	return id
+}
+
+func mustNoteID(t *testing.T, value string) NoteID {
+	t.Helper()
+	id, err := NewNoteID(value)
+	if err != nil {
+		t.Fatalf("unexpected note id error: %v", err)
+	}
+	return id
+}
+
+func mustTimestamp(t *testing.T, value int64) UnixTimestamp {
+	t.Helper()
+	ts, err := NewUnixTimestamp(value)
+	if err != nil {
+		t.Fatalf("unexpected timestamp error: %v", err)
+	}
+	return ts
 }

@@ -12,6 +12,7 @@ import (
 var (
 	errMissingDatabase   = errors.New("database handle is required")
 	errMissingIDProvider = errors.New("id provider is required")
+	errMissingUserID     = errors.New("user identifier is required")
 )
 
 type ServiceConfig struct {
@@ -57,45 +58,24 @@ type SyncResult struct {
 	ChangeOutcomes []ChangeOutcome
 }
 
-func (s *Service) ApplyChanges(ctx context.Context, userID string, changes []ChangeRequest) (SyncResult, error) {
+func (s *Service) ApplyChanges(ctx context.Context, userID UserID, changes []ChangeRequest) (SyncResult, error) {
 	if s.db == nil {
 		return SyncResult{}, errMissingDatabase
 	}
 	if s.idProvider == nil {
 		return SyncResult{}, errMissingIDProvider
 	}
-	if userID == "" {
-		return SyncResult{}, errMissingUserID
-	}
 
 	result := SyncResult{ChangeOutcomes: make([]ChangeOutcome, 0, len(changes))}
 	txErr := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		for _, change := range changes {
-			sanitized := change
-			sanitized.UserID = userID
-
-			if sanitized.NoteID == "" {
-				return errMissingNoteID
-			}
-
-			if sanitized.CreatedAtSeconds == 0 {
-				sanitized.CreatedAtSeconds = sanitized.ClientTimeSeconds
-				if sanitized.CreatedAtSeconds == 0 {
-					sanitized.CreatedAtSeconds = s.clock().UTC().Unix()
-				}
-			}
-
-			if sanitized.UpdatedAtSeconds == 0 {
-				sanitized.UpdatedAtSeconds = sanitized.ClientTimeSeconds
-				if sanitized.UpdatedAtSeconds == 0 {
-					sanitized.UpdatedAtSeconds = s.clock().UTC().Unix()
-				}
-			}
+			prepared := change
+			prepared.UserID = userID
 
 			var existing Note
 			var existingPtr *Note
 			err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-				Where("user_id = ? AND note_id = ?", userID, sanitized.NoteID).
+				Where("user_id = ? AND note_id = ?", userID.String(), prepared.NoteID.String()).
 				Take(&existing).Error
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				existingPtr = nil
@@ -106,14 +86,14 @@ func (s *Service) ApplyChanges(ctx context.Context, userID string, changes []Cha
 			}
 
 			appliedAt := s.clock().UTC()
-			outcome, err := resolveChange(existingPtr, sanitized, appliedAt)
+			outcome, err := resolveChange(existingPtr, prepared, appliedAt)
 			if err != nil {
 				return err
 			}
 
 			if outcome.Accepted {
-				outcome.UpdatedNote.UserID = userID
-				outcome.UpdatedNote.NoteID = sanitized.NoteID
+				outcome.UpdatedNote.UserID = userID.String()
+				outcome.UpdatedNote.NoteID = prepared.NoteID.String()
 
 				if err := tx.Save(outcome.UpdatedNote).Error; err != nil {
 					return err
@@ -125,8 +105,8 @@ func (s *Service) ApplyChanges(ctx context.Context, userID string, changes []Cha
 						return err
 					}
 					outcome.AuditRecord.ChangeID = changeID
-					outcome.AuditRecord.UserID = userID
-					outcome.AuditRecord.NoteID = sanitized.NoteID
+					outcome.AuditRecord.UserID = userID.String()
+					outcome.AuditRecord.NoteID = prepared.NoteID.String()
 					if err := tx.Create(outcome.AuditRecord).Error; err != nil {
 						return err
 					}
@@ -134,7 +114,7 @@ func (s *Service) ApplyChanges(ctx context.Context, userID string, changes []Cha
 			}
 
 			result.ChangeOutcomes = append(result.ChangeOutcomes, ChangeOutcome{
-				Request: sanitized,
+				Request: prepared,
 				Outcome: outcome,
 			})
 		}

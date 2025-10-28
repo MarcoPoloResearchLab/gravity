@@ -27,14 +27,16 @@ func (g *staticIDGenerator) NewID() (string, error) {
 
 func TestServiceAppliesNewUpsert(t *testing.T) {
 	service, db := newTestService(t, []string{"change-1"})
+	userID := mustUserID(t, "user-1")
+	noteID := mustNoteID(t, "note-1")
 
 	changes := []ChangeRequest{
 		{
-			UserID:            "user-1",
-			NoteID:            "note-1",
-			CreatedAtSeconds:  1700000000,
-			UpdatedAtSeconds:  1700000000,
-			ClientTimeSeconds: 1700000000,
+			UserID:            userID,
+			NoteID:            noteID,
+			CreatedAtSeconds:  mustTimestamp(t, 1700000000),
+			UpdatedAtSeconds:  mustTimestamp(t, 1700000000),
+			ClientTimeSeconds: mustTimestamp(t, 1700000000),
 			ClientEditSeq:     1,
 			ClientDevice:      "web",
 			Operation:         OperationTypeUpsert,
@@ -42,7 +44,7 @@ func TestServiceAppliesNewUpsert(t *testing.T) {
 		},
 	}
 
-	result, err := service.ApplyChanges(context.Background(), "user-1", changes)
+	result, err := service.ApplyChanges(context.Background(), userID, changes)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -78,10 +80,12 @@ func TestServiceAppliesNewUpsert(t *testing.T) {
 
 func TestServiceRejectsStaleEditSequence(t *testing.T) {
 	service, db := newTestService(t, []string{"change-1"})
+	userID := mustUserID(t, "user-1")
+	noteID := mustNoteID(t, "note-1")
 
 	existing := Note{
-		UserID:            "user-1",
-		NoteID:            "note-1",
+		UserID:            userID.String(),
+		NoteID:            noteID.String(),
 		CreatedAtSeconds:  1699990000,
 		UpdatedAtSeconds:  1700000000,
 		PayloadJSON:       `{"content":"existing"}`,
@@ -95,10 +99,11 @@ func TestServiceRejectsStaleEditSequence(t *testing.T) {
 
 	changes := []ChangeRequest{
 		{
-			UserID:            "user-1",
-			NoteID:            "note-1",
-			UpdatedAtSeconds:  1700000000,
-			ClientTimeSeconds: 1700000000,
+			UserID:            userID,
+			NoteID:            noteID,
+			CreatedAtSeconds:  mustTimestamp(t, 1699990000),
+			UpdatedAtSeconds:  mustTimestamp(t, 1700000000),
+			ClientTimeSeconds: mustTimestamp(t, 1700000000),
 			ClientEditSeq:     3,
 			ClientDevice:      "tablet",
 			Operation:         OperationTypeUpsert,
@@ -106,7 +111,7 @@ func TestServiceRejectsStaleEditSequence(t *testing.T) {
 		},
 	}
 
-	result, err := service.ApplyChanges(context.Background(), "user-1", changes)
+	result, err := service.ApplyChanges(context.Background(), userID, changes)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
