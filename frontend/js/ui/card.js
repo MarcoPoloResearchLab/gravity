@@ -167,9 +167,9 @@ function isPointerWithinInlineEditorSurface(card, pointerTarget) {
             return false;
         }
     }
-    const contentSurface = elementTarget.closest(".card-content");
-    if (contentSurface instanceof HTMLElement && card.contains(contentSurface)) {
-        return true;
+    const inlineHost = elementTarget.closest(".markdown-editor-host");
+    if (inlineHost !== card) {
+        return false;
     }
     for (const selector of INLINE_EDITOR_SURFACE_SELECTORS) {
         const surface = elementTarget.closest(selector);

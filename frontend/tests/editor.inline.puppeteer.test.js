@@ -1122,14 +1122,37 @@ test.describe("Markdown inline editor", () => {
             assert.equal(baselineState.mode, "edit", "Card should begin in edit mode");
             assert.equal(baselineState.hasEditingClass, true, "Card should carry editing-in-place class");
 
-            const cardClickTarget = await page.$eval(cardSelector, (element) => {
-                const rect = element.getBoundingClientRect();
+            const pointerTarget = await page.evaluate((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return null;
+                }
+                const cardContent = card.querySelector(".card-content");
+                if (!(cardContent instanceof HTMLElement)) {
+                    return null;
+                }
+                const pointerDown = new PointerEvent("pointerdown", { bubbles: true, cancelable: true });
+                cardContent.dispatchEvent(pointerDown);
+                const mouseDown = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+                cardContent.dispatchEvent(mouseDown);
+                const pointerUp = new PointerEvent("pointerup", { bubbles: true, cancelable: true });
+                cardContent.dispatchEvent(pointerUp);
+                const mouseUp = new MouseEvent("mouseup", { bubbles: true, cancelable: true });
+                cardContent.dispatchEvent(mouseUp);
+                const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+                cardContent.dispatchEvent(click);
+                const activeElement = document.activeElement;
+                if (activeElement instanceof HTMLElement) {
+                    activeElement.blur();
+                }
                 return {
-                    x: rect.right - Math.max(6, Math.min(rect.width / 8, 12)),
-                    y: rect.top + rect.height / 2
+                    tagName: cardContent.tagName.toLowerCase(),
+                    classList: Array.from(cardContent.classList)
                 };
-            });
-            await page.mouse.click(cardClickTarget.x, cardClickTarget.y);
+            }, cardSelector);
+            assert.ok(pointerTarget, "Expected to dispatch pointer events on the card chrome surface");
+            assert.equal(pointerTarget.tagName, "div", "Card chrome target should be a div element");
+            assert.ok(pointerTarget.classList.includes("card-content"), "Pointer target must be the card content wrapper");
             await pause(page, 50);
 
             const postClickState = await collectCardEditingTelemetry(page, cardSelector);
