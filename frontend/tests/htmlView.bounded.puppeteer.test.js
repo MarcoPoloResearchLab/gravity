@@ -241,6 +241,63 @@ test.describe("Bounded htmlViews", () => {
         }
     });
 
+    test("expand toggle responds to clicks across the bottom strip", async () => {
+        const { page, teardown } = await openHtmlViewHarness(createBaselineRecords());
+        const cardSelector = `[data-note-id="${LONG_NOTE_ID}"]`;
+        const htmlViewSelector = `${cardSelector} .note-html-view`;
+        try {
+            await collapseAllHtmlViews(page);
+            await page.waitForSelector(`${cardSelector} .note-expand-toggle`, { timeout: 5000 });
+
+            const clickTarget = await page.$eval(cardSelector, (card) => {
+                const toggle = card.querySelector(".note-expand-toggle");
+                if (!(toggle instanceof HTMLElement)) {
+                    throw new Error("Expand toggle is missing");
+                }
+                const cardRect = card.getBoundingClientRect();
+                const toggleRect = toggle.getBoundingClientRect();
+                const icon = toggle.querySelector(".note-expand-toggle__icon");
+                const iconRect = icon instanceof SVGElement ? icon.getBoundingClientRect() : toggleRect;
+                const clickX = cardRect.left + cardRect.width * 0.15;
+                const clickY = toggleRect.top + toggleRect.height / 2;
+                return {
+                    clickX,
+                    clickY,
+                    iconLeft: iconRect.left,
+                    iconRight: iconRect.right
+                };
+            });
+            assert.ok(
+                clickTarget.clickX < clickTarget.iconLeft || clickTarget.clickX > clickTarget.iconRight,
+                "test click should land outside the icon's original hit box"
+            );
+            const hoveredElement = await page.evaluate(({ clickX, clickY }) => {
+                const element = document.elementFromPoint(clickX, clickY);
+                if (!element) {
+                    return null;
+                }
+                return {
+                    tag: element.tagName.toLowerCase(),
+                    classes: element instanceof Element ? Array.from(element.classList) : []
+                };
+            }, clickTarget);
+            assert.ok(hoveredElement, "hit area lookup should return an element");
+            assert.equal(
+                hoveredElement?.classes?.includes("note-expand-toggle"),
+                false,
+                "click should land outside the expand toggle element"
+            );
+            await page.mouse.click(clickTarget.clickX, clickTarget.clickY);
+            await page.waitForFunction(
+                (selector) => document.querySelector(selector)?.classList.contains("note-html-view--expanded"),
+                {},
+                htmlViewSelector
+            );
+        } finally {
+            await teardown();
+        }
+    });
+
     test("expand toggle handles expansion while content clicks enter edit mode", async () => {
         const { page, teardown } = await openHtmlViewHarness(createBaselineRecords());
         const cardSelector = `[data-note-id="${LONG_NOTE_ID}"]`;

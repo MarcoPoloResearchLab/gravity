@@ -120,6 +120,7 @@ export function createHtmlView(card, { markdownSource, badgesTarget }) {
     const content = createElement("div", "markdown-content");
     const expandToggle = createExpandToggle(card, wrapper);
     wrapper.append(content, expandToggle);
+    attachExpandStripClickHandler(wrapper, expandToggle);
     insertHtmlViewWrapper(card, wrapper);
     renderHtmlView(content, htmlViewMarkdown);
     restoreHtmlViewFocus(card);
@@ -180,6 +181,39 @@ function createExpandToggle(card, wrapper) {
     return toggle;
 }
 
+function attachExpandStripClickHandler(wrapper, toggle) {
+    if (!(wrapper instanceof HTMLElement) || !(toggle instanceof HTMLElement)) {
+        return;
+    }
+    wrapper.addEventListener("click", (event) => {
+        if (!(event instanceof MouseEvent)) {
+            return;
+        }
+        if (toggle.hidden || toggle.style.display === "none") {
+            return;
+        }
+        const target = event.target;
+        if (target instanceof Element) {
+            if (target.closest(".note-expand-toggle")) {
+                return;
+            }
+            if (target.closest("input, textarea, select, button, a")) {
+                return;
+            }
+        }
+        const hitHeight = getToggleHitHeight(toggle);
+        if (hitHeight <= 0) {
+            return;
+        }
+        const wrapperRect = wrapper.getBoundingClientRect();
+        if (event.clientY >= wrapperRect.bottom - hitHeight) {
+            event.preventDefault();
+            event.stopPropagation();
+            toggle.click();
+        }
+    });
+}
+
 function buildExpandToggleIcon() {
     const icon = createSvgElement("svg");
     icon.classList.add("note-expand-toggle__icon");
@@ -202,6 +236,24 @@ function buildExpandToggleIcon() {
     icon.appendChild(ring);
     icon.appendChild(arrow);
     return icon;
+}
+
+function getToggleHitHeight(toggle) {
+    if (!(toggle instanceof HTMLElement)) {
+        return 0;
+    }
+    const rect = toggle.getBoundingClientRect();
+    if (rect.height > 0) {
+        return rect.height;
+    }
+    if (typeof window !== "undefined" && typeof window.getComputedStyle === "function") {
+        const computed = window.getComputedStyle(toggle);
+        const parsed = Number.parseFloat(computed.height);
+        if (Number.isFinite(parsed) && parsed > 0) {
+            return parsed;
+        }
+    }
+    return 0;
 }
 
 /**
