@@ -25,8 +25,8 @@ var (
 	ErrInvalidUserID = errors.New("notes: invalid user id")
 	// ErrInvalidTimestamp indicates that a unix timestamp value is not positive.
 	ErrInvalidTimestamp = errors.New("notes: invalid unix timestamp")
-	// ErrInvalidChangeEnvelope indicates that a change envelope violates domain invariants.
-	ErrInvalidChangeEnvelope = errors.New("notes: invalid change envelope")
+	// ErrInvalidChange indicates that a change violates domain invariants.
+	ErrInvalidChange = errors.New("notes: invalid change")
 )
 
 // NoteID represents a validated note identifier.
@@ -155,16 +155,16 @@ type ChangeEnvelopeConfig struct {
 // NewChangeEnvelope validates the provided configuration and returns a ChangeEnvelope.
 func NewChangeEnvelope(cfg ChangeEnvelopeConfig) (ChangeEnvelope, error) {
 	if cfg.UserID == "" {
-		return ChangeEnvelope{}, fmt.Errorf("%w: empty user id", ErrInvalidChangeEnvelope)
+		return ChangeEnvelope{}, fmt.Errorf("%w: empty user id", ErrInvalidChange)
 	}
 	if cfg.NoteID == "" {
-		return ChangeEnvelope{}, fmt.Errorf("%w: empty note id", ErrInvalidChangeEnvelope)
+		return ChangeEnvelope{}, fmt.Errorf("%w: empty note id", ErrInvalidChange)
 	}
 	if cfg.Operation != OperationTypeUpsert && cfg.Operation != OperationTypeDelete {
-		return ChangeEnvelope{}, fmt.Errorf("%w: unsupported operation %s", ErrInvalidChangeEnvelope, cfg.Operation)
+		return ChangeEnvelope{}, fmt.Errorf("%w: unsupported operation %s", ErrInvalidChange, cfg.Operation)
 	}
 	if cfg.ClientEditSeq < 0 {
-		return ChangeEnvelope{}, fmt.Errorf("%w: negative client edit seq", ErrInvalidChangeEnvelope)
+		return ChangeEnvelope{}, fmt.Errorf("%w: negative client edit seq", ErrInvalidChange)
 	}
 
 	trimmedDevice := strings.TrimSpace(cfg.ClientDevice)

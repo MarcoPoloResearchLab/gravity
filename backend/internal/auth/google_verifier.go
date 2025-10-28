@@ -33,6 +33,7 @@ var (
 	errMissingAudienceConfig = errors.New("audience configuration required")
 	errMissingJWKSURL        = errors.New("jwks url configuration required")
 	errNoAllowedIssuers      = errors.New("no allowed issuers configured")
+	ErrInvalidVerifierConfig = errors.New("auth: invalid google verifier config")
 )
 
 // GoogleVerifierConfig bundles configuration required to instantiate a GoogleVerifier.
@@ -70,12 +71,12 @@ type GoogleVerifier struct {
 func NewGoogleVerifier(cfg GoogleVerifierConfig) (*GoogleVerifier, error) {
 	audience := strings.TrimSpace(cfg.Audience)
 	if audience == "" {
-		return nil, errMissingAudienceConfig
+		return nil, fmt.Errorf("%w: %v", ErrInvalidVerifierConfig, errMissingAudienceConfig)
 	}
 
 	jwksURL := strings.TrimSpace(cfg.JWKSURL)
 	if jwksURL == "" {
-		return nil, errMissingJWKSURL
+		return nil, fmt.Errorf("%w: %v", ErrInvalidVerifierConfig, errMissingJWKSURL)
 	}
 
 	cacheTTL := cfg.CacheTTL
@@ -111,7 +112,7 @@ func NewGoogleVerifier(cfg GoogleVerifierConfig) (*GoogleVerifier, error) {
 			issuers[normalized] = struct{}{}
 		}
 		if len(issuers) == 0 {
-			return nil, errNoAllowedIssuers
+			return nil, fmt.Errorf("%w: %v", ErrInvalidVerifierConfig, errNoAllowedIssuers)
 		}
 	}
 

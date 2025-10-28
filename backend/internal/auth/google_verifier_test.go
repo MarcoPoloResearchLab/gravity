@@ -6,9 +6,11 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -145,8 +147,11 @@ func TestNewGoogleVerifierRequiresAudienceAndJWKS(t *testing.T) {
 		JWKSURL:        "https://example.com/jwks",
 		AllowedIssuers: []string{"https://accounts.google.com"},
 	})
-	if err == nil {
-		t.Fatalf("expected constructor error for missing audience")
+	if !errors.Is(err, ErrInvalidVerifierConfig) {
+		t.Fatalf("expected invalid verifier config error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), errMissingAudienceConfig.Error()) {
+		t.Fatalf("expected audience validation error to be reported, got %v", err)
 	}
 
 	_, err = NewGoogleVerifier(GoogleVerifierConfig{
@@ -154,8 +159,11 @@ func TestNewGoogleVerifierRequiresAudienceAndJWKS(t *testing.T) {
 		JWKSURL:        " ",
 		AllowedIssuers: []string{"https://accounts.google.com"},
 	})
-	if err == nil {
-		t.Fatalf("expected constructor error for missing jwks url")
+	if !errors.Is(err, ErrInvalidVerifierConfig) {
+		t.Fatalf("expected invalid verifier config error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), errMissingJWKSURL.Error()) {
+		t.Fatalf("expected jwks validation error to be reported, got %v", err)
 	}
 }
 
@@ -165,8 +173,11 @@ func TestNewGoogleVerifierRejectsEmptyIssuerList(t *testing.T) {
 		JWKSURL:        "https://example.com/jwks",
 		AllowedIssuers: []string{"", "   "},
 	})
-	if err == nil {
-		t.Fatalf("expected constructor error for empty issuer list")
+	if !errors.Is(err, ErrInvalidVerifierConfig) {
+		t.Fatalf("expected invalid verifier config error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), errNoAllowedIssuers.Error()) {
+		t.Fatalf("expected allowed issuers validation error to be reported, got %v", err)
 	}
 }
 

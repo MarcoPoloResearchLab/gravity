@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -58,8 +60,11 @@ func TestTokenIssuerRejectsMissingSecret(t *testing.T) {
 		Audience:      "gravity-api",
 		TokenTTL:      30 * time.Minute,
 	})
-	if err == nil {
-		t.Fatalf("expected constructor error for missing secret")
+	if !errors.Is(err, ErrInvalidTokenConfig) {
+		t.Fatalf("expected invalid token config error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), errMissingSigningSecret.Error()) {
+		t.Fatalf("expected signing secret validation error, got %v", err)
 	}
 }
 
@@ -100,8 +105,11 @@ func TestNewTokenIssuerRequiresIssuerAndAudience(t *testing.T) {
 		Audience:      "gravity-api",
 		TokenTTL:      5 * time.Minute,
 	})
-	if err == nil {
-		t.Fatalf("expected error for missing issuer")
+	if !errors.Is(err, ErrInvalidTokenConfig) {
+		t.Fatalf("expected invalid token config error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), errMissingIssuer.Error()) {
+		t.Fatalf("expected issuer validation error, got %v", err)
 	}
 
 	_, err = NewTokenIssuer(TokenIssuerConfig{
@@ -110,8 +118,11 @@ func TestNewTokenIssuerRequiresIssuerAndAudience(t *testing.T) {
 		Audience:      " ",
 		TokenTTL:      5 * time.Minute,
 	})
-	if err == nil {
-		t.Fatalf("expected error for missing audience")
+	if !errors.Is(err, ErrInvalidTokenConfig) {
+		t.Fatalf("expected invalid token config error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), errMissingAudience.Error()) {
+		t.Fatalf("expected audience validation error, got %v", err)
 	}
 }
 
@@ -122,7 +133,10 @@ func TestNewTokenIssuerRequiresPositiveTTL(t *testing.T) {
 		Audience:      "gravity-api",
 		TokenTTL:      0,
 	})
-	if err == nil {
-		t.Fatalf("expected error for non-positive ttl")
+	if !errors.Is(err, ErrInvalidTokenConfig) {
+		t.Fatalf("expected invalid token config error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), errInvalidTokenTTL.Error()) {
+		t.Fatalf("expected ttl validation error, got %v", err)
 	}
 }
