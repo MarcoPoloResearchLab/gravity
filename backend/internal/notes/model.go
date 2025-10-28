@@ -25,6 +25,8 @@ var (
 	ErrInvalidUserID = errors.New("notes: invalid user id")
 	// ErrInvalidTimestamp indicates that a unix timestamp value is not positive.
 	ErrInvalidTimestamp = errors.New("notes: invalid unix timestamp")
+	// ErrInvalidChange indicates that a change violates domain invariants.
+	ErrInvalidChange = errors.New("notes: invalid change")
 )
 
 // NoteID represents a validated note identifier.
@@ -122,18 +124,113 @@ func (NoteChange) TableName() string {
 	return "note_changes"
 }
 
-// ChangeRequest describes the input supplied by a client during sync.
-type ChangeRequest struct {
-	UserID            UserID
-	NoteID            NoteID
-	CreatedAtSeconds  UnixTimestamp
-	UpdatedAtSeconds  UnixTimestamp
-	ClientTimeSeconds UnixTimestamp
-	ClientEditSeq     int64
-	ClientDevice      string
-	Operation         OperationType
-	PayloadJSON       string
-	IsDeleted         bool
+// ChangeEnvelope captures a validated change request ready for conflict resolution.
+type ChangeEnvelope struct {
+	userID          UserID
+	noteID          NoteID
+	createdAt       UnixTimestamp
+	updatedAt       UnixTimestamp
+	clientTimestamp UnixTimestamp
+	clientEditSeq   int64
+	clientDevice    string
+	operation       OperationType
+	payloadJSON     string
+	isDeleted       bool
+}
+
+// ChangeEnvelopeConfig describes the validated inputs required to construct a ChangeEnvelope.
+type ChangeEnvelopeConfig struct {
+	UserID          UserID
+	NoteID          NoteID
+	CreatedAt       UnixTimestamp
+	UpdatedAt       UnixTimestamp
+	ClientTimestamp UnixTimestamp
+	ClientEditSeq   int64
+	ClientDevice    string
+	Operation       OperationType
+	PayloadJSON     string
+	IsDeleted       bool
+}
+
+// NewChangeEnvelope validates the provided configuration and returns a ChangeEnvelope.
+func NewChangeEnvelope(cfg ChangeEnvelopeConfig) (ChangeEnvelope, error) {
+	if cfg.UserID == "" {
+		return ChangeEnvelope{}, fmt.Errorf("%w: empty user id", ErrInvalidChange)
+	}
+	if cfg.NoteID == "" {
+		return ChangeEnvelope{}, fmt.Errorf("%w: empty note id", ErrInvalidChange)
+	}
+	if cfg.Operation != OperationTypeUpsert && cfg.Operation != OperationTypeDelete {
+		return ChangeEnvelope{}, fmt.Errorf("%w: unsupported operation %s", ErrInvalidChange, cfg.Operation)
+	}
+	if cfg.ClientEditSeq < 0 {
+		return ChangeEnvelope{}, fmt.Errorf("%w: negative client edit seq", ErrInvalidChange)
+	}
+
+	trimmedDevice := strings.TrimSpace(cfg.ClientDevice)
+
+	return ChangeEnvelope{
+		userID:          cfg.UserID,
+		noteID:          cfg.NoteID,
+		createdAt:       cfg.CreatedAt,
+		updatedAt:       cfg.UpdatedAt,
+		clientTimestamp: cfg.ClientTimestamp,
+		clientEditSeq:   cfg.ClientEditSeq,
+		clientDevice:    trimmedDevice,
+		operation:       cfg.Operation,
+		payloadJSON:     cfg.PayloadJSON,
+		isDeleted:       cfg.IsDeleted,
+	}, nil
+}
+
+// UserID returns the envelope's user identifier.
+func (c ChangeEnvelope) UserID() UserID {
+	return c.userID
+}
+
+// NoteID returns the envelope's note identifier.
+func (c ChangeEnvelope) NoteID() NoteID {
+	return c.noteID
+}
+
+// CreatedAt returns the creation timestamp.
+func (c ChangeEnvelope) CreatedAt() UnixTimestamp {
+	return c.createdAt
+}
+
+// UpdatedAt returns the update timestamp.
+func (c ChangeEnvelope) UpdatedAt() UnixTimestamp {
+	return c.updatedAt
+}
+
+// ClientTimestamp returns the client supplied timestamp.
+func (c ChangeEnvelope) ClientTimestamp() UnixTimestamp {
+	return c.clientTimestamp
+}
+
+// ClientEditSeq returns the client edit sequence number.
+func (c ChangeEnvelope) ClientEditSeq() int64 {
+	return c.clientEditSeq
+}
+
+// ClientDevice returns the trimmed client device label.
+func (c ChangeEnvelope) ClientDevice() string {
+	return c.clientDevice
+}
+
+// Operation returns the envelope operation type.
+func (c ChangeEnvelope) Operation() OperationType {
+	return c.operation
+}
+
+// Payload returns the JSON payload for the change.
+func (c ChangeEnvelope) Payload() string {
+	return c.payloadJSON
+}
+
+// IsDeleted indicates whether the change represents a deletion.
+func (c ChangeEnvelope) IsDeleted() bool {
+	return c.isDeleted
 }
 
 // ConflictOutcome captures the decision from resolveChange.

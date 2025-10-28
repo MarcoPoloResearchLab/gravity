@@ -34,7 +34,10 @@ Network boundaries (`js/core/backendClient.js`, `js/core/classifier.js`) remain 
 **Module Guidelines**
 
 - `frontend/js/ui/topEditor.js` composes new note records and dispatches `gravity:note-create`; it never mutates storage directly.
-- `frontend/js/ui/card.js` emits update, delete, and pin events while delegating persistence to `syncStoreFromDom`.
+- `frontend/js/ui/card.js` emits update, delete, and pin events while delegating persistence to `syncStoreFromDom` and wiring helper modules.
+- `frontend/js/ui/card/pointerTracking.js` encapsulates pointer heuristics (blur retention, inline-surface detection) so tests can exercise focus rules without the DOM monolith.
+- `frontend/js/ui/card/cardState.js` holds per-card state (editor hosts, suppression counts, pending animation frames) rather than scattering WeakMaps across the controller.
+- `frontend/js/ui/card/copyFeedback.js` manages clipboard feedback timers so multiple rapid copy events stay debounced.
 - `frontend/js/ui/importExport.js` translates JSON flows into `gravity:notes-imported` events and raises `gravity:notify` feedback.
 - `frontend/js/ui/authControls.js` renders Google Identity Services, proxies sign-out requests, and raises the auth events.
 - `frontend/js/ui/menu/avatarMenu.js` encapsulates dropdown presentation, outside-click dismissal, and focus hand-off.
@@ -63,6 +66,7 @@ Network boundaries (`js/core/backendClient.js`, `js/core/classifier.js`) remain 
 **Storage, Configuration, and Auth**
 
 - `GravityStore` persists notes in `localStorage` for offline-first behaviour; reconciliation applies backend snapshots.
+- `createNoteRecord` validates note identifiers/markdown before writes so malformed payloads never hit storage.
 - `GravityStore.setUserScope(userId)` switches the storage namespace so each Google account receives an isolated notebook.
 - Runtime configuration loads from environment-specific JSON files under `data/`, selected according to the active hostname.
 - Authentication flows through Google Identity Services with `appConfig.googleClientId`, replaying sessions on reload.

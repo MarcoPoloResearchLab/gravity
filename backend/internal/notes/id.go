@@ -4,7 +4,8 @@ import "github.com/google/uuid"
 
 type uuidProvider struct{}
 
-func newUUIDProvider() IDProvider {
+// NewUUIDProvider constructs an IDProvider that issues UUIDv7 identifiers.
+func NewUUIDProvider() IDProvider {
 	return &uuidProvider{}
 }
 

@@ -30,18 +30,18 @@ func TestServiceAppliesNewUpsert(t *testing.T) {
 	userID := mustUserID(t, "user-1")
 	noteID := mustNoteID(t, "note-1")
 
-	changes := []ChangeRequest{
-		{
-			UserID:            userID,
-			NoteID:            noteID,
-			CreatedAtSeconds:  mustTimestamp(t, 1700000000),
-			UpdatedAtSeconds:  mustTimestamp(t, 1700000000),
-			ClientTimeSeconds: mustTimestamp(t, 1700000000),
-			ClientEditSeq:     1,
-			ClientDevice:      "web",
-			Operation:         OperationTypeUpsert,
-			PayloadJSON:       `{"content":"hello"}`,
-		},
+	changes := []ChangeEnvelope{
+		mustEnvelope(t, ChangeEnvelopeConfig{
+			UserID:          userID,
+			NoteID:          noteID,
+			CreatedAt:       mustTimestamp(t, 1700000000),
+			UpdatedAt:       mustTimestamp(t, 1700000000),
+			ClientTimestamp: mustTimestamp(t, 1700000000),
+			ClientEditSeq:   1,
+			ClientDevice:    "web",
+			Operation:       OperationTypeUpsert,
+			PayloadJSON:     `{"content":"hello"}`,
+		}),
 	}
 
 	result, err := service.ApplyChanges(context.Background(), userID, changes)
@@ -97,18 +97,18 @@ func TestServiceRejectsStaleEditSequence(t *testing.T) {
 		t.Fatalf("failed to seed note: %v", err)
 	}
 
-	changes := []ChangeRequest{
-		{
-			UserID:            userID,
-			NoteID:            noteID,
-			CreatedAtSeconds:  mustTimestamp(t, 1699990000),
-			UpdatedAtSeconds:  mustTimestamp(t, 1700000000),
-			ClientTimeSeconds: mustTimestamp(t, 1700000000),
-			ClientEditSeq:     3,
-			ClientDevice:      "tablet",
-			Operation:         OperationTypeUpsert,
-			PayloadJSON:       `{"content":"stale"}`,
-		},
+	changes := []ChangeEnvelope{
+		mustEnvelope(t, ChangeEnvelopeConfig{
+			UserID:          userID,
+			NoteID:          noteID,
+			CreatedAt:       mustTimestamp(t, 1699990000),
+			UpdatedAt:       mustTimestamp(t, 1700000000),
+			ClientTimestamp: mustTimestamp(t, 1700000000),
+			ClientEditSeq:   3,
+			ClientDevice:    "tablet",
+			Operation:       OperationTypeUpsert,
+			PayloadJSON:     `{"content":"stale"}`,
+		}),
 	}
 
 	result, err := service.ApplyChanges(context.Background(), userID, changes)
@@ -151,11 +151,14 @@ func newTestService(t *testing.T, ids []string) (*Service, *gorm.DB) {
 	generator := &staticIDGenerator{ids: ids}
 	clock := func() time.Time { return time.Unix(1700000600, 0).UTC() }
 
-	service := NewService(ServiceConfig{
+	service, err := NewService(ServiceConfig{
 		Database:   db,
 		Clock:      clock,
 		IDProvider: generator,
 	})
+	if err != nil {
+		t.Fatalf("failed to construct notes service: %v", err)
+	}
 
 	return service, db
 }
