@@ -97,6 +97,7 @@ and are grouped by the date the work landed on `master`.
 - Cleared lingering editor height locks after inline edits to avoid blank gutters beneath cards and verified with a Puppeteer regression.
 - Centered inline edits and preserved viewport position when bubbling notes so clicking a card no longer snaps it to the top (GN-304).
 - Refreshed backend access tokens automatically when synchronization detects expiration, persisted the renewed credentials, and reconnected the realtime stream to keep cross-device notes up to date (GN-303).
+- Concealed browser-native scrollbars by hiding the root scrollbar pseudo element while keeping the feed scrollable, enforced with a regression test (GN-305).
 
 ## 2025-09-25
 
