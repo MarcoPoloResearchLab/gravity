@@ -80,8 +80,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Added Node-based unit tests covering `cardState` and pointer tracking helpers to verify state transitions and inline surface detection logic.
 - [x] [GN-414] Document card events and state transitions after the controller split
   - Updated `ARCHITECTURE.md` to outline the pointer tracking, card state, and copy feedback helpers plus the new note record validation path.
-- [ ] [GN-415] Expand CI automation for static analysis
-  - Update automation scripts to run `go vet ./...`, `staticcheck ./...`, and `ineffassign ./...` for the backend and `tsc --noEmit` for the frontend, keeping results wired into the existing pipelines.
+- [x] [GN-415] Expand CI automation for static analysis
+  - Backend CI now runs `go vet`, `staticcheck`, and `ineffassign`; frontend workflow installs TypeScript and executes `npm run typecheck` (`tsc --noEmit`).
 - [ ] [GN-416] Provide fixtures and mocks for domain constructors in tests
   - Add shared helpers under `backend/internal/notes/testdata/` (or equivalent) that build valid domain types and reuse them across unit and integration tests to keep suites deterministic.
 - [ ] [GN-417] Document validation boundaries and constructor usage patterns
