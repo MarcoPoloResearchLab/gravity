@@ -32,6 +32,7 @@ import { syncStoreFromDom } from "../storeSync.js";
 // (delete). No refresh helpers remain by design.
 const htmlViewBubbleTimers = new WeakMap();
 const htmlViewFocusTargets = new WeakMap();
+const expandToggleAlignmentDisposers = new WeakMap();
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
 /**
@@ -162,6 +163,7 @@ export function createHtmlView(card, { markdownSource, badgesTarget }) {
     insertHtmlViewWrapper(card, wrapper);
     renderHtmlView(content, htmlViewMarkdown);
     restoreHtmlViewFocus(card);
+    registerExpandToggleAlignment(card, wrapper, expandToggle);
     if (badgesTarget instanceof HTMLElement) {
         applyHtmlViewBadges(badgesTarget, meta);
     }
@@ -186,6 +188,7 @@ export function deleteHtmlView(card) {
     if (!(wrapper instanceof HTMLElement)) {
         return;
     }
+    cleanupExpandToggleAlignment(wrapper);
     wrapper.remove();
 }
 
@@ -410,6 +413,7 @@ export function setHtmlViewExpanded(card, shouldExpand) {
     if (card.dataset.suppressHtmlViewScroll === "true") {
         delete card.dataset.suppressHtmlViewScroll;
     }
+    queueExpandToggleAlignment(card);
 }
 
 /**
@@ -482,6 +486,10 @@ export function scheduleHtmlViewOverflowCheck(wrapper, content, toggle) {
                 toggle.style.display = "flex";
                 toggle.hidden = false;
             }
+        }
+
+        if (card instanceof HTMLElement) {
+            queueExpandToggleAlignment(card);
         }
     };
 
@@ -572,4 +580,85 @@ function extractNoteId(card, overrideRecord) {
         }
     }
     return null;
+}
+
+function registerExpandToggleAlignment(card, wrapper, toggle) {
+    if (!(card instanceof HTMLElement) || !(wrapper instanceof HTMLElement) || !(toggle instanceof HTMLElement)) {
+        return;
+    }
+    const performAlignment = () => alignExpandTogglePosition(card, wrapper, toggle);
+    const scheduleAlignment = () => {
+        if (typeof requestAnimationFrame === "function") {
+            requestAnimationFrame(() => performAlignment());
+        } else {
+            performAlignment();
+        }
+    };
+
+    scheduleAlignment();
+
+    let resizeObserver = null;
+    if (typeof ResizeObserver !== "undefined") {
+        resizeObserver = new ResizeObserver(scheduleAlignment);
+        resizeObserver.observe(card);
+        resizeObserver.observe(wrapper);
+    }
+
+    let windowHandler = null;
+    if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+        windowHandler = () => scheduleAlignment();
+        window.addEventListener("resize", windowHandler, { passive: true });
+    }
+
+    expandToggleAlignmentDisposers.set(toggle, () => {
+        if (windowHandler && typeof window !== "undefined" && typeof window.removeEventListener === "function") {
+            window.removeEventListener("resize", windowHandler);
+        }
+        if (resizeObserver) {
+            resizeObserver.disconnect();
+        }
+        expandToggleAlignmentDisposers.delete(toggle);
+    });
+}
+
+function cleanupExpandToggleAlignment(wrapper) {
+    const toggle = wrapper.querySelector(".note-expand-toggle");
+    if (!(toggle instanceof HTMLElement)) {
+        return;
+    }
+    const disposer = expandToggleAlignmentDisposers.get(toggle);
+    if (typeof disposer === "function") {
+        disposer();
+    }
+}
+
+function queueExpandToggleAlignment(card) {
+    if (!(card instanceof HTMLElement)) {
+        return;
+    }
+    const toggle = card.querySelector(".note-expand-toggle");
+    const wrapper = card.querySelector(".note-html-view");
+    if (!(toggle instanceof HTMLElement) || !(wrapper instanceof HTMLElement)) {
+        return;
+    }
+    if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => alignExpandTogglePosition(card, wrapper, toggle));
+    } else {
+        alignExpandTogglePosition(card, wrapper, toggle);
+    }
+}
+
+function alignExpandTogglePosition(card, wrapper, toggle) {
+    if (!(card instanceof HTMLElement) || !(wrapper instanceof HTMLElement) || !(toggle instanceof HTMLElement)) {
+        return;
+    }
+    const cardRect = card.getBoundingClientRect();
+    const wrapperRect = wrapper.getBoundingClientRect();
+    if (!Number.isFinite(cardRect.width) || cardRect.width <= 0 || !Number.isFinite(wrapperRect.width) || wrapperRect.width <= 0) {
+        return;
+    }
+    const cardCenterX = cardRect.left + (cardRect.width / 2);
+    const relativeCenterX = cardCenterX - wrapperRect.left;
+    toggle.style.left = `${relativeCenterX}px`;
+    toggle.style.transform = "translateX(-50%)";
 }
