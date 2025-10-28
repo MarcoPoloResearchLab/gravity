@@ -43,6 +43,7 @@ and are grouped by the date the work landed on `master`.
 - Frontend CI workflow renamed to `frontend-tests.yml` for naming parity with backend suites (GN-95).
 - Puppeteer screenshot artifacts are now controlled via `--screenshots` harness flags with allowlists and async overrides, and README covers the workflow (GN-101).
 - HTML view expand toggle now uses a circular arrow icon that rotates to indicate collapse state (GN-200).
+- Expanded the htmlView expand toggle hit area so the entire bottom strip responds to clicks (GN-201).
 
 ### Documentation
 - Folded `MIGRATION.md` into `ARCHITECTURE.md`, clarifying event contracts, module guidance, and third-party reading expectations (GN-54).

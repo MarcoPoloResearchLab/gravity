@@ -11,7 +11,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
 - [x] [GN-200] Change the double chevron sign to an "arrow down in a circle", the way it is in ChatGPT.  to fold in the same arrow in a circle but pointing up
   - Replaced the expand toggle with an SVG circle-arrow icon, aligned the CSS/README copy, and added Puppeteer coverage that confirms the icon structure and rotation.
-- [ ] [GN-201] Ensure it works for the area where the sign is, so a rectangular area of the card limited by the height of the sign, not just the imidiate sign  
+- [x] [GN-201] Ensure it works for the area where the sign is, so a rectangular area of the card limited by the height of the sign, not just the imidiate sign  
+  - Broadened the expand toggle button to cover the full bottom strip and added a Puppeteer check that an off-center click still expands the htmlView.
 - [ ] [GN-202] Treat a doubleclick, a tap and a click the same:
 - enters editing mode on a card
 - finishes editing mode outside the text area
