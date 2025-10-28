@@ -60,12 +60,15 @@ func TestGoogleVerifierValidatesTokenUsingJWKS(t *testing.T) {
 		t.Fatalf("failed to sign token: %v", err)
 	}
 
-	verifier := NewGoogleVerifier(GoogleVerifierConfig{
+	verifier, err := NewGoogleVerifier(GoogleVerifierConfig{
 		Audience:       "test-client",
 		JWKSURL:        jwksServer.URL + "/oauth2/v3/certs",
 		AllowedIssuers: []string{"https://accounts.google.com", "accounts.google.com"},
 		HTTPClient:     jwksServer.Client(),
 	})
+	if err != nil {
+		t.Fatalf("unexpected constructor error: %v", err)
+	}
 
 	verified, err := verifier.Verify(context.Background(), signedToken)
 	if err != nil {
@@ -120,16 +123,50 @@ func TestGoogleVerifierRejectsInvalidAudience(t *testing.T) {
 		t.Fatalf("failed to sign token: %v", err)
 	}
 
-	verifier := NewGoogleVerifier(GoogleVerifierConfig{
+	verifier, err := NewGoogleVerifier(GoogleVerifierConfig{
 		Audience:       "test-client",
 		JWKSURL:        jwksServer.URL,
 		AllowedIssuers: []string{"https://accounts.google.com"},
 		HTTPClient:     jwksServer.Client(),
 	})
+	if err != nil {
+		t.Fatalf("unexpected constructor error: %v", err)
+	}
 
 	_, err = verifier.Verify(context.Background(), signedToken)
 	if err == nil {
 		t.Fatalf("expected verification to fail for mismatched audience")
+	}
+}
+
+func TestNewGoogleVerifierRequiresAudienceAndJWKS(t *testing.T) {
+	_, err := NewGoogleVerifier(GoogleVerifierConfig{
+		Audience:       "",
+		JWKSURL:        "https://example.com/jwks",
+		AllowedIssuers: []string{"https://accounts.google.com"},
+	})
+	if err == nil {
+		t.Fatalf("expected constructor error for missing audience")
+	}
+
+	_, err = NewGoogleVerifier(GoogleVerifierConfig{
+		Audience:       "test-client",
+		JWKSURL:        " ",
+		AllowedIssuers: []string{"https://accounts.google.com"},
+	})
+	if err == nil {
+		t.Fatalf("expected constructor error for missing jwks url")
+	}
+}
+
+func TestNewGoogleVerifierRejectsEmptyIssuerList(t *testing.T) {
+	_, err := NewGoogleVerifier(GoogleVerifierConfig{
+		Audience:       "test-client",
+		JWKSURL:        "https://example.com/jwks",
+		AllowedIssuers: []string{"", "   "},
+	})
+	if err == nil {
+		t.Fatalf("expected constructor error for empty issuer list")
 	}
 }
 

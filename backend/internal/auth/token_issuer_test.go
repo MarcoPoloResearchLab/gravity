@@ -9,12 +9,15 @@ import (
 )
 
 func TestTokenIssuerIssuesBackendTokens(t *testing.T) {
-	issuer := NewTokenIssuer(TokenIssuerConfig{
+	issuer, err := NewTokenIssuer(TokenIssuerConfig{
 		SigningSecret: []byte("super-secret"),
 		Issuer:        "gravity-auth",
 		Audience:      "gravity-api",
 		TokenTTL:      30 * time.Minute,
 	})
+	if err != nil {
+		t.Fatalf("unexpected constructor error: %v", err)
+	}
 
 	tokenString, expiresIn, err := issuer.IssueBackendToken(context.Background(), GoogleClaims{
 		Subject: "user-123",
@@ -49,23 +52,27 @@ func TestTokenIssuerIssuesBackendTokens(t *testing.T) {
 }
 
 func TestTokenIssuerRejectsMissingSecret(t *testing.T) {
-	issuer := NewTokenIssuer(TokenIssuerConfig{
+	_, err := NewTokenIssuer(TokenIssuerConfig{
 		SigningSecret: nil,
+		Issuer:        "gravity-auth",
+		Audience:      "gravity-api",
+		TokenTTL:      30 * time.Minute,
 	})
-
-	_, _, err := issuer.IssueBackendToken(context.Background(), GoogleClaims{Subject: "user-123"})
 	if err == nil {
-		t.Fatalf("expected error when signing secret missing")
+		t.Fatalf("expected constructor error for missing secret")
 	}
 }
 
 func TestTokenIssuerValidatesIssuedTokens(t *testing.T) {
-	issuer := NewTokenIssuer(TokenIssuerConfig{
+	issuer, err := NewTokenIssuer(TokenIssuerConfig{
 		SigningSecret: []byte("another-secret"),
 		Issuer:        "gravity-auth",
 		Audience:      "gravity-api",
 		TokenTTL:      15 * time.Minute,
 	})
+	if err != nil {
+		t.Fatalf("unexpected constructor error: %v", err)
+	}
 
 	tokenString, _, err := issuer.IssueBackendToken(context.Background(), GoogleClaims{Subject: "user-321"})
 	if err != nil {
@@ -83,5 +90,39 @@ func TestTokenIssuerValidatesIssuedTokens(t *testing.T) {
 	_, err = issuer.ValidateToken("invalid.token")
 	if err == nil {
 		t.Fatalf("expected validation to fail for malformed token")
+	}
+}
+
+func TestNewTokenIssuerRequiresIssuerAndAudience(t *testing.T) {
+	_, err := NewTokenIssuer(TokenIssuerConfig{
+		SigningSecret: []byte("secret"),
+		Issuer:        "",
+		Audience:      "gravity-api",
+		TokenTTL:      5 * time.Minute,
+	})
+	if err == nil {
+		t.Fatalf("expected error for missing issuer")
+	}
+
+	_, err = NewTokenIssuer(TokenIssuerConfig{
+		SigningSecret: []byte("secret"),
+		Issuer:        "gravity-auth",
+		Audience:      " ",
+		TokenTTL:      5 * time.Minute,
+	})
+	if err == nil {
+		t.Fatalf("expected error for missing audience")
+	}
+}
+
+func TestNewTokenIssuerRequiresPositiveTTL(t *testing.T) {
+	_, err := NewTokenIssuer(TokenIssuerConfig{
+		SigningSecret: []byte("secret"),
+		Issuer:        "gravity-auth",
+		Audience:      "gravity-api",
+		TokenTTL:      0,
+	})
+	if err == nil {
+		t.Fatalf("expected error for non-positive ttl")
 	}
 }

@@ -64,8 +64,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - `NewService` now returns `(*Service, error)` and fails fast when database or ID provider dependencies are missing, main/integration wiring passes an explicit UUID provider, and new tests cover both constructor failures and edge validation without relying on the live database.
 - [x] [GN-406] Wrap notes service errors with operation codes
   - Added `ServiceError` with stable codes (e.g., `notes.apply_changes.missing_database`), wrapped all service exits, surfaced codes in HTTP responses/logs, and extended unit plus router tests to assert the propagation.
-- [ ] [GN-407] Add smart constructors for token issuer and Google verifier
-  - Introduce validated constructors in `backend/internal/auth/token_issuer.go` and `backend/internal/auth/google_verifier.go` that enforce secret, issuer, audience, JWKS, and TTL invariants, update call sites, and extend tests to verify constructor failures.
+- [x] [GN-407] Add smart constructors for token issuer and Google verifier
+  - `NewTokenIssuer`/`NewGoogleVerifier` now return errors when configuration is incomplete (secret/issuer/audience/ttl/jwks/issuers), application wiring handles the results, and new unit/integration tests assert constructor failures.
 - [ ] [GN-408] Standardize typed domain errors across backend services
   - Create reusable error types (such as `ErrInvalidChange`, `ErrInvalidTokenConfig`) under module-level packages, ensure handlers map them to stable API responses, and back the mapping with table-driven tests.
 - [ ] [GN-409] Add backend table-driven tests for validation boundaries
