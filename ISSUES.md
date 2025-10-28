@@ -23,8 +23,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Introduced a header full-screen toggle with the requested icon treatment, Alpine wiring, and Puppeteer coverage that confirms enter/exit behavior.
 - [x] [GN-205] Have built-in browser grammar check work. There is no grammar check working in the markdown mode now, and there should be.
   - Switched EasyMDE to the contenteditable input style, kept native spellcheck hints, and added regression coverage that verifies browser grammar tooling can see the editor surface.
-- [x] [GN-206] Develop a system that reloads all JS/CSS/HTML when a new version is released. Today, we are hosted on GitHub and the new version is probably the new code. Find a way to detect when the code changed and reload it if a browser holds an older version of code.
-  - Added a build manifest plus a polling watcher that raises a toast and reloads the page once a newer version is detected, with unit coverage for the reload trigger.
+- [ ] [GN-206] Develop a system that reloads all JS/CSS/HTML when a new version is released. Today, we are hosted on GitHub and the new version is probably the new code. Find a way to detect when the code changed and reload it if a browser holds an older version of code.
 
 
 ## BugFixes (300–399)
@@ -50,6 +49,10 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Treats the control column as a non-edit surface so control clicks finalize editing without re-opening markdown, backed by a Puppeteer regression.
 
 ## Maintenance (400–499)
+
+- [ ] [GN-400] Update the documentation @README and focus on the usefullness to the user. Move the technical details to @ARCHITECTURE.md
+- [ ] [GN-401] Ensure architrecture matches the reality of code. Update @ARCHITECTURE.md when needed
+- [ ] [GN-402] Review @POLICY.md and verify what code areas need improvements and refactoring
 
 ## Planning (do not work on these, not ready)
 
