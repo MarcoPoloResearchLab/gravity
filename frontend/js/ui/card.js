@@ -67,6 +67,13 @@ import { syncStoreFromDom } from "./storeSync.js";
 import { showSaveFeedback } from "./saveFeedback.js";
 import { togglePinnedNote, clearPinnedNoteIfMatches } from "./notesState.js";
 import { suppressTopEditorAutofocus } from "./focusManager.js";
+import {
+    initializePointerTracking,
+    shouldKeepEditingAfterBlur,
+    shouldIgnoreCardPointerTarget,
+    isPointerWithinInlineEditorSurface,
+    clearLastPointerDownTarget
+} from "./card/pointerTracking.js";
 
 const DIRECTION_PREVIOUS = -1;
 const DIRECTION_NEXT = 1;
@@ -85,114 +92,6 @@ const LINE_ENDING_NORMALIZE_PATTERN = /\r\n/g;
 const TRAILING_WHITESPACE_PATTERN = /[ \t]+$/;
 const VIEWPORT_ANCHOR_MARGIN_PX = 24;
 const VIEWPORT_STABILITY_ATTEMPTS = 12;
-
-let pointerTrackingInitialized = false;
-let lastPointerDownTarget = null;
-const NON_EDITABLE_CARD_SURFACE_SELECTORS = Object.freeze([
-    ".actions",
-    ".card-controls",
-    ".meta-chips",
-    ".note-expand-toggle"
-]);
-const INLINE_EDITOR_SURFACE_SELECTORS = Object.freeze([
-    ".markdown-editor",
-    ".EasyMDEContainer",
-    ".CodeMirror"
-]);
-
-function initializePointerTracking() {
-    if (pointerTrackingInitialized || typeof document === "undefined") {
-        return;
-    }
-    document.addEventListener("pointerdown", (event) => {
-        lastPointerDownTarget = event && event.target instanceof Node ? event.target : null;
-    }, true);
-    document.addEventListener("mousedown", (event) => {
-        if (event && event.target instanceof Node) {
-            lastPointerDownTarget = event.target;
-        }
-    }, true);
-    pointerTrackingInitialized = true;
-}
-
-function shouldKeepEditingAfterBlur(card) {
-    if (!(card instanceof HTMLElement) || typeof document === "undefined") {
-        return false;
-    }
-    if (!card.isConnected || !card.classList.contains("editing-in-place")) {
-        return false;
-    }
-    const activeElement = document.activeElement;
-    if (activeElement instanceof HTMLElement && card.contains(activeElement)) {
-        return true;
-    }
-    if (lastPointerDownTarget instanceof Node && card.contains(lastPointerDownTarget)) {
-        return isPointerWithinInlineEditorSurface(card, lastPointerDownTarget);
-    }
-    return false;
-}
-
-function shouldIgnoreCardPointerTarget(target) {
-    if (!(target instanceof HTMLElement)) {
-        return false;
-    }
-    for (const selector of NON_EDITABLE_CARD_SURFACE_SELECTORS) {
-        if (target.closest(selector)) {
-            return true;
-        }
-    }
-    if (target.closest(".note-task-checkbox")) {
-        return true;
-    }
-    return false;
-}
-
-/**
- * Determine whether the pointer target resides within the inline editor surface.
- * @param {HTMLElement} card
- * @param {Node} pointerTarget
- * @returns {boolean}
- */
-function isPointerWithinInlineEditorSurface(card, pointerTarget) {
-    if (!(card instanceof HTMLElement) || !(pointerTarget instanceof Node)) {
-        return false;
-    }
-    if (!card.contains(pointerTarget)) {
-        return false;
-    }
-    const elementTarget = pointerTarget instanceof Element
-        ? pointerTarget
-        : pointerTarget.parentElement;
-    if (!(elementTarget instanceof Element)) {
-        return false;
-    }
-    for (const selector of NON_EDITABLE_CARD_SURFACE_SELECTORS) {
-        if (elementTarget.closest(selector)) {
-            return false;
-        }
-    }
-    const inlineHost = elementTarget.closest(".markdown-editor-host");
-    if (inlineHost !== card) {
-        return false;
-    }
-    for (const selector of INLINE_EDITOR_SURFACE_SELECTORS) {
-        const surface = elementTarget.closest(selector);
-        if (!(surface instanceof HTMLElement)) {
-            continue;
-        }
-        const host = surface.closest(".markdown-editor-host");
-        if (host === card) {
-            if (selector === ".EasyMDEContainer") {
-                const containedCodeMirror = surface.querySelector(".CodeMirror");
-                if (containedCodeMirror instanceof HTMLElement && !containedCodeMirror.contains(elementTarget)) {
-                    continue;
-                }
-            }
-            return true;
-        }
-    }
-    return false;
-}
 
 function calculateHtmlViewTextOffset(htmlViewElement, event) {
     if (!(htmlViewElement instanceof HTMLElement)) {
@@ -1351,7 +1250,7 @@ export function renderCard(record, options = {}) {
         }
         window.requestAnimationFrame(() => {
             const maintainEditing = shouldKeepEditingAfterBlur(card);
-            lastPointerDownTarget = null;
+            clearLastPointerDownTarget();
             if (maintainEditing) {
                 if (editorHost.getMode() !== MARKDOWN_MODE_EDIT) {
                     editorHost.setMode(MARKDOWN_MODE_EDIT);
