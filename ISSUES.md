@@ -27,7 +27,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Eliminated delayed height reapplication and added regression coverage so cards release their edit lock without leaving empty gaps (`frontend/js/ui/card.js`, `frontend/tests/editor.inline.puppeteer.test.js`).
 - [x] [GN-303] The synchronization doesn't refresh. I just added a note on another device then logged in a computer where a session was already running and got no note there. When I opened the console I saw a lof of message about expired authentication. We shall look into how do we keep the account logged in.
   - Refreshes backend tokens automatically when sync detects expiration, persists the updated credentials, and reconnects realtime streaming so cross-device edits land immediately.
-- [ ] [GN-304] Clicking on a note starts it for editing (expected behavior) and places the cursor in the right place but it yanks the note to the top (unexpected behavior).
+- [x] [GN-304] Clicking on a note starts it for editing (expected behavior) and places the cursor in the right place but it yanks the note to the top (unexpected behavior).
+  - Centered inline edit entry and suppressed htmlView scroll restoration so cards stay in view, plus updated regression coverage to keep cards comfortable on finalize.
 	- Solutions:
 		- Center the whole scroll around the active card. Introduce a notion of a card being active, if not already. Consider active being last selected, e.g. the card stays immobile but the feed around it moves. So a card that finished editing doesnt move but all other cards moved underneath it. 
     - Effectively clicking on a card freezes it on the screen after moving it to the vewport. So if I click on a large renderedHTML view, I expect to get the rendered markdown view with the cursor in the place of my click, and no movement as the point of click was clearly in the view when I clicked on it
