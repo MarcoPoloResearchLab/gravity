@@ -15,6 +15,7 @@ and are grouped by the date the work landed on `master`.
 - Html view interactions now reserve the chevron toggle for expansion while single clicks anywhere else enter inline edit mode (GN-109).
 - Inline editor now wraps selected text with matching backtick fences and escalates when the selection already contains backticks, covering GN-106 with new regression tests.
 - Markdown editors re-enable browser grammar hints by wiring spellcheck/autocorrect attributes into EasyMDE inputs, verified by new integration coverage (GN-108).
+- Markdown editor now uses a contenteditable surface so native browser grammar and spellcheck tooling works again, covered by a Puppeteer regression (GN-205).
 - Inline editing now completes when clicking card chrome outside the markdown surface, while double-click flows stay in edit mode; covered by a Puppeteer regression (GN-105).
 - Note HTML view expansion now persists until manually collapsed, and inline editing preserves the expanded height envelope (GN-71).
 - Realtime multi-session regression suite now spies on `EventSource` connections to confirm SSE propagation and unblock GN-83.
