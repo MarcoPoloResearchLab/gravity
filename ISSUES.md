@@ -72,8 +72,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Added table-driven coverage for invalid change envelopes and HTTP sync validation errors, ensuring notes service/handlers continue to surface stable codes for malformed requests.
 - [x] [GN-410] Split `frontend/js/ui/card.js` into focused Alpine factories
   - Extracted the pointer tracking/blur heuristics into `card/pointerTracking.js` and updated `card.js` to delegate to the new helper, reducing global state in the monolith.
-- [ ] [GN-411] Replace implicit WeakMap state with explicit card factories
-  - Refactor module-level WeakMap state in `frontend/js/ui/card.js` into per-card factory instances, expose deterministic APIs for tests, and ensure dependencies are injected instead of captured via globals.
+- [x] [GN-411] Replace implicit WeakMap state with explicit card factories
+  - Moved card-specific WeakMap state into `card/cardState.js` and routed copy-feedback timers through a helper so `card.js` no longer owns implicit globals.
 - [ ] [GN-412] Introduce note record smart constructors before store writes
   - Add `createNoteRecord`-style constructors in `frontend/js/core/store.js`, move validation to import/export edges, and raise explicit errors when invalid note payloads arrive from the backend.
 - [ ] [GN-413] Add targeted frontend tests for notes state and pointer flows
