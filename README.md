@@ -45,7 +45,7 @@ with bounded HTML views, and every note edits inline—no modal overlays or cont
 4. **Edit existing notes:** Click anywhere in a rendered note to switch it into Markdown mode inline. The grid stays in
    place while you edit, then re-renders the HTML view once you finish.
 5. **Skim with HTML views:** Each card shows a deterministic snippet and fade mask; notes with code call it out with a
-   `code` badge, and overflowing notes expose a rotated double-chevron toggle to expand the full HTML view in place.
+   `code` badge, and overflowing notes expose a circular arrow toggle to expand the full HTML view in place.
 6. **Organise:** Reorder, merge, or delete notes with the familiar toolbar actions along the right edge. The copy button
    still mirrors either Markdown or sanitized HTML (including attachment metadata) depending on the current mode.
 7. **Import / Export:** Click the profile avatar to open the stacked account menu—export and import live alongside the

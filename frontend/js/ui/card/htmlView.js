@@ -32,6 +32,7 @@ import { syncStoreFromDom } from "../storeSync.js";
 // (delete). No refresh helpers remain by design.
 const htmlViewBubbleTimers = new WeakMap();
 const htmlViewFocusTargets = new WeakMap();
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
 /**
  * Queue an HTML view bubble after a checkbox interaction.
@@ -164,10 +165,12 @@ function insertHtmlViewWrapper(card, wrapper) {
 }
 
 function createExpandToggle(card, wrapper) {
-    const toggle = createElement("button", "note-expand-toggle", "»");
+    const toggle = createElement("button", "note-expand-toggle");
     toggle.type = "button";
     toggle.setAttribute("aria-expanded", "false");
     toggle.setAttribute("aria-label", LABEL_EXPAND_NOTE);
+    const icon = buildExpandToggleIcon();
+    toggle.appendChild(icon);
     toggle.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -175,6 +178,38 @@ function createExpandToggle(card, wrapper) {
         setHtmlViewExpanded(card, !isExpanded);
     });
     return toggle;
+}
+
+function buildExpandToggleIcon() {
+    const icon = createSvgElement("svg");
+    icon.classList.add("note-expand-toggle__icon");
+    icon.setAttribute("viewBox", "0 0 24 24");
+    icon.setAttribute("focusable", "false");
+    icon.setAttribute("aria-hidden", "true");
+
+    const ring = createSvgElement("circle");
+    ring.classList.add("note-expand-toggle__ring");
+    ring.setAttribute("data-icon-role", "ring");
+    ring.setAttribute("cx", "12");
+    ring.setAttribute("cy", "12");
+    ring.setAttribute("r", "10");
+
+    const arrow = createSvgElement("path");
+    arrow.classList.add("note-expand-toggle__arrow");
+    arrow.setAttribute("data-icon-role", "arrow");
+    arrow.setAttribute("d", "M12 8v6m0 0l-3-3m3 3l3-3");
+
+    icon.appendChild(ring);
+    icon.appendChild(arrow);
+    return icon;
+}
+
+/**
+ * @param {string} tagName
+ * @returns {SVGElement}
+ */
+function createSvgElement(tagName) {
+    return /** @type {SVGElement} */ (document.createElementNS(SVG_NAMESPACE, tagName));
 }
 
 /**

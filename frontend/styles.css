@@ -301,29 +301,60 @@ body::-webkit-scrollbar {
     position: absolute;
     left: 50%;
     bottom: 0.35rem;
-    transform: translateX(-50%) rotate(90deg);
+    transform: translateX(-50%);
     background: transparent;
     border: none;
-    color: #d8e4ff;
     cursor: pointer;
-    width: 1.8rem;
-    height: 1.8rem;
-    font-size: 1.05rem;
-    line-height: 1;
-    padding: 0.15rem 0;
+    width: 2.1rem;
+    height: 2.1rem;
+    padding: 0;
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 2;
-    text-shadow: 0 0 6px rgba(10, 12, 18, 0.85);
-    transition: color 0.12s ease, transform 0.18s ease;
 }
 
-.note-expand-toggle:hover {
-    color: #ffffff;
+.note-expand-toggle__icon {
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 50%;
+    background-color: rgba(14, 18, 30, 0.9);
+    box-shadow: 0 0 6px rgba(10, 12, 18, 0.85);
+    transition: background-color 0.18s ease;
+    display: block;
 }
 
-.note-expand-toggle[aria-expanded="true"] { transform: translateX(-50%) rotate(-90deg); }
+.note-expand-toggle__ring {
+    fill: none;
+    stroke: #d8e4ff;
+    stroke-width: 1.4;
+    opacity: 0.88;
+    transition: stroke 0.12s ease, opacity 0.12s ease;
+}
+
+.note-expand-toggle__arrow {
+    fill: none;
+    stroke: #d8e4ff;
+    stroke-width: 1.9;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transform-origin: 12px 12px;
+    transition: transform 0.18s ease, stroke 0.12s ease;
+}
+
+.note-expand-toggle:hover .note-expand-toggle__icon {
+    background-color: rgba(21, 27, 43, 0.95);
+}
+
+.note-expand-toggle:hover .note-expand-toggle__ring,
+.note-expand-toggle:hover .note-expand-toggle__arrow {
+    stroke: #ffffff;
+    opacity: 1;
+}
+
+.note-expand-toggle[aria-expanded="true"] .note-expand-toggle__arrow {
+    transform: rotate(180deg);
+}
 
 .note-task-checkbox {
     margin-right: 0.4rem;
