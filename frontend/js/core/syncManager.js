@@ -17,6 +17,8 @@ import { EVENT_SYNC_SNAPSHOT_APPLIED } from "../constants.js";
  * @typedef {{ authenticated: boolean, queueFlushed: boolean, snapshotApplied: boolean, accessToken: string|null, accessTokenExpiresAtMs: number|null }} SignInResult
  */
 
+const BACKEND_TOKEN_EXPIRY_SKEW_MS = 1000;
+
 /**
  * Create a synchronization manager responsible for coordinating backend persistence.
  * @param {{
@@ -25,7 +27,8 @@ import { EVENT_SYNC_SNAPSHOT_APPLIED } from "../constants.js";
  *   queueStore?: ReturnType<typeof createSyncQueue>,
  *   clock?: () => Date,
  *   randomUUID?: () => string,
- *   eventTarget?: EventTarget|null
+ *   eventTarget?: EventTarget|null,
+ *   onBackendTokenRefreshed?: (token: { accessToken: string, expiresAtMs: number }) => void
  * }} [options]
  */
 export function createSyncManager(options = {}) {
@@ -41,15 +44,21 @@ export function createSyncManager(options = {}) {
         ? globalThis.document
         : null;
     const syncEventTarget = options.eventTarget ?? defaultEventTarget;
+    const backendTokenCallback = typeof options.onBackendTokenRefreshed === "function"
+        ? options.onBackendTokenRefreshed
+        : null;
 
-    /** @type {{ userId: string|null, backendToken: { accessToken: string, expiresAtMs: number }|null, metadata: Record<string, NoteMetadata>, queue: PendingOperation[], flushing: boolean }} */
+    /** @type {{ userId: string|null, backendToken: { accessToken: string, expiresAtMs: number }|null, metadata: Record<string, NoteMetadata>, queue: PendingOperation[], flushing: boolean, googleCredential: string|null }} */
     const state = {
         userId: null,
         backendToken: null,
         metadata: {},
         queue: [],
-        flushing: false
+        flushing: false,
+        googleCredential: null
     };
+    /** @type {Promise<{ accessToken: string, expiresAtMs: number }|null>|null} */
+    let pendingTokenRefresh = null;
 
     return Object.freeze({
         /**
@@ -149,16 +158,23 @@ export function createSyncManager(options = {}) {
                 };
             }
 
+            const credential = typeof params.credential === "string" && params.credential.length > 0
+                ? params.credential
+                : null;
+            state.googleCredential = credential;
+
             if (!backendToken) {
-                if (typeof params.credential !== "string" || params.credential.length === 0) {
+                if (!credential) {
                     logging.error("Missing credential for backend token exchange");
+                    state.googleCredential = null;
                     return { authenticated: false, queueFlushed: false, snapshotApplied: false, accessToken: null, accessTokenExpiresAtMs: null };
                 }
                 let exchanged;
                 try {
-                    exchanged = await backendClient.exchangeGoogleCredential({ credential: params.credential });
+                    exchanged = await backendClient.exchangeGoogleCredential({ credential });
                 } catch (error) {
                     logging.error(error);
+                    state.googleCredential = null;
                     return { authenticated: false, queueFlushed: false, snapshotApplied: false, accessToken: null, accessTokenExpiresAtMs: null };
                 }
                 backendToken = {
@@ -171,6 +187,7 @@ export function createSyncManager(options = {}) {
             state.metadata = loadedMetadata;
             state.queue = loadedQueue;
             state.backendToken = backendToken;
+            notifyBackendTokenRefreshed(state.backendToken);
 
             seedInitialOperations();
             persistState();
@@ -204,6 +221,8 @@ export function createSyncManager(options = {}) {
             state.metadata = {};
             state.queue = [];
             state.flushing = false;
+            state.googleCredential = null;
+            pendingTokenRefresh = null;
         },
 
         /**
@@ -298,12 +317,10 @@ export function createSyncManager(options = {}) {
         if (state.queue.length === 0) {
             return true;
         }
-        if (state.backendToken.expiresAtMs <= clock().getTime()) {
-            state.backendToken = null;
-            persistState();
+        const ensuredToken = await ensureBackendToken();
+        if (!ensuredToken) {
             return false;
         }
-
         state.flushing = true;
         try {
             const pendingOperations = state.queue.slice();
@@ -312,7 +329,7 @@ export function createSyncManager(options = {}) {
                 return true;
             }
             const response = await backendClient.syncOperations({
-                accessToken: state.backendToken.accessToken,
+                accessToken: ensuredToken.accessToken,
                 operations
             });
             applySyncResults(response?.results ?? [], operations);
@@ -332,9 +349,13 @@ export function createSyncManager(options = {}) {
         if (!state.userId || !state.backendToken) {
             return false;
         }
+        const ensuredToken = await ensureBackendToken();
+        if (!ensuredToken) {
+            return false;
+        }
         try {
             const snapshot = await backendClient.fetchSnapshot({
-                accessToken: state.backendToken.accessToken
+                accessToken: ensuredToken.accessToken
             });
             applySnapshot(snapshot?.notes ?? []);
             persistState();
@@ -496,6 +517,67 @@ export function createSyncManager(options = {}) {
             } catch (fallbackError) {
                 logging.error(fallbackError);
             }
+        }
+    }
+
+    /**
+     * Ensure a valid backend token is available, refreshing it when expired.
+     * @returns {Promise<{ accessToken: string, expiresAtMs: number }|null>}
+     */
+    async function ensureBackendToken() {
+        if (!state.userId) {
+            return null;
+        }
+        const activeToken = state.backendToken;
+        const nowMs = clock().getTime();
+        if (activeToken && activeToken.expiresAtMs - BACKEND_TOKEN_EXPIRY_SKEW_MS > nowMs) {
+            return activeToken;
+        }
+        if (pendingTokenRefresh) {
+            return pendingTokenRefresh;
+        }
+        const credential = state.googleCredential;
+        if (!credential) {
+            state.backendToken = null;
+            persistState();
+            return null;
+        }
+        pendingTokenRefresh = (async () => {
+            try {
+                const exchanged = await backendClient.exchangeGoogleCredential({ credential });
+                const refreshedToken = {
+                    accessToken: exchanged.accessToken,
+                    expiresAtMs: clock().getTime() + exchanged.expiresIn * 1000
+                };
+                state.backendToken = refreshedToken;
+                persistState();
+                notifyBackendTokenRefreshed(refreshedToken);
+                return refreshedToken;
+            } catch (error) {
+                logging.error(error);
+                state.backendToken = null;
+                persistState();
+                return null;
+            } finally {
+                pendingTokenRefresh = null;
+            }
+        })();
+        return pendingTokenRefresh;
+    }
+
+    /**
+     * Notify listeners that a backend token has been refreshed.
+     * @param {{ accessToken: string, expiresAtMs: number }|null} token
+     * @returns {void}
+     */
+    function notifyBackendTokenRefreshed(token) {
+        if (!backendTokenCallback || !token) {
+            return;
+        }
+        try {
+            backendTokenCallback({ accessToken: token.accessToken, expiresAtMs: token.expiresAtMs });
+        } catch (error) {
+            logging.error(error);
         }
     }
 }

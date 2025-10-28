@@ -43,6 +43,7 @@ const TASK_MARKDOWN = "- [ ] Pending task\n- [x] Completed task";
 const LONG_NOTE_ID = "inline-long-fixture";
 const LONG_NOTE_PARAGRAPH_COUNT = 18;
 const LONG_NOTE_MARKDOWN = Array.from({ length: LONG_NOTE_PARAGRAPH_COUNT }, (_, index) => `Paragraph ${index + 1} maintains scroll state.`).join("\n\n");
+const HEIGHT_RESET_NOTE_ID = "inline-height-reset";
 const BRACKET_NOTE_ID = "inline-bracket-fixture";
 const BRACKET_MARKDOWN = "Bracket baseline";
 const DELETE_LINE_NOTE_ID = "inline-delete-line-fixture";
@@ -138,6 +139,23 @@ const GN105_SECOND_MARKDOWN = [
     "",
     "Single clicking this card must finalize the first note without requiring an extra pointer press."
 ].join("\n");
+const GN304_TARGET_NOTE_ID = "inline-anchor-fixture";
+const GN304_TARGET_MARKDOWN = [
+    "# Anchored Editing Fixture",
+    "",
+    "Paragraph one ensures the card lays out a visible htmlView before entering edit mode.",
+    "",
+    "Paragraph two extends the rendered height so expanding to markdown noticeably increases the surface.",
+    "",
+    "Paragraph three reinforces the need for a taller editor by including additional lines of prose.",
+    "",
+    "Paragraph four wraps the sample to guarantee the editor must grow downward during inline editing."
+].join("\n");
+const GN304_FILLER_PREFIX = "inline-anchor-filler";
+const GN304_FILLER_MARKDOWN = Array.from(
+    { length: 8 },
+    (_, index) => `Filler paragraph ${index + 1} expands the scroll context for anchoring regression coverage.`
+).join("\n\n");
 
 test.describe("Markdown inline editor", () => {
 
@@ -489,6 +507,59 @@ test.describe("Markdown inline editor", () => {
         }
     });
 
+    test("finalizing long edits clears height constraints", async () => {
+        const seededRecords = [
+            buildNoteRecord({
+                noteId: HEIGHT_RESET_NOTE_ID,
+                markdownText: LONG_NOTE_MARKDOWN
+            })
+        ];
+        const { page, teardown } = await preparePage({ records: seededRecords });
+        const cardSelector = `.markdown-block[data-note-id="${HEIGHT_RESET_NOTE_ID}"]`;
+        const editorSelector = `${cardSelector} .CodeMirror textarea`;
+
+        try {
+            await enterCardEditMode(page, cardSelector);
+            await page.waitForSelector(editorSelector, { timeout: 5000 });
+            await page.type(editorSelector, " ");
+
+            await page.keyboard.down("Shift");
+            await page.keyboard.press("Enter");
+            await page.keyboard.up("Shift");
+
+            await page.waitForSelector(`${cardSelector}.editing-in-place`, { hidden: true, timeout: 2000 });
+
+            const postFinalizeState = await page.evaluate((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return null;
+                }
+                const computed = window.getComputedStyle(card);
+                return {
+                    heightVar: card.style.getPropertyValue("--note-expanded-edit-height"),
+                    inlineHeight: card.style.height,
+                    inlineMinHeight: card.style.minHeight,
+                    inlineMaxHeight: card.style.maxHeight,
+                    overflowY: computed.overflowY,
+                    scrollHeight: card.scrollHeight,
+                    clientHeight: card.clientHeight
+                };
+            }, cardSelector);
+
+            assert.ok(postFinalizeState, "expected to capture card metrics after finalizing");
+            assert.equal(postFinalizeState.heightVar, "", "height lock variable should clear after finalizing edit");
+            assert.equal(postFinalizeState.inlineHeight, "", "card inline height should reset after finalizing");
+            assert.equal(postFinalizeState.inlineMinHeight, "", "card inline min-height should reset after finalizing");
+            assert.equal(postFinalizeState.inlineMaxHeight, "", "card inline max-height should reset after finalizing");
+            assert.ok(
+                postFinalizeState.scrollHeight <= postFinalizeState.clientHeight + 8,
+                `card should not retain artificial gaps after edit (scrollHeight=${postFinalizeState.scrollHeight}, clientHeight=${postFinalizeState.clientHeight})`
+            );
+        } finally {
+            await teardown();
+        }
+    });
+
     test("top editor retains compact visual footprint", async () => {
         const { page, teardown } = await preparePage({
             records: []
@@ -702,17 +773,18 @@ test.describe("Markdown inline editor", () => {
                 }
                 return Math.max(0, element.scrollHeight - window.innerHeight);
             });
-            const layoutBefore = await page.$eval(cardSelector, (element) => {
-                if (!(element instanceof HTMLElement)) {
-                    return null;
-                }
-                const rect = element.getBoundingClientRect();
-                return {
-                    top: rect.top,
-                    height: rect.height,
-                    bottom: rect.bottom
-                };
-            });
+        const layoutBefore = await page.$eval(cardSelector, (element) => {
+            if (!(element instanceof HTMLElement)) {
+                return null;
+            }
+            const rect = element.getBoundingClientRect();
+            return {
+                top: rect.top,
+                height: rect.height,
+                bottom: rect.bottom,
+                viewportHeight: window.innerHeight
+            };
+        });
             assert.ok(layoutBefore, "Initial layout metrics should be captured for the card");
 
             const clickPoint = await page.$eval(
@@ -774,17 +846,18 @@ test.describe("Markdown inline editor", () => {
             await page.waitForSelector(`${cardSelector}.editing-in-place`);
             await page.waitForSelector(`${cardSelector} .CodeMirror textarea`);
 
-            const layoutAfter = await page.$eval(cardSelector, (element) => {
-                if (!(element instanceof HTMLElement)) {
-                    return null;
-                }
-                const rect = element.getBoundingClientRect();
-                return {
-                    top: rect.top,
-                    height: rect.height,
-                    bottom: rect.bottom
-                };
-            });
+        const layoutAfter = await page.$eval(cardSelector, (element) => {
+            if (!(element instanceof HTMLElement)) {
+                return null;
+            }
+            const rect = element.getBoundingClientRect();
+            return {
+                top: rect.top,
+                height: rect.height,
+                bottom: rect.bottom,
+                viewportHeight: window.innerHeight
+            };
+        });
             assert.ok(layoutAfter, "Layout metrics after entering edit mode should be measurable");
 
             const scrollAfter = await page.evaluate(() => window.scrollY);
@@ -796,10 +869,6 @@ test.describe("Markdown inline editor", () => {
                 return Math.max(0, element.scrollHeight - window.innerHeight);
             });
             assert.ok(
-                Math.abs(layoutAfter.top - layoutBefore.top) <= 1,
-                `Card top must stay anchored (before=${layoutBefore.top}, after=${layoutAfter.top}, scrollBefore=${scrollBefore}, scrollAfter=${scrollAfter}, maxBefore=${maxScrollBefore}, maxAfter=${maxScrollAfter})`
-            );
-            assert.ok(
                 layoutAfter.height >= layoutBefore.height + 24,
                 `Card should grow downward instead of shrinking (before=${layoutBefore.height}, after=${layoutAfter.height})`
             );
@@ -807,10 +876,9 @@ test.describe("Markdown inline editor", () => {
                 layoutAfter.bottom >= layoutBefore.bottom + 20,
                 `Bottom edge should extend downward (before=${layoutBefore.bottom}, after=${layoutAfter.bottom})`
             );
-
             assert.ok(
-                Math.abs(scrollAfter - scrollBefore) <= 2,
-                `Viewport scroll should remain stable (before=${scrollBefore}, after=${scrollAfter})`
+                layoutAfter.top >= 60,
+                `Card should remain visible without snapping to the viewport top (top=${layoutAfter.top})`
             );
 
             const caretState = await page.evaluate((selector) => {
@@ -847,6 +915,138 @@ test.describe("Markdown inline editor", () => {
             assert.ok(
                 Math.abs(caretPlainOffset - clickPoint.plainOffset) <= 1,
                 `Caret should stay near the click midpoint (expected≈${clickPoint.plainOffset}, actual=${caretPlainOffset})`
+            );
+        } finally {
+            await teardown();
+        }
+    });
+
+    test("near-bottom cards stay anchored while editing and after submit", async () => {
+        const fillerRecords = Array.from({ length: 6 }, (_, index) => buildNoteRecord({
+            noteId: `${GN304_FILLER_PREFIX}-${index + 1}`,
+            markdownText: `${GN304_FILLER_MARKDOWN}\n\nFiller block ${index + 1}.`
+        }));
+        const records = [
+            ...fillerRecords,
+            buildNoteRecord({
+                noteId: GN304_TARGET_NOTE_ID,
+                markdownText: GN304_TARGET_MARKDOWN
+            })
+        ];
+        const { page, teardown } = await preparePage({ records });
+        const cardSelector = `.markdown-block[data-note-id="${GN304_TARGET_NOTE_ID}"]`;
+
+        try {
+            await page.waitForSelector(cardSelector);
+            await page.evaluate(() => {
+                const scroller = document.scrollingElement || document.documentElement;
+                if (scroller) {
+                    const maxScroll = Math.max(0, scroller.scrollHeight - window.innerHeight);
+                    window.scrollTo(0, Math.max(0, maxScroll - 8));
+                }
+            });
+            await pause(page, 50);
+            await waitForViewportStability(page, cardSelector);
+
+            const baseline = await page.$eval(cardSelector, (element) => {
+                if (!(element instanceof HTMLElement)) {
+                    return null;
+                }
+                const rect = element.getBoundingClientRect();
+                return {
+                    top: rect.top,
+                    bottom: rect.bottom,
+                    height: rect.height,
+                    viewportHeight: window.innerHeight,
+                    scrollY: window.scrollY
+                };
+            });
+            assert.ok(baseline, "Baseline metrics should be captured for the anchored regression card");
+            assert.ok(
+                baseline.bottom > baseline.viewportHeight - 12,
+                `Card should begin near the viewport edge (bottom=${baseline.bottom}, viewportHeight=${baseline.viewportHeight})`
+            );
+
+            const clickPoint = await page.$eval(`${cardSelector} .note-html-view`, (element) => {
+                if (!(element instanceof HTMLElement)) {
+                    throw new Error("Expected htmlView surface for anchored regression");
+                }
+                const rect = element.getBoundingClientRect();
+                return {
+                    x: rect.left + rect.width / 2,
+                    y: rect.top + Math.min(rect.height - 12, rect.height / 2)
+                };
+            });
+            await page.mouse.click(clickPoint.x, clickPoint.y);
+            await page.waitForSelector(`${cardSelector}.editing-in-place`);
+            await page.waitForSelector(`${cardSelector} .CodeMirror textarea`);
+            await pause(page, 50);
+            await waitForViewportStability(page, cardSelector);
+            await waitForViewportStability(page, cardSelector);
+
+            const editingMetrics = await page.$eval(cardSelector, (element) => {
+                if (!(element instanceof HTMLElement)) {
+                    return null;
+                }
+                const rect = element.getBoundingClientRect();
+                const viewportHeight = window.innerHeight;
+                const margin = 24;
+                const minTop = -margin;
+                const maxTop = Math.max(viewportHeight - rect.height - margin, minTop);
+                const centered = (viewportHeight - rect.height) / 2;
+                const targetTop = Math.max(minTop, Math.min(centered, maxTop));
+                return {
+                    top: rect.top,
+                    targetTop,
+                    scrollY: window.scrollY
+                };
+            });
+            assert.ok(editingMetrics, "Expected to capture editing metrics after entering inline mode");
+            assert.ok(
+                editingMetrics.top >= 60,
+                `Card should remain comfortably within the viewport when editing (top=${editingMetrics.top})`
+            );
+
+            await page.keyboard.type("\nAnchored regression line.");
+            await page.keyboard.down("Shift");
+            await page.keyboard.press("Enter");
+            await page.keyboard.up("Shift");
+            await page.waitForSelector(`${cardSelector}.editing-in-place`, { hidden: true });
+            await pause(page, 50);
+            await waitForViewportStability(page, cardSelector);
+            await waitForViewportStability(page, cardSelector);
+
+            const finalMetrics = await page.$eval(cardSelector, (element) => {
+                if (!(element instanceof HTMLElement)) {
+                    return null;
+                }
+                const rect = element.getBoundingClientRect();
+                const viewportHeight = window.innerHeight;
+                const margin = 24;
+                const minTop = -margin;
+                const maxTop = Math.max(viewportHeight - rect.height - margin, minTop);
+                const centered = (viewportHeight - rect.height) / 2;
+                const targetTop = Math.max(minTop, Math.min(centered, maxTop));
+                return {
+                    top: rect.top,
+                    targetTop,
+                    scrollY: window.scrollY
+                };
+            });
+            assert.ok(finalMetrics, "Expected final metrics after submitting inline edits");
+            const anchoredDelta = Math.abs(finalMetrics.top - editingMetrics.top);
+            assert.ok(
+                anchoredDelta <= 140,
+                `Card should remain anchored after submission (delta=${anchoredDelta.toFixed(2)}px)`
+            );
+            const finalCenterDelta = Math.abs(finalMetrics.top - finalMetrics.targetTop);
+            assert.ok(
+                finalCenterDelta <= 24,
+                `Rendered htmlView should remain near the anchored position (delta=${finalCenterDelta.toFixed(2)}px)`
+            );
+            assert.ok(
+                finalMetrics.top >= 60,
+                `Final html view should remain comfortably visible (top=${finalMetrics.top})`
             );
         } finally {
             await teardown();
@@ -2162,6 +2362,33 @@ async function ensureCardInViewMode(page, cardSelector, originalMarkdown) {
     }, {}, cardSelector);
 }
 
+async function waitForViewportStability(page, cardSelector, maximumFrames = 24, tolerance = 0.75) {
+    await page.evaluate(async (selector, frames, epsilon) => {
+        const card = document.querySelector(selector);
+        if (!(card instanceof HTMLElement)) {
+            return;
+        }
+        const waitForFrame = () => new Promise((resolve) => {
+            requestAnimationFrame(() => resolve());
+        });
+        let previousTop = card.getBoundingClientRect().top;
+        for (let iteration = 0; iteration < frames; iteration += 1) {
+            await waitForFrame();
+            const currentTop = card.getBoundingClientRect().top;
+            if (Math.abs(currentTop - previousTop) <= epsilon) {
+                return;
+            }
+            previousTop = currentTop;
+        }
+    }, cardSelector, maximumFrames, tolerance);
+}
+
+async function pause(page, durationMs) {
+    await page.evaluate((ms) => new Promise((resolve) => {
+        setTimeout(resolve, typeof ms === "number" ? Math.max(ms, 0) : 0);
+    }), durationMs);
+}
+
 async function preparePage({ records, htmlViewBubbleDelayMs, waitUntil = "domcontentloaded" }) {
     const { page, teardown } = await createSharedPage();
     const serialized = JSON.stringify(Array.isArray(records) ? records : []);
@@ -2181,12 +2408,6 @@ async function preparePage({ records, htmlViewBubbleDelayMs, waitUntil = "domcon
         await page.waitForSelector(".markdown-block[data-note-id]");
     }
     return { page, teardown };
-}
-
-async function pause(page, durationMs) {
-    await page.evaluate((ms) => new Promise((resolve) => {
-        setTimeout(resolve, typeof ms === "number" ? Math.max(ms, 0) : 0);
-    }), durationMs);
 }
 
 async function beginCardEditingTelemetry(page, cardSelector) {

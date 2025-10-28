@@ -185,4 +185,85 @@ test.describe("SyncManager", () => {
         assert.equal(calls.includes("fetchSnapshot"), true, "fetchSnapshot should be invoked");
         assert.equal(calls.includes("syncOperations"), false, "syncOperations should be skipped when flushing disabled");
     });
+
+    test("synchronize refreshes expired backend tokens via credential exchange", async () => {
+        let nowMs = Date.parse("2023-11-14T21:00:00.000Z");
+        const exchanges = [];
+        const syncCalls = [];
+        const snapshotCalls = [];
+        const expirySequence = [120, 120, 120];
+        const backendClient = {
+            async exchangeGoogleCredential({ credential }) {
+                const expiresIn = expirySequence.shift() ?? 120;
+                exchanges.push({ credential, expiresIn });
+                return { accessToken: `token-${exchanges.length}`, expiresIn };
+            },
+            async syncOperations({ accessToken, operations }) {
+                syncCalls.push({ accessToken, operations });
+                return { results: [] };
+            },
+            async fetchSnapshot({ accessToken }) {
+                snapshotCalls.push(accessToken);
+                return { notes: [] };
+            }
+        };
+        const refreshedTokens = [];
+        const syncManager = createSyncManager({
+            backendClient,
+            clock: () => new Date(nowMs),
+            randomUUID: () => `operation-${syncCalls.length + 1}`,
+            onBackendTokenRefreshed: (token) => {
+                refreshedTokens.push(token);
+            }
+        });
+
+        const initialRecord = {
+            noteId: "note-refresh",
+            markdownText: "First draft",
+            createdAtIso: "2023-11-14T21:00:00.000Z",
+            updatedAtIso: "2023-11-14T21:00:00.000Z",
+            lastActivityIso: "2023-11-14T21:00:00.000Z"
+        };
+
+        GravityStore.upsertNonEmpty(initialRecord);
+
+        const signInResult = await syncManager.handleSignIn({
+            userId: "user-refresh",
+            credential: "credential-refresh"
+        });
+
+        assert.equal(signInResult.authenticated, true);
+        assert.equal(exchanges.length, 1);
+        assert.equal(refreshedTokens.length >= 1, true);
+        assert.equal(refreshedTokens[0].accessToken, "token-1");
+        assert.equal(signInResult.accessToken, "token-1");
+
+        nowMs += 130000;
+
+        const refreshedRecord = {
+            noteId: "note-refresh",
+            markdownText: "Updated draft",
+            createdAtIso: "2023-11-14T21:00:00.000Z",
+            updatedAtIso: "2023-11-14T21:00:02.000Z",
+            lastActivityIso: "2023-11-14T21:00:02.000Z"
+        };
+
+        GravityStore.upsertNonEmpty(refreshedRecord);
+        syncManager.recordLocalUpsert(refreshedRecord);
+
+        const synchronizeResult = await syncManager.synchronize();
+
+        assert.equal(synchronizeResult.queueFlushed, true);
+        assert.equal(exchanges.length >= 2, true, "token exchange should rerun when expiry reached");
+        assert.equal(syncCalls.length >= 1, true, "syncOperations should run after queuing update");
+        const latestAccessToken = refreshedTokens[refreshedTokens.length - 1].accessToken;
+        assert.equal(typeof latestAccessToken === "string" && latestAccessToken.length > 0, true);
+        assert.equal(syncCalls[syncCalls.length - 1].accessToken, latestAccessToken, "latest sync should use refreshed token");
+        assert.equal(snapshotCalls[snapshotCalls.length - 1], latestAccessToken, "snapshot refresh should reuse refreshed token");
+        assert.equal(refreshedTokens.length >= 2, true, "refresh callback should surface each new token");
+
+        const debugState = syncManager.getDebugState();
+        assert.equal(debugState.backendToken?.accessToken, latestAccessToken);
+        assert.equal(debugState.backendToken?.expiresAtMs > nowMs, true);
+    });
 });
