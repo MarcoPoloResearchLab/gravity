@@ -74,8 +74,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Extracted the pointer tracking/blur heuristics into `card/pointerTracking.js` and updated `card.js` to delegate to the new helper, reducing global state in the monolith.
 - [x] [GN-411] Replace implicit WeakMap state with explicit card factories
   - Moved card-specific WeakMap state into `card/cardState.js` and routed copy-feedback timers through a helper so `card.js` no longer owns implicit globals.
-- [ ] [GN-412] Introduce note record smart constructors before store writes
-  - Add `createNoteRecord`-style constructors in `frontend/js/core/store.js`, move validation to import/export edges, and raise explicit errors when invalid note payloads arrive from the backend.
+- [x] [GN-412] Introduce note record smart constructors before store writes
+  - Added `createNoteRecord` to centralize validation and updated store read/write paths to rely on the constructor so invalid payloads raise explicit errors.
 - [ ] [GN-413] Add targeted frontend tests for notes state and pointer flows
   - Write unit tests for pure utilities and Puppeteer coverage under `frontend/tests/` that assert pointer tracking, clipboard actions, and editing state transitions bubble errors through `frontend/js/utils/logging.js`.
 - [ ] [GN-414] Document card events and state transitions after the controller split
