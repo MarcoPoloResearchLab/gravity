@@ -68,8 +68,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - `NewTokenIssuer`/`NewGoogleVerifier` now return errors when configuration is incomplete (secret/issuer/audience/ttl/jwks/issuers), application wiring handles the results, and new unit/integration tests assert constructor failures.
 - [x] [GN-408] Standardize typed domain errors across backend services
   - Added shared error roots (`notes.ErrInvalidChange`, `auth.ErrInvalidTokenConfig`, `auth.ErrInvalidVerifierConfig`), updated constructors to wrap them with context, and extended unit tests to assert stable codes for invalid inputs.
-- [ ] [GN-409] Add backend table-driven tests for validation boundaries
-  - Expand `backend/internal/notes/service_test.go`, `backend/internal/notes/service_integration_test.go`, and HTTP handler tests to cover invalid payload rejection, conflict scenarios, and wrapped error propagation after the new constructors land.
+- [x] [GN-409] Add backend table-driven tests for validation boundaries
+  - Added table-driven coverage for invalid change envelopes and HTTP sync validation errors, ensuring notes service/handlers continue to surface stable codes for malformed requests.
 - [ ] [GN-410] Split `frontend/js/ui/card.js` into focused Alpine factories
   - Extract pointer tracking, markdown editing, pin/clipboard, and layout responsibilities into dedicated modules under `frontend/js/ui/card/`, wire them via `frontend/js/app.js`, and keep each module within the 300–400 line guideline.
 - [ ] [GN-411] Replace implicit WeakMap state with explicit card factories
