@@ -31,22 +31,25 @@ type Service struct {
 	idProvider IDProvider
 }
 
-func NewService(cfg ServiceConfig) *Service {
+func NewService(cfg ServiceConfig) (*Service, error) {
+	if cfg.Database == nil {
+		return nil, errMissingDatabase
+	}
+
 	clock := cfg.Clock
 	if clock == nil {
 		clock = time.Now
 	}
 
-	provider := cfg.IDProvider
-	if provider == nil {
-		provider = newUUIDProvider()
+	if cfg.IDProvider == nil {
+		return nil, errMissingIDProvider
 	}
 
 	return &Service{
 		db:         cfg.Database,
 		clock:      clock,
-		idProvider: provider,
-	}
+		idProvider: cfg.IDProvider,
+	}, nil
 }
 
 type ChangeOutcome struct {

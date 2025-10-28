@@ -120,10 +120,14 @@ func runServer(ctx context.Context) error {
 		AllowedIssuers: []string{"https://accounts.google.com", "accounts.google.com"},
 	})
 
-	notesService := notes.NewService(notes.ServiceConfig{
-		Database: db,
-		Clock:    time.Now,
+	notesService, err := notes.NewService(notes.ServiceConfig{
+		Database:   db,
+		Clock:      time.Now,
+		IDProvider: notes.NewUUIDProvider(),
 	})
+	if err != nil {
+		return err
+	}
 
 	handler, err := server.NewHTTPHandler(server.Dependencies{
 		GoogleVerifier: googleVerifier,

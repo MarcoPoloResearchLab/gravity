@@ -27,7 +27,13 @@ func TestRealtimeStreamEmitsNoteChangeEvents(t *testing.T) {
 		t.Fatalf("failed to migrate schema: %v", err)
 	}
 
-	noteService := notes.NewService(notes.ServiceConfig{Database: db})
+	noteService, err := notes.NewService(notes.ServiceConfig{
+		Database:   db,
+		IDProvider: notes.NewUUIDProvider(),
+	})
+	if err != nil {
+		t.Fatalf("failed to construct notes service: %v", err)
+	}
 	tokenIssuer := auth.NewTokenIssuer(auth.TokenIssuerConfig{
 		SigningSecret: []byte("test-signing-secret"),
 		Issuer:        "gravity-auth",

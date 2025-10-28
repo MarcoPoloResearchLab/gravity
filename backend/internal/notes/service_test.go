@@ -4,6 +4,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 func TestResolveChangeAcceptsHigherEditSequence(t *testing.T) {
@@ -246,4 +248,24 @@ func mustEnvelope(t *testing.T, cfg ChangeEnvelopeConfig) ChangeEnvelope {
 		t.Fatalf("unexpected envelope error: %v", err)
 	}
 	return envelope
+}
+
+func TestNewServiceRequiresDatabase(t *testing.T) {
+	_, err := NewService(ServiceConfig{IDProvider: stubIDProvider{}})
+	if !errors.Is(err, errMissingDatabase) {
+		t.Fatalf("expected missing database error, got %v", err)
+	}
+}
+
+func TestNewServiceRequiresIDProvider(t *testing.T) {
+	_, err := NewService(ServiceConfig{Database: &gorm.DB{}})
+	if !errors.Is(err, errMissingIDProvider) {
+		t.Fatalf("expected missing id provider error, got %v", err)
+	}
+}
+
+type stubIDProvider struct{}
+
+func (stubIDProvider) NewID() (string, error) {
+	return "stub-id", nil
 }

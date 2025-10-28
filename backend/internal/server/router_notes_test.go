@@ -23,7 +23,7 @@ func TestHandleNotesSyncRejectsEmptyNoteID(t *testing.T) {
 	context.Request = request
 
 	handler := &httpHandler{
-		notesService: notes.NewService(notes.ServiceConfig{}),
+		notesService: &notes.Service{},
 		logger:       zap.NewNop(),
 	}
 
@@ -50,7 +50,7 @@ func TestHandleNotesSyncRejectsNegativeEditSeq(t *testing.T) {
 	context.Request = request
 
 	handler := &httpHandler{
-		notesService: notes.NewService(notes.ServiceConfig{}),
+		notesService: &notes.Service{},
 		logger:       zap.NewNop(),
 	}
 

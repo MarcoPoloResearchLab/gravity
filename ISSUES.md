@@ -60,8 +60,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Added domain constructors for user, note, and timestamp identifiers, moved sync payload validation into `handleNotesSync`, refactored `ApplyChanges`/`resolveChange` to rely on typed values, and extended unit plus HTTP tests so empty identifiers now return `400` instead of leaking into the service layer.
 - [x] [GN-404] Replace primitive change resolution with typed envelopes
   - Introduced `ChangeEnvelope` smart constructor enforcing operation/edit-sequence invariants, refactored service/conflict logic and sync handler to consume the typed envelopes, and expanded unit plus HTTP tests to cover invalid envelopes and negative client sequences.
-- [ ] [GN-405] Harden notes service constructor dependency validation
-  - Make `backend/internal/notes/service.go`'s `NewService` return an error when dependencies are nil, update call sites in `backend/cmd/gravity-api/main.go` and integration tests, and add coverage for nil dependency rejection.
+- [x] [GN-405] Harden notes service constructor dependency validation
+  - `NewService` now returns `(*Service, error)` and fails fast when database or ID provider dependencies are missing, main/integration wiring passes an explicit UUID provider, and new tests cover both constructor failures and edge validation without relying on the live database.
 - [ ] [GN-406] Wrap notes service errors with operation codes
   - Replace sentinel returns in `backend/internal/notes/service.go` with contextual errors (e.g., `notes.apply_changes.missing_note_id`) using `%w`, propagate them through handlers, and assert on error codes in HTTP tests.
 - [ ] [GN-407] Add smart constructors for token issuer and Google verifier
