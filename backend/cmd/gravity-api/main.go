@@ -107,18 +107,24 @@ func runServer(ctx context.Context) error {
 	}
 	defer sqlDB.Close()
 
-	tokenManager := auth.NewTokenIssuer(auth.TokenIssuerConfig{
+	tokenManager, err := auth.NewTokenIssuer(auth.TokenIssuerConfig{
 		SigningSecret: []byte(appConfig.SigningSecret),
 		Issuer:        "gravity-auth",
 		Audience:      "gravity-api",
 		TokenTTL:      appConfig.TokenTTL,
 	})
+	if err != nil {
+		return err
+	}
 
-	googleVerifier := auth.NewGoogleVerifier(auth.GoogleVerifierConfig{
+	googleVerifier, err := auth.NewGoogleVerifier(auth.GoogleVerifierConfig{
 		Audience:       appConfig.GoogleClientID,
 		JWKSURL:        appConfig.GoogleJWKSURL,
 		AllowedIssuers: []string{"https://accounts.google.com", "accounts.google.com"},
 	})
+	if err != nil {
+		return err
+	}
 
 	notesService, err := notes.NewService(notes.ServiceConfig{
 		Database:   db,

@@ -1,6 +1,7 @@
 package notes
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -178,76 +179,58 @@ func TestResolveChangeBreaksTieByUpdatedAt(t *testing.T) {
 	}
 }
 
-func TestNewChangeEnvelopeRejectsNegativeEditSeq(t *testing.T) {
-	userID := mustUserID(t, "user-1")
-	noteID := mustNoteID(t, "note-1")
-	_, err := NewChangeEnvelope(ChangeEnvelopeConfig{
-		UserID:          userID,
-		NoteID:          noteID,
+func TestNewChangeEnvelopeInvalidCases(t *testing.T) {
+	baseConfig := ChangeEnvelopeConfig{
+		UserID:          mustUserID(t, "user-1"),
+		NoteID:          mustNoteID(t, "note-1"),
 		Operation:       OperationTypeUpsert,
-		ClientEditSeq:   -1,
-		ClientDevice:    "device",
-		ClientTimestamp: mustTimestamp(t, 1700000000),
-		CreatedAt:       mustTimestamp(t, 1700000000),
-		UpdatedAt:       mustTimestamp(t, 1700000000),
-	})
-	if !errors.Is(err, ErrInvalidChangeEnvelope) {
-		t.Fatalf("expected invalid change envelope error, got %v", err)
-	}
-}
-
-func TestNewChangeEnvelopeRejectsUnsupportedOperation(t *testing.T) {
-	userID := mustUserID(t, "user-1")
-	noteID := mustNoteID(t, "note-1")
-	_, err := NewChangeEnvelope(ChangeEnvelopeConfig{
-		UserID:          userID,
-		NoteID:          noteID,
-		Operation:       OperationType("truncate"),
 		ClientEditSeq:   1,
 		ClientDevice:    "device",
 		ClientTimestamp: mustTimestamp(t, 1700000000),
 		CreatedAt:       mustTimestamp(t, 1700000000),
 		UpdatedAt:       mustTimestamp(t, 1700000000),
-	})
-	if !errors.Is(err, ErrInvalidChangeEnvelope) {
-		t.Fatalf("expected invalid change envelope error, got %v", err)
 	}
-}
 
-func mustUserID(t *testing.T, value string) UserID {
-	t.Helper()
-	id, err := NewUserID(value)
-	if err != nil {
-		t.Fatalf("unexpected user id error: %v", err)
+	testCases := []struct {
+		name   string
+		mutate func(*ChangeEnvelopeConfig)
+	}{
+		{
+			name: "empty-user",
+			mutate: func(cfg *ChangeEnvelopeConfig) {
+				cfg.UserID = ""
+			},
+		},
+		{
+			name: "empty-note",
+			mutate: func(cfg *ChangeEnvelopeConfig) {
+				cfg.NoteID = ""
+			},
+		},
+		{
+			name: "unsupported-operation",
+			mutate: func(cfg *ChangeEnvelopeConfig) {
+				cfg.Operation = OperationType("truncate")
+			},
+		},
+		{
+			name: "negative-edit-seq",
+			mutate: func(cfg *ChangeEnvelopeConfig) {
+				cfg.ClientEditSeq = -1
+			},
+		},
 	}
-	return id
-}
 
-func mustNoteID(t *testing.T, value string) NoteID {
-	t.Helper()
-	id, err := NewNoteID(value)
-	if err != nil {
-		t.Fatalf("unexpected note id error: %v", err)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := baseConfig
+			tc.mutate(&cfg)
+			_, err := NewChangeEnvelope(cfg)
+			if !errors.Is(err, ErrInvalidChange) {
+				t.Fatalf("expected invalid change error, got %v", err)
+			}
+		})
 	}
-	return id
-}
-
-func mustTimestamp(t *testing.T, value int64) UnixTimestamp {
-	t.Helper()
-	ts, err := NewUnixTimestamp(value)
-	if err != nil {
-		t.Fatalf("unexpected timestamp error: %v", err)
-	}
-	return ts
-}
-
-func mustEnvelope(t *testing.T, cfg ChangeEnvelopeConfig) ChangeEnvelope {
-	t.Helper()
-	envelope, err := NewChangeEnvelope(cfg)
-	if err != nil {
-		t.Fatalf("unexpected envelope error: %v", err)
-	}
-	return envelope
 }
 
 func TestNewServiceRequiresDatabase(t *testing.T) {
@@ -268,4 +251,40 @@ type stubIDProvider struct{}
 
 func (stubIDProvider) NewID() (string, error) {
 	return "stub-id", nil
+}
+
+func TestApplyChangesWrapsMissingDatabase(t *testing.T) {
+	service := &Service{}
+	_, err := service.ApplyChanges(context.Background(), mustUserID(t, "user-1"), nil)
+	if err == nil {
+		t.Fatal("expected error from missing database")
+	}
+	var serviceErr *ServiceError
+	if !errors.As(err, &serviceErr) {
+		t.Fatalf("expected ServiceError, got %T", err)
+	}
+	if serviceErr.Code() != "notes.apply_changes.missing_database" {
+		t.Fatalf("unexpected service error code: %s", serviceErr.Code())
+	}
+	if !errors.Is(err, errMissingDatabase) {
+		t.Fatalf("expected underlying missing database error, got %v", err)
+	}
+}
+
+func TestListNotesWrapsMissingDatabase(t *testing.T) {
+	service := &Service{}
+	_, err := service.ListNotes(context.Background(), "user-1")
+	if err == nil {
+		t.Fatal("expected error from missing database")
+	}
+	var serviceErr *ServiceError
+	if !errors.As(err, &serviceErr) {
+		t.Fatalf("expected ServiceError, got %T", err)
+	}
+	if serviceErr.Code() != "notes.list_notes.missing_database" {
+		t.Fatalf("unexpected service error code: %s", serviceErr.Code())
+	}
+	if !errors.Is(err, errMissingDatabase) {
+		t.Fatalf("expected underlying missing database error, got %v", err)
+	}
 }

@@ -67,6 +67,31 @@ import { syncStoreFromDom } from "./storeSync.js";
 import { showSaveFeedback } from "./saveFeedback.js";
 import { togglePinnedNote, clearPinnedNoteIfMatches } from "./notesState.js";
 import { suppressTopEditorAutofocus } from "./focusManager.js";
+import {
+    initializePointerTracking,
+    shouldKeepEditingAfterBlur,
+    shouldIgnoreCardPointerTarget,
+    isPointerWithinInlineEditorSurface,
+    clearLastPointerDownTarget
+} from "./card/pointerTracking.js";
+import {
+    setEditorHost,
+    getEditorHost,
+    incrementFinalizeSuppression,
+    decrementFinalizeSuppression,
+    isFinalizeSuppressed as isCardFinalizeSuppressed,
+    getSuppressionState,
+    setSuppressionState,
+    clearSuppressionState,
+    getOrCreatePendingHeightFrames,
+    clearPendingHeightFrames,
+    disposeCardState
+} from "./card/cardState.js";
+import {
+    clearCopyFeedbackTimer,
+    storeCopyFeedbackTimer,
+    hasCopyFeedbackTimer
+} from "./card/copyFeedback.js";
 
 const DIRECTION_PREVIOUS = -1;
 const DIRECTION_NEXT = 1;
@@ -75,124 +100,11 @@ const CARET_PLACEMENT_END = "end";
 const TASK_LINE_REGEX = /^(\s*(?:[-*+]|\d+[.)])\s+\[)( |x|X)(\])([^\n]*)$/;
 let currentEditingCard = null;
 let mergeInProgress = false;
-const editorHosts = new WeakMap();
-const finalizeSuppression = new WeakMap();
-const suppressionState = new WeakMap();
-const copyFeedbackTimers = new WeakMap();
-const pendingHeightFrames = new WeakMap();
 const COPY_FEEDBACK_DURATION_MS = 1800;
 const LINE_ENDING_NORMALIZE_PATTERN = /\r\n/g;
 const TRAILING_WHITESPACE_PATTERN = /[ \t]+$/;
 const VIEWPORT_ANCHOR_MARGIN_PX = 24;
 const VIEWPORT_STABILITY_ATTEMPTS = 12;
-
-let pointerTrackingInitialized = false;
-let lastPointerDownTarget = null;
-const NON_EDITABLE_CARD_SURFACE_SELECTORS = Object.freeze([
-    ".actions",
-    ".card-controls",
-    ".meta-chips",
-    ".note-expand-toggle"
-]);
-const INLINE_EDITOR_SURFACE_SELECTORS = Object.freeze([
-    ".markdown-editor",
-    ".EasyMDEContainer",
-    ".CodeMirror"
-]);
-
-function initializePointerTracking() {
-    if (pointerTrackingInitialized || typeof document === "undefined") {
-        return;
-    }
-    document.addEventListener("pointerdown", (event) => {
-        lastPointerDownTarget = event && event.target instanceof Node ? event.target : null;
-    }, true);
-    document.addEventListener("mousedown", (event) => {
-        if (event && event.target instanceof Node) {
-            lastPointerDownTarget = event.target;
-        }
-    }, true);
-    pointerTrackingInitialized = true;
-}
-
-function shouldKeepEditingAfterBlur(card) {
-    if (!(card instanceof HTMLElement) || typeof document === "undefined") {
-        return false;
-    }
-    if (!card.isConnected || !card.classList.contains("editing-in-place")) {
-        return false;
-    }
-    const activeElement = document.activeElement;
-    if (activeElement instanceof HTMLElement && card.contains(activeElement)) {
-        return true;
-    }
-    if (lastPointerDownTarget instanceof Node && card.contains(lastPointerDownTarget)) {
-        return isPointerWithinInlineEditorSurface(card, lastPointerDownTarget);
-    }
-    return false;
-}
-
-function shouldIgnoreCardPointerTarget(target) {
-    if (!(target instanceof HTMLElement)) {
-        return false;
-    }
-    for (const selector of NON_EDITABLE_CARD_SURFACE_SELECTORS) {
-        if (target.closest(selector)) {
-            return true;
-        }
-    }
-    if (target.closest(".note-task-checkbox")) {
-        return true;
-    }
-    return false;
-}
-
-/**
- * Determine whether the pointer target resides within the inline editor surface.
- * @param {HTMLElement} card
- * @param {Node} pointerTarget
- * @returns {boolean}
- */
-function isPointerWithinInlineEditorSurface(card, pointerTarget) {
-    if (!(card instanceof HTMLElement) || !(pointerTarget instanceof Node)) {
-        return false;
-    }
-    if (!card.contains(pointerTarget)) {
-        return false;
-    }
-    const elementTarget = pointerTarget instanceof Element
-        ? pointerTarget
-        : pointerTarget.parentElement;
-    if (!(elementTarget instanceof Element)) {
-        return false;
-    }
-    for (const selector of NON_EDITABLE_CARD_SURFACE_SELECTORS) {
-        if (elementTarget.closest(selector)) {
-            return false;
-        }
-    }
-    const inlineHost = elementTarget.closest(".markdown-editor-host");
-    if (inlineHost !== card) {
-        return false;
-    }
-    for (const selector of INLINE_EDITOR_SURFACE_SELECTORS) {
-        const surface = elementTarget.closest(selector);
-        if (!(surface instanceof HTMLElement)) {
-            continue;
-        }
-        const host = surface.closest(".markdown-editor-host");
-        if (host === card) {
-            if (selector === ".EasyMDEContainer") {
-                const containedCodeMirror = surface.querySelector(".CodeMirror");
-                if (containedCodeMirror instanceof HTMLElement && !containedCodeMirror.contains(elementTarget)) {
-                    continue;
-                }
-            }
-            return true;
-        }
-    }
-    return false;
-}
 
 function calculateHtmlViewTextOffset(htmlViewElement, event) {
     if (!(htmlViewElement instanceof HTMLElement)) {
@@ -1037,13 +949,13 @@ export function renderCard(record, options = {}) {
         const suppressedCards = new Set();
         const protectCard = (candidate) => {
             if (!candidate) return;
-            const host = editorHosts.get(candidate);
-            const cardSuppression = suppressionState.get(candidate) || {}; // { mode, wasEditClass }
-            if (!cardSuppression.mode) {
-                cardSuppression.mode = host?.getMode() ?? null;
-                cardSuppression.wasEditing = candidate.classList.contains("editing-in-place");
-                suppressionState.set(candidate, cardSuppression);
-            }
+        const host = getEditorHost(candidate);
+        const existingSuppression = getSuppressionState(candidate) || {};
+        if (!existingSuppression.mode) {
+            existingSuppression.mode = host?.getMode() ?? null;
+            existingSuppression.wasEditing = candidate.classList.contains("editing-in-place");
+            setSuppressionState(candidate, existingSuppression);
+        }
             suppressedCards.add(candidate);
             suppressFinalize(candidate);
         };
@@ -1229,7 +1141,7 @@ export function renderCard(record, options = {}) {
             setHtmlViewExpanded(card, true);
             return;
         }
-        const host = editorHosts.get(card);
+        const host = getEditorHost(card);
         let caretPlacement = CARET_PLACEMENT_END;
         const htmlViewElement = card.querySelector(".markdown-content");
         if (htmlViewElement instanceof HTMLElement && host) {
@@ -1262,7 +1174,7 @@ export function renderCard(record, options = {}) {
 
         let caretPlacement = CARET_PLACEMENT_END;
         const htmlViewElement = card.querySelector(".markdown-content");
-        const host = editorHosts.get(card);
+        const host = getEditorHost(card);
 
         if (htmlViewElement instanceof HTMLElement && host) {
             const offset = calculateHtmlViewTextOffset(htmlViewElement, event);
@@ -1298,7 +1210,7 @@ export function renderCard(record, options = {}) {
     editor.classList.add("markdown-editor--enhanced");
     editor.style.removeProperty("display");
     editorHostRef = editorHost;
-    editorHosts.set(card, editorHost);
+    setEditorHost(card, editorHost);
     card.__markdownHost = editorHost;
     card.dataset.initialValue = record.markdownText;
     card.dataset.attachmentsSignature = createAttachmentSignature(initialAttachments);
@@ -1351,7 +1263,7 @@ export function renderCard(record, options = {}) {
         }
         window.requestAnimationFrame(() => {
             const maintainEditing = shouldKeepEditingAfterBlur(card);
-            lastPointerDownTarget = null;
+            clearLastPointerDownTarget();
             if (maintainEditing) {
                 if (editorHost.getMode() !== MARKDOWN_MODE_EDIT) {
                     editorHost.setMode(MARKDOWN_MODE_EDIT);
@@ -1385,7 +1297,7 @@ export function renderCard(record, options = {}) {
             return;
         }
 
-        const host = editorHosts.get(card);
+        const host = getEditorHost(card);
         if (!host) return;
 
         const currentMarkdown = host.getValue();
@@ -1441,28 +1353,31 @@ function button(label, handler, options = {}) {
 }
 
 function suppressFinalize(card) {
-    if (!card) return;
-    const count = finalizeSuppression.get(card) || 0;
-    finalizeSuppression.set(card, count + 1);
+    if (!(card instanceof HTMLElement)) {
+        return;
+    }
+    incrementFinalizeSuppression(card);
 }
 
 function releaseFinalize(card) {
-    if (!card) return;
-    const count = finalizeSuppression.get(card) || 0;
-    if (count <= 1) finalizeSuppression.delete(card);
-    else finalizeSuppression.set(card, count - 1);
+    if (!(card instanceof HTMLElement)) {
+        return;
+    }
+    decrementFinalizeSuppression(card);
 }
 
 function isFinalizeSuppressed(card) {
-    if (!card) return false;
-    return (finalizeSuppression.get(card) || 0) > 0;
+    if (!(card instanceof HTMLElement)) {
+        return false;
+    }
+    return isCardFinalizeSuppressed(card);
 }
 
 function restoreSuppressedState(card) {
-    const state = suppressionState.get(card);
+    const state = getSuppressionState(card);
     if (!state) return;
-    suppressionState.delete(card);
-    const host = editorHosts.get(card);
+    clearSuppressionState(card);
+    const host = getEditorHost(card);
     if (!host) return;
     if (state.mode) {
         host.setMode(state.mode);
@@ -1483,13 +1398,13 @@ function showClipboardFeedback(container, message) {
     feedback.textContent = message;
     feedback.classList.add("clipboard-feedback--visible");
 
-    if (copyFeedbackTimers.has(feedback)) {
-        clearTimeout(copyFeedbackTimers.get(feedback));
+    if (hasCopyFeedbackTimer(feedback)) {
+        clearCopyFeedbackTimer(feedback);
     }
 
     const timer = setTimeout(() => {
         feedback.classList.remove("clipboard-feedback--visible");
-        copyFeedbackTimers.delete(feedback);
+        clearCopyFeedbackTimer(feedback);
         setTimeout(() => {
             if (feedback && !feedback.classList.contains("clipboard-feedback--visible")) {
                 feedback.remove();
@@ -1497,7 +1412,7 @@ function showClipboardFeedback(container, message) {
         }, 220);
     }, COPY_FEEDBACK_DURATION_MS);
 
-    copyFeedbackTimers.set(feedback, timer);
+    storeCopyFeedbackTimer(feedback, timer);
 }
 
 
@@ -1649,7 +1564,7 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
             return;
         }
         candidate.classList.remove("editing-in-place");
-        const candidateHost = editorHosts.get(candidate);
+        const candidateHost = getEditorHost(candidate);
         if (candidateHost && candidateHost.getMode() !== MARKDOWN_MODE_VIEW) {
             candidateHost.setMode(MARKDOWN_MODE_VIEW);
         }
@@ -1669,7 +1584,7 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
 
     const editor  = card.querySelector(".markdown-editor");
     const badges  = card.querySelector(".note-badges");
-    const editorHost = editorHosts.get(card);
+    const editorHost = getEditorHost(card);
 
     // Remember original text so we can detect "no changes"
     const initialValue = editorHost ? editorHost.getValue() : editor?.value ?? "";
@@ -1734,22 +1649,24 @@ function registerPendingHeightFrame(card, frameId) {
     if (typeof frameId !== "number") {
         return;
     }
-    let handles = pendingHeightFrames.get(card);
-    if (!handles) {
-        handles = [];
-        pendingHeightFrames.set(card, handles);
+    if (!(card instanceof HTMLElement)) {
+        return;
     }
+    const handles = getOrCreatePendingHeightFrames(card);
     handles.push(frameId);
 }
 
 function cancelPendingHeightFrames(card) {
-    const handles = pendingHeightFrames.get(card);
-    if (handles && typeof cancelAnimationFrame === "function") {
+    if (!(card instanceof HTMLElement)) {
+        return;
+    }
+    const handles = getOrCreatePendingHeightFrames(card);
+    if (handles.length > 0 && typeof cancelAnimationFrame === "function") {
         for (const handle of handles) {
             cancelAnimationFrame(handle);
         }
     }
-    pendingHeightFrames.delete(card);
+    clearPendingHeightFrames(card);
 }
 
 function lockEditingSurfaceHeight(card, measurements) {
@@ -1948,7 +1865,7 @@ async function finalizeCard(card, notesContainer, options = {}) {
     if (!card || mergeInProgress) return;
     if (isFinalizeSuppressed(card)) return;
 
-    const editorHost = editorHosts.get(card);
+    const editorHost = getEditorHost(card);
     const isEditMode = card.classList.contains("editing-in-place") || editorHost?.getMode() === MARKDOWN_MODE_EDIT;
     const badgesContainer = card.querySelector(".note-badges");
     const badgesTarget = badgesContainer instanceof HTMLElement ? badgesContainer : null;
@@ -2018,7 +1935,7 @@ async function finalizeCard(card, notesContainer, options = {}) {
         const id = card.getAttribute("data-note-id");
         clearPinnedNoteIfMatches(id);
         card.remove();
-        editorHosts.delete(card);
+        disposeCardState(card);
         syncStoreFromDom(notesContainer);
         updateActionButtons(notesContainer);
         dispatchNoteDelete(notesContainer ?? card, id, { storeUpdated: true, shouldRender: false });
@@ -2109,8 +2026,8 @@ function mergeDown(card, notesContainer) {
     const attachmentsBelow = getAllAttachments(editorBelow);
     const mergedAttachments = { ...attachmentsBelow, ...attachmentsHere };
 
-    editorHosts.get(card)?.setValue("");
-    const hostBelow = editorHosts.get(below);
+    getEditorHost(card)?.setValue("");
+    const hostBelow = getEditorHost(below);
     hostBelow?.setValue(merged);
     registerInitialAttachments(editorBelow, mergedAttachments);
     const mergedHtmlViewSource = transformMarkdownWithAttachments(merged, mergedAttachments);
@@ -2129,7 +2046,7 @@ function mergeDown(card, notesContainer) {
         currentEditingCard = null;
     }
     card.remove();
-    editorHosts.delete(card);
+    disposeCardState(card);
 
     const idBelow = below.getAttribute("data-note-id");
     const ts = nowIso();
@@ -2182,8 +2099,8 @@ function mergeUp(card, notesContainer) {
     const attachmentsHere = getAllAttachments(editorHere);
     const mergedAttachments = { ...attachmentsAbove, ...attachmentsHere };
 
-    editorHosts.get(card)?.setValue("");
-    const hostAbove = editorHosts.get(above);
+    getEditorHost(card)?.setValue("");
+    const hostAbove = getEditorHost(above);
     hostAbove?.setValue(merged);
     registerInitialAttachments(editorAbove, mergedAttachments);
     const mergedHtmlViewSource = transformMarkdownWithAttachments(merged, mergedAttachments);
@@ -2202,7 +2119,7 @@ function mergeUp(card, notesContainer) {
         currentEditingCard = null;
     }
     card.remove();
-    editorHosts.delete(card);
+    disposeCardState(card);
 
     const idAbove = above.getAttribute("data-note-id");
     const ts = nowIso();
@@ -2271,7 +2188,7 @@ export function focusCardEditor(card, notesContainer, options = {}) {
     enableInPlaceEditing(card, notesContainer, { bubblePreviousCardToTop, bubbleSelfToTop: false });
 
     requestAnimationFrame(() => {
-        const host = editorHosts.get(card);
+        const host = getEditorHost(card);
         if (!host) return;
 
         const textarea = typeof host.getTextarea === "function" ? host.getTextarea() : null;

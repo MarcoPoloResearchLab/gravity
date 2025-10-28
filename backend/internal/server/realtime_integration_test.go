@@ -34,12 +34,15 @@ func TestRealtimeStreamEmitsNoteChangeEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to construct notes service: %v", err)
 	}
-	tokenIssuer := auth.NewTokenIssuer(auth.TokenIssuerConfig{
+	tokenIssuer, err := auth.NewTokenIssuer(auth.TokenIssuerConfig{
 		SigningSecret: []byte("test-signing-secret"),
 		Issuer:        "gravity-auth",
 		Audience:      "gravity-api",
 		TokenTTL:      time.Minute,
 	})
+	if err != nil {
+		t.Fatalf("failed to construct token issuer: %v", err)
+	}
 
 	dispatcher := NewRealtimeDispatcher()
 	handler, err := NewHTTPHandler(Dependencies{
