@@ -120,6 +120,15 @@ function gravityApp() {
                 }
             });
             this.realtimeSync = createRealtimeSyncController({ syncManager: this.syncManager });
+
+            const persistedAuthState = loadAuthState();
+            if (persistedAuthState && persistedAuthState.user && typeof persistedAuthState.user.id === "string" && persistedAuthState.user.id.length > 0) {
+                this.cachedPersistedAuthState = persistedAuthState;
+                GravityStore.setUserScope(persistedAuthState.user.id);
+            } else {
+                GravityStore.setUserScope(null);
+            }
+
             if (typeof window !== "undefined") {
                 window.addEventListener("storage", (event) => {
                     if (!event) {

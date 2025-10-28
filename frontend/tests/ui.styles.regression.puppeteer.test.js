@@ -351,8 +351,55 @@ test("application viewport hides native scrollbars while remaining scrollable", 
     }
 });
 
-async function preparePage() {
+test("mobile layout stacks controls above content", async () => {
+    const { page, teardown, cardSelector } = await preparePage({
+        viewport: { width: 420, height: 900, deviceScaleFactor: 1 }
+    });
+    try {
+        await page.waitForSelector(cardSelector);
+        const metrics = await page.evaluate((selector) => {
+            const card = document.querySelector(selector);
+            if (!(card instanceof HTMLElement)) {
+                return null;
+            }
+            const controls = card.querySelector(".card-controls");
+            const content = card.querySelector(".card-content");
+            if (!(controls instanceof HTMLElement) || !(content instanceof HTMLElement)) {
+                return null;
+            }
+            const actions = controls.querySelector(".actions");
+            const cardStyle = window.getComputedStyle(card);
+            const controlsStyle = window.getComputedStyle(controls);
+            const actionsStyle = actions instanceof HTMLElement ? window.getComputedStyle(actions) : null;
+            const controlsRect = controls.getBoundingClientRect();
+            const contentRect = content.getBoundingClientRect();
+            return {
+                gridTemplateColumns: cardStyle.gridTemplateColumns.trim(),
+                controlsBottom: controlsRect.bottom,
+                contentTop: contentRect.top,
+                controlsFlexDirection: controlsStyle.flexDirection,
+                actionsFlexDirection: actionsStyle ? actionsStyle.flexDirection : null,
+                controlsTextAlign: controlsStyle.textAlign
+            };
+        }, cardSelector);
+        assert.ok(metrics, "Expected mobile layout metrics");
+        const columns = metrics.gridTemplateColumns.split(/\s+/u).filter(Boolean);
+        assert.equal(columns.length, 1, `Mobile layout should collapse to a single column (observed ${metrics.gridTemplateColumns}).`);
+        assert.ok(metrics.controlsBottom <= metrics.contentTop, "Controls should render above the note content on narrow viewports");
+        assert.equal(metrics.controlsFlexDirection, "row", "Controls should lay out horizontally on mobile viewports");
+        assert.equal(metrics.actionsFlexDirection, "row", "Action buttons should align horizontally on mobile viewports");
+        assert.equal(metrics.controlsTextAlign, "left", "Controls text should align left when stacked above content");
+    } finally {
+        await teardown();
+    }
+});
+
+async function preparePage(options = {}) {
+    const { viewport } = options;
     const { page, teardown } = await createSharedPage();
+    if (viewport && typeof page.setViewport === "function") {
+        await page.setViewport(viewport);
+    }
     const records = [
         buildNoteRecord({ noteId: NOTE_ID, markdownText: NOTE_MARKDOWN }),
         ...Array.from({ length: 12 }, (_, index) => buildNoteRecord({

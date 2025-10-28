@@ -9,12 +9,16 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
 ## Improvements (200–299)
 
-- [ ] [GN-200] Change the double chevron sign to an "arrow down in a circle", the way it is in ChatGPT.  to fold in the same arrow in a circle but pointing up
-- [ ] [GN-201] Ensure it works for the area where the sign is, so a rectangular area of the card limited by the height of the sign, not just the imidiate sign  
-- [ ] [GN-202] Treat a doubleclick, a tap and a click the same:
-- enters editing mode on a card
-- finishes editing mode outside the text area
-- [ ] [GN-203] Change the responsive mobile design to keep note control above the note on small screens
+- [x] [GN-200] Change the double chevron sign to an "arrow down in a circle", the way it is in ChatGPT.  to fold in the same arrow in a circle but pointing up
+  - Replaced the expand toggle with an SVG circle-arrow icon, aligned the CSS/README copy, and added Puppeteer coverage that confirms the icon structure and rotation.
+- [x] [GN-201] Ensure it works for the area where the sign is, so a rectangular area of the card limited by the height of the sign, not just the imidiate sign  
+  - Broadened the expand toggle button to cover the full bottom strip and added a Puppeteer check that an off-center click still expands the htmlView.
+- [x] [GN-202] Treat a doubleclick, a tap and a click the same:
+  - enters editing mode on a card
+  - finishes editing mode outside the text area
+  - Added Puppeteer coverage for double-click, tap, and outside blur interactions to confirm inline editing transitions remain consistent.
+- [x] [GN-203] Change the responsive mobile design to keep note control above the note on small screens
+  - Updated the mobile grid to stack `.card-controls` above the content column and added regression coverage to verify the layout on narrow viewports.
 - [ ] [GN-204] Add an ability for an app to run in full-screen mode. Have an icon in the header that switches the app in and out of the full screen mode. use a diagonal line with aroows at the end to indicate expansion to the full screen and a diagonal line with "chicken paws" at the end to indicate the contraction
 - [ ] [GN-205] Have built-in browser grammar check work. There is no grammar check working in the markdown mode now, and there should be.
 
@@ -34,6 +38,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
     - Effectively clicking on a card freezes it on the screen after moving it to the vewport. So if I click on a large renderedHTML view, I expect to get the rendered markdown view with the cursor in the place of my click, and no movement as the point of click was clearly in the view when I clicked on it
 - [x] [GN-305] I can still see scrollers ![scroller screenshot](scroller.png). There should be no scrollers.
   - Hid browser-native scrollbars by suppressing the root scrollbar pseudo element on `html`/`body` and added regression coverage guaranteeing the viewport stays scrollable without rendering scrollbar chrome.
+- [ ] [GN-306] The notes duplicate when I click on a checkmark in renderedHTML view. Have test to confirm and prepare a fix
 
 ## Maintenance (400–499)
 

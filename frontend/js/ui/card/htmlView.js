@@ -32,6 +32,7 @@ import { syncStoreFromDom } from "../storeSync.js";
 // (delete). No refresh helpers remain by design.
 const htmlViewBubbleTimers = new WeakMap();
 const htmlViewFocusTargets = new WeakMap();
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
 /**
  * Queue an HTML view bubble after a checkbox interaction.
@@ -119,6 +120,7 @@ export function createHtmlView(card, { markdownSource, badgesTarget }) {
     const content = createElement("div", "markdown-content");
     const expandToggle = createExpandToggle(card, wrapper);
     wrapper.append(content, expandToggle);
+    attachExpandStripClickHandler(wrapper, expandToggle);
     insertHtmlViewWrapper(card, wrapper);
     renderHtmlView(content, htmlViewMarkdown);
     restoreHtmlViewFocus(card);
@@ -164,10 +166,12 @@ function insertHtmlViewWrapper(card, wrapper) {
 }
 
 function createExpandToggle(card, wrapper) {
-    const toggle = createElement("button", "note-expand-toggle", "»");
+    const toggle = createElement("button", "note-expand-toggle");
     toggle.type = "button";
     toggle.setAttribute("aria-expanded", "false");
     toggle.setAttribute("aria-label", LABEL_EXPAND_NOTE);
+    const icon = buildExpandToggleIcon();
+    toggle.appendChild(icon);
     toggle.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -175,6 +179,89 @@ function createExpandToggle(card, wrapper) {
         setHtmlViewExpanded(card, !isExpanded);
     });
     return toggle;
+}
+
+function attachExpandStripClickHandler(wrapper, toggle) {
+    if (!(wrapper instanceof HTMLElement) || !(toggle instanceof HTMLElement)) {
+        return;
+    }
+    wrapper.addEventListener("click", (event) => {
+        if (!(event instanceof MouseEvent)) {
+            return;
+        }
+        if (toggle.hidden || toggle.style.display === "none") {
+            return;
+        }
+        const target = event.target;
+        if (target instanceof Element) {
+            if (target.closest(".note-expand-toggle")) {
+                return;
+            }
+            if (target.closest("input, textarea, select, button, a")) {
+                return;
+            }
+        }
+        const hitHeight = getToggleHitHeight(toggle);
+        if (hitHeight <= 0) {
+            return;
+        }
+        const wrapperRect = wrapper.getBoundingClientRect();
+        if (event.clientY >= wrapperRect.bottom - hitHeight) {
+            event.preventDefault();
+            event.stopPropagation();
+            toggle.click();
+        }
+    });
+}
+
+function buildExpandToggleIcon() {
+    const icon = createSvgElement("svg");
+    icon.classList.add("note-expand-toggle__icon");
+    icon.setAttribute("viewBox", "0 0 24 24");
+    icon.setAttribute("focusable", "false");
+    icon.setAttribute("aria-hidden", "true");
+
+    const ring = createSvgElement("circle");
+    ring.classList.add("note-expand-toggle__ring");
+    ring.setAttribute("data-icon-role", "ring");
+    ring.setAttribute("cx", "12");
+    ring.setAttribute("cy", "12");
+    ring.setAttribute("r", "10");
+
+    const arrow = createSvgElement("path");
+    arrow.classList.add("note-expand-toggle__arrow");
+    arrow.setAttribute("data-icon-role", "arrow");
+    arrow.setAttribute("d", "M12 8v6m0 0l-3-3m3 3l3-3");
+
+    icon.appendChild(ring);
+    icon.appendChild(arrow);
+    return icon;
+}
+
+function getToggleHitHeight(toggle) {
+    if (!(toggle instanceof HTMLElement)) {
+        return 0;
+    }
+    const rect = toggle.getBoundingClientRect();
+    if (rect.height > 0) {
+        return rect.height;
+    }
+    if (typeof window !== "undefined" && typeof window.getComputedStyle === "function") {
+        const computed = window.getComputedStyle(toggle);
+        const parsed = Number.parseFloat(computed.height);
+        if (Number.isFinite(parsed) && parsed > 0) {
+            return parsed;
+        }
+    }
+    return 0;
+}
+
+/**
+ * @param {string} tagName
+ * @returns {SVGElement}
+ */
+function createSvgElement(tagName) {
+    return /** @type {SVGElement} */ (document.createElementNS(SVG_NAMESPACE, tagName));
 }
 
 /**
