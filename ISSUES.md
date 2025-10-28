@@ -115,3 +115,4 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
     ```
     The google console screenshot is here ![Google console](<Google Console.png>)
+ - [ ] Add settings and in gravity controls allow clicking on copy to gravitate the card to the top
