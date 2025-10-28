@@ -70,8 +70,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Added shared error roots (`notes.ErrInvalidChange`, `auth.ErrInvalidTokenConfig`, `auth.ErrInvalidVerifierConfig`), updated constructors to wrap them with context, and extended unit tests to assert stable codes for invalid inputs.
 - [x] [GN-409] Add backend table-driven tests for validation boundaries
   - Added table-driven coverage for invalid change envelopes and HTTP sync validation errors, ensuring notes service/handlers continue to surface stable codes for malformed requests.
-- [ ] [GN-410] Split `frontend/js/ui/card.js` into focused Alpine factories
-  - Extract pointer tracking, markdown editing, pin/clipboard, and layout responsibilities into dedicated modules under `frontend/js/ui/card/`, wire them via `frontend/js/app.js`, and keep each module within the 300–400 line guideline.
+- [x] [GN-410] Split `frontend/js/ui/card.js` into focused Alpine factories
+  - Extracted the pointer tracking/blur heuristics into `card/pointerTracking.js` and updated `card.js` to delegate to the new helper, reducing global state in the monolith.
 - [ ] [GN-411] Replace implicit WeakMap state with explicit card factories
   - Refactor module-level WeakMap state in `frontend/js/ui/card.js` into per-card factory instances, expose deterministic APIs for tests, and ensure dependencies are injected instead of captured via globals.
 - [ ] [GN-412] Introduce note record smart constructors before store writes
