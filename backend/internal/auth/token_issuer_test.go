@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -62,6 +63,9 @@ func TestTokenIssuerRejectsMissingSecret(t *testing.T) {
 	if !errors.Is(err, ErrInvalidTokenConfig) {
 		t.Fatalf("expected invalid token config error, got %v", err)
 	}
+	if !strings.Contains(err.Error(), errMissingSigningSecret.Error()) {
+		t.Fatalf("expected signing secret validation error, got %v", err)
+	}
 }
 
 func TestTokenIssuerValidatesIssuedTokens(t *testing.T) {
@@ -104,6 +108,9 @@ func TestNewTokenIssuerRequiresIssuerAndAudience(t *testing.T) {
 	if !errors.Is(err, ErrInvalidTokenConfig) {
 		t.Fatalf("expected invalid token config error, got %v", err)
 	}
+	if !strings.Contains(err.Error(), errMissingIssuer.Error()) {
+		t.Fatalf("expected issuer validation error, got %v", err)
+	}
 
 	_, err = NewTokenIssuer(TokenIssuerConfig{
 		SigningSecret: []byte("secret"),
@@ -113,6 +120,9 @@ func TestNewTokenIssuerRequiresIssuerAndAudience(t *testing.T) {
 	})
 	if !errors.Is(err, ErrInvalidTokenConfig) {
 		t.Fatalf("expected invalid token config error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), errMissingAudience.Error()) {
+		t.Fatalf("expected audience validation error, got %v", err)
 	}
 }
 
@@ -125,5 +135,8 @@ func TestNewTokenIssuerRequiresPositiveTTL(t *testing.T) {
 	})
 	if !errors.Is(err, ErrInvalidTokenConfig) {
 		t.Fatalf("expected invalid token config error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), errInvalidTokenTTL.Error()) {
+		t.Fatalf("expected ttl validation error, got %v", err)
 	}
 }

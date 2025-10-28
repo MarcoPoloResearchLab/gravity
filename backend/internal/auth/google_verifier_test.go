@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -149,6 +150,9 @@ func TestNewGoogleVerifierRequiresAudienceAndJWKS(t *testing.T) {
 	if !errors.Is(err, ErrInvalidVerifierConfig) {
 		t.Fatalf("expected invalid verifier config error, got %v", err)
 	}
+	if !strings.Contains(err.Error(), errMissingAudienceConfig.Error()) {
+		t.Fatalf("expected audience validation error to be reported, got %v", err)
+	}
 
 	_, err = NewGoogleVerifier(GoogleVerifierConfig{
 		Audience:       "test-client",
@@ -157,6 +161,9 @@ func TestNewGoogleVerifierRequiresAudienceAndJWKS(t *testing.T) {
 	})
 	if !errors.Is(err, ErrInvalidVerifierConfig) {
 		t.Fatalf("expected invalid verifier config error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), errMissingJWKSURL.Error()) {
+		t.Fatalf("expected jwks validation error to be reported, got %v", err)
 	}
 }
 
@@ -168,6 +175,9 @@ func TestNewGoogleVerifierRejectsEmptyIssuerList(t *testing.T) {
 	})
 	if !errors.Is(err, ErrInvalidVerifierConfig) {
 		t.Fatalf("expected invalid verifier config error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), errNoAllowedIssuers.Error()) {
+		t.Fatalf("expected allowed issuers validation error to be reported, got %v", err)
 	}
 }
 

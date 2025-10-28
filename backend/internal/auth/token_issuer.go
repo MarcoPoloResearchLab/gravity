@@ -37,21 +37,21 @@ type TokenIssuer struct {
 // NewTokenIssuer constructs a TokenIssuer with validated configuration.
 func NewTokenIssuer(cfg TokenIssuerConfig) (*TokenIssuer, error) {
 	if len(cfg.SigningSecret) == 0 {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidTokenConfig, errMissingSigningSecret)
+		return nil, fmt.Errorf("%w: %v", ErrInvalidTokenConfig, errMissingSigningSecret)
 	}
 
 	issuer := strings.TrimSpace(cfg.Issuer)
 	if issuer == "" {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidTokenConfig, errMissingIssuer)
+		return nil, fmt.Errorf("%w: %v", ErrInvalidTokenConfig, errMissingIssuer)
 	}
 
 	audience := strings.TrimSpace(cfg.Audience)
 	if audience == "" {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidTokenConfig, errMissingAudience)
+		return nil, fmt.Errorf("%w: %v", ErrInvalidTokenConfig, errMissingAudience)
 	}
 
 	if cfg.TokenTTL <= 0 {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidTokenConfig, errInvalidTokenTTL)
+		return nil, fmt.Errorf("%w: %v", ErrInvalidTokenConfig, errInvalidTokenTTL)
 	}
 
 	clock := cfg.Clock
