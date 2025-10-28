@@ -90,6 +90,8 @@ let pointerTrackingInitialized = false;
 let lastPointerDownTarget = null;
 const NON_EDITABLE_CARD_SURFACE_SELECTORS = Object.freeze([
     ".actions",
+    ".card-controls",
+    ".meta-chips",
     ".note-expand-toggle"
 ]);
 const INLINE_EDITOR_SURFACE_SELECTORS = Object.freeze([
@@ -134,8 +136,10 @@ function shouldIgnoreCardPointerTarget(target) {
     if (!(target instanceof HTMLElement)) {
         return false;
     }
-    if (target.closest(".actions")) {
-        return true;
+    for (const selector of NON_EDITABLE_CARD_SURFACE_SELECTORS) {
+        if (target.closest(selector)) {
+            return true;
+        }
     }
     if (target.closest(".note-task-checkbox")) {
         return true;

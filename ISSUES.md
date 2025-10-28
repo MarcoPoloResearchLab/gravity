@@ -43,7 +43,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Guarded htmlView bubbling against disconnected cards, reused live DOM nodes via noteId resolution, and added a Puppeteer regression reproducing the Safari duplication (forces re-render before checkbox bubble) to confirm the fix.
 - [x] [GN-307] Center the "expand/fold in" signs of a card along the full width of the card, not just the text part.
   - Expand toggles now compute their position against the entire card grid and stay centered across desktop and stacked mobile layouts, verified by new Puppeteer coverage.
-- [ ] [GN-308] Clicking on the control part of the note flickers the renderHTML view instead of switching to it. I expect a click outside of currently edited note to switch it to renderedHTML. The outside area includes the control area. It currently switches briefly and then goes back to markdown.
+- [x] [GN-308] Clicking on the control part of the note flickers the renderHTML view instead of switching to it. I expect a click outside of currently edited note to switch it to renderedHTML. The outside area includes the control area. It currently switches briefly and then goes back to markdown.
+  - Treats the control column as a non-edit surface so control clicks finalize editing without re-opening markdown, backed by a Puppeteer regression.
 
 ## Maintenance (400–499)
 
