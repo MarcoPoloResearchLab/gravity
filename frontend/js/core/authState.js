@@ -100,6 +100,23 @@ export function isAuthStateFresh(state, clock = () => Date.now()) {
 }
 
 /**
+ * Determine whether the active runtime session represents an authenticated user.
+ * @param {{ id?: string }|null|undefined} authUser
+ * @param {string|null|undefined} credential
+ * @returns {boolean}
+ */
+export function hasActiveAuthenticationSession(authUser, credential) {
+    if (!authUser || typeof authUser !== "object") {
+        return false;
+    }
+    const identifier = typeof authUser.id === "string" ? authUser.id.trim() : "";
+    if (!identifier) {
+        return false;
+    }
+    return typeof credential === "string" && credential.length > 0;
+}
+
+/**
  * Remove any persisted authentication state.
  * @returns {void}
  */

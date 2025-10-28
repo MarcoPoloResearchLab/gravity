@@ -19,6 +19,12 @@ const NOTE_MARKDOWN = [
     "- List markers ensure content height.",
     "- Additional bullets keep the card realistic."
 ].join("\n");
+const FILLER_NOTE_PREFIX = "ui-style-filler";
+const FILLER_NOTE_MARKDOWN = [
+    "Filler note content keeps the viewport scrollable for scrollbar regression coverage.",
+    "",
+    "Additional text ensures each filler card consumes visible height."
+].join("\n");
 
 test("top editor keeps sticky positioning and compact padding", async () => {
     const { page, teardown } = await preparePage();
@@ -309,9 +315,51 @@ test("content and control columns stay anchored to their grid tracks", async () 
     }
 });
 
+test("application viewport hides native scrollbars while remaining scrollable", async () => {
+    const { page, teardown } = await preparePage();
+    try {
+        await page.waitForFunction(
+            (expectedCount) => {
+                const nodes = document.querySelectorAll(".markdown-block");
+                return nodes.length >= expectedCount;
+            },
+            {},
+            10
+        );
+        const metrics = await page.evaluate(() => {
+            const scrollElement = document.scrollingElement || document.documentElement;
+            if (!(scrollElement instanceof Element)) {
+                return null;
+            }
+            const widthDelta = window.innerWidth - scrollElement.clientWidth;
+            const heightDelta = window.innerHeight - scrollElement.clientHeight;
+            const scrollable = scrollElement.scrollHeight - window.innerHeight > 10;
+            return { widthDelta, heightDelta, scrollable };
+        });
+        assert.ok(metrics, "Expected viewport metrics for scrollbar check");
+        assert.ok(metrics.scrollable, "Application should remain vertically scrollable for tall feeds");
+        assert.ok(
+            metrics.widthDelta <= 1,
+            `Vertical scrollbars should be hidden (observed gap ${metrics.widthDelta.toFixed(2)}px)`
+        );
+        assert.ok(
+            metrics.heightDelta <= 1,
+            `Horizontal scrollbars should be hidden (observed gap ${metrics.heightDelta.toFixed(2)}px)`
+        );
+    } finally {
+        await teardown();
+    }
+});
+
 async function preparePage() {
     const { page, teardown } = await createSharedPage();
-    const records = [buildNoteRecord({ noteId: NOTE_ID, markdownText: NOTE_MARKDOWN })];
+    const records = [
+        buildNoteRecord({ noteId: NOTE_ID, markdownText: NOTE_MARKDOWN }),
+        ...Array.from({ length: 12 }, (_, index) => buildNoteRecord({
+            noteId: `${FILLER_NOTE_PREFIX}-${index + 1}`,
+            markdownText: FILLER_NOTE_MARKDOWN
+        }))
+    ];
     const serialized = JSON.stringify(records);
     await page.evaluateOnNewDocument((storageKey, payload) => {
         window.sessionStorage.setItem("__gravityTestInitialized", "true");
