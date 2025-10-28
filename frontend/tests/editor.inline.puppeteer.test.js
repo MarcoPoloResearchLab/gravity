@@ -139,6 +139,18 @@ const GN105_SECOND_MARKDOWN = [
     "",
     "Single clicking this card must finalize the first note without requiring an extra pointer press."
 ].join("\n");
+const GN202_DOUBLE_CLICK_NOTE_ID = "inline-gesture-double-click";
+const GN202_DOUBLE_CLICK_MARKDOWN = "Double click activation baseline.";
+const GN202_TAP_NOTE_ID = "inline-gesture-tap";
+const GN202_TAP_MARKDOWN = "Tap activation baseline.";
+const GN202_FINISH_NOTE_ID = "inline-gesture-finish";
+const GN202_FINISH_MARKDOWN = [
+    "# Gesture Finish Fixture",
+    "",
+    "This card verifies that leaving the editor with double clicks behaves like other pointer gestures.",
+    "",
+    "Additional prose keeps the card tall enough to measure pointer coordinates."
+].join("\n");
 const GN304_TARGET_NOTE_ID = "inline-anchor-fixture";
 const GN304_TARGET_MARKDOWN = [
     "# Anchored Editing Fixture",
@@ -196,6 +208,39 @@ test.describe("Markdown inline editor", () => {
             assert.equal(topEditorState.value, "", "Top editor clears value after submit");
             assert.equal(topEditorState.line, 0, "Top editor caret returns to first line");
             assert.equal(topEditorState.ch, 0, "Top editor caret resets to first column");
+        } finally {
+            await teardown();
+        }
+    });
+
+    test("double clicking outside inline editor finalizes edit mode", async () => {
+        const { page, teardown } = await preparePage({
+            records: [
+                buildNoteRecord({
+                    noteId: GN202_FINISH_NOTE_ID,
+                    markdownText: GN202_FINISH_MARKDOWN
+                })
+            ]
+        });
+        const cardSelector = `.markdown-block[data-note-id="${GN202_FINISH_NOTE_ID}"]`;
+        try {
+            await page.waitForSelector(cardSelector, { timeout: 5000 });
+            await enterCardEditMode(page, cardSelector);
+            await page.waitForSelector(`${cardSelector}.editing-in-place`, { timeout: 5000 });
+            const outsidePoint = await page.$eval(cardSelector, (element) => {
+                if (!(element instanceof HTMLElement)) {
+                    return null;
+                }
+                const rect = element.getBoundingClientRect();
+                const targetY = Math.min(rect.bottom + 48, window.innerHeight - 20);
+                const targetX = Math.min(rect.left + rect.width / 2, window.innerWidth - 20);
+                return { x: targetX, y: targetY };
+            });
+            assert.ok(outsidePoint, "outside click target should resolve");
+            await page.mouse.click(outsidePoint.x, outsidePoint.y);
+            await pause(page, 30);
+            await page.mouse.click(outsidePoint.x, outsidePoint.y);
+            await page.waitForSelector(`${cardSelector}.editing-in-place`, { timeout: 4000, hidden: true });
         } finally {
             await teardown();
         }
@@ -1053,7 +1098,7 @@ test.describe("Markdown inline editor", () => {
         }
     });
 
-    test("clicking an already editing card keeps edit mode active", async () => {
+    test("clicking an already editing card outside the editor finalizes edit mode", async () => {
         const noteRecord = buildNoteRecord({
             noteId: GN48_NOTE_ID,
             markdownText: GN48_MARKDOWN
@@ -1084,22 +1129,22 @@ test.describe("Markdown inline editor", () => {
                     y: rect.top + rect.height / 2
                 };
             });
-            await page.mouse.click(cardClickTarget.x, cardClickTarget.y, { clickCount: 2 });
+            await page.mouse.click(cardClickTarget.x, cardClickTarget.y);
             await pause(page, 50);
 
             const postClickState = await collectCardEditingTelemetry(page, cardSelector);
             assert.ok(postClickState, "Expected to capture post-click editor state");
-            assert.equal(postClickState.mode, "edit", "Card must remain in edit mode after redundant click");
-            assert.equal(postClickState.hasEditingClass, true, "Card should keep editing-in-place class after redundant click");
+            assert.equal(postClickState.mode, "view", "Card must exit edit mode after clicking outside the editor");
+            assert.equal(postClickState.hasEditingClass, false, "Card should remove editing-in-place class after clicking outside");
             if (Array.isArray(postClickState.modeTransitions)) {
                 assert.ok(
-                    !postClickState.modeTransitions.includes("view"),
-                    `Mode transitions must not include view: ${postClickState.modeTransitions.join(", ")}`
+                    postClickState.modeTransitions.includes("view"),
+                    `Mode transitions must include view: ${postClickState.modeTransitions.join(", ")}`
                 );
             }
             if (Array.isArray(postClickState.editClassTransitions) && postClickState.editClassTransitions.length > 0) {
                 const removed = postClickState.editClassTransitions.some((value) => value === false);
-                assert.equal(removed, false, "Editing class should never be removed during redundant click interactions");
+                assert.equal(removed, true, "Editing class should be removed when leaving edit mode via card chrome");
             }
         } finally {
             await teardown();
@@ -1556,6 +1601,74 @@ test.describe("Markdown inline editor", () => {
                 textareaAutocorrect: "on",
                 textareaAutocapitalize: "sentences"
             });
+        } finally {
+            await teardown();
+        }
+    });
+
+    test("double clicking a card enters inline edit mode", async () => {
+        const { page, teardown } = await preparePage({
+            records: [
+                buildNoteRecord({
+                    noteId: GN202_DOUBLE_CLICK_NOTE_ID,
+                    markdownText: GN202_DOUBLE_CLICK_MARKDOWN
+                })
+            ]
+        });
+        const cardSelector = `.markdown-block[data-note-id="${GN202_DOUBLE_CLICK_NOTE_ID}"]`;
+        try {
+            await page.waitForSelector(cardSelector, { timeout: 5000 });
+            const clickPoint = await page.$eval(cardSelector, (card) => {
+                if (!(card instanceof HTMLElement)) {
+                    return null;
+                }
+                const htmlView = card.querySelector(".note-html-view") || card;
+                if (!(htmlView instanceof HTMLElement)) {
+                    return null;
+                }
+                const rect = htmlView.getBoundingClientRect();
+                return {
+                    x: rect.left + rect.width / 2,
+                    y: rect.top + rect.height / 2
+                };
+            });
+            assert.ok(clickPoint, "click point should resolve inside the card");
+            await page.mouse.click(clickPoint.x, clickPoint.y, { clickCount: 2, delay: 30 });
+            await page.waitForSelector(`${cardSelector}.editing-in-place`, { timeout: 4000 });
+        } finally {
+            await teardown();
+        }
+    });
+
+    test("touch tap enters inline edit mode", async () => {
+        const { page, teardown } = await preparePage({
+            records: [
+                buildNoteRecord({
+                    noteId: GN202_TAP_NOTE_ID,
+                    markdownText: GN202_TAP_MARKDOWN
+                })
+            ]
+        });
+        const cardSelector = `.markdown-block[data-note-id="${GN202_TAP_NOTE_ID}"]`;
+        try {
+            await page.waitForSelector(cardSelector, { timeout: 5000 });
+            const tapPoint = await page.$eval(cardSelector, (card) => {
+                if (!(card instanceof HTMLElement)) {
+                    return null;
+                }
+                const htmlView = card.querySelector(".note-html-view") || card;
+                if (!(htmlView instanceof HTMLElement)) {
+                    return null;
+                }
+                const rect = htmlView.getBoundingClientRect();
+                return {
+                    x: rect.left + rect.width / 2,
+                    y: rect.top + rect.height / 2
+                };
+            });
+            assert.ok(tapPoint, "tap point should resolve inside the card");
+            await page.touchscreen.tap(tapPoint.x, tapPoint.y);
+            await page.waitForSelector(`${cardSelector}.editing-in-place`, { timeout: 4000 });
         } finally {
             await teardown();
         }
