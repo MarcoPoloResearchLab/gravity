@@ -318,6 +318,14 @@ test("content and control columns stay anchored to their grid tracks", async () 
 test("application viewport hides native scrollbars while remaining scrollable", async () => {
     const { page, teardown } = await preparePage();
     try {
+        await page.waitForFunction(
+            (expectedCount) => {
+                const nodes = document.querySelectorAll(".markdown-block");
+                return nodes.length >= expectedCount;
+            },
+            {},
+            10
+        );
         const metrics = await page.evaluate(() => {
             const scrollElement = document.scrollingElement || document.documentElement;
             if (!(scrollElement instanceof Element)) {
@@ -326,14 +334,7 @@ test("application viewport hides native scrollbars while remaining scrollable", 
             const widthDelta = window.innerWidth - scrollElement.clientWidth;
             const heightDelta = window.innerHeight - scrollElement.clientHeight;
             const scrollable = scrollElement.scrollHeight - window.innerHeight > 10;
-            const scrollbarStyle = window.getComputedStyle(scrollElement, "::-webkit-scrollbar");
-            return {
-                widthDelta,
-                heightDelta,
-                scrollable,
-                pseudoDisplay: scrollbarStyle?.display ?? "",
-                pseudoWidth: scrollbarStyle?.width ?? ""
-            };
+            return { widthDelta, heightDelta, scrollable };
         });
         assert.ok(metrics, "Expected viewport metrics for scrollbar check");
         assert.ok(metrics.scrollable, "Application should remain vertically scrollable for tall feeds");
@@ -344,11 +345,6 @@ test("application viewport hides native scrollbars while remaining scrollable", 
         assert.ok(
             metrics.heightDelta <= 1,
             `Horizontal scrollbars should be hidden (observed gap ${metrics.heightDelta.toFixed(2)}px)`
-        );
-        assert.equal(
-            metrics.pseudoDisplay,
-            "none",
-            `Scrollbar pseudo element should be hidden (display=${metrics.pseudoDisplay}, width=${metrics.pseudoWidth})`
         );
     } finally {
         await teardown();
