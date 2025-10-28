@@ -50,9 +50,9 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
 ## Maintenance (400–499)
 
-- [ ] [GN-400] Update the documentation @README and focus on the usefullness to the user. Move the technical details to @ARCHITECTURE.md
+- [ ] [GN-400] Update the documentation @README.md and focus on the usefullness to the user. Move the technical details to @ARCHITECTURE.md
 - [ ] [GN-401] Ensure architrecture matches the reality of code. Update @ARCHITECTURE.md when needed
-- [ ] [GN-402] Review @POLICY.md and verify what code areas need improvements and refactoring
+- [ ] [GN-402] Review @POLICY.md and verify what code areas need improvements and refactoring. Prepare a detailed plan of refactoring. Check for bugs, missing tests, poor coding practices, uplication and slop.
 
 ## Planning (do not work on these, not ready)
 
