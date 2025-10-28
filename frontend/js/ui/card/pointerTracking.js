@@ -124,7 +124,7 @@ export function isPointerWithinInlineEditorSurface(card, pointerTarget) {
     }
 
     for (const selector of INLINE_EDITOR_SURFACE_SELECTORS) {
-        const surface = elementTarget.closest(selector);
+        const surface = /** @type {HTMLElement | null} */ (elementTarget.closest(selector));
         if (!(surface instanceof HTMLElement)) {
             continue;
         }
@@ -133,7 +133,7 @@ export function isPointerWithinInlineEditorSurface(card, pointerTarget) {
             continue;
         }
         if (selector === ".EasyMDEContainer") {
-            const containedCodeMirror = surface.querySelector(".CodeMirror");
+            const containedCodeMirror = /** @type {HTMLElement | null} */ (surface.querySelector(".CodeMirror"));
             if (containedCodeMirror instanceof HTMLElement && !containedCodeMirror.contains(elementTarget)) {
                 continue;
             }
