@@ -32,7 +32,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 	- Solutions:
 		- Center the whole scroll around the active card. Introduce a notion of a card being active, if not already. Consider active being last selected, e.g. the card stays immobile but the feed around it moves. So a card that finished editing doesnt move but all other cards moved underneath it. 
     - Effectively clicking on a card freezes it on the screen after moving it to the vewport. So if I click on a large renderedHTML view, I expect to get the rendered markdown view with the cursor in the place of my click, and no movement as the point of click was clearly in the view when I clicked on it
-- [ ] [GN-305] I can still see scrollers ![scroller screenshot](scroller.png). There should be no scrollers.
+- [x] [GN-305] I can still see scrollers ![scroller screenshot](scroller.png). There should be no scrollers.
+  - Hid browser-native scrollbars by suppressing the root scrollbar pseudo element on `html`/`body` and added regression coverage guaranteeing the viewport stays scrollable without rendering scrollbar chrome.
 
 ## Maintenance (400–499)
 
