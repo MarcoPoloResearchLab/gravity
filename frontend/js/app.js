@@ -12,7 +12,13 @@ import { createGoogleIdentityController, isGoogleIdentitySupportedOrigin } from 
 import { initializeAnalytics } from "./core/analytics.js";
 import { createSyncManager } from "./core/syncManager.js";
 import { createRealtimeSyncController } from "./core/realtimeSyncController.js";
-import { loadAuthState, saveAuthState, clearAuthState, isAuthStateFresh } from "./core/authState.js";
+import {
+    loadAuthState,
+    saveAuthState,
+    clearAuthState,
+    isAuthStateFresh,
+    hasActiveAuthenticationSession
+} from "./core/authState.js";
 import { mountTopEditor } from "./ui/topEditor.js";
 import {
     LABEL_APP_SUBTITLE,
@@ -153,13 +159,14 @@ function gravityApp() {
             if (!token || typeof token.accessToken !== "string" || token.accessToken.length === 0) {
                 return;
             }
+            if (!hasActiveAuthenticationSession(this.authUser, this.latestCredential)) {
+                return;
+            }
             this.backendAccessToken = token.accessToken;
             this.backendAccessTokenExpiresAtMs = typeof token.expiresAtMs === "number" && Number.isFinite(token.expiresAtMs)
                 ? token.expiresAtMs
                 : null;
-            if (this.authUser && typeof this.latestCredential === "string" && this.latestCredential.length > 0) {
-                this.persistAuthState();
-            }
+            this.persistAuthState();
             this.realtimeSync?.connect({
                 baseUrl: appConfig.backendBaseUrl,
                 accessToken: this.backendAccessToken,
