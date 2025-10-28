@@ -62,8 +62,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Introduced `ChangeEnvelope` smart constructor enforcing operation/edit-sequence invariants, refactored service/conflict logic and sync handler to consume the typed envelopes, and expanded unit plus HTTP tests to cover invalid envelopes and negative client sequences.
 - [x] [GN-405] Harden notes service constructor dependency validation
   - `NewService` now returns `(*Service, error)` and fails fast when database or ID provider dependencies are missing, main/integration wiring passes an explicit UUID provider, and new tests cover both constructor failures and edge validation without relying on the live database.
-- [ ] [GN-406] Wrap notes service errors with operation codes
-  - Replace sentinel returns in `backend/internal/notes/service.go` with contextual errors (e.g., `notes.apply_changes.missing_note_id`) using `%w`, propagate them through handlers, and assert on error codes in HTTP tests.
+- [x] [GN-406] Wrap notes service errors with operation codes
+  - Added `ServiceError` with stable codes (e.g., `notes.apply_changes.missing_database`), wrapped all service exits, surfaced codes in HTTP responses/logs, and extended unit plus router tests to assert the propagation.
 - [ ] [GN-407] Add smart constructors for token issuer and Google verifier
   - Introduce validated constructors in `backend/internal/auth/token_issuer.go` and `backend/internal/auth/google_verifier.go` that enforce secret, issuer, audience, JWKS, and TTL invariants, update call sites, and extend tests to verify constructor failures.
 - [ ] [GN-408] Standardize typed domain errors across backend services

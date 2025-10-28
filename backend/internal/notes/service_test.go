@@ -1,6 +1,7 @@
 package notes
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -268,4 +269,40 @@ type stubIDProvider struct{}
 
 func (stubIDProvider) NewID() (string, error) {
 	return "stub-id", nil
+}
+
+func TestApplyChangesWrapsMissingDatabase(t *testing.T) {
+	service := &Service{}
+	_, err := service.ApplyChanges(context.Background(), mustUserID(t, "user-1"), nil)
+	if err == nil {
+		t.Fatal("expected error from missing database")
+	}
+	var serviceErr *ServiceError
+	if !errors.As(err, &serviceErr) {
+		t.Fatalf("expected ServiceError, got %T", err)
+	}
+	if serviceErr.Code() != "notes.apply_changes.missing_database" {
+		t.Fatalf("unexpected service error code: %s", serviceErr.Code())
+	}
+	if !errors.Is(err, errMissingDatabase) {
+		t.Fatalf("expected underlying missing database error, got %v", err)
+	}
+}
+
+func TestListNotesWrapsMissingDatabase(t *testing.T) {
+	service := &Service{}
+	_, err := service.ListNotes(context.Background(), "user-1")
+	if err == nil {
+		t.Fatal("expected error from missing database")
+	}
+	var serviceErr *ServiceError
+	if !errors.As(err, &serviceErr) {
+		t.Fatalf("expected ServiceError, got %T", err)
+	}
+	if serviceErr.Code() != "notes.list_notes.missing_database" {
+		t.Fatalf("unexpected service error code: %s", serviceErr.Code())
+	}
+	if !errors.Is(err, errMissingDatabase) {
+		t.Fatalf("expected underlying missing database error, got %v", err)
+	}
 }

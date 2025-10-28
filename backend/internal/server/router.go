@@ -264,8 +264,14 @@ func (h *httpHandler) handleNotesSync(c *gin.Context) {
 
 	result, err := h.notesService.ApplyChanges(c.Request.Context(), userID, changes)
 	if err != nil {
-		h.logger.Error("failed to apply note changes", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "sync_failed"})
+		var serviceErr *notes.ServiceError
+		if errors.As(err, &serviceErr) {
+			h.logger.Error("failed to apply note changes", zap.String("error_code", serviceErr.Code()), zap.Error(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "sync_failed", "code": serviceErr.Code()})
+		} else {
+			h.logger.Error("failed to apply note changes", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "sync_failed"})
+		}
 		return
 	}
 
@@ -349,17 +355,23 @@ func (h *httpHandler) handleListNotes(c *gin.Context) {
 		return
 	}
 
-	notes, err := h.notesService.ListNotes(c.Request.Context(), userID)
+	storedNotes, err := h.notesService.ListNotes(c.Request.Context(), userID)
 	if err != nil {
-		h.logger.Error("failed to list notes", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "list_failed"})
+		var serviceErr *notes.ServiceError
+		if errors.As(err, &serviceErr) {
+			h.logger.Error("failed to list notes", zap.String("error_code", serviceErr.Code()), zap.Error(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "list_failed", "code": serviceErr.Code()})
+		} else {
+			h.logger.Error("failed to list notes", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "list_failed"})
+		}
 		return
 	}
 
 	response := snapshotResponsePayload{
-		Notes: make([]snapshotResultPayload, 0, len(notes)),
+		Notes: make([]snapshotResultPayload, 0, len(storedNotes)),
 	}
-	for _, note := range notes {
+	for _, note := range storedNotes {
 		response.Notes = append(response.Notes, snapshotResultPayload{
 			NoteID:            note.NoteID,
 			Version:           note.Version,
