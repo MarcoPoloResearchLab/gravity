@@ -980,6 +980,7 @@ test.describe("Markdown inline editor", () => {
             await page.waitForSelector(`${cardSelector}.editing-in-place`);
             await page.waitForSelector(`${cardSelector} .CodeMirror textarea`);
             await pause(page, 50);
+            await waitForViewportStability(page, cardSelector);
 
             const editingMetrics = await page.$eval(cardSelector, (element) => {
                 if (!(element instanceof HTMLElement)) {
@@ -1010,6 +1011,7 @@ test.describe("Markdown inline editor", () => {
             await page.keyboard.up("Shift");
             await page.waitForSelector(`${cardSelector}.editing-in-place`, { hidden: true });
             await pause(page, 50);
+            await waitForViewportStability(page, cardSelector);
 
             const finalMetrics = await page.$eval(cardSelector, (element) => {
                 if (!(element instanceof HTMLElement)) {
@@ -2355,6 +2357,27 @@ async function ensureCardInViewMode(page, cardSelector, originalMarkdown) {
         const host = Reflect.get(card, "__markdownHost");
         return Boolean(host && typeof host.getMode === "function" && host.getMode() === "view");
     }, {}, cardSelector);
+}
+
+async function waitForViewportStability(page, cardSelector, maximumFrames = 24, tolerance = 0.75) {
+    await page.evaluate(async (selector, frames, epsilon) => {
+        const card = document.querySelector(selector);
+        if (!(card instanceof HTMLElement)) {
+            return;
+        }
+        const waitForFrame = () => new Promise((resolve) => {
+            requestAnimationFrame(() => resolve());
+        });
+        let previousTop = card.getBoundingClientRect().top;
+        for (let iteration = 0; iteration < frames; iteration += 1) {
+            await waitForFrame();
+            const currentTop = card.getBoundingClientRect().top;
+            if (Math.abs(currentTop - previousTop) <= epsilon) {
+                return;
+            }
+            previousTop = currentTop;
+        }
+    }, cardSelector, maximumFrames, tolerance);
 }
 
 async function pause(page, durationMs) {
