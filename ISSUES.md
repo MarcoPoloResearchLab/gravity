@@ -78,8 +78,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Added `createNoteRecord` to centralize validation and updated store read/write paths to rely on the constructor so invalid payloads raise explicit errors.
 - [x] [GN-413] Add targeted frontend tests for notes state and pointer flows
   - Added Node-based unit tests covering `cardState` and pointer tracking helpers to verify state transitions and inline surface detection logic.
-- [ ] [GN-414] Document card events and state transitions after the controller split
-  - Update `ARCHITECTURE.md` to describe the new card modules, emitted events, and store interactions introduced by the decomposition.
+- [x] [GN-414] Document card events and state transitions after the controller split
+  - Updated `ARCHITECTURE.md` to outline the pointer tracking, card state, and copy feedback helpers plus the new note record validation path.
 - [ ] [GN-415] Expand CI automation for static analysis
   - Update automation scripts to run `go vet ./...`, `staticcheck ./...`, and `ineffassign ./...` for the backend and `tsc --noEmit` for the frontend, keeping results wired into the existing pipelines.
 - [ ] [GN-416] Provide fixtures and mocks for domain constructors in tests
