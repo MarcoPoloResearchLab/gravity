@@ -163,6 +163,54 @@ body::-webkit-scrollbar {
     align-items: center;
     margin-left: auto;
 }
+.fullscreen-toggle {
+    width: 2.45rem;
+    height: 2.45rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid #28314a;
+    border-radius: 0.75rem;
+    color: #d5deff;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+.fullscreen-toggle:hover,
+.fullscreen-toggle:focus-visible {
+    border-color: rgba(118, 146, 220, 0.7);
+    background: rgba(66, 94, 165, 0.2);
+    color: #ffffff;
+}
+.fullscreen-toggle__icon {
+    width: 1.4rem;
+    height: 1.4rem;
+}
+.fullscreen-toggle__enter,
+.fullscreen-toggle__exit {
+    display: none;
+}
+.fullscreen-toggle__stroke {
+    fill: none;
+    stroke: #d5deff;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: stroke 0.15s ease;
+}
+.fullscreen-toggle[data-fullscreen-state="enter"] .fullscreen-toggle__enter {
+    display: block;
+}
+.fullscreen-toggle[data-fullscreen-state="exit"] .fullscreen-toggle__exit {
+    display: block;
+}
+.fullscreen-toggle[data-fullscreen-state="exit"] .fullscreen-toggle__stroke {
+    stroke: #a5bfff;
+}
+.fullscreen-toggle:hover .fullscreen-toggle__stroke,
+.fullscreen-toggle:focus-visible .fullscreen-toggle__stroke {
+    stroke: #ffffff;
+}
 .app-control-button {
     background: transparent;
     border: 1px solid #28314a;

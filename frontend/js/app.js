@@ -39,13 +39,16 @@ import {
     EVENT_SYNC_SNAPSHOT_APPLIED,
     MESSAGE_NOTES_IMPORTED,
     MESSAGE_NOTES_SKIPPED,
-    MESSAGE_NOTES_IMPORT_FAILED
+    MESSAGE_NOTES_IMPORT_FAILED,
+    APP_BUILD_ID
 } from "./constants.js";
 import { initializeKeyboardShortcutsModal } from "./ui/keyboardShortcutsModal.js";
 import { initializeNotesState } from "./ui/notesState.js";
 import { showSaveFeedback } from "./ui/saveFeedback.js";
 import { initializeAuthControls } from "./ui/authControls.js";
 import { createAvatarMenu } from "./ui/menu/avatarMenu.js";
+import { initializeFullScreenToggle } from "./ui/fullScreenToggle.js";
+import { initializeVersionRefresh } from "./utils/versionRefresh.js";
 import { logging } from "./utils/logging.js";
 
 const CONSTANTS_VIEW_MODEL = Object.freeze({
@@ -96,6 +99,8 @@ function gravityApp() {
         backendAccessTokenExpiresAtMs: /** @type {number|null} */ (null),
         latestCredential: /** @type {string|null} */ (null),
         lastRenderedSignature: /** @type {string|null} */ (null),
+        fullScreenToggleController: /** @type {{ dispose(): void }|null} */ (null),
+        versionRefreshController: /** @type {{ dispose(): void, checkNow(): Promise<{ reloaded: boolean, remoteVersion: string|null }> }|null} */ (null),
 
         init() {
             this.notesContainer = this.$refs.notesContainer ?? document.getElementById("notes-container");
@@ -107,6 +112,15 @@ function gravityApp() {
             this.importButton = /** @type {HTMLButtonElement|null} */ (this.$refs.importButton ?? document.getElementById("import-notes-button"));
             this.importInput = /** @type {HTMLInputElement|null} */ (this.$refs.importInput ?? document.getElementById("import-notes-input"));
             this.guestExportButton = /** @type {HTMLButtonElement|null} */ (this.$refs.guestExportButton ?? document.getElementById("guest-export-button"));
+            const fullScreenButton = /** @type {HTMLButtonElement|null} */ (this.$refs.fullScreenToggle ?? document.querySelector('[data-test="fullscreen-toggle"]'));
+
+            this.fullScreenToggleController = initializeFullScreenToggle({
+                button: fullScreenButton,
+                targetElement: document.documentElement ?? null,
+                notify: (message) => {
+                    this.emitNotification(message);
+                }
+            });
 
             this.configureMarked();
             this.registerEventBridges();
@@ -157,6 +171,25 @@ function gravityApp() {
                 this.setGuestExportVisibility(true);
             }
             initializeKeyboardShortcutsModal();
+            this.versionRefreshController = initializeVersionRefresh({
+                currentVersion: APP_BUILD_ID,
+                manifestUrl: "./data/version.json",
+                checkIntervalMs: 5 * 60 * 1000,
+                autoStart: true,
+                onVersionMismatch: () => {
+                    this.emitNotification("Gravity Notes updated. Reloading…");
+                },
+                reload: () => {
+                    if (typeof window !== "undefined") {
+                        window.setTimeout(() => {
+                            window.location.reload();
+                        }, 600);
+                    }
+                },
+                onError: (error) => {
+                    logging.warn("Version manifest check failed", error);
+                }
+            });
         },
 
         /**

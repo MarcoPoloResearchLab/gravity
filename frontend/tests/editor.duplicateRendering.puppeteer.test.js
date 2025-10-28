@@ -32,6 +32,8 @@ const EDIT_WORD_HIGHLIGHT_RGB = Object.freeze([32, 176, 32]);
 const SCROLLBAR_ALERT_RGB = Object.freeze([24, 148, 220]);
 const DUPLICATE_SURFACE_ALERT_RGB = Object.freeze([240, 128, 0]);
 
+const getCodeMirrorInputSelector = (scope) => `${scope} .CodeMirror [contenteditable="true"], ${scope} .CodeMirror textarea`;
+
 test.describe("GN-58 duplicate markdown rendering", () => {
     test("checklist htmlView and editor remain singular with persistent checkbox state", async () => {
         const seededRecords = [
@@ -429,11 +431,11 @@ function isApproximateColorMatch(red, green, blue, target, tolerance) {
 async function enterEditMode(page, cardSelector) {
     await page.click(`${cardSelector} .note-html-view`, { clickCount: 2 });
     await page.waitForSelector(`${cardSelector}.editing-in-place`);
-    await page.waitForSelector(`${cardSelector} .CodeMirror textarea`);
+    await page.waitForSelector(getCodeMirrorInputSelector(cardSelector));
 }
 
 async function finalizeEditing(page, cardSelector) {
-    const codeMirrorTextarea = `${cardSelector} .CodeMirror textarea`;
+    const codeMirrorTextarea = getCodeMirrorInputSelector(cardSelector);
     await page.waitForSelector(codeMirrorTextarea);
     await page.focus(codeMirrorTextarea);
     await page.keyboard.down("Shift");

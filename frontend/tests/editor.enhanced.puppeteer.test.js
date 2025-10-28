@@ -10,17 +10,19 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
 
+const getCodeMirrorInputSelector = (scope) => `${scope} .CodeMirror [contenteditable="true"], ${scope} .CodeMirror textarea`;
+
 test.describe("Enhanced Markdown editor", () => {
     test("EasyMDE auto-continues lists, fences, and brackets", async () => {
         const { page, teardown } = await openEnhancedPage();
         try {
             const cmSelector = "#top-editor .CodeMirror";
-            const cmTextarea = `${cmSelector} textarea`;
+            const cmInputSelector = getCodeMirrorInputSelector("#top-editor");
             await page.waitForSelector(cmSelector);
-            await page.waitForSelector(cmTextarea);
+            await page.waitForSelector(cmInputSelector);
 
                 // Unordered list continuation retains bullet symbol
-                await page.focus(cmTextarea);
+                await page.focus(cmInputSelector);
                 await page.keyboard.type("* Alpha");
                 await page.keyboard.press("Enter");
                 const listState = await getCodeMirrorState(page);
@@ -43,7 +45,7 @@ test.describe("Enhanced Markdown editor", () => {
                     cm.setValue("* Alpha\n* Beta");
                     cm.setCursor({ line: 0, ch: 0 });
                 });
-                await page.focus(cmTextarea);
+                await page.focus(cmInputSelector);
                 await page.keyboard.press("Enter");
                 const firstLineState = await getCodeMirrorState(page);
                 assert.equal(firstLineState.value, "\n* Alpha\n* Beta");
@@ -59,7 +61,7 @@ test.describe("Enhanced Markdown editor", () => {
                     const line = cm.getLine(0);
                     cm.setCursor({ line: 0, ch: line.length });
                 });
-                await page.focus(cmTextarea);
+                await page.focus(cmInputSelector);
                 await page.keyboard.press("Enter");
                 const checklistState = await getCodeMirrorState(page);
                 assert.equal(checklistState.value, "- [ ] First task\n- [ ] ");
@@ -75,7 +77,7 @@ test.describe("Enhanced Markdown editor", () => {
                     cm.setCursor({ line: 0, ch: 0 });
                 });
 
-                await page.focus(cmTextarea);
+                await page.focus(cmInputSelector);
                 await page.keyboard.type("```js");
                 await page.keyboard.press("Enter");
                 const fenceState = await getCodeMirrorState(page);
@@ -92,7 +94,7 @@ test.describe("Enhanced Markdown editor", () => {
                     cm.setCursor({ line: 0, ch: 0 });
                 });
 
-                await page.focus(cmTextarea);
+                await page.focus(cmInputSelector);
                 await page.keyboard.type("(");
                 const bracketState = await getCodeMirrorState(page);
                 assert.equal(bracketState.value, "()");
@@ -107,11 +109,11 @@ test.describe("Enhanced Markdown editor", () => {
             const { page, teardown } = await openEnhancedPage();
             try {
                 const cmSelector = "#top-editor .CodeMirror";
-                const cmTextarea = `${cmSelector} textarea`;
+                const cmInputSelector = getCodeMirrorInputSelector("#top-editor");
                 await page.waitForSelector(cmSelector);
-                await page.waitForSelector(cmTextarea);
+                await page.waitForSelector(cmInputSelector);
 
-                await page.focus(cmTextarea);
+                await page.focus(cmInputSelector);
                 await page.keyboard.type("Alpha");
 
                 let state = await getCodeMirrorState(page);
@@ -141,11 +143,11 @@ test.describe("Enhanced Markdown editor", () => {
             const { page, teardown } = await openEnhancedPage();
             try {
                 const cmSelector = "#top-editor .CodeMirror";
-                const cmTextarea = `${cmSelector} textarea`;
+                const cmInputSelector = getCodeMirrorInputSelector("#top-editor");
                 await page.waitForSelector(cmSelector);
-                await page.waitForSelector(cmTextarea);
+                await page.waitForSelector(cmInputSelector);
 
-                await page.focus(cmTextarea);
+                await page.focus(cmInputSelector);
                 await page.keyboard.type("(");
 
                 let state = await getCodeMirrorState(page);
@@ -166,7 +168,7 @@ test.describe("Enhanced Markdown editor", () => {
                     cm.setCursor({ line: 0, ch: 0 });
                 });
 
-                await page.focus(cmTextarea);
+                await page.focus(cmInputSelector);
                 await page.keyboard.type("{");
                 await page.keyboard.type("}");
 
@@ -182,7 +184,7 @@ test.describe("Enhanced Markdown editor", () => {
                     cm.setCursor({ line: 0, ch: 0 });
                 });
 
-                await page.focus(cmTextarea);
+                await page.focus(cmInputSelector);
                 await page.keyboard.type("[");
                 await page.keyboard.type("]");
 
@@ -198,9 +200,9 @@ test.describe("Enhanced Markdown editor", () => {
         const { page, teardown } = await openEnhancedPage();
         try {
             const cmSelector = "#top-editor .CodeMirror";
-            const cmTextarea = `${cmSelector} textarea`;
+            const cmInputSelector = getCodeMirrorInputSelector("#top-editor");
             await page.waitForSelector(cmSelector);
-            await page.waitForSelector(cmTextarea);
+            await page.waitForSelector(cmInputSelector);
 
                 await page.evaluate(() => {
                     const wrapper = document.querySelector("#top-editor .CodeMirror");
@@ -210,7 +212,7 @@ test.describe("Enhanced Markdown editor", () => {
                     cm.setCursor({ line: 0, ch: 1 });
                 });
 
-                await page.focus(cmTextarea);
+                await page.focus(cmInputSelector);
                 await page.keyboard.down("Control");
                 await page.keyboard.down("Shift");
                 await page.keyboard.press("KeyK");
@@ -230,9 +232,9 @@ test.describe("Enhanced Markdown editor", () => {
         const { page, teardown } = await openEnhancedPage();
         try {
             const cmSelector = "#top-editor .CodeMirror";
-            const cmTextarea = `${cmSelector} textarea`;
+            const cmInputSelector = getCodeMirrorInputSelector("#top-editor");
             await page.waitForSelector(cmSelector);
-            await page.waitForSelector(cmTextarea);
+            await page.waitForSelector(cmInputSelector);
 
                 await page.evaluate(() => {
                     const wrapper = document.querySelector("#top-editor .CodeMirror");
@@ -242,7 +244,7 @@ test.describe("Enhanced Markdown editor", () => {
                     cm.setCursor({ line: 0, ch: 2 });
                 });
 
-                await page.focus(cmTextarea);
+                await page.focus(cmInputSelector);
                 await page.keyboard.down("Control");
                 await page.keyboard.down("Shift");
                 await page.keyboard.press("KeyD");
@@ -262,9 +264,9 @@ test.describe("Enhanced Markdown editor", () => {
         const { page, teardown } = await openEnhancedPage();
         try {
             const cmSelector = "#top-editor .CodeMirror";
-            const cmTextarea = `${cmSelector} textarea`;
+            const cmInputSelector = getCodeMirrorInputSelector("#top-editor");
             await page.waitForSelector(cmSelector);
-            await page.waitForSelector(cmTextarea);
+            await page.waitForSelector(cmInputSelector);
 
                 await page.evaluate(() => {
                     const wrapper = document.querySelector("#top-editor .CodeMirror");

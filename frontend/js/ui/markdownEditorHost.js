@@ -376,6 +376,8 @@ export function createMarkdownEditorHost(options) {
             element,
             autoDownloadFontAwesome: false,
             spellChecker: false,
+            nativeSpellcheck: true,
+            inputStyle: "contenteditable",
             status: false,
             autofocus: false,
             toolbar: false,
@@ -384,7 +386,11 @@ export function createMarkdownEditorHost(options) {
             autoCloseTags: true,
             minHeight: "2.2rem",
             previewRender: () => "",
-            renderingConfig: { singleLineBreaks: false, codeSyntaxHighlighting: false }
+            renderingConfig: { singleLineBreaks: false, codeSyntaxHighlighting: false },
+            codemirror: {
+                inputStyle: "contenteditable",
+                spellcheck: true
+            }
         });
     }
 
@@ -400,11 +406,6 @@ export function createMarkdownEditorHost(options) {
                 inputField.setAttribute("autocorrect", "on");
                 inputField.setAttribute("autocapitalize", "sentences");
                 inputField.setAttribute("data-gramm", "true");
-            }
-            if (textarea instanceof HTMLTextAreaElement) {
-                textarea.setAttribute("spellcheck", "true");
-                textarea.setAttribute("autocorrect", "on");
-                textarea.setAttribute("autocapitalize", "sentences");
             }
         };
         ensureInputAttributes();
