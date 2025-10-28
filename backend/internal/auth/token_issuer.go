@@ -4,18 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
-const (
-	defaultTokenTTL = 30 * time.Minute
-)
-
 var (
 	errMissingSigningSecret = errors.New("signing secret must be provided")
 	errMissingSubjectClaim  = errors.New("subject claim must be provided")
+	errMissingIssuer        = errors.New("issuer must be provided")
+	errMissingAudience      = errors.New("audience must be provided")
+	errInvalidTokenTTL      = errors.New("token ttl must be positive")
+	ErrInvalidTokenConfig   = errors.New("auth: invalid token config")
 )
 
 // TokenIssuerConfig configures the backend JWT issuer.
@@ -33,26 +34,41 @@ type TokenIssuer struct {
 	clock  func() time.Time
 }
 
-// NewTokenIssuer constructs a TokenIssuer with sane defaults.
-func NewTokenIssuer(cfg TokenIssuerConfig) *TokenIssuer {
-	ttl := cfg.TokenTTL
-	if ttl <= 0 {
-		ttl = defaultTokenTTL
+// NewTokenIssuer constructs a TokenIssuer with validated configuration.
+func NewTokenIssuer(cfg TokenIssuerConfig) (*TokenIssuer, error) {
+	if len(cfg.SigningSecret) == 0 {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidTokenConfig, errMissingSigningSecret)
 	}
+
+	issuer := strings.TrimSpace(cfg.Issuer)
+	if issuer == "" {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidTokenConfig, errMissingIssuer)
+	}
+
+	audience := strings.TrimSpace(cfg.Audience)
+	if audience == "" {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidTokenConfig, errMissingAudience)
+	}
+
+	if cfg.TokenTTL <= 0 {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidTokenConfig, errInvalidTokenTTL)
+	}
+
 	clock := cfg.Clock
 	if clock == nil {
 		clock = time.Now
 	}
+
 	return &TokenIssuer{
 		config: TokenIssuerConfig{
 			SigningSecret: cfg.SigningSecret,
-			Issuer:        cfg.Issuer,
-			Audience:      cfg.Audience,
-			TokenTTL:      ttl,
+			Issuer:        issuer,
+			Audience:      audience,
+			TokenTTL:      cfg.TokenTTL,
 			Clock:         clock,
 		},
 		clock: clock,
-	}
+	}, nil
 }
 
 // IssueBackendToken produces a signed JWT and its expiry (seconds) for the validated subject.

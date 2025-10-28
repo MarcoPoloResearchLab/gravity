@@ -52,12 +52,15 @@ func TestAuthAndSyncFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to build notes service: %v", err)
 	}
-	tokenManager := auth.NewTokenIssuer(auth.TokenIssuerConfig{
+	tokenManager, err := auth.NewTokenIssuer(auth.TokenIssuerConfig{
 		SigningSecret: []byte("integration-secret"),
 		Issuer:        "gravity-auth",
 		Audience:      "gravity-api",
 		TokenTTL:      30 * time.Minute,
 	})
+	if err != nil {
+		t.Fatalf("failed to construct token issuer: %v", err)
+	}
 
 	handler, err := server.NewHTTPHandler(server.Dependencies{
 		GoogleVerifier: stubGoogleVerifier{},
