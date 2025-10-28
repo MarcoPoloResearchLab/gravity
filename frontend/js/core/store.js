@@ -14,6 +14,7 @@ const STORAGE_USER_PREFIX = (() => {
     return prefix.endsWith(":") ? prefix : `${prefix}:`;
 })();
 let activeStorageKey = STORAGE_KEY_BASE;
+const ERROR_INVALID_NOTE_RECORD = "gravity.invalid_note_record";
 
 /** @typedef {import("../types.d.js").NoteRecord} NoteRecord */
 
@@ -28,9 +29,13 @@ export const GravityStore = (() => {
         try {
             const rawRecords = JSON.parse(raw);
             if (!Array.isArray(rawRecords)) return [];
-            const normalized = rawRecords
-                .map(normalizeRecord)
-                .filter(isValidNoteRecord);
+            const normalized = [];
+            for (const rawRecord of rawRecords) {
+                const note = tryCreateNoteRecord(rawRecord);
+                if (note) {
+                    normalized.push(note);
+                }
+            }
             return dedupeRecordsById(normalized);
         } catch {
             return [];
@@ -43,9 +48,7 @@ export const GravityStore = (() => {
      */
     function saveAllNotes(records) {
         const normalized = Array.isArray(records)
-            ? records
-                .map(normalizeRecord)
-                .filter(isValidNoteRecord)
+            ? records.map((record) => createNoteRecord(record))
             : [];
         const deduped = dedupeRecordsById(normalized);
         const storageKey = getActiveStorageKey();
@@ -82,9 +85,13 @@ export const GravityStore = (() => {
             throw new Error(ERROR_IMPORT_INVALID_PAYLOAD);
         }
 
-        const incomingRecords = parsed
-            .map(normalizeRecord)
-            .filter(isValidNoteRecord);
+        const incomingRecords = [];
+        for (const candidate of parsed) {
+            const note = tryCreateNoteRecord(candidate);
+            if (note) {
+                incomingRecords.push(note);
+            }
+        }
 
         if (incomingRecords.length === 0) {
             return [];
@@ -125,8 +132,12 @@ export const GravityStore = (() => {
             ? record.pinned
             : existingRecord?.pinned === true;
 
-        const sanitizedRecord = normalizeRecord({ ...record, pinned: normalizedPinned });
-        if (!isValidNoteRecord(sanitizedRecord)) return;
+        let sanitizedRecord;
+        try {
+            sanitizedRecord = createNoteRecord({ ...record, pinned: normalizedPinned });
+        } catch {
+            return;
+        }
 
         if (existingIndex === -1) {
             allRecords.unshift(sanitizedRecord);
@@ -204,29 +215,54 @@ export const GravityStore = (() => {
         return targetId;
     }
 
-    return Object.freeze({
-        loadAllNotes,
-        saveAllNotes,
-        exportNotes,
-        importNotes,
-        upsertNonEmpty,
-        removeById,
-        getById,
-        setPinned,
-        setUserScope,
-        getActiveStorageKey
-    });
+return Object.freeze({
+    loadAllNotes,
+    saveAllNotes,
+    exportNotes,
+    importNotes,
+    upsertNonEmpty,
+    removeById,
+    getById,
+    setPinned,
+    setUserScope,
+    getActiveStorageKey
+});
 })();
 
 /**
- * @param {Partial<NoteRecord>} record
+ * @param {Partial<NoteRecord>|null|undefined} record
+ * @returns {NoteRecord}
+ */
+export function createNoteRecord(record) {
+    const normalized = normalizeRecord(record);
+    if (!isValidNoteRecord(normalized)) {
+        throw new Error(ERROR_INVALID_NOTE_RECORD);
+    }
+    return normalized;
+}
+
+/**
+ * @param {unknown} candidate
+ * @returns {NoteRecord|null}
+ */
+function tryCreateNoteRecord(candidate) {
+    try {
+        return createNoteRecord(/** @type {Partial<NoteRecord>} */ (candidate));
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * @param {Partial<NoteRecord>|null|undefined} record
  * @returns {NoteRecord}
  */
 function normalizeRecord(record) {
-    const markdownText = typeof record?.markdownText === "string" ? record.markdownText : EMPTY_STRING;
-    const attachments = sanitizeAttachmentDictionary(record?.attachments || {});
-    const pinned = record?.pinned === true;
-    return { ...record, markdownText, attachments, pinned };
+    const baseRecord = typeof record === "object" && record !== null ? record : {};
+    const markdownText = typeof baseRecord?.markdownText === "string" ? baseRecord.markdownText : EMPTY_STRING;
+    const attachments = sanitizeAttachmentDictionary(baseRecord?.attachments || {});
+    const pinned = baseRecord?.pinned === true;
+    return { ...baseRecord, markdownText, attachments, pinned };
 }
 
 /**

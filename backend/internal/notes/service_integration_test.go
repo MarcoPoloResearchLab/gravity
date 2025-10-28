@@ -151,11 +151,14 @@ func newTestService(t *testing.T, ids []string) (*Service, *gorm.DB) {
 	generator := &staticIDGenerator{ids: ids}
 	clock := func() time.Time { return time.Unix(1700000600, 0).UTC() }
 
-	service := NewService(ServiceConfig{
+	service, err := NewService(ServiceConfig{
 		Database:   db,
 		Clock:      clock,
 		IDProvider: generator,
 	})
+	if err != nil {
+		t.Fatalf("failed to construct notes service: %v", err)
+	}
 
 	return service, db
 }
