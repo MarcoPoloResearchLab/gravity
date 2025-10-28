@@ -477,6 +477,13 @@ function shouldCenterCard(anchor) {
         return true;
     }
     const margin = Math.max(viewportHeight * 0.05, VIEWPORT_ANCHOR_MARGIN_PX);
+    const effectiveViewportHeight = viewportHeight - margin * 2;
+    if (!Number.isFinite(anchor.height) || anchor.height <= 0) {
+        return anchor.top < margin || anchor.bottom > viewportHeight - margin;
+    }
+    if (effectiveViewportHeight <= 0 || anchor.height >= effectiveViewportHeight) {
+        return false;
+    }
     const topThreshold = margin;
     const bottomThreshold = viewportHeight - margin;
     return anchor.top < topThreshold || anchor.bottom > bottomThreshold;
