@@ -21,6 +21,7 @@ with bounded HTML views, and every note edits inline—no modal overlays or cont
 * **Rich Markdown:** Markdown rendering is powered by [marked.js](https://marked.js.org/) with sanitisation from
   [DOMPurify](https://github.com/cure53/DOMPurify). Inline image pasting is preserved through attachment placeholders.
 * **Native grammar tools:** The inline editor keeps browser spellcheck and grammar suggestions active so typos surface while you type.
+* **Auto updates:** A lightweight manifest check keeps the client in sync and reloads when a new Gravity Notes build ships.
 * **Organise & share:** Notes retain the existing move, merge, copy, and classification behaviours, and you can import
   or export notebooks as JSON snapshots without introducing duplicates.
 * **Account-aware storage:** Sign in with Google (or continue anonymously) from the header controls. Each authenticated

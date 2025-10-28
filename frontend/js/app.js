@@ -39,7 +39,8 @@ import {
     EVENT_SYNC_SNAPSHOT_APPLIED,
     MESSAGE_NOTES_IMPORTED,
     MESSAGE_NOTES_SKIPPED,
-    MESSAGE_NOTES_IMPORT_FAILED
+    MESSAGE_NOTES_IMPORT_FAILED,
+    APP_BUILD_ID
 } from "./constants.js";
 import { initializeKeyboardShortcutsModal } from "./ui/keyboardShortcutsModal.js";
 import { initializeNotesState } from "./ui/notesState.js";
@@ -47,6 +48,7 @@ import { showSaveFeedback } from "./ui/saveFeedback.js";
 import { initializeAuthControls } from "./ui/authControls.js";
 import { createAvatarMenu } from "./ui/menu/avatarMenu.js";
 import { initializeFullScreenToggle } from "./ui/fullScreenToggle.js";
+import { initializeVersionRefresh } from "./utils/versionRefresh.js";
 import { logging } from "./utils/logging.js";
 
 const CONSTANTS_VIEW_MODEL = Object.freeze({
@@ -98,6 +100,7 @@ function gravityApp() {
         latestCredential: /** @type {string|null} */ (null),
         lastRenderedSignature: /** @type {string|null} */ (null),
         fullScreenToggleController: /** @type {{ dispose(): void }|null} */ (null),
+        versionRefreshController: /** @type {{ dispose(): void, checkNow(): Promise<{ reloaded: boolean, remoteVersion: string|null }> }|null} */ (null),
 
         init() {
             this.notesContainer = this.$refs.notesContainer ?? document.getElementById("notes-container");
@@ -168,6 +171,25 @@ function gravityApp() {
                 this.setGuestExportVisibility(true);
             }
             initializeKeyboardShortcutsModal();
+            this.versionRefreshController = initializeVersionRefresh({
+                currentVersion: APP_BUILD_ID,
+                manifestUrl: "./data/version.json",
+                checkIntervalMs: 5 * 60 * 1000,
+                autoStart: true,
+                onVersionMismatch: () => {
+                    this.emitNotification("Gravity Notes updated. Reloading…");
+                },
+                reload: () => {
+                    if (typeof window !== "undefined") {
+                        window.setTimeout(() => {
+                            window.location.reload();
+                        }, 600);
+                    }
+                },
+                onError: (error) => {
+                    logging.warn("Version manifest check failed", error);
+                }
+            });
         },
 
         /**
