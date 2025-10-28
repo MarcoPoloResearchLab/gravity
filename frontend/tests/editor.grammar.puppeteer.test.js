@@ -23,13 +23,12 @@ test.describe("GN-205 browser grammar support", () => {
                     return null;
                 }
                 const editable = wrapper.querySelector('[contenteditable="true"]');
-                const fallbackTextarea = wrapper.querySelector("textarea");
                 return {
                     hasContentEditable: editable instanceof HTMLElement,
                     contentEditableSpellcheck: editable instanceof HTMLElement ? editable.spellcheck : null,
                     contentEditableAutoCorrect: editable instanceof HTMLElement ? editable.getAttribute("autocorrect") : null,
                     contentEditableGramm: editable instanceof HTMLElement ? editable.getAttribute("data-gramm") : null,
-                    fallbackTextareaSpellcheck: fallbackTextarea instanceof HTMLElement ? fallbackTextarea.getAttribute("spellcheck") : null
+                    hasFallbackTextarea: Boolean(wrapper.querySelector("textarea"))
                 };
             }, CODEMIRROR_SELECTOR);
 
@@ -50,13 +49,11 @@ test.describe("GN-205 browser grammar support", () => {
                 "true",
                 "contenteditable surface should advertise Grammarly compatibility"
             );
-            if (diagnostics.fallbackTextareaSpellcheck !== null) {
-                assert.equal(
-                    diagnostics.fallbackTextareaSpellcheck,
-                    "true",
-                    "fallback textarea should retain spellcheck for clipboard flows"
-                );
-            }
+            assert.equal(
+                diagnostics.hasFallbackTextarea,
+                false,
+                "no inactive fallback textarea should remain when using contenteditable mode"
+            );
         } finally {
             await teardown();
         }

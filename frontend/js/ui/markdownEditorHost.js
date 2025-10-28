@@ -407,11 +407,6 @@ export function createMarkdownEditorHost(options) {
                 inputField.setAttribute("autocapitalize", "sentences");
                 inputField.setAttribute("data-gramm", "true");
             }
-            if (textarea instanceof HTMLTextAreaElement) {
-                textarea.setAttribute("spellcheck", "true");
-                textarea.setAttribute("autocorrect", "on");
-                textarea.setAttribute("autocapitalize", "sentences");
-            }
         };
         ensureInputAttributes();
 
