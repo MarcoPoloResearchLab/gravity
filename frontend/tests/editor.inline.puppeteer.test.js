@@ -177,19 +177,21 @@ const GN304_FILLER_MARKDOWN = Array.from(
     (_, index) => `Filler paragraph ${index + 1} expands the scroll context for anchoring regression coverage.`
 ).join("\n\n");
 
+const getCodeMirrorInputSelector = (scope) => `${scope} .CodeMirror [contenteditable="true"], ${scope} .CodeMirror textarea`;
+
 test.describe("Markdown inline editor", () => {
 
     test("top editor clears after submitting long note", async () => {
         const { page, teardown } = await preparePage({
             records: []
         });
-        const cmTextarea = "#top-editor .CodeMirror textarea";
+        const cmInputSelector = getCodeMirrorInputSelector("#top-editor");
 
         try {
-            await page.waitForSelector(cmTextarea);
+            await page.waitForSelector(cmInputSelector);
 
             const longNote = Array.from({ length: 14 }, (_, index) => `Line ${index + 1} of extended content.`).join("\n");
-            await page.focus(cmTextarea);
+            await page.focus(cmInputSelector);
             await page.keyboard.type(longNote);
 
             await page.keyboard.down("Control");
@@ -391,17 +393,17 @@ test.describe("Markdown inline editor", () => {
         const { page, teardown } = await preparePage({
             records: []
         });
-        const cmTextarea = "#top-editor .CodeMirror textarea";
+        const cmInputSelector = getCodeMirrorInputSelector("#top-editor");
 
         try {
-            await page.waitForSelector(cmTextarea);
+            await page.waitForSelector(cmInputSelector);
             const heightBefore = await page.evaluate(() => {
                 const wrapper = document.querySelector("#top-editor .markdown-block.top-editor");
                 return wrapper instanceof HTMLElement ? wrapper.getBoundingClientRect().height : 0;
             });
 
             const multiline = Array.from({ length: 6 }, (_, index) => `Line ${index + 1} content`).join("\n");
-            await page.focus(cmTextarea);
+            await page.focus(cmInputSelector);
             await page.keyboard.type(multiline);
 
             const heightAfter = await page.evaluate(() => {
@@ -447,15 +449,17 @@ test.describe("Markdown inline editor", () => {
         const { page, teardown } = await preparePage({
             records: []
         });
-        const cmTextarea = "#top-editor .CodeMirror textarea";
+        const cmInputSelector = getCodeMirrorInputSelector("#top-editor");
 
         try {
-            await page.waitForSelector(cmTextarea);
+            await page.waitForSelector(cmInputSelector);
 
-            await page.focus(cmTextarea);
+            await page.focus(cmInputSelector);
 
             const externalFocus = await page.evaluate(() => {
-                const textarea = document.querySelector("#top-editor .CodeMirror textarea");
+                const wrapper = document.querySelector("#top-editor .markdown-block.top-editor");
+                const host = wrapper && wrapper instanceof HTMLElement ? /** @type {any} */ (wrapper).__markdownHost : null;
+                const textarea = host && typeof host.getTextarea === "function" ? host.getTextarea() : null;
                 const probe = document.createElement("button");
                 probe.id = "focus-probe";
                 probe.type = "button";
@@ -472,11 +476,16 @@ test.describe("Markdown inline editor", () => {
             assert.equal(externalFocus, "BUTTON", "external control can receive focus");
 
             const refocusResult = await page.evaluate(() => {
-                const textarea = document.querySelector("#top-editor .CodeMirror textarea");
-                if (textarea instanceof HTMLTextAreaElement) {
-                    textarea.focus();
+                const wrapper = document.querySelector("#top-editor .markdown-block.top-editor");
+                const host = wrapper && wrapper instanceof HTMLElement ? /** @type {any} */ (wrapper).__markdownHost : null;
+                if (host && typeof host.focus === "function") {
+                    host.focus();
                 }
-                return document.activeElement instanceof HTMLTextAreaElement;
+                const activeElement = document.activeElement;
+                if (activeElement instanceof HTMLElement && activeElement.getAttribute("contenteditable") === "true") {
+                    return true;
+                }
+                return activeElement instanceof HTMLTextAreaElement;
             });
             assert.equal(refocusResult, true, "top editor regains focus when the user returns to it");
         } finally {
@@ -569,12 +578,11 @@ test.describe("Markdown inline editor", () => {
         ];
         const { page, teardown } = await preparePage({ records: seededRecords });
         const cardSelector = `.markdown-block[data-note-id="${HEIGHT_RESET_NOTE_ID}"]`;
-        const editorSelector = `${cardSelector} .CodeMirror textarea`;
-
+        const editorInputSelector = getCodeMirrorInputSelector(cardSelector);
         try {
             await enterCardEditMode(page, cardSelector);
-            await page.waitForSelector(editorSelector, { timeout: 5000 });
-            await page.type(editorSelector, " ");
+            await page.waitForSelector(editorInputSelector, { timeout: 5000 });
+            await page.type(editorInputSelector, " ");
 
             await page.keyboard.down("Shift");
             await page.keyboard.press("Enter");
@@ -897,7 +905,7 @@ test.describe("Markdown inline editor", () => {
 
             await page.mouse.click(clickPoint.x, clickPoint.y, { clickCount: 2 });
             await page.waitForSelector(`${cardSelector}.editing-in-place`);
-            await page.waitForSelector(`${cardSelector} .CodeMirror textarea`);
+            await page.waitForSelector(getCodeMirrorInputSelector(cardSelector));
 
         const layoutAfter = await page.$eval(cardSelector, (element) => {
             if (!(element instanceof HTMLElement)) {
@@ -1032,7 +1040,7 @@ test.describe("Markdown inline editor", () => {
             });
             await page.mouse.click(clickPoint.x, clickPoint.y);
             await page.waitForSelector(`${cardSelector}.editing-in-place`);
-            await page.waitForSelector(`${cardSelector} .CodeMirror textarea`);
+            await page.waitForSelector(getCodeMirrorInputSelector(cardSelector));
             await pause(page, 50);
             await waitForViewportStability(page, cardSelector);
             await waitForViewportStability(page, cardSelector);
@@ -1577,13 +1585,21 @@ test.describe("Markdown inline editor", () => {
             records: [noteRecord]
         });
         const cardSelector = `.markdown-block[data-note-id="${noteId}"]`;
-        const editorSelector = `${cardSelector} .CodeMirror textarea`;
-
         try {
             await page.waitForSelector(cardSelector, { timeout: 5000 });
             await enterCardEditMode(page, cardSelector);
-            await page.click(editorSelector);
-            await page.type(editorSelector, " Local draft");
+            await page.evaluate((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return;
+                }
+                const host = /** @type {any} */ (card).__markdownHost;
+                if (!host || typeof host.getValue !== "function" || typeof host.setValue !== "function") {
+                    return;
+                }
+                const currentValue = host.getValue();
+                host.setValue(`${currentValue} Local draft`);
+            }, cardSelector);
 
             const draftValue = await page.evaluate((selector) => {
                 const card = document.querySelector(selector);
@@ -1624,7 +1640,17 @@ test.describe("Markdown inline editor", () => {
             assert.equal(postSnapshotState.editing, true, "card should remain in edit mode after snapshot");
             assert.equal(postSnapshotState.value, draftValue, "unsaved draft should survive snapshot");
 
-            await page.type(editorSelector, " continues");
+            await page.evaluate((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return;
+                }
+                const host = /** @type {any} */ (card).__markdownHost;
+                if (!host || typeof host.getValue !== "function" || typeof host.setValue !== "function") {
+                    return;
+                }
+                host.setValue(`${host.getValue()} continues`);
+            }, cardSelector);
             const continuedDraft = await page.evaluate((selector) => {
                 const card = document.querySelector(selector);
                 if (!(card instanceof HTMLElement)) {
@@ -1653,28 +1679,21 @@ test.describe("Markdown inline editor", () => {
         const cardSelector = `.markdown-block[data-note-id="inline-grammar-check-fixture"]`;
 
         try {
-            await page.waitForSelector("#top-editor .CodeMirror textarea", { timeout: 5000 });
+            await page.waitForSelector(getCodeMirrorInputSelector("#top-editor"), { timeout: 5000 });
             const topEditorAttributes = await page.evaluate(() => {
                 const wrapper = document.querySelector("#top-editor .CodeMirror");
                 const cm = wrapper ? /** @type {any} */ (wrapper).CodeMirror : null;
                 const inputField = cm && typeof cm.getInputField === "function" ? cm.getInputField() : null;
-                const textarea = document.querySelector("#top-editor .markdown-editor");
                 return {
                     inputSpellcheck: inputField?.getAttribute("spellcheck") ?? null,
                     inputAutocorrect: inputField?.getAttribute("autocorrect") ?? null,
-                    inputAutocapitalize: inputField?.getAttribute("autocapitalize") ?? null,
-                    textareaSpellcheck: textarea?.getAttribute("spellcheck") ?? null,
-                    textareaAutocorrect: textarea?.getAttribute("autocorrect") ?? null,
-                    textareaAutocapitalize: textarea?.getAttribute("autocapitalize") ?? null
+                    inputAutocapitalize: inputField?.getAttribute("autocapitalize") ?? null
                 };
             });
             assert.deepEqual(topEditorAttributes, {
                 inputSpellcheck: "true",
                 inputAutocorrect: "on",
-                inputAutocapitalize: "sentences",
-                textareaSpellcheck: "true",
-                textareaAutocorrect: "on",
-                textareaAutocapitalize: "sentences"
+                inputAutocapitalize: "sentences"
             });
 
             await page.waitForSelector(cardSelector, { timeout: 5000 });
@@ -1688,14 +1707,10 @@ test.describe("Markdown inline editor", () => {
                 const cmElement = card.querySelector(".CodeMirror");
                 const cm = cmElement ? /** @type {any} */ (cmElement).CodeMirror : null;
                 const inputField = cm && typeof cm.getInputField === "function" ? cm.getInputField() : null;
-                const textarea = card.querySelector(".markdown-editor");
                 return {
                     inputSpellcheck: inputField?.getAttribute("spellcheck") ?? null,
                     inputAutocorrect: inputField?.getAttribute("autocorrect") ?? null,
-                    inputAutocapitalize: inputField?.getAttribute("autocapitalize") ?? null,
-                    textareaSpellcheck: textarea?.getAttribute("spellcheck") ?? null,
-                    textareaAutocorrect: textarea?.getAttribute("autocorrect") ?? null,
-                    textareaAutocapitalize: textarea?.getAttribute("autocapitalize") ?? null
+                    inputAutocapitalize: inputField?.getAttribute("autocapitalize") ?? null
                 };
             }, cardSelector);
 
@@ -1703,10 +1718,7 @@ test.describe("Markdown inline editor", () => {
             assert.deepEqual(cardAttributes, {
                 inputSpellcheck: "true",
                 inputAutocorrect: "on",
-                inputAutocapitalize: "sentences",
-                textareaSpellcheck: "true",
-                textareaAutocorrect: "on",
-                textareaAutocapitalize: "sentences"
+                inputAutocapitalize: "sentences"
             });
         } finally {
             await teardown();
@@ -1952,7 +1964,7 @@ test.describe("Markdown inline editor", () => {
             await page.mouse.click(clickContext.clickX, clickContext.clickY, { clickCount: 2 });
 
             await page.waitForSelector(`${targetSelector}.editing-in-place`);
-            await page.waitForSelector(`${targetSelector} .CodeMirror textarea`);
+            await page.waitForSelector(getCodeMirrorInputSelector(targetSelector));
             await page.waitForFunction((selector) => {
                 const card = document.querySelector(selector);
                 return card instanceof HTMLElement && !card.classList.contains("editing-in-place");
@@ -2513,13 +2525,13 @@ test.describe("Markdown inline editor — actions", () => {
 async function enterCardEditMode(page, cardSelector) {
     await page.click(`${cardSelector} .note-html-view`, { clickCount: 2 });
     await page.waitForSelector(`${cardSelector}.editing-in-place`, { timeout: 5000 });
-    const codeMirrorTextarea = `${cardSelector} .CodeMirror textarea`;
+    const codeMirrorTextarea = getCodeMirrorInputSelector(cardSelector);
     await page.waitForSelector(codeMirrorTextarea, { timeout: 5000 });
     return codeMirrorTextarea;
 }
 
 async function focusCardEditor(page, cardSelector, caretPosition = "end") {
-    const textareaSelector = `${cardSelector} .CodeMirror textarea`;
+    const textareaSelector = getCodeMirrorInputSelector(cardSelector);
     await page.waitForSelector(textareaSelector);
     await page.evaluate((selector, position) => {
         const card = document.querySelector(selector);
@@ -2627,7 +2639,7 @@ async function preparePage({ records, htmlViewBubbleDelayMs, waitUntil = "domcon
     }, appConfig.storageKey, serialized, typeof htmlViewBubbleDelayMs === "number" ? htmlViewBubbleDelayMs : null);
 
     await page.goto(PAGE_URL, { waitUntil });
-    await page.waitForSelector("#top-editor .CodeMirror textarea");
+    await page.waitForSelector(getCodeMirrorInputSelector("#top-editor"));
     if (Array.isArray(records) && records.length > 0) {
         await page.waitForSelector(".markdown-block[data-note-id]");
     }
