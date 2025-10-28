@@ -38,6 +38,7 @@ and are grouped by the date the work landed on `master`.
 ### Documentation
 - Folded `MIGRATION.md` into `ARCHITECTURE.md`, clarifying event contracts and module guidance (GN-54).
 - Tightened `NOTES.md` instructions so coding agents only touch `ISSUES.md`, `PLAN.md`, and `CHANGELOG.md` (GN-54).
+- Reworked `README.md` to focus on user-facing workflows and migrated technical setup guidance into `ARCHITECTURE.md` (GN-400).
 
 ### Removed
 - Deleted the legacy `MIGRATION.md` now that the architecture guide houses the relevant details (GN-54).
