@@ -10,6 +10,7 @@ and are grouped by the date the work landed on `master`.
 - Python utility `tools/ensure_plan_untracked.py` and a test guard to keep `PLAN.md` untracked (GN-54).
 - Local test runs now capture Puppeteer screenshots per suite while skipping CI to aid debugging (GN-70).
 - Header includes a diagonal full-screen toggle with stateful icons and dedicated regression coverage (GN-204).
+- Background version watcher polls a manifest and reloads the app when a new deploy ships so browsers never run stale code (GN-206).
 
 ### Fixed
 - Html view interactions now reserve the chevron toggle for expansion while single clicks anywhere else enter inline edit mode (GN-109).
