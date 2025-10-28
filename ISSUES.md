@@ -84,8 +84,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Backend CI now runs `go vet`, `staticcheck`, and `ineffassign`; frontend workflow installs TypeScript and executes `npm run typecheck` (`tsc --noEmit`).
 - [x] [GN-416] Provide fixtures and mocks for domain constructors in tests
   - Added `test_helpers_test.go` helper functions for constructing IDs/timestamps/envelopes and wired the notes tests to use them.
-- [ ] [GN-417] Document validation boundaries and constructor usage patterns
-  - Author module-level guides (`backend/internal/notes/doc.md`, `frontend/js/ui/card/README.md`) explaining how edge validation feeds domain constructors and how tests should exercise those invariants.
+- [x] [GN-417] Document validation boundaries and constructor usage patterns
+  - Added docs for notes domain constructors and card helpers to describe where validation occurs and how tests reuse the fixtures.
 
 ## Planning (do not work on these, not ready)
 
