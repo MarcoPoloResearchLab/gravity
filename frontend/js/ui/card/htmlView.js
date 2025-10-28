@@ -14,7 +14,7 @@ import {
     collectReferencedAttachments,
     transformMarkdownWithAttachments
 } from "../imagePaste.js";
-import { placeCardRespectingPinned } from "./layout.js";
+import { placeCardRespectingPinned, findCardById } from "./layout.js";
 import { updateActionButtons } from "./listControls.js";
 import { syncStoreFromDom } from "../storeSync.js";
 
@@ -41,23 +41,42 @@ const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
  * @returns {void}
  */
 export function scheduleHtmlViewBubble(card, notesContainer) {
-    if (!(card instanceof HTMLElement) || !(notesContainer instanceof HTMLElement)) {
+    if (!(notesContainer instanceof HTMLElement)) {
         return;
     }
-    const existing = htmlViewBubbleTimers.get(card);
+    const resolvedCard = resolveCardForBubble(card, notesContainer, null);
+    if (!resolvedCard) {
+        if (card instanceof HTMLElement) {
+            const staleTimer = htmlViewBubbleTimers.get(card);
+            if (staleTimer) {
+                clearTimeout(staleTimer);
+                htmlViewBubbleTimers.delete(card);
+            }
+        }
+        return;
+    }
+    if (card instanceof HTMLElement && card !== resolvedCard) {
+        const staleTimer = htmlViewBubbleTimers.get(card);
+        if (staleTimer) {
+            clearTimeout(staleTimer);
+            htmlViewBubbleTimers.delete(card);
+        }
+    }
+    const existing = htmlViewBubbleTimers.get(resolvedCard);
     if (existing) {
         clearTimeout(existing);
     }
+
     const delay = getHtmlViewCheckboxBubbleDelayMs();
     if (delay <= 0) {
-        bubbleCardToTop(card, notesContainer);
+        bubbleCardToTop(resolvedCard, notesContainer);
         return;
     }
     const timer = setTimeout(() => {
-        htmlViewBubbleTimers.delete(card);
-        bubbleCardToTop(card, notesContainer);
+        htmlViewBubbleTimers.delete(resolvedCard);
+        bubbleCardToTop(resolvedCard, notesContainer);
     }, delay);
-    htmlViewBubbleTimers.set(card, timer);
+    htmlViewBubbleTimers.set(resolvedCard, timer);
 }
 
 /**
@@ -69,34 +88,53 @@ export function scheduleHtmlViewBubble(card, notesContainer) {
  * @returns {void}
  */
 export function bubbleCardToTop(card, notesContainer, markdownOverride, overrideRecord) {
-    if (!(card instanceof HTMLElement) || !(notesContainer instanceof HTMLElement)) {
+    if (!(notesContainer instanceof HTMLElement)) {
         return;
     }
-    const pending = htmlViewBubbleTimers.get(card);
-    if (pending) {
-        clearTimeout(pending);
-        htmlViewBubbleTimers.delete(card);
+    const resolvedCard = resolveCardForBubble(card, notesContainer, overrideRecord ?? null);
+    if (!resolvedCard) {
+        if (card instanceof HTMLElement) {
+            const pending = htmlViewBubbleTimers.get(card);
+            if (pending) {
+                clearTimeout(pending);
+                htmlViewBubbleTimers.delete(card);
+            }
+        }
+        return;
     }
-    placeCardRespectingPinned(card, notesContainer, { forcePinnedPosition: card.dataset.pinned === "true" });
+    const timerKeys = new Set();
+    if (card instanceof HTMLElement) {
+        timerKeys.add(card);
+    }
+    timerKeys.add(resolvedCard);
+    for (const key of timerKeys) {
+        const pending = htmlViewBubbleTimers.get(key);
+        if (pending) {
+            clearTimeout(pending);
+            htmlViewBubbleTimers.delete(key);
+        }
+    }
+
+    placeCardRespectingPinned(resolvedCard, notesContainer, { forcePinnedPosition: resolvedCard.dataset.pinned === "true" });
     const overrides = overrideRecord && overrideRecord.noteId
         ? { [overrideRecord.noteId]: overrideRecord }
         : undefined;
     syncStoreFromDom(notesContainer, overrides);
     updateActionButtons(notesContainer);
-    const badgesTarget = card.querySelector(".note-badges");
+    const badgesTarget = resolvedCard.querySelector(".note-badges");
     let htmlViewSource = markdownOverride;
     if (typeof htmlViewSource !== "string") {
-        const host = card.__markdownHost;
+        const host = resolvedCard.__markdownHost;
         const textarea = host && typeof host.getTextarea === "function"
             ? host.getTextarea()
-            : /** @type {HTMLTextAreaElement|null} */ (card.querySelector(".markdown-editor"));
+            : /** @type {HTMLTextAreaElement|null} */ (resolvedCard.querySelector(".markdown-editor"));
         const markdownValue = host && typeof host.getValue === "function"
             ? host.getValue()
             : textarea?.value ?? "";
         const attachments = textarea instanceof HTMLTextAreaElement ? collectReferencedAttachments(textarea) : {};
         htmlViewSource = transformMarkdownWithAttachments(markdownValue, attachments);
     }
-    createHtmlView(card, { markdownSource: htmlViewSource, badgesTarget });
+    createHtmlView(resolvedCard, { markdownSource: htmlViewSource, badgesTarget });
 }
 
 /**
@@ -507,4 +545,31 @@ function createBadge(label, extraClass = "") {
         badge.classList.add(extraClass);
     }
     return badge;
+}
+
+function resolveCardForBubble(card, notesContainer, overrideRecord) {
+    if (!(notesContainer instanceof HTMLElement)) {
+        return null;
+    }
+    if (card instanceof HTMLElement && card.isConnected && notesContainer.contains(card)) {
+        return card;
+    }
+    const noteId = extractNoteId(card, overrideRecord);
+    if (!noteId) {
+        return null;
+    }
+    return findCardById(notesContainer, noteId);
+}
+
+function extractNoteId(card, overrideRecord) {
+    if (overrideRecord && typeof overrideRecord.noteId === "string" && overrideRecord.noteId.length > 0) {
+        return overrideRecord.noteId;
+    }
+    if (card instanceof HTMLElement) {
+        const noteId = card.getAttribute("data-note-id");
+        if (typeof noteId === "string" && noteId.length > 0) {
+            return noteId;
+        }
+    }
+    return null;
 }

@@ -129,6 +129,80 @@ test.describe("Checklist htmlView interactions", () => {
             await teardown();
         }
     });
+
+    test("htmlView checkbox toggle resists duplicate cards when the grid re-renders mid-bubble", async () => {
+        const initialRecords = [
+            buildNoteRecord({
+                noteId: CHECKLIST_NOTE_ID,
+                markdownText: CHECKLIST_MARKDOWN,
+                attachments: {}
+            })
+        ];
+
+        const { page, teardown } = await openChecklistPage(initialRecords);
+        try {
+            const cardSelector = `.markdown-block[data-note-id="${CHECKLIST_NOTE_ID}"]`;
+            const checkboxSelector = `${cardSelector} .note-html-view input[data-task-index="0"]`;
+            await page.waitForSelector(checkboxSelector);
+
+            await page.evaluate(() => {
+                window.__gravityHtmlViewBubbleDelayMs = 80;
+            });
+
+            await page.click(checkboxSelector);
+
+            await page.evaluate(({ storageKey, noteId }) => {
+                const root = document.body;
+                if (!(root instanceof HTMLElement)) {
+                    return;
+                }
+                const raw = window.localStorage.getItem(storageKey);
+                if (!raw) {
+                    return;
+                }
+                let records;
+                try {
+                    records = JSON.parse(raw);
+                } catch {
+                    return;
+                }
+                if (!Array.isArray(records)) {
+                    return;
+                }
+                const record = records.find((entry) => entry?.noteId === noteId);
+                if (!record) {
+                    return;
+                }
+                const event = new CustomEvent("gravity:note-update", {
+                    bubbles: true,
+                    detail: {
+                        record,
+                        noteId,
+                        storeUpdated: true,
+                        shouldRender: true
+                    }
+                });
+                root.dispatchEvent(event);
+            }, { storageKey: appConfig.storageKey, noteId: CHECKLIST_NOTE_ID });
+
+            await page.evaluate((delayMs) => new Promise((resolve) => {
+                setTimeout(resolve, typeof delayMs === "number" ? delayMs : 0);
+            }), 160);
+
+            const renderedCardCount = await page.$$eval(cardSelector, (nodes) => nodes.length);
+            assert.equal(renderedCardCount, 1, "only one card remains rendered after forced re-render");
+
+            const renderedIds = await page.$$eval(".markdown-block[data-note-id]", (nodes) => {
+                return nodes
+                    .map((node) => node.getAttribute("data-note-id"))
+                    .filter((value) => typeof value === "string");
+            });
+            const duplicateMatches = renderedIds.filter((value) => value === CHECKLIST_NOTE_ID);
+            assert.equal(duplicateMatches.length, 1, "duplicate cards do not appear for the toggled note");
+        } finally {
+            await teardown();
+        }
+    });
 });
 
 async function openChecklistPage(records) {

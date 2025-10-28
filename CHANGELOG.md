@@ -28,6 +28,7 @@ and are grouped by the date the work landed on `master`.
 - Backend token expiry no longer floods warn logs: realtime SSE disconnects before expiration, expired validations log at info level, and unit tests cover both guards (GN-89).
 - Refreshing the app no longer re-triggers Google Sign-In when a session is restored from storage; GIS auto prompt stays disabled until credentials expire (GN-97).
 - Double-chevron expand toggle now stays vertically centered on note cards, with Puppeteer coverage guarding the alignment (GN-98).
+- Checkbox toggles triggered during htmlView bubbling no longer spawn duplicate note cards; bubbling now resolves to the live DOM node and a Safari-focused regression locks the behavior (GN-306).
 
 ### Documentation
 - Folded `MIGRATION.md` into `ARCHITECTURE.md`, clarifying event contracts and module guidance (GN-54).

@@ -39,7 +39,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
     - Effectively clicking on a card freezes it on the screen after moving it to the vewport. So if I click on a large renderedHTML view, I expect to get the rendered markdown view with the cursor in the place of my click, and no movement as the point of click was clearly in the view when I clicked on it
 - [x] [GN-305] I can still see scrollers ![scroller screenshot](scroller.png). There should be no scrollers.
   - Hid browser-native scrollbars by suppressing the root scrollbar pseudo element on `html`/`body` and added regression coverage guaranteeing the viewport stays scrollable without rendering scrollbar chrome.
-- [ ] [GN-306] The notes duplicate when I click on a checkmark in renderedHTML view. I have used Safari on iPad. Have test to confirm and prepare a fix
+- [x] [GN-306] The notes duplicate when I click on a checkmark in renderedHTML view. I have used Safari on iPad. Have test to confirm and prepare a fix
+  - Guarded htmlView bubbling against disconnected cards, reused live DOM nodes via noteId resolution, and added a Puppeteer regression reproducing the Safari duplication (forces re-render before checkbox bubble) to confirm the fix.
 - [ ] [GN-307] Center the expand/fold in signs along the full width of the card, not just the text part.
 - [ ] [GN-308] Clicking on the control part of the note flickers the renderHTML view instead of switching to it. I expect a click outside of currently edited note to switch it to renderedHTML. The outside area includes the control area. It currently switches briefly and then goes back to markdown.
 

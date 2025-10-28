@@ -162,7 +162,7 @@ export function handlePinnedLayoutRefresh() {
  * @param {string|null} noteId
  * @returns {HTMLElement|null}
  */
-function findCardById(notesContainer, noteId) {
+export function findCardById(notesContainer, noteId) {
     if (!(notesContainer instanceof HTMLElement) || !isNonBlankString(noteId)) {
         return null;
     }
