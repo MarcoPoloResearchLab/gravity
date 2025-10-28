@@ -38,6 +38,16 @@ Network boundaries (`js/core/backendClient.js`, `js/core/classifier.js`) remain 
 - `frontend/js/ui/importExport.js` translates JSON flows into `gravity:notes-imported` events and raises `gravity:notify` feedback.
 - `frontend/js/ui/authControls.js` renders Google Identity Services, proxies sign-out requests, and raises the auth events.
 - `frontend/js/ui/menu/avatarMenu.js` encapsulates dropdown presentation, outside-click dismissal, and focus hand-off.
+- `frontend/js/ui/notesState.js` keeps a single pinned note authoritative by reconciling `GravityStore` with in-memory state before cards render.
+- `frontend/js/ui/fullScreenToggle.js` manages the diagonal header control, mirrors the native Fullscreen API across vendors, and surfaces failures via the notification pipeline.
+- `frontend/js/ui/keyboardShortcutsModal.js` builds the F1-driven shortcut overlay, handling focus restoration and body scroll locking so the modal stays accessible.
+- `frontend/js/ui/saveFeedback.js` posts toast feedback to the live region whenever inline edits finish saving.
+
+**Bootstrap & Observability**
+
+- `frontend/js/app.js` initializes runtime configuration, starts Alpine, mounts the composition root, and wires periodic sync and storage listeners.
+- `frontend/js/core/analytics.js` conditionally loads Google Analytics only in production builds, guarding the CDN injection behind configuration checks.
+- `frontend/js/utils/versionRefresh.js` polls `data/version.json` on an interval, emits reload notifications, and invokes a supplied `reload` callback so stale tabs refresh promptly.
 
 **Rendering & Editing**
 
@@ -46,6 +56,9 @@ Network boundaries (`js/core/backendClient.js`, `js/core/classifier.js`) remain 
 - Cards clamp HTML views without inner scrollbars, and expanding a note keeps the grid anchored in place.
 - `createHtmlView` rebuilds the rendered HTML whenever a card enters view mode (initial render, mode toggle back from edit, or after transformations such as checkbox toggles and merges) so the DOM always reflects the latest markdown+attachment payload.
 - `deleteHtmlView` runs before a card switches to markdown edit mode so the textarea/EasyMDE surface stays as the only visible state; exiting edit mode immediately calls `createHtmlView` with the current markdown.
+- `appConfig.useMarkdownEditor` toggles EasyMDE; disabling it falls back to the legacy `<textarea>` without removing inline editing affordances.
+- CDN assets for EasyMDE live in `frontend/index.html`; no bundler is used, so keep script and stylesheet references aligned with the documented versions.
+- Clipboard and drag-and-drop image handling route through `frontend/js/ui/imagePaste.js` (`insertAttachmentPlaceholders`) so storage logic and sanitisation remain centralised.
 
 **Storage, Configuration, and Auth**
 
@@ -53,6 +66,15 @@ Network boundaries (`js/core/backendClient.js`, `js/core/classifier.js`) remain 
 - `GravityStore.setUserScope(userId)` switches the storage namespace so each Google account receives an isolated notebook.
 - Runtime configuration loads from environment-specific JSON files under `data/`, selected according to the active hostname.
 - Authentication flows through Google Identity Services with `appConfig.googleClientId`, replaying sessions on reload.
+
+#### Frontend Dependencies
+
+- Alpine.js `3.13.5` — `https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/module.esm.js`
+- EasyMDE `2.19.0` — scripts and styles referenced from jsDelivr.
+- marked.js `12.0.2` — `https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js`
+- DOMPurify `3.1.7` — `https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js`
+- Google Identity Services — `https://accounts.google.com/gsi/client` using client ID `156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com`.
+- Loopaware widget — `https://loopaware.mprlab.com/widget.js` when the feature is enabled.
 
 ### Backend (Go)
 
@@ -62,11 +84,65 @@ Network boundaries (`js/core/backendClient.js`, `js/core/classifier.js`) remain 
 - Conflict strategy: `(client_edit_seq, updated_at)` precedence; server `version` remains monotonic per note.
 - Layout: Cobra CLI under `cmd/`, domain packages in `internal/`, zap for logging, configuration via Viper.
 
+#### Prerequisites
+
+- Go `1.21` or newer.
+- SQLite (bundled via the CGO-free driver) and access to the filesystem location used for the data store.
+
+#### Configuration
+
+- `GRAVITY_GOOGLE_CLIENT_ID` — OAuth client ID expected by Google Identity Services.
+- `GRAVITY_AUTH_SIGNING_SECRET` — HS256 secret that signs issued JWTs.
+- Optional overrides: `GRAVITY_HTTP_ADDRESS` (default `0.0.0.0:8080`), `GRAVITY_GOOGLE_JWKS_URL`, `GRAVITY_DATABASE_PATH` (default `gravity.db`), `GRAVITY_TOKEN_TTL_MINUTES` (default `30`), `GRAVITY_LOG_LEVEL` (default `info`).
+
+#### Local Execution
+
+```shell
+cd backend
+go run ./cmd/gravity-api --http-address :8080
+```
+
+#### API Overview
+
+- `POST /auth/google`
+  - Request body: `{ "id_token": "<GSI ID token>" }`
+  - Flow: verifies the Google token offline via JWKS and returns `{ "access_token": "<jwt>", "expires_in": 1800 }`.
+- `POST /notes/sync`
+  - Requires `Authorization: Bearer <jwt>` header (the token issued by `/auth/google`).
+  - Request body: `{ "operations": [{ "note_id": "uuid", "operation": "upsert" | "delete", "client_edit_seq": 1, "client_device": "web", "client_time_s": 1700000000, "created_at_s": 1700000000, "updated_at_s": 1700000000, "payload": { … } }] }`
+  - Response: `{ "results": [{ "note_id": "uuid", "accepted": true, "version": 1, "updated_at_s": 1700000000, "last_writer_edit_seq": 1, "is_deleted": false, "payload": { … } }] }` where rejected changes return the authoritative server copy for reconciliation.
+
+Conflict resolution follows the documented `(client_edit_seq, updated_at)` precedence while writing an append-only `note_changes` audit log.
+
 ### Client Sync Semantics
 
 - Queue `upsert` / `delete` operations with `client_edit_seq`, `client_time_s`, `updated_at_s`, and payload metadata.
 - On sign-in: exchange the Google credential for a backend token, flush the queue, fetch the snapshot, and re-render.
 - Classification flows through the proxy client with timeouts; when disabled or failing, conservative local defaults win.
+
+#### Runtime Configuration Profiles
+
+Profiles live under `frontend/data/runtime.config.<environment>.json` and are selected according to `location.hostname`. Production hosts (e.g., `*.com`) load the production profile; everything else falls back to development unless a custom entry is added.
+
+```jsonc
+// data/runtime.config.development.json
+{
+  "environment": "development",
+  "backendBaseUrl": "http://localhost:8080",
+  "llmProxyUrl": "http://localhost:8081/v1/gravity/classify"
+}
+```
+
+```jsonc
+// data/runtime.config.production.json
+{
+  "environment": "production",
+  "backendBaseUrl": "https://gravity-api.mprlab.com",
+  "llmProxyUrl": "https://llm-proxy.mprlab.com/v1/gravity/classify"
+}
+```
+
+When serving from an alternate hostname, add a new profile or override the URLs explicitly before bootstrapping the Alpine application.
 
 ### Testing & Tooling
 
@@ -74,6 +150,34 @@ Network boundaries (`js/core/backendClient.js`, `js/core/classifier.js`) remain 
 - Puppeteer suites cover inline editing, bounded HTML views, notifications, auth persistence, and backend sync flows.
 - Runtime config injection keeps tests deterministic by mocking `fetch` for `data/runtime.config.*.json` lookups.
 - Backend integration tests spin up the Go API to validate credential exchange and conflict resolution end-to-end.
+- Run the browser suite with `npm test` from `frontend/`. Customise execution via:
+  - `GRAVITY_TEST_TIMEOUT_MS` / `GRAVITY_TEST_KILL_GRACE_MS` to adjust the default per-suite budget.
+  - `GRAVITY_TEST_PATTERN="editor.inline" npm test` to run a focused subset.
+  - `npm test -- --screenshots=enabled` to collect screenshots, or `--screenshots=allowlist` with `--screenshot-allowlist=<file>` for targeted captures.
+  - `--screenshot-dir` and `--screenshot-force` flags for artifact management.
+- Set `CI=true` so the harness enables Chromium sandbox flags and other CI-only safeguards.
+- Install Chromium once via `npx puppeteer browsers install chrome` before running Puppeteer tests locally.
+
+## Repository Layout
+
+- `frontend/` — static site, Alpine composition root, browser tests, and npm tooling.
+- `backend/` — Go API, CLI entrypoints, and persistence layers.
+- `CHANGELOG.md`, `ISSUES.md`, `NOTES.md` — process journals and release history.
+- `docker-compose.yml` / `docker-compose.dev.yml` — local stack orchestration.
+- `POLICY.md`, `AGENTS.md` — coding standards and confident programming policy.
+- `PLAN.md` — temporary per-issue scratchpad (ignored in commits).
+
+## Local Development
+
+- The frontend ships as static assets; serve `frontend/` via any static host or the provided Docker stack.
+- The backend exposes a single binary API; run it locally with `go run ./cmd/gravity-api` or through Docker.
+
+### Docker Workflow
+
+- `docker-compose.yml` provisions the Go API (`backend`) and a static web host (`frontend`) backed by [gHTTP](https://github.com/temirov/ghttp).
+- Fetch the latest images with `docker compose pull`, then start the stack using `docker compose up`. The UI serves from <http://localhost:8000> and the API from <http://localhost:8080>.
+- The backend container loads secrets from `backend/.env`; adjust the file to point at different credentials or storage paths.
+- Tail logs with `docker compose logs -f backend`, and stop the stack using `docker compose down` when finished.
 
 ## Evolution by Theme (GN-IDs)
 
