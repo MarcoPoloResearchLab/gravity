@@ -29,6 +29,8 @@ and are grouped by the date the work landed on `master`.
 - Refreshing the app no longer re-triggers Google Sign-In when a session is restored from storage; GIS auto prompt stays disabled until credentials expire (GN-97).
 - Double-chevron expand toggle now stays vertically centered on note cards, with Puppeteer coverage guarding the alignment (GN-98).
 - Checkbox toggles triggered during htmlView bubbling no longer spawn duplicate note cards; bubbling now resolves to the live DOM node and a Safari-focused regression locks the behavior (GN-306).
+- Expand/collapse toggles now align to the full card width rather than the text column, with resize-aware positioning and mobile regression coverage (GN-307).
+- Clicking the card control column now finalizes inline editing without flickering back to markdown mode, covered by a regression targeting the GN-308 scenario (GN-308).
 
 ### Documentation
 - Folded `MIGRATION.md` into `ARCHITECTURE.md`, clarifying event contracts and module guidance (GN-54).

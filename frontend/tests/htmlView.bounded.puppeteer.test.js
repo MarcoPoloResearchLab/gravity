@@ -93,22 +93,23 @@ test.describe("Bounded htmlViews", () => {
                 (card) => {
                     const htmlView = card.querySelector(".note-html-view");
                     const toggle = card.querySelector(".note-expand-toggle");
-                    if (!(htmlView instanceof HTMLElement) || !(toggle instanceof HTMLElement)) {
+                    if (!(card instanceof HTMLElement) || !(htmlView instanceof HTMLElement) || !(toggle instanceof HTMLElement)) {
                         return null;
                     }
-                    const htmlViewRect = htmlView.getBoundingClientRect();
+                    const cardRect = card.getBoundingClientRect();
                     const toggleRect = toggle.getBoundingClientRect();
-                    const htmlViewCenterX = htmlViewRect.left + htmlViewRect.width / 2;
+                    const cardCenterX = cardRect.left + cardRect.width / 2;
                     const toggleCenterX = toggleRect.left + toggleRect.width / 2;
                     return {
-                        horizontalDelta: Math.abs(htmlViewCenterX - toggleCenterX)
+                        cardWidth: cardRect.width,
+                        horizontalDelta: Math.abs(cardCenterX - toggleCenterX)
                     };
                 }
             );
             assert.ok(toggleAlignment, "expand toggle should render alongside the htmlView");
             assert.ok(
-                toggleAlignment.horizontalDelta <= 4,
-                `expand toggle should align with the horizontal center of the text column (delta=${toggleAlignment?.horizontalDelta ?? "n/a"})`
+                toggleAlignment.horizontalDelta <= Math.max(4, (toggleAlignment.cardWidth ?? 0) * 0.01),
+                `expand toggle should align with the horizontal center of the card (delta=${toggleAlignment?.horizontalDelta ?? "n/a"})`
             );
             await page.focus(toggleSelector);
             await page.keyboard.press("Enter");
@@ -235,6 +236,41 @@ test.describe("Bounded htmlViews", () => {
                     collapsedIconMetrics.arrowTransform,
                     "arrow transform should change when the htmlView expands"
                 );
+            }
+        } finally {
+            await teardown();
+        }
+    });
+
+    test("expand toggle remains centered when controls stack above content on narrow layouts", async () => {
+        const { page, teardown } = await openHtmlViewHarness(createBaselineRecords());
+        try {
+            await page.setViewport({ width: 520, height: 960 });
+            await collapseAllHtmlViews(page);
+            const cardSelector = `[data-note-id="${LONG_NOTE_ID}"]`;
+            await page.waitForSelector(`${cardSelector} .note-expand-toggle`, { timeout: 5000 });
+            const alignment = await page.$eval(cardSelector, (card) => {
+                const toggle = card.querySelector(".note-expand-toggle");
+                const wrapper = card.querySelector(".note-html-view");
+                if (!(card instanceof HTMLElement) || !(toggle instanceof HTMLElement) || !(wrapper instanceof HTMLElement)) {
+                    return null;
+                }
+                const cardRect = card.getBoundingClientRect();
+                const toggleRect = toggle.getBoundingClientRect();
+                const wrapperRect = wrapper.getBoundingClientRect();
+                return {
+                    cardCenterDelta: Math.abs((cardRect.left + cardRect.width / 2) - (toggleRect.left + toggleRect.width / 2)),
+                    toggleWithinWrapper: toggleRect.left >= wrapperRect.left - 1 && toggleRect.right <= wrapperRect.right + 1,
+                    cardWidth: cardRect.width
+                };
+            });
+            assert.ok(alignment, "center alignment metrics should be available");
+            if (alignment) {
+                assert.ok(
+                    alignment.cardCenterDelta <= Math.max(4, alignment.cardWidth * 0.015),
+                    `expand toggle should stay centered within the full card width (delta=${alignment.cardCenterDelta ?? "n/a"})`
+                );
+                assert.equal(alignment.toggleWithinWrapper, true, "expand toggle should remain anchored within the rendered htmlView strip");
             }
         } finally {
             await teardown();

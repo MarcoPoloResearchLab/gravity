@@ -21,7 +21,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Updated the mobile grid to stack `.card-controls` above the content column and added regression coverage to verify the layout on narrow viewports.
 - [ ] [GN-204] Add an ability for an app to run in full-screen mode. Have an icon in the header that switches the app in and out of the full screen mode. use a diagonal line with aroows at the end to indicate expansion to the full screen and a diagonal line with "chicken paws" at the end to indicate the contraction
 - [ ] [GN-205] Have built-in browser grammar check work. There is no grammar check working in the markdown mode now, and there should be.
-- [ ] [GN-206] Develop a system that reloads all JS/CSS/HTML when a new version is released. Today, we are hosted on GitHub and the new version is probably the new code. Find a way to detect when the code changed and reload it in a browser with an ovlder version of code.
+- [ ] [GN-206] Develop a system that reloads all JS/CSS/HTML when a new version is released. Today, we are hosted on GitHub and the new version is probably the new code. Find a way to detect when the code changed and reload it if a browser holds an older version of code.
 
 
 ## BugFixes (300–399)
@@ -41,8 +41,10 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Hid browser-native scrollbars by suppressing the root scrollbar pseudo element on `html`/`body` and added regression coverage guaranteeing the viewport stays scrollable without rendering scrollbar chrome.
 - [x] [GN-306] The notes duplicate when I click on a checkmark in renderedHTML view. I have used Safari on iPad. Have test to confirm and prepare a fix
   - Guarded htmlView bubbling against disconnected cards, reused live DOM nodes via noteId resolution, and added a Puppeteer regression reproducing the Safari duplication (forces re-render before checkbox bubble) to confirm the fix.
-- [ ] [GN-307] Center the "expand/fold in" signs of a card along the full width of the card, not just the text part.
-- [ ] [GN-308] Clicking on the control part of the note flickers the renderHTML view instead of switching to it. I expect a click outside of currently edited note to switch it to renderedHTML. The outside area includes the control area. It currently switches briefly and then goes back to markdown.
+- [x] [GN-307] Center the "expand/fold in" signs of a card along the full width of the card, not just the text part.
+  - Expand toggles now compute their position against the entire card grid and stay centered across desktop and stacked mobile layouts, verified by new Puppeteer coverage.
+- [x] [GN-308] Clicking on the control part of the note flickers the renderHTML view instead of switching to it. I expect a click outside of currently edited note to switch it to renderedHTML. The outside area includes the control area. It currently switches briefly and then goes back to markdown.
+  - Treats the control column as a non-edit surface so control clicks finalize editing without re-opening markdown, backed by a Puppeteer regression.
 
 ## Maintenance (400–499)
 
