@@ -900,12 +900,43 @@ body.keyboard-shortcuts-open {
     text-decoration: underline;
 }
 
-@media (max-width: 480px) {
-    .markdown-block { grid-template-columns: minmax(0, 2fr) minmax(5.25rem, 1fr); }
-    .action-button { font-size: 0.85rem; padding: 0.2rem 0.3rem; }
-}
-
 @media (max-width: 640px) {
+    .markdown-block {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas:
+            "controls"
+            "content";
+        row-gap: 0.65rem;
+    }
+    .card-content {
+        grid-area: content;
+        grid-column: 1;
+    }
+    .card-controls {
+        grid-area: controls;
+        grid-column: 1;
+        grid-row: auto;
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+        text-align: left;
+        gap: 0.5rem;
+    }
+    .card-controls .meta-chips {
+        order: 1;
+        align-items: flex-start;
+        justify-content: flex-start;
+    }
+    .card-controls .actions {
+        order: 2;
+        flex-direction: row;
+        gap: 0.4rem;
+        width: auto;
+        min-width: 0;
+    }
+    .card-controls .action-group { flex-direction: row; gap: 0.4rem; }
+    .card-controls .action-group--row { gap: 0.4rem; }
+    .action-button { flex: 1 1 auto; min-width: 0; }
     .app-header { align-items: stretch; }
     .app-controls {
         margin-left: 0;
@@ -913,4 +944,8 @@ body.keyboard-shortcuts-open {
         justify-content: flex-start;
         row-gap: 0.5rem;
     }
+}
+
+@media (max-width: 480px) {
+    .action-button { font-size: 0.85rem; padding: 0.2rem 0.3rem; }
 }

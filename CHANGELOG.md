@@ -45,6 +45,7 @@ and are grouped by the date the work landed on `master`.
 - HTML view expand toggle now uses a circular arrow icon that rotates to indicate collapse state (GN-200).
 - Expanded the htmlView expand toggle hit area so the entire bottom strip responds to clicks (GN-201).
 - Unified double-click and tap gestures with single clicks when entering or leaving inline edit mode (GN-202).
+- Reflowed card controls above note content on narrow viewports to improve mobile ergonomics (GN-203).
 
 ### Documentation
 - Folded `MIGRATION.md` into `ARCHITECTURE.md`, clarifying event contracts, module guidance, and third-party reading expectations (GN-54).

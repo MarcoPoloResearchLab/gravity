@@ -17,7 +17,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - enters editing mode on a card
   - finishes editing mode outside the text area
   - Added Puppeteer coverage for double-click, tap, and outside blur interactions to confirm inline editing transitions remain consistent.
-- [ ] [GN-203] Change the responsive mobile design to keep note control above the note on small screens
+- [x] [GN-203] Change the responsive mobile design to keep note control above the note on small screens
+  - Updated the mobile grid to stack `.card-controls` above the content column and added regression coverage to verify the layout on narrow viewports.
 - [ ] [GN-204] Add an ability for an app to run in full-screen mode. Have an icon in the header that switches the app in and out of the full screen mode. use a diagonal line with aroows at the end to indicate expansion to the full screen and a diagonal line with "chicken paws" at the end to indicate the contraction
 - [ ] [GN-205] Have built-in browser grammar check work. There is no grammar check working in the markdown mode now, and there should be.
 
