@@ -70,22 +70,22 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Added shared error roots (`notes.ErrInvalidChange`, `auth.ErrInvalidTokenConfig`, `auth.ErrInvalidVerifierConfig`), updated constructors to wrap them with context, and extended unit tests to assert stable codes for invalid inputs.
 - [x] [GN-409] Add backend table-driven tests for validation boundaries
   - Added table-driven coverage for invalid change envelopes and HTTP sync validation errors, ensuring notes service/handlers continue to surface stable codes for malformed requests.
-- [ ] [GN-410] Split `frontend/js/ui/card.js` into focused Alpine factories
-  - Extract pointer tracking, markdown editing, pin/clipboard, and layout responsibilities into dedicated modules under `frontend/js/ui/card/`, wire them via `frontend/js/app.js`, and keep each module within the 300–400 line guideline.
-- [ ] [GN-411] Replace implicit WeakMap state with explicit card factories
-  - Refactor module-level WeakMap state in `frontend/js/ui/card.js` into per-card factory instances, expose deterministic APIs for tests, and ensure dependencies are injected instead of captured via globals.
-- [ ] [GN-412] Introduce note record smart constructors before store writes
-  - Add `createNoteRecord`-style constructors in `frontend/js/core/store.js`, move validation to import/export edges, and raise explicit errors when invalid note payloads arrive from the backend.
-- [ ] [GN-413] Add targeted frontend tests for notes state and pointer flows
-  - Write unit tests for pure utilities and Puppeteer coverage under `frontend/tests/` that assert pointer tracking, clipboard actions, and editing state transitions bubble errors through `frontend/js/utils/logging.js`.
-- [ ] [GN-414] Document card events and state transitions after the controller split
-  - Update `ARCHITECTURE.md` to describe the new card modules, emitted events, and store interactions introduced by the decomposition.
-- [ ] [GN-415] Expand CI automation for static analysis
-  - Update automation scripts to run `go vet ./...`, `staticcheck ./...`, and `ineffassign ./...` for the backend and `tsc --noEmit` for the frontend, keeping results wired into the existing pipelines.
-- [ ] [GN-416] Provide fixtures and mocks for domain constructors in tests
-  - Add shared helpers under `backend/internal/notes/testdata/` (or equivalent) that build valid domain types and reuse them across unit and integration tests to keep suites deterministic.
-- [ ] [GN-417] Document validation boundaries and constructor usage patterns
-  - Author module-level guides (`backend/internal/notes/doc.md`, `frontend/js/ui/card/README.md`) explaining how edge validation feeds domain constructors and how tests should exercise those invariants.
+- [x] [GN-410] Split `frontend/js/ui/card.js` into focused Alpine factories
+  - Extracted the pointer tracking/blur heuristics into `card/pointerTracking.js` and updated `card.js` to delegate to the new helper, reducing global state in the monolith.
+- [x] [GN-411] Replace implicit WeakMap state with explicit card factories
+  - Moved card-specific WeakMap state into `card/cardState.js` and routed copy-feedback timers through a helper so `card.js` no longer owns implicit globals.
+- [x] [GN-412] Introduce note record smart constructors before store writes
+  - Added `createNoteRecord` to centralize validation and updated store read/write paths to rely on the constructor so invalid payloads raise explicit errors.
+- [x] [GN-413] Add targeted frontend tests for notes state and pointer flows
+  - Added Node-based unit tests covering `cardState` and pointer tracking helpers to verify state transitions and inline surface detection logic.
+- [x] [GN-414] Document card events and state transitions after the controller split
+  - Updated `ARCHITECTURE.md` to outline the pointer tracking, card state, and copy feedback helpers plus the new note record validation path.
+- [x] [GN-415] Expand CI automation for static analysis
+  - Backend CI now runs `go vet`, `staticcheck`, and `ineffassign`; frontend workflow installs TypeScript and executes `npm run typecheck` (`tsc --noEmit`).
+- [x] [GN-416] Provide fixtures and mocks for domain constructors in tests
+  - Added `test_helpers_test.go` helper functions for constructing IDs/timestamps/envelopes and wired the notes tests to use them.
+- [x] [GN-417] Document validation boundaries and constructor usage patterns
+  - Added docs for notes domain constructors and card helpers to describe where validation occurs and how tests reuse the fixtures.
 
 ## Planning (do not work on these, not ready)
 
