@@ -15,6 +15,8 @@ with bounded HTML views, and every note edits inline—no modal overlays or cont
   `Tab`/`Shift+Tab` indentation for lists and code blocks.
 * **Always-ready capture:** The sticky blank note beneath the header is the entry point for brand new ideas. Type there,
   click away, or hit `Cmd/Ctrl+Enter` to persist immediately.
+* **Full-screen workspace:** Flip the header's diagonal toggle to expand Gravity Notes to full screen and collapse it without
+  leaving the current editing context.
 * **Scrollbar-free cards:** HTML view panes clamp behind fade masks, and editing surfaces expand vertically so no inner scrollbars appear.
 * **Rich Markdown:** Markdown rendering is powered by [marked.js](https://marked.js.org/) with sanitisation from
   [DOMPurify](https://github.com/cure53/DOMPurify). Inline image pasting is preserved through attachment placeholders.
@@ -53,6 +55,8 @@ with bounded HTML views, and every note edits inline—no modal overlays or cont
 8. **Toggle identity:** Use the header profile controls to sign in with Google Identity Services. Once signed in,
    Gravity swaps to a user-specific storage namespace and hides the Google button behind the avatar menu. Signing out
    returns to the anonymous notebook without blending data between identities.
+9. **Focus mode:** Use the diagonal toggle in the header to enter or exit full-screen mode without leaving your current
+   editing session.
 
 ## Authentication Flow
 

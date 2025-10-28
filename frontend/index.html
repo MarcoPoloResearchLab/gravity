@@ -39,6 +39,31 @@
         <h1 class="app-title" x-text="constants.LABEL_APP_TITLE">Gravity Notes</h1>
         <div class="app-subtitle" x-text="constants.LABEL_APP_SUBTITLE">Append anywhere · Bubble to top · Auto-organize</div>
     </div>
+    <div class="app-controls">
+        <button
+                type="button"
+                class="fullscreen-toggle"
+                x-ref="fullScreenToggle"
+                data-test="fullscreen-toggle"
+                aria-pressed="false"
+                data-fullscreen-state="enter"
+                aria-label=""
+                title=""
+        >
+            <svg class="fullscreen-toggle__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <g class="fullscreen-toggle__enter">
+                    <path class="fullscreen-toggle__stroke" d="M6 18 L18 6"/>
+                    <path class="fullscreen-toggle__stroke" d="M6 12 L6 18 L12 18"/>
+                    <path class="fullscreen-toggle__stroke" d="M18 12 L18 6 L12 6"/>
+                </g>
+                <g class="fullscreen-toggle__exit">
+                    <path class="fullscreen-toggle__stroke" d="M6 6 L18 18"/>
+                    <path class="fullscreen-toggle__stroke" d="M9 5 L6 6 L5 9"/>
+                    <path class="fullscreen-toggle__stroke" d="M19 15 L18 18 L15 19"/>
+                </g>
+            </svg>
+        </button>
+    </div>
     <div class="app-auth" x-ref="authContainer">
         <div class="auth-profile" x-ref="authProfile" hidden>
             <button id="auth-menu-trigger" class="auth-avatar-trigger" type="button" x-ref="authAvatarTrigger" aria-haspopup="menu" aria-expanded="false">

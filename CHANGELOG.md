@@ -9,6 +9,7 @@ and are grouped by the date the work landed on `master`.
 - Change log scaffolding and historical backlog capture (GN-53).
 - Python utility `tools/ensure_plan_untracked.py` and a test guard to keep `PLAN.md` untracked (GN-54).
 - Local test runs now capture Puppeteer screenshots per suite while skipping CI to aid debugging (GN-70).
+- Header includes a diagonal full-screen toggle with stateful icons and dedicated regression coverage (GN-204).
 
 ### Fixed
 - Html view interactions now reserve the chevron toggle for expansion while single clicks anywhere else enter inline edit mode (GN-109).

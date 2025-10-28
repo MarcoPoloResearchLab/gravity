@@ -46,6 +46,7 @@ import { initializeNotesState } from "./ui/notesState.js";
 import { showSaveFeedback } from "./ui/saveFeedback.js";
 import { initializeAuthControls } from "./ui/authControls.js";
 import { createAvatarMenu } from "./ui/menu/avatarMenu.js";
+import { initializeFullScreenToggle } from "./ui/fullScreenToggle.js";
 import { logging } from "./utils/logging.js";
 
 const CONSTANTS_VIEW_MODEL = Object.freeze({
@@ -96,6 +97,7 @@ function gravityApp() {
         backendAccessTokenExpiresAtMs: /** @type {number|null} */ (null),
         latestCredential: /** @type {string|null} */ (null),
         lastRenderedSignature: /** @type {string|null} */ (null),
+        fullScreenToggleController: /** @type {{ dispose(): void }|null} */ (null),
 
         init() {
             this.notesContainer = this.$refs.notesContainer ?? document.getElementById("notes-container");
@@ -107,6 +109,15 @@ function gravityApp() {
             this.importButton = /** @type {HTMLButtonElement|null} */ (this.$refs.importButton ?? document.getElementById("import-notes-button"));
             this.importInput = /** @type {HTMLInputElement|null} */ (this.$refs.importInput ?? document.getElementById("import-notes-input"));
             this.guestExportButton = /** @type {HTMLButtonElement|null} */ (this.$refs.guestExportButton ?? document.getElementById("guest-export-button"));
+            const fullScreenButton = /** @type {HTMLButtonElement|null} */ (this.$refs.fullScreenToggle ?? document.querySelector('[data-test="fullscreen-toggle"]'));
+
+            this.fullScreenToggleController = initializeFullScreenToggle({
+                button: fullScreenButton,
+                targetElement: document.documentElement ?? null,
+                notify: (message) => {
+                    this.emitNotification(message);
+                }
+            });
 
             this.configureMarked();
             this.registerEventBridges();
