@@ -52,7 +52,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
 - [x] [GN-400] Update the documentation @README.md and focus on the usefullness to the user. Move the technical details to @ARCHITECTURE.md
   - README now focuses on user workflows, technical setup lives in `ARCHITECTURE.md`, and the changelog records the update.
-- [ ] [GN-401] Ensure architrecture matches the reality of code. Update @ARCHITECTURE.md when needed
+- [x] [GN-401] Ensure architrecture matches the reality of code. Update @ARCHITECTURE.md when needed
+  - Architecture guide now covers the full-screen controller, keyboard shortcuts modal, analytics bootstrap, and version refresh utility so documentation mirrors the active code.
 - [ ] [GN-402] Review @POLICY.md and verify what code areas need improvements and refactoring. Prepare a detailed plan of refactoring. Check for bugs, missing tests, poor coding practices, uplication and slop. Ensure strong encapsulation and following the principles og @AGENTS.md and policies of @POLICY.md
 
 ## Planning (do not work on these, not ready)
