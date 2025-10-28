@@ -16,6 +16,7 @@ var (
 	errMissingIssuer        = errors.New("issuer must be provided")
 	errMissingAudience      = errors.New("audience must be provided")
 	errInvalidTokenTTL      = errors.New("token ttl must be positive")
+	ErrInvalidTokenConfig   = errors.New("auth: invalid token config")
 )
 
 // TokenIssuerConfig configures the backend JWT issuer.
@@ -36,21 +37,21 @@ type TokenIssuer struct {
 // NewTokenIssuer constructs a TokenIssuer with validated configuration.
 func NewTokenIssuer(cfg TokenIssuerConfig) (*TokenIssuer, error) {
 	if len(cfg.SigningSecret) == 0 {
-		return nil, errMissingSigningSecret
+		return nil, fmt.Errorf("%w: %w", ErrInvalidTokenConfig, errMissingSigningSecret)
 	}
 
 	issuer := strings.TrimSpace(cfg.Issuer)
 	if issuer == "" {
-		return nil, errMissingIssuer
+		return nil, fmt.Errorf("%w: %w", ErrInvalidTokenConfig, errMissingIssuer)
 	}
 
 	audience := strings.TrimSpace(cfg.Audience)
 	if audience == "" {
-		return nil, errMissingAudience
+		return nil, fmt.Errorf("%w: %w", ErrInvalidTokenConfig, errMissingAudience)
 	}
 
 	if cfg.TokenTTL <= 0 {
-		return nil, errInvalidTokenTTL
+		return nil, fmt.Errorf("%w: %w", ErrInvalidTokenConfig, errInvalidTokenTTL)
 	}
 
 	clock := cfg.Clock

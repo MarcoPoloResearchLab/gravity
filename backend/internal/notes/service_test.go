@@ -192,7 +192,7 @@ func TestNewChangeEnvelopeRejectsNegativeEditSeq(t *testing.T) {
 		CreatedAt:       mustTimestamp(t, 1700000000),
 		UpdatedAt:       mustTimestamp(t, 1700000000),
 	})
-	if !errors.Is(err, ErrInvalidChangeEnvelope) {
+	if !errors.Is(err, ErrInvalidChange) {
 		t.Fatalf("expected invalid change envelope error, got %v", err)
 	}
 }
@@ -210,7 +210,7 @@ func TestNewChangeEnvelopeRejectsUnsupportedOperation(t *testing.T) {
 		CreatedAt:       mustTimestamp(t, 1700000000),
 		UpdatedAt:       mustTimestamp(t, 1700000000),
 	})
-	if !errors.Is(err, ErrInvalidChangeEnvelope) {
+	if !errors.Is(err, ErrInvalidChange) {
 		t.Fatalf("expected invalid change envelope error, got %v", err)
 	}
 }

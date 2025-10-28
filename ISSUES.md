@@ -66,8 +66,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Added `ServiceError` with stable codes (e.g., `notes.apply_changes.missing_database`), wrapped all service exits, surfaced codes in HTTP responses/logs, and extended unit plus router tests to assert the propagation.
 - [x] [GN-407] Add smart constructors for token issuer and Google verifier
   - `NewTokenIssuer`/`NewGoogleVerifier` now return errors when configuration is incomplete (secret/issuer/audience/ttl/jwks/issuers), application wiring handles the results, and new unit/integration tests assert constructor failures.
-- [ ] [GN-408] Standardize typed domain errors across backend services
-  - Create reusable error types (such as `ErrInvalidChange`, `ErrInvalidTokenConfig`) under module-level packages, ensure handlers map them to stable API responses, and back the mapping with table-driven tests.
+- [x] [GN-408] Standardize typed domain errors across backend services
+  - Added shared error roots (`notes.ErrInvalidChange`, `auth.ErrInvalidTokenConfig`, `auth.ErrInvalidVerifierConfig`), updated constructors to wrap them with context, and extended unit tests to assert stable codes for invalid inputs.
 - [ ] [GN-409] Add backend table-driven tests for validation boundaries
   - Expand `backend/internal/notes/service_test.go`, `backend/internal/notes/service_integration_test.go`, and HTTP handler tests to cover invalid payload rejection, conflict scenarios, and wrapped error propagation after the new constructors land.
 - [ ] [GN-410] Split `frontend/js/ui/card.js` into focused Alpine factories
