@@ -123,3 +123,63 @@ func TestHandleListNotesIncludesServiceErrorCode(t *testing.T) {
 		t.Fatalf("expected list notes error code, got %v", payload["code"])
 	}
 }
+
+func TestHandleNotesSyncValidationFailures(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	testCases := []struct {
+		name       string
+		body       string
+		wantError  string
+		wantStatus int
+	}{
+		{
+			name:       "invalid-operation",
+			body:       `{"operations":[{"note_id":"note-1","operation":"truncate","client_edit_seq":1}]}`,
+			wantError:  "invalid_operation",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "invalid-note-id",
+			body:       `{"operations":[{"note_id":"","operation":"upsert","client_edit_seq":1}]}`,
+			wantError:  "invalid_note_id",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "invalid-edit-seq",
+			body:       `{"operations":[{"note_id":"note-1","operation":"upsert","client_edit_seq":-3}]}`,
+			wantError:  "invalid_change",
+			wantStatus: http.StatusBadRequest,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			context, _ := gin.CreateTestContext(recorder)
+			context.Set(userIDContextKey, "user-1")
+
+			request := httptest.NewRequest(http.MethodPost, "/notes/sync", strings.NewReader(tc.body))
+			request.Header.Set("Content-Type", "application/json")
+			context.Request = request
+
+			handler := &httpHandler{
+				notesService: &notes.Service{},
+				logger:       zap.NewNop(),
+			}
+
+			handler.handleNotesSync(context)
+
+			if recorder.Code != tc.wantStatus {
+				t.Fatalf("unexpected status: got %d want %d", recorder.Code, tc.wantStatus)
+			}
+
+			var payload map[string]any
+			if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+				t.Fatalf("failed to decode payload: %v", err)
+			}
+			if payload["error"] != tc.wantError {
+				t.Fatalf("expected error %s, got %v", tc.wantError, payload["error"])
+			}
+		})
+	}
+}
