@@ -238,9 +238,10 @@ export function setHtmlViewExpanded(card, shouldExpand) {
         return;
     }
 
-    const beforeViewportTop = shouldExpand === true && typeof window !== "undefined"
-        ? viewElement.getBoundingClientRect().top
-        : null;
+    const preserveViewport = shouldExpand === true
+        && card.dataset.suppressHtmlViewScroll !== "true"
+        && typeof window !== "undefined";
+    const beforeViewportTop = preserveViewport ? viewElement.getBoundingClientRect().top : null;
 
     if (shouldExpand) {
         viewElement.classList.add("note-html-view--expanded");
@@ -280,6 +281,9 @@ export function setHtmlViewExpanded(card, shouldExpand) {
                 }
             });
         });
+    }
+    if (card.dataset.suppressHtmlViewScroll === "true") {
+        delete card.dataset.suppressHtmlViewScroll;
     }
 }
 
