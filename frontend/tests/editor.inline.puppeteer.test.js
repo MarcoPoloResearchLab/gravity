@@ -139,6 +139,14 @@ const GN105_SECOND_MARKDOWN = [
     "",
     "Single clicking this card must finalize the first note without requiring an extra pointer press."
 ].join("\n");
+const GN308_NOTE_ID = "inline-control-column-dismiss";
+const GN308_MARKDOWN = [
+    "# Control Column Finalizes",
+    "",
+    "This note ensures the control column counts as an outside surface so markdown mode exits cleanly without flickering.",
+    "",
+    "Additional paragraphs keep the editor tall enough to verify the rendered view persists after the interaction."
+].join("\n");
 const GN202_DOUBLE_CLICK_NOTE_ID = "inline-gesture-double-click";
 const GN202_DOUBLE_CLICK_MARKDOWN = "Double click activation baseline.";
 const GN202_TAP_NOTE_ID = "inline-gesture-tap";
@@ -1287,6 +1295,82 @@ test.describe("Markdown inline editor", () => {
             assert.equal(finalTelemetry.hasEditingClass, false, "Editing class must be removed after outside card click");
 
             await page.waitForSelector(`${secondCardSelector}.editing-in-place`, { timeout: 2000 });
+        } finally {
+            await teardown();
+        }
+    });
+
+    test("clicking the control column finalizes edit mode without returning to markdown", async () => {
+        const controlNote = buildNoteRecord({
+            noteId: GN308_NOTE_ID,
+            markdownText: GN308_MARKDOWN,
+            classification: { category: "Research" }
+        });
+        const { page, teardown } = await preparePage({ records: [controlNote] });
+        const cardSelector = `.markdown-block[data-note-id="${GN308_NOTE_ID}"]`;
+
+        try {
+            await page.waitForSelector(cardSelector, { timeout: 5000 });
+            await enterCardEditMode(page, cardSelector);
+            await page.waitForSelector(`${cardSelector}.editing-in-place`, { timeout: 4000 });
+
+            const baselineTelemetry = await beginCardEditingTelemetry(page, cardSelector);
+            assert.ok(baselineTelemetry, "Baseline telemetry should resolve before interacting with controls");
+            assert.equal(baselineTelemetry.mode, "edit", "Card must begin in edit mode");
+            assert.equal(baselineTelemetry.hasEditingClass, true, "Editing class should be present before the control click");
+
+            const controlClickPoint = await page.$eval(cardSelector, (card) => {
+                if (!(card instanceof HTMLElement)) {
+                    return null;
+                }
+                const controls = card.querySelector(".card-controls");
+                if (!(controls instanceof HTMLElement)) {
+                    return null;
+                }
+                const rect = controls.getBoundingClientRect();
+                const doc = controls.ownerDocument;
+                for (let offsetY = rect.top + 4; offsetY <= rect.bottom - 4; offsetY += 6) {
+                    for (let offsetX = rect.left + 4; offsetX <= rect.right - 4; offsetX += 6) {
+                        const hit = doc.elementFromPoint(offsetX, offsetY);
+                        if (!(hit instanceof Element)) {
+                            continue;
+                        }
+                        if (hit.closest(".actions") || hit.closest(".action-button")) {
+                            continue;
+                        }
+                        return { x: offsetX, y: offsetY };
+                    }
+                }
+                return {
+                    x: rect.left + rect.width / 2,
+                    y: rect.top + rect.height / 2
+                };
+            });
+
+            assert.ok(controlClickPoint, "Control column click target should resolve");
+            await page.mouse.click(controlClickPoint.x, controlClickPoint.y);
+            await pause(page, 80);
+
+            await page.waitForFunction((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return false;
+                }
+                if (card.classList.contains("editing-in-place")) {
+                    return false;
+                }
+                const host = Reflect.get(card, "__markdownHost");
+                if (!host || typeof host.getMode !== "function") {
+                    return false;
+                }
+                return host.getMode() === "view";
+            }, { timeout: 1500 }, cardSelector);
+
+            await pause(page, 120);
+            const finalTelemetry = await collectCardEditingTelemetry(page, cardSelector);
+            assert.ok(finalTelemetry, "Final telemetry should resolve after clicking the control column");
+            assert.equal(finalTelemetry.mode, "view", "Card should remain in view mode after interacting with the control column");
+            assert.equal(finalTelemetry.hasEditingClass, false, "Editing class must remain cleared after the control column click");
         } finally {
             await teardown();
         }
@@ -2460,9 +2544,9 @@ async function getCardEditorState(page, cardSelector) {
     }, cardSelector);
 }
 
-function buildNoteRecord({ noteId, markdownText, attachments = {}, pinned = false }) {
+function buildNoteRecord({ noteId, markdownText, attachments = {}, pinned = false, classification = null }) {
     const timestamp = new Date().toISOString();
-    return {
+    const record = {
         noteId,
         markdownText,
         attachments,
@@ -2471,6 +2555,10 @@ function buildNoteRecord({ noteId, markdownText, attachments = {}, pinned = fals
         lastActivityIso: timestamp,
         pinned
     };
+    if (classification && typeof classification === "object") {
+        record.classification = classification;
+    }
+    return record;
 }
 
 async function ensureCardInViewMode(page, cardSelector, originalMarkdown) {
