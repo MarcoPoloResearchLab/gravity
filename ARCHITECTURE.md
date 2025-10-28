@@ -38,6 +38,16 @@ Network boundaries (`js/core/backendClient.js`, `js/core/classifier.js`) remain 
 - `frontend/js/ui/importExport.js` translates JSON flows into `gravity:notes-imported` events and raises `gravity:notify` feedback.
 - `frontend/js/ui/authControls.js` renders Google Identity Services, proxies sign-out requests, and raises the auth events.
 - `frontend/js/ui/menu/avatarMenu.js` encapsulates dropdown presentation, outside-click dismissal, and focus hand-off.
+- `frontend/js/ui/notesState.js` keeps a single pinned note authoritative by reconciling `GravityStore` with in-memory state before cards render.
+- `frontend/js/ui/fullScreenToggle.js` manages the diagonal header control, mirrors the native Fullscreen API across vendors, and surfaces failures via the notification pipeline.
+- `frontend/js/ui/keyboardShortcutsModal.js` builds the F1-driven shortcut overlay, handling focus restoration and body scroll locking so the modal stays accessible.
+- `frontend/js/ui/saveFeedback.js` posts toast feedback to the live region whenever inline edits finish saving.
+
+**Bootstrap & Observability**
+
+- `frontend/js/app.js` initializes runtime configuration, starts Alpine, mounts the composition root, and wires periodic sync and storage listeners.
+- `frontend/js/core/analytics.js` conditionally loads Google Analytics only in production builds, guarding the CDN injection behind configuration checks.
+- `frontend/js/utils/versionRefresh.js` polls `data/version.json` on an interval, emits reload notifications, and invokes a supplied `reload` callback so stale tabs refresh promptly.
 
 **Rendering & Editing**
 

@@ -52,8 +52,40 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
 - [x] [GN-400] Update the documentation @README.md and focus on the usefullness to the user. Move the technical details to @ARCHITECTURE.md
   - README now focuses on user workflows, technical setup lives in `ARCHITECTURE.md`, and the changelog records the update.
-- [ ] [GN-401] Ensure architrecture matches the reality of code. Update @ARCHITECTURE.md when needed
-- [ ] [GN-402] Review @POLICY.md and verify what code areas need improvements and refactoring. Prepare a detailed plan of refactoring. Check for bugs, missing tests, poor coding practices, uplication and slop. Ensure strong encapsulation and following the principles og @AGENTS.md and policies of @POLICY.md
+- [x] [GN-401] Ensure architrecture matches the reality of code. Update @ARCHITECTURE.md when needed
+  - Architecture guide now covers the full-screen controller, keyboard shortcuts modal, analytics bootstrap, and version refresh utility so documentation mirrors the active code.
+- [x] [GN-402] Review @POLICY.md and verify what code areas need improvements and refactoring. Prepare a detailed plan of refactoring. Check for bugs, missing tests, poor coding practices, uplication and slop. Ensure strong encapsulation and following the principles og @AGENTS.md and policies of @POLICY.md
+  - Created `REFACTORING_PLAN.md` outlining backend domain-type work, frontend module decomposition, and required test additions to satisfy POLICY invariants.
+- [ ] [GN-403] Enforce edge validation for notes service inputs before ApplyChanges
+  - Add smart constructors for `NoteID`, `UserID`, and `Timestamp` in `backend/internal/notes/model.go`, update `backend/internal/server/router.go` to validate payloads and pass typed values, and adjust `backend/internal/notes/service.go` plus tests to assume pre-validated domain types.
+- [ ] [GN-404] Replace primitive change resolution with typed envelopes
+  - Define a `ChangeEnvelope` domain struct produced after edge validation and refactor `backend/internal/notes/conflict.go` and `backend/internal/notes/service.go` to consume typed fields, updating unit/integration tests to cover invalid envelopes.
+- [ ] [GN-405] Harden notes service constructor dependency validation
+  - Make `backend/internal/notes/service.go`'s `NewService` return an error when dependencies are nil, update call sites in `backend/cmd/gravity-api/main.go` and integration tests, and add coverage for nil dependency rejection.
+- [ ] [GN-406] Wrap notes service errors with operation codes
+  - Replace sentinel returns in `backend/internal/notes/service.go` with contextual errors (e.g., `notes.apply_changes.missing_note_id`) using `%w`, propagate them through handlers, and assert on error codes in HTTP tests.
+- [ ] [GN-407] Add smart constructors for token issuer and Google verifier
+  - Introduce validated constructors in `backend/internal/auth/token_issuer.go` and `backend/internal/auth/google_verifier.go` that enforce secret, issuer, audience, JWKS, and TTL invariants, update call sites, and extend tests to verify constructor failures.
+- [ ] [GN-408] Standardize typed domain errors across backend services
+  - Create reusable error types (such as `ErrInvalidChange`, `ErrInvalidTokenConfig`) under module-level packages, ensure handlers map them to stable API responses, and back the mapping with table-driven tests.
+- [ ] [GN-409] Add backend table-driven tests for validation boundaries
+  - Expand `backend/internal/notes/service_test.go`, `backend/internal/notes/service_integration_test.go`, and HTTP handler tests to cover invalid payload rejection, conflict scenarios, and wrapped error propagation after the new constructors land.
+- [ ] [GN-410] Split `frontend/js/ui/card.js` into focused Alpine factories
+  - Extract pointer tracking, markdown editing, pin/clipboard, and layout responsibilities into dedicated modules under `frontend/js/ui/card/`, wire them via `frontend/js/app.js`, and keep each module within the 300–400 line guideline.
+- [ ] [GN-411] Replace implicit WeakMap state with explicit card factories
+  - Refactor module-level WeakMap state in `frontend/js/ui/card.js` into per-card factory instances, expose deterministic APIs for tests, and ensure dependencies are injected instead of captured via globals.
+- [ ] [GN-412] Introduce note record smart constructors before store writes
+  - Add `createNoteRecord`-style constructors in `frontend/js/core/store.js`, move validation to import/export edges, and raise explicit errors when invalid note payloads arrive from the backend.
+- [ ] [GN-413] Add targeted frontend tests for notes state and pointer flows
+  - Write unit tests for pure utilities and Puppeteer coverage under `frontend/tests/` that assert pointer tracking, clipboard actions, and editing state transitions bubble errors through `frontend/js/utils/logging.js`.
+- [ ] [GN-414] Document card events and state transitions after the controller split
+  - Update `ARCHITECTURE.md` to describe the new card modules, emitted events, and store interactions introduced by the decomposition.
+- [ ] [GN-415] Expand CI automation for static analysis
+  - Update automation scripts to run `go vet ./...`, `staticcheck ./...`, and `ineffassign ./...` for the backend and `tsc --noEmit` for the frontend, keeping results wired into the existing pipelines.
+- [ ] [GN-416] Provide fixtures and mocks for domain constructors in tests
+  - Add shared helpers under `backend/internal/notes/testdata/` (or equivalent) that build valid domain types and reuse them across unit and integration tests to keep suites deterministic.
+- [ ] [GN-417] Document validation boundaries and constructor usage patterns
+  - Author module-level guides (`backend/internal/notes/doc.md`, `frontend/js/ui/card/README.md`) explaining how edge validation feeds domain constructors and how tests should exercise those invariants.
 
 ## Planning (do not work on these, not ready)
 
