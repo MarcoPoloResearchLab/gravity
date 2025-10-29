@@ -57,6 +57,11 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Added a guard that throws `gravity.invalid_notes_collection` for non-array inputs and expanded `store.test.js` to lock in the behavior.
 - [x] [GN-309] Store tests fail after note record validation rejects persisted data from earlier builds.
   - Filter `GravityStore.saveAllNotes` to drop invalid persisted candidates prior to deduping so smart constructors stay enforced while CI/local `store.test.js` passes.
+- [ ] [GN-314] Inline editor regressions after the note-search overlay
+  - Reproduce the `editor.inline` failures in isolation and log layout metrics for the search layer, `.CodeMirror-lines`, and `.note-html-view`.
+  - Refactor the search controls into an absolutely positioned `.editor-search-layer` anchored inside `.markdown-editor-host`, surface its measured height via `--editor-search-offset`, and adjust CodeMirror padding so htmlView alignment stays intact.
+  - Refine `shouldKeepEditingAfterBlur` together with the search focus loop to allow cards to finalize when focus or pointer exits the editor surface.
+  - Re-run the `editor.inline` and `editor.search` suites (under the harness timeout) followed by the full Puppeteer run to confirm overflow and alignment assertions pass.
 - [ ] [GN-310] I had an expanded HTML view. I clicked on a checkmark. It has folded the expanded view and moved the html view to the top in its exanded view. What I was expecting: the checkmark becoming checked and no other movements on the screen. Ensure that checking on a checkmar in HTML rendered mode does not perform any immediate repositioniing of the card. The card visually stays where it is. It's markdown has changed and the other cards have changed their positions the active card does not move  
 - [ ] [GN-311] The cursor must look like a poining hand or whatever when it's in the bottom of the note -- hovering above the area that controls fodling and unfolding the note.
 - [ ] [GN-312] Clicking on the HTML view does not move the card but chages the text into markdown. Currently, it changes the text into markdown and moves the view. Instead, identify the exact place a click was made, and anchor this place so that when markdown editing is shown, the cursor is in the same position on the screen and the note is in makrdown editing.
