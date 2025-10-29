@@ -463,6 +463,91 @@ function maintainCardViewport(card, options = {}) {
     requestAnimationFrame(adjust);
 }
 
+function resolveCaretClientRect(card) {
+    if (!(card instanceof HTMLElement) || typeof window === "undefined") {
+        return null;
+    }
+    const cursorElement = card.querySelector(".CodeMirror-cursors .CodeMirror-cursor");
+    if (cursorElement instanceof HTMLElement) {
+        const cursorRect = cursorElement.getBoundingClientRect();
+        if (Number.isFinite(cursorRect.top) && Number.isFinite(cursorRect.height)) {
+            return cursorRect;
+        }
+    }
+    const selection = typeof window.getSelection === "function" ? window.getSelection() : null;
+    if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0).cloneRange();
+        const anchorNode = range.startContainer;
+        if (anchorNode && card.contains(anchorNode)) {
+            if (!range.collapsed) {
+                range.collapse(true);
+            }
+            const rects = range.getClientRects();
+            if (rects.length > 0) {
+                const rect = rects[0];
+                if (Number.isFinite(rect.top) && Number.isFinite(rect.height)) {
+                    return rect;
+                }
+            }
+        }
+    }
+    const textarea = card.querySelector(".markdown-editor");
+    if (textarea instanceof HTMLElement) {
+        const fallbackRect = textarea.getBoundingClientRect();
+        if (Number.isFinite(fallbackRect.top) && Number.isFinite(fallbackRect.height)) {
+            return fallbackRect;
+        }
+    }
+    return null;
+}
+
+function preserveCaretScreenPosition(card, targetClientY, attempts = VIEWPORT_STABILITY_ATTEMPTS) {
+    if (!(card instanceof HTMLElement) || typeof window === "undefined") {
+        return;
+    }
+    if (!Number.isFinite(targetClientY)) {
+        return;
+    }
+    const scroller = document.scrollingElement || document.documentElement || document.body;
+    if (!(scroller instanceof HTMLElement)) {
+        return;
+    }
+    let remaining = Math.max(attempts, 1);
+
+    const adjust = () => {
+        if (!card.isConnected) {
+            return;
+        }
+        const caretRect = resolveCaretClientRect(card);
+        if (!caretRect) {
+            remaining -= 1;
+            if (remaining > 0) {
+                requestAnimationFrame(adjust);
+            }
+            return;
+        }
+        const delta = caretRect.top - targetClientY;
+        if (Math.abs(delta) <= 0.75) {
+            return;
+        }
+        const viewportHeight = typeof window.innerHeight === "number"
+            ? window.innerHeight
+            : document.documentElement?.clientHeight ?? 0;
+        const currentScroll = window.scrollY || window.pageYOffset || 0;
+        const maxScroll = Math.max(0, scroller.scrollHeight - viewportHeight);
+        const nextScroll = clamp(currentScroll + delta, 0, maxScroll);
+        if (Math.abs(nextScroll - currentScroll) > 0.5) {
+            window.scrollTo({ top: nextScroll, behavior: "auto" });
+        }
+        remaining -= 1;
+        if (remaining > 0) {
+            requestAnimationFrame(adjust);
+        }
+    };
+
+    requestAnimationFrame(adjust);
+}
+
 function mapPlainTextOffsetToMarkdown(source, plainOffset) {
     if (typeof source !== "string" || source.length === 0) {
         return 0;
@@ -1157,7 +1242,8 @@ export function renderCard(record, options = {}) {
         setHtmlViewExpanded(card, true);
         focusCardEditor(card, notesContainer, {
             caretPlacement,
-            bubblePreviousCardToTop: true
+            bubblePreviousCardToTop: true,
+            preserveClientY: typeof event.clientY === "number" ? event.clientY : null
         });
     };
 
@@ -1190,7 +1276,8 @@ export function renderCard(record, options = {}) {
         setHtmlViewExpanded(card, true);
         focusCardEditor(card, notesContainer, {
             caretPlacement,
-            bubblePreviousCardToTop: true
+            bubblePreviousCardToTop: true,
+            preserveClientY: typeof event.clientY === "number" ? event.clientY : null
         });
     };
 
@@ -1268,6 +1355,10 @@ export function renderCard(record, options = {}) {
             if (maintainEditing) {
                 if (editorHost.getMode() !== MARKDOWN_MODE_EDIT) {
                     editorHost.setMode(MARKDOWN_MODE_EDIT);
+                }
+                const activeElement = typeof document !== "undefined" ? document.activeElement : null;
+                if (activeElement instanceof HTMLElement && activeElement.dataset?.test === "editor-search-input") {
+                    return;
                 }
                 editorHost.focus();
                 return;
@@ -2175,7 +2266,11 @@ function navigateToAdjacentCard(card, direction, notesContainer) {
  * Focus the editor for a specific card.
  * @param {HTMLElement} card
  * @param {HTMLElement} notesContainer
- * @param {{ caretPlacement?: typeof CARET_PLACEMENT_START | typeof CARET_PLACEMENT_END | number, bubblePreviousCardToTop?: boolean }} [options]
+ * @param {{
+ *   caretPlacement?: typeof CARET_PLACEMENT_START | typeof CARET_PLACEMENT_END | number,
+ *   bubblePreviousCardToTop?: boolean,
+ *   preserveClientY?: number | null
+ * }} [options]
  * @returns {boolean}
  */
 export function focusCardEditor(card, notesContainer, options = {}) {
@@ -2183,7 +2278,8 @@ export function focusCardEditor(card, notesContainer, options = {}) {
 
     const {
         caretPlacement = CARET_PLACEMENT_START,
-        bubblePreviousCardToTop = false
+        bubblePreviousCardToTop = false,
+        preserveClientY = null
     } = options;
 
     enableInPlaceEditing(card, notesContainer, { bubblePreviousCardToTop, bubbleSelfToTop: false });
@@ -2227,6 +2323,9 @@ export function focusCardEditor(card, notesContainer, options = {}) {
             } else {
                 host.setCaretPosition(caretPlacement === CARET_PLACEMENT_END ? "end" : "start");
             }
+        }
+        if (Number.isFinite(preserveClientY)) {
+            preserveCaretScreenPosition(card, Number(preserveClientY));
         }
     });
 

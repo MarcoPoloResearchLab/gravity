@@ -977,6 +977,47 @@ test.describe("Markdown inline editor", () => {
                 Math.abs(caretPlainOffset - clickPoint.plainOffset) <= 1,
                 `Caret should stay near the click midpoint (expected≈${clickPoint.plainOffset}, actual=${caretPlainOffset})`
             );
+
+            const caretScreenRect = await page.evaluate((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return null;
+                }
+                const cursorElement = card.querySelector(".CodeMirror-cursors .CodeMirror-cursor");
+                if (cursorElement instanceof HTMLElement) {
+                    const rect = cursorElement.getBoundingClientRect();
+                    if (Number.isFinite(rect.top) && Number.isFinite(rect.height)) {
+                        return { top: rect.top, height: rect.height };
+                    }
+                }
+                const selection = window.getSelection();
+                if (selection && selection.rangeCount > 0) {
+                    const range = selection.getRangeAt(0).cloneRange();
+                    if (card.contains(range.startContainer)) {
+                        if (!range.collapsed) {
+                            range.collapse(true);
+                        }
+                        const rects = range.getClientRects();
+                        if (rects.length > 0) {
+                            const rect = rects[0];
+                            if (Number.isFinite(rect.top) && Number.isFinite(rect.height)) {
+                                return { top: rect.top, height: rect.height };
+                            }
+                        }
+                    }
+                }
+                return null;
+            }, cardSelector);
+            assert.ok(caretScreenRect, "Caret screen rectangle should be measurable after entering edit mode");
+            if (caretScreenRect) {
+                const caretCenterY = caretScreenRect.top + (caretScreenRect.height ?? 0) / 2;
+                const screenDelta = Math.abs(caretCenterY - clickPoint.y);
+                const allowedDeltaPx = 6;
+                assert.ok(
+                    screenDelta <= allowedDeltaPx,
+                    `Caret should remain near the original click position (delta=${screenDelta.toFixed(2)}px)`
+                );
+            }
         } finally {
             await teardown();
         }
