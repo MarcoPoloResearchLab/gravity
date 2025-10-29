@@ -1053,6 +1053,7 @@ test.describe("Markdown inline editor", () => {
         });
         const cardSelector = `.markdown-block[data-note-id="${GN313_NOTE_ID}"]`;
         const controlTargetSelector = `${cardSelector} .card-controls`;
+        const metaChipsSelector = `${cardSelector} .card-controls .meta-chips`;
         const htmlViewSelector = `${cardSelector} .note-html-view`;
         try {
             await page.waitForSelector(cardSelector);
@@ -1062,7 +1063,8 @@ test.describe("Markdown inline editor", () => {
             await page.waitForSelector(`${cardSelector}.editing-in-place`);
             await page.waitForSelector(`${cardSelector} .CodeMirror`, { timeout: 5000 });
 
-            await page.click(controlTargetSelector, { clickCount: 1 });
+            const controlTarget = await page.$(metaChipsSelector) ? metaChipsSelector : controlTargetSelector;
+            await page.click(controlTarget, { clickCount: 1 });
 
             await page.waitForSelector(`${cardSelector}.editing-in-place`, { hidden: true });
             const codeMirrorPresent = await page.$(`${cardSelector} .CodeMirror`);

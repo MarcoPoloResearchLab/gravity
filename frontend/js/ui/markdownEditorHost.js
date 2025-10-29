@@ -144,7 +144,56 @@ export function createMarkdownEditorHost(options) {
     let editButton = null;
     let viewButton = null;
     let searchUi = enableSearch ? createSearchUi() : null;
-    let searchMount = null;
+    let searchOverlay = null;
+    let searchResizeObserver = null;
+    const SEARCH_OVERLAY_GAP_PX = 6;
+    const markdownEditorElement = textarea.closest(".markdown-editor");
+    const overlayParent = searchOverlayTarget instanceof HTMLElement ? searchOverlayTarget : container;
+    const updateSearchOffset = (offsetPx) => {
+        const totalOffset = offsetPx > 0 ? offsetPx + SEARCH_OVERLAY_GAP_PX : 0;
+        container.style.setProperty("--editor-search-offset", `${totalOffset}px`);
+    };
+    const positionSearchOverlay = () => {
+        if (!searchOverlay) {
+            return;
+        }
+        if (typeof window === "undefined") {
+            return;
+        }
+        if (overlayParent !== container) {
+            searchOverlay.style.removeProperty("top");
+            searchOverlay.style.removeProperty("left");
+            searchOverlay.style.removeProperty("right");
+            searchOverlay.style.removeProperty("width");
+            return;
+        }
+        const hostRect = container.getBoundingClientRect();
+        const codeMirrorElement = container.querySelector?.(".CodeMirror") ?? null;
+        const easyMdeContainer = container.querySelector?.(".EasyMDEContainer") ?? null;
+        const editorFallback = markdownEditorElement ?? container;
+        const referenceElement = codeMirrorElement ?? easyMdeContainer ?? editorFallback;
+        if (!(referenceElement instanceof Element)) {
+            return;
+        }
+        const referenceRect = referenceElement.getBoundingClientRect();
+        const topOffset = referenceRect.top - hostRect.top;
+        const leftOffset = referenceRect.left - hostRect.left;
+        const normalizedTop = Number.isFinite(topOffset) ? Math.max(0, topOffset) : 0;
+        const normalizedLeft = Number.isFinite(leftOffset) ? Math.max(0, leftOffset) : 0;
+        searchOverlay.style.top = `${normalizedTop}px`;
+        searchOverlay.style.left = `${normalizedLeft}px`;
+        searchOverlay.style.removeProperty("right");
+        const availableWidth = Math.max(0, hostRect.width - normalizedLeft);
+        const referenceWidth = Number.isFinite(referenceRect.width) ? referenceRect.width : availableWidth;
+        const measuredWidth = Math.min(referenceWidth, availableWidth);
+        if (measuredWidth > 0) {
+            searchOverlay.style.width = `${measuredWidth}px`;
+        } else {
+            searchOverlay.style.removeProperty("width");
+        }
+    };
+    let setSearchOverlayVisibility = () => {};
+    let measureSearchOverlay = () => {};
 
     if (showToolbar) {
         toolbar = createElement("div", "editor-mode-toolbar");
@@ -164,10 +213,60 @@ export function createMarkdownEditorHost(options) {
         }
         toolbar.append(toggleGroup, utilityGroup);
         container.insertBefore(toolbar, container.firstChild);
+    }
+
+    if (!showToolbar && searchUi) {
+        searchOverlay = createElement("div", "editor-search-layer");
+        searchOverlay.setAttribute("data-search-hidden", "true");
+        searchOverlay.hidden = true;
+        searchOverlay.appendChild(searchUi.container);
+        overlayParent.appendChild(searchOverlay);
+        updateSearchOffset(0);
+        searchUi.container.style.display = "none";
+        if (typeof ResizeObserver === "function") {
+            searchResizeObserver = new ResizeObserver(() => measureSearchOverlay());
+            searchResizeObserver.observe(searchUi.container);
+        }
+
+        measureSearchOverlay = () => {
+            if (!searchOverlay || !searchUi || searchOverlay.hasAttribute("data-search-hidden")) {
+                updateSearchOffset(0);
+                return;
+            }
+            positionSearchOverlay();
+            if (overlayParent === container) {
+                const rect = searchUi.container.getBoundingClientRect();
+                updateSearchOffset(rect.height > 0 ? rect.height : 0);
+            } else {
+                updateSearchOffset(0);
+            }
+        };
+
+        setSearchOverlayVisibility = (isVisible) => {
+            if (!searchOverlay) {
+                return;
+            }
+            if (isVisible) {
+                searchOverlay.hidden = false;
+                searchOverlay.removeAttribute("data-search-hidden");
+                searchUi.container.style.display = "inline-flex";
+                if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+                    window.requestAnimationFrame(measureSearchOverlay);
+                } else {
+                    measureSearchOverlay();
+                }
+            } else {
+                searchOverlay.hidden = true;
+                searchOverlay.setAttribute("data-search-hidden", "true");
+                searchUi.container.style.display = "none";
+                updateSearchOffset(0);
+            }
+        };
     } else if (searchUi) {
-        searchMount = createElement("div", "editor-search-floating");
-        searchMount.appendChild(searchUi.container);
-        container.insertBefore(searchMount, container.firstChild);
+        setSearchOverlayVisibility = (isVisible) => {
+            searchUi.container.style.display = isVisible ? "inline-flex" : "none";
+        };
+        measureSearchOverlay = () => {};
     }
 
     const easyMdeAvailable = typeof window !== "undefined" && typeof window.EasyMDE === "function";
@@ -178,6 +277,35 @@ export function createMarkdownEditorHost(options) {
     let currentMode = sanitizeMode(initialMode);
     let skipNextEditorFocus = false;
     const easyMdeInstance = createEasyMdeInstance(textarea);
+    const codeMirrorWrapper = easyMdeInstance?.codemirror?.getWrapperElement
+        ? easyMdeInstance.codemirror.getWrapperElement()
+        : null;
+    let codeMirrorParent = codeMirrorWrapper?.parentElement ?? null;
+    let codeMirrorNextSibling = codeMirrorWrapper?.nextSibling ?? null;
+    let isCodeMirrorAttached = true;
+
+    const detachCodeMirror = () => {
+        if (!codeMirrorWrapper || !isCodeMirrorAttached) {
+            return;
+        }
+        codeMirrorParent = codeMirrorWrapper.parentElement;
+        codeMirrorNextSibling = codeMirrorWrapper.nextSibling;
+        codeMirrorWrapper.remove();
+        isCodeMirrorAttached = false;
+    };
+
+    const attachCodeMirror = () => {
+        if (!codeMirrorWrapper || isCodeMirrorAttached) {
+            return;
+        }
+        const parent = codeMirrorParent instanceof HTMLElement ? codeMirrorParent : container;
+        if (codeMirrorNextSibling instanceof Node && parent.contains(codeMirrorNextSibling)) {
+            parent.insertBefore(codeMirrorWrapper, codeMirrorNextSibling);
+        } else {
+            parent.appendChild(codeMirrorWrapper);
+        }
+        isCodeMirrorAttached = true;
+    };
     let isProgrammaticUpdate = false;
     let isDestroyed = false;
     let isApplyingListAutoRenumber = false;
@@ -188,7 +316,9 @@ export function createMarkdownEditorHost(options) {
             input: searchUi.input,
             previousButton: searchUi.previousButton,
             nextButton: searchUi.nextButton,
-            countElement: searchUi.countElement
+            countElement: searchUi.countElement,
+            onVisibilityChange: setSearchOverlayVisibility,
+            onMetricsChange: measureSearchOverlay
         })
         : null;
     configureEasyMde(easyMdeInstance, { syncTextareaValue, searchManager });
@@ -391,8 +521,13 @@ export function createMarkdownEditorHost(options) {
         if (showToolbar && toolbar) {
             toolbar.remove();
         }
-        if (searchMount) {
-            searchMount.remove();
+        if (searchResizeObserver) {
+            searchResizeObserver.disconnect();
+            searchResizeObserver = null;
+        }
+        if (!showToolbar && searchOverlay) {
+            searchOverlay.remove();
+            searchOverlay = null;
         }
     }
 
@@ -433,7 +568,9 @@ export function createMarkdownEditorHost(options) {
         waitForPendingImages,
         isEnhanced,
         destroy,
-        getTextarea: () => textarea
+        getTextarea: () => textarea,
+        attachCodeMirror,
+        detachCodeMirror
     };
 
     /**
@@ -499,7 +636,15 @@ export function createMarkdownEditorHost(options) {
      * }} params
      */
     function createSearchManager(params) {
-        const { codemirror, input, previousButton, nextButton, countElement } = params;
+        const {
+            codemirror,
+            input,
+            previousButton,
+            nextButton,
+            countElement,
+            onVisibilityChange = () => {},
+            onMetricsChange = () => {}
+        } = params;
         if (!codemirror || typeof codemirror.getDoc !== "function") {
             return {
                 focus: () => false,
@@ -511,6 +656,8 @@ export function createMarkdownEditorHost(options) {
         }
 
         const doc = codemirror.getDoc();
+        const setOverlayVisibility = typeof onVisibilityChange === "function" ? onVisibilityChange : () => {};
+        const notifyOverlayMetrics = typeof onMetricsChange === "function" ? onMetricsChange : () => {};
         /** @type {Array<{ from: any, to: any, marker: any }>} */
         let matches = [];
         let currentIndex = -1;
@@ -539,6 +686,7 @@ export function createMarkdownEditorHost(options) {
                 input.setAttribute("aria-disabled", "true");
                 previousButton.disabled = true;
                 nextButton.disabled = true;
+                setOverlayVisibility(false);
                 return;
             }
 
@@ -546,6 +694,10 @@ export function createMarkdownEditorHost(options) {
             const disableNavigation = !query || total <= 1;
             previousButton.disabled = disableNavigation;
             nextButton.disabled = disableNavigation;
+            const hasActiveQuery = query.length > 0;
+            const hasFocus = typeof document !== "undefined" && document.activeElement === input;
+            setOverlayVisibility(hasActiveQuery || hasFocus);
+            notifyOverlayMetrics();
         };
 
         const revealCurrentMatch = ({ scroll } = { scroll: true }) => {
@@ -668,6 +820,7 @@ export function createMarkdownEditorHost(options) {
             if (selectAll) {
                 input.select();
             }
+            setOverlayVisibility(true);
             return true;
         };
 
@@ -682,7 +835,9 @@ export function createMarkdownEditorHost(options) {
             if (event.key === "Enter") {
                 event.preventDefault();
                 jumpToMatch(event.shiftKey ? -1 : 1);
-            } else if (event.key === "Escape") {
+                return;
+            }
+            if (event.key === "Escape") {
                 if (input.value.length > 0) {
                     event.preventDefault();
                     input.value = "";
@@ -691,18 +846,26 @@ export function createMarkdownEditorHost(options) {
             }
         };
 
+        const handleBlur = () => {
+            if (!query) {
+                setOverlayVisibility(false);
+            }
+        };
+
+        const handleFocus = () => {
+            setOverlayVisibility(true);
+            updateUi();
+        };
+
         const handlePreviousClick = (event) => {
             event.preventDefault();
             jumpToMatch(-1);
         };
 
-        const handleNextClick = (event) => {
-            event.preventDefault();
-            jumpToMatch(1);
-        };
-
         input.addEventListener("input", handleInput);
         input.addEventListener("keydown", handleKeyDown);
+        input.addEventListener("blur", handleBlur);
+        input.addEventListener("focus", handleFocus);
         previousButton.addEventListener("click", handlePreviousClick);
         nextButton.addEventListener("click", handleNextClick);
 
@@ -717,12 +880,15 @@ export function createMarkdownEditorHost(options) {
                 input.disabled = !isEnabled;
                 if (!isEnabled) {
                     input.blur();
+                    setOverlayVisibility(false);
                 }
                 updateUi();
             },
             destroy: () => {
                 input.removeEventListener("input", handleInput);
                 input.removeEventListener("keydown", handleKeyDown);
+                input.removeEventListener("blur", handleBlur);
+                input.removeEventListener("focus", handleFocus);
                 previousButton.removeEventListener("click", handlePreviousClick);
                 nextButton.removeEventListener("click", handleNextClick);
                 input.disabled = false;
@@ -730,6 +896,7 @@ export function createMarkdownEditorHost(options) {
                 clearExistingMarkers();
                 query = "";
                 currentIndex = -1;
+                setOverlayVisibility(false);
                 updateUi();
             }
         };

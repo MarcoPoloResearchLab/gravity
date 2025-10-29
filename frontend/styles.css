@@ -519,6 +519,11 @@ body::-webkit-scrollbar {
 /* Mode toggles */
 .edit-mode .markdown-content,
 .editing-in-place .markdown-content,
+.markdown-editor-host {
+    position: relative;
+    --editor-search-offset: 0px;
+}
+
 .markdown-editor-host--edit .markdown-content { display: none; }
 .edit-mode .markdown-editor,
 .editing-in-place .markdown-editor,
@@ -753,15 +758,45 @@ body::-webkit-scrollbar {
     pointer-events: none;
 }
 
-.editor-search-floating {
+.editor-search-anchor {
     display: flex;
     justify-content: flex-end;
-    width: 100%;
     margin-bottom: 0.35rem;
 }
 
-.markdown-editor-host--view .editor-search-floating {
+.editor-search-anchor:empty {
     display: none;
+}
+
+.editor-search-anchor .editor-search-layer {
+    position: static;
+    padding: 0;
+}
+
+.editor-search-anchor .editor-search-layer[data-search-hidden="true"] {
+    display: none;
+}
+
+.editor-search-layer {
+    position: absolute;
+    top: 0;
+    right: auto;
+    display: inline-flex;
+    justify-content: flex-end;
+    padding: 0.25rem 0.25rem 0 0;
+    pointer-events: auto;
+    opacity: 0;
+    transition: opacity 0.16s ease;
+    z-index: 5;
+}
+
+.editor-search-layer[data-search-hidden="true"] {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.editor-search-layer:not([data-search-hidden="true"]) {
+    opacity: 1;
 }
 
 .editor-button {
@@ -819,8 +854,15 @@ body::-webkit-scrollbar {
     border-radius: 0;
     box-shadow: none;
     padding: 0 !important;
+    margin-top: var(--editor-search-offset, 0px);
     line-height: 1.35;
     min-height: 2.2rem;
+}
+
+.CodeMirror-lines::before {
+    content: "";
+    display: block;
+    height: var(--editor-search-offset, 0px);
 }
 
 .CodeMirror-cursor {

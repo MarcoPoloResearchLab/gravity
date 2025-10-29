@@ -104,6 +104,7 @@ const COPY_FEEDBACK_DURATION_MS = 1800;
 const LINE_ENDING_NORMALIZE_PATTERN = /\r\n/g;
 const TRAILING_WHITESPACE_PATTERN = /[ \t]+$/;
 const VIEWPORT_ANCHOR_MARGIN_PX = 24;
+const VIEWPORT_CENTERING_OVERFLOW_PX = 160;
 const VIEWPORT_STABILITY_ATTEMPTS = 12;
 
 function calculateHtmlViewTextOffset(htmlViewElement, event) {
@@ -376,17 +377,15 @@ function shouldCenterCard(anchor) {
     if (viewportHeight <= 0) {
         return true;
     }
-    const margin = Math.max(viewportHeight * 0.05, VIEWPORT_ANCHOR_MARGIN_PX);
-    const effectiveViewportHeight = viewportHeight - margin * 2;
+    const overflowTop = Math.max(0, -anchor.top);
+    const overflowBottom = Math.max(0, anchor.bottom - viewportHeight);
     if (!Number.isFinite(anchor.height) || anchor.height <= 0) {
-        return anchor.top < margin || anchor.bottom > viewportHeight - margin;
+        return overflowTop > VIEWPORT_CENTERING_OVERFLOW_PX || overflowBottom > VIEWPORT_CENTERING_OVERFLOW_PX;
     }
-    if (effectiveViewportHeight <= 0 || anchor.height >= effectiveViewportHeight) {
+    if (anchor.height >= viewportHeight) {
         return false;
     }
-    const topThreshold = margin;
-    const bottomThreshold = viewportHeight - margin;
-    return anchor.top < topThreshold || anchor.bottom > bottomThreshold;
+    return overflowTop > VIEWPORT_CENTERING_OVERFLOW_PX || overflowBottom > VIEWPORT_CENTERING_OVERFLOW_PX;
 }
 
 /**
@@ -442,8 +441,7 @@ function maintainCardViewport(card, options = {}) {
             targetTop = computeCenteredCardTop(rect.height, viewportHeight);
         } else if (typeof baselineTop === "number") {
             const minTop = VIEWPORT_ANCHOR_MARGIN_PX * -1;
-            const maxTop = Math.max(viewportHeight - rect.height - VIEWPORT_ANCHOR_MARGIN_PX, minTop);
-            targetTop = clamp(baselineTop, minTop, maxTop);
+            targetTop = baselineTop < minTop ? minTop : baselineTop;
         } else {
             targetTop = rect.top;
         }
@@ -526,7 +524,8 @@ function preserveCaretScreenPosition(card, targetClientY, attempts = VIEWPORT_ST
             }
             return;
         }
-        const delta = caretRect.top - targetClientY;
+        const caretCenter = caretRect.top + caretRect.height / 2;
+        const delta = caretCenter - targetClientY;
         if (Math.abs(delta) <= 0.75) {
             return;
         }
@@ -1159,15 +1158,19 @@ export function renderCard(record, options = {}) {
     applyChips(chips, record.classification);
 
     const controlsColumn = createElement("div", "card-controls");
-    controlsColumn.append(chips, actions);
+    const searchOverlayAnchor = createElement("div", "editor-search-anchor");
+    controlsColumn.append(searchOverlayAnchor, chips, actions);
 
     controlsColumn.addEventListener("pointerdown", (event) => {
         if (!card.classList.contains("editing-in-place")) {
             return;
         }
-        const targetElement = event.target instanceof Element ? event.target : null;
-        if (targetElement && targetElement.closest(".actions [data-action]")) {
-            return;
+        const targetElement = event.target instanceof Element ? event.target.closest("[data-action]") : null;
+        if (targetElement instanceof HTMLElement) {
+            const actionType = targetElement.getAttribute("data-action");
+            if (actionType === "copy-note" || actionType === "toggle-pin") {
+                return;
+            }
         }
         scheduleFinalize(finalizeAfterControlInteraction);
     }, true);
@@ -1306,7 +1309,8 @@ export function renderCard(record, options = {}) {
         htmlViewElement: htmlViewPlaceholder,
         initialMode: MARKDOWN_MODE_VIEW,
         showToolbar: false,
-        enableSearch: true
+        enableSearch: true,
+        searchOverlayTarget: searchOverlayAnchor
     });
     editor.classList.add("markdown-editor--enhanced");
     editor.style.removeProperty("display");
@@ -1646,6 +1650,11 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
     } = options;
     const viewportAnchor = !bubbleSelfToTop ? captureViewportAnchor(card) : null;
     const centerCardOnEntry = !bubbleSelfToTop && shouldCenterCard(viewportAnchor);
+    if (centerCardOnEntry) {
+        card.dataset.centerCardOnEntry = "true";
+    } else {
+        delete card.dataset.centerCardOnEntry;
+    }
 
     const wasEditing = card.classList.contains("editing-in-place");
     const htmlViewWrapper = card.querySelector(".note-html-view");
@@ -1947,6 +1956,9 @@ function deleteHtmlView(card) {
  */
 function createMarkdownView(host) {
     if (host && host.getMode() !== MARKDOWN_MODE_EDIT) {
+        if (typeof host.attachCodeMirror === "function") {
+            host.attachCodeMirror();
+        }
         host.setMode(MARKDOWN_MODE_EDIT);
     }
 }
@@ -1958,6 +1970,9 @@ function createMarkdownView(host) {
 function deleteMarkdownView(host) {
     if (host && host.getMode() !== MARKDOWN_MODE_VIEW) {
         host.setMode(MARKDOWN_MODE_VIEW);
+        if (typeof host.detachCodeMirror === "function") {
+            host.detachCodeMirror();
+        }
     }
 }
 
@@ -2337,8 +2352,13 @@ export function focusCardEditor(card, notesContainer, options = {}) {
                 host.setCaretPosition(caretPlacement === CARET_PLACEMENT_END ? "end" : "start");
             }
         }
-        if (Number.isFinite(preserveClientY)) {
+        const centeredOnEntry = card.dataset.centerCardOnEntry === "true";
+        if (centeredOnEntry) {
+            delete card.dataset.centerCardOnEntry;
+        } else if (Number.isFinite(preserveClientY)) {
             preserveCaretScreenPosition(card, Number(preserveClientY));
+        } else {
+            delete card.dataset.centerCardOnEntry;
         }
     });
 
