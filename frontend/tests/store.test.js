@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { appConfig } from "../js/core/config.js";
-import { GravityStore } from "../js/core/store.js";
+import { GravityStore, ERROR_INVALID_NOTES_COLLECTION } from "../js/core/store.js";
 import { ERROR_IMPORT_INVALID_PAYLOAD } from "../js/constants.js";
 
 const SAMPLE_TIMESTAMP = "2024-01-01T00:00:00.000Z";
@@ -123,6 +123,27 @@ test.describe("GravityStore.loadAllNotes", () => {
 
         const missing = GravityStore.getById("missing-id");
         assert.equal(missing, null);
+    });
+});
+
+test.describe("GravityStore.saveAllNotes guard", () => {
+    test.beforeEach(() => {
+        global.localStorage = new LocalStorageStub();
+        GravityStore.setUserScope(null);
+    });
+
+    test.afterEach(() => {
+        delete global.localStorage;
+    });
+
+    test("rejects non-array inputs", () => {
+        assert.throws(
+            () => GravityStore.saveAllNotes(/** @type {any} */ (null)),
+            {
+                name: "Error",
+                message: ERROR_INVALID_NOTES_COLLECTION
+            }
+        );
     });
 });
 

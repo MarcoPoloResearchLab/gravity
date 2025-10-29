@@ -15,6 +15,7 @@ const STORAGE_USER_PREFIX = (() => {
 })();
 let activeStorageKey = STORAGE_KEY_BASE;
 const ERROR_INVALID_NOTE_RECORD = "gravity.invalid_note_record";
+export const ERROR_INVALID_NOTES_COLLECTION = "gravity.invalid_notes_collection";
 
 /** @typedef {import("../types.d.js").NoteRecord} NoteRecord */
 
@@ -47,13 +48,14 @@ export const GravityStore = (() => {
      * @returns {void}
      */
     function saveAllNotes(records) {
+        if (!Array.isArray(records)) {
+            throw new Error(ERROR_INVALID_NOTES_COLLECTION);
+        }
         const normalized = [];
-        if (Array.isArray(records)) {
-            for (const record of records) {
-                const note = tryCreateNoteRecord(record);
-                if (note) {
-                    normalized.push(note);
-                }
+        for (const record of records) {
+            const note = tryCreateNoteRecord(record);
+            if (note) {
+                normalized.push(note);
             }
         }
         const deduped = dedupeRecordsById(normalized);

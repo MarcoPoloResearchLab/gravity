@@ -48,6 +48,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Expand toggles now compute their position against the entire card grid and stay centered across desktop and stacked mobile layouts, verified by new Puppeteer coverage.
 - [x] [GN-308] Clicking on the control part of the note flickers the renderHTML view instead of switching to it. I expect a click outside of currently edited note to switch it to renderedHTML. The outside area includes the control area. It currently switches briefly and then goes back to markdown.
   - Treats the control column as a non-edit surface so control clicks finalize editing without re-opening markdown, backed by a Puppeteer regression.
+- [x] [GN-310] GravityStore.saveAllNotes accepts non-array payloads and clears persisted notes.
+  - Added a guard that throws `gravity.invalid_notes_collection` for non-array inputs and expanded `store.test.js` to lock in the behavior.
 - [x] [GN-309] Store tests fail after note record validation rejects persisted data from earlier builds.
   - Filter `GravityStore.saveAllNotes` to drop invalid persisted candidates prior to deduping so smart constructors stay enforced while CI/local `store.test.js` passes.
 
