@@ -8,6 +8,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 - [ ] [GN-121] Search across notes. Use Cntr + Space to display a search dialog. The search works as a gravity point that pushes the irrelevant notes down and raises the relevant notes up. The search dialog is situated in the footer. The gravity point disappears when the search dialog is closed
 - [ ] [GN-122] Add settings section under the user's avatar when a user is logged. in. There is a dropdown there, add settings before log out. Include such things as font size, and gravity control (whether to gravitate the card to the top on change, on clipboard copy)
 - [ ] [GN-123] add a section to setting to delete all notes. show a modal pop up cfirmation that asks to type DELETYE before actually deleting all notes.
+- [ ] [GN-124] The moving behaviour: The active card visually stays where it is when being operated on, whether in markdown or HTML mode. It's markdown may change and the other cards will change their positions , ie.g. will travel down, but the active card does not move visually. The rest of the cards can move but the active card stays anchored. When the editing finishes it changes to HTML view -- but doesnt fold in, it stays the same size. It's the first card in the feed now, and other cards moved below it but it didnt'c change its position. 
+- let's prepare a carefull plan and a list of behaviors that need to be defined or changed bases on this new visual behaviour
 
 ## Improvements (200–299)
 
