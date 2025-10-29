@@ -689,14 +689,15 @@ body::-webkit-scrollbar {
 
 .editor-mode-utility-group { margin-left: auto; }
 
+.markdown-editor-host {
+    position: relative;
+    --editor-search-offset: 0px;
+}
+
 .editor-search {
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
-}
-
-.markdown-editor-host--view .editor-search {
-    display: none;
 }
 
 .editor-search__input {
@@ -753,15 +754,26 @@ body::-webkit-scrollbar {
     pointer-events: none;
 }
 
-.editor-search-floating {
-    display: flex;
+.editor-search-layer {
+    position: absolute;
+    top: 0;
+    right: auto;
+    display: inline-flex;
     justify-content: flex-end;
-    width: 100%;
-    margin-bottom: 0.35rem;
+    padding: 0.25rem 0.25rem 0 0;
+    pointer-events: auto;
+    opacity: 0;
+    transition: opacity 0.16s ease;
+    z-index: 5;
 }
 
-.markdown-editor-host--view .editor-search-floating {
-    display: none;
+.editor-search-layer[data-search-hidden="true"] {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.editor-search-layer:not([data-search-hidden="true"]) {
+    opacity: 1;
 }
 
 .editor-button {
@@ -829,6 +841,12 @@ body::-webkit-scrollbar {
 
 .CodeMirror-lines {
     padding: 0.25rem 0.25rem 0.25rem 0;
+}
+
+.CodeMirror-lines::before {
+    content: "";
+    display: block;
+    height: var(--editor-search-offset, 0px);
 }
 
 .CodeMirror pre {

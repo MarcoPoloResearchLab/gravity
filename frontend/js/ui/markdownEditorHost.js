@@ -144,7 +144,73 @@ export function createMarkdownEditorHost(options) {
     let editButton = null;
     let viewButton = null;
     let searchUi = enableSearch ? createSearchUi() : null;
-    let searchMount = null;
+    let searchOverlay = null;
+    let searchResizeObserver = null;
+    const SEARCH_OVERLAY_GAP_PX = 6;
+    const markdownEditorElement = textarea.closest(".markdown-editor");
+    const updateSearchOffset = (offsetPx) => {
+        const totalOffset = offsetPx > 0 ? offsetPx + SEARCH_OVERLAY_GAP_PX : 0;
+        container.style.setProperty("--editor-search-offset", `${totalOffset}px`);
+    };
+    const positionSearchOverlay = () => {
+        if (!searchOverlay) {
+            return;
+        }
+        if (typeof window === "undefined") {
+            return;
+        }
+        const hostRect = container.getBoundingClientRect();
+        const codeMirrorElement = container.querySelector?.(".CodeMirror") ?? null;
+        const easyMdeContainer = container.querySelector?.(".EasyMDEContainer") ?? null;
+        const editorFallback = markdownEditorElement ?? container;
+        const referenceElement = codeMirrorElement ?? easyMdeContainer ?? editorFallback;
+        if (!(referenceElement instanceof Element)) {
+            return;
+        }
+        const referenceRect = referenceElement.getBoundingClientRect();
+        const topOffset = referenceRect.top - hostRect.top;
+        const leftOffset = referenceRect.left - hostRect.left;
+        const normalizedTop = Number.isFinite(topOffset) ? Math.max(0, topOffset) : 0;
+        const normalizedLeft = Number.isFinite(leftOffset) ? Math.max(0, leftOffset) : 0;
+        searchOverlay.style.top = `${normalizedTop}px`;
+        searchOverlay.style.left = `${normalizedLeft}px`;
+        searchOverlay.style.removeProperty("right");
+        const availableWidth = Math.max(0, hostRect.width - normalizedLeft);
+        const referenceWidth = Number.isFinite(referenceRect.width) ? referenceRect.width : availableWidth;
+        const measuredWidth = Math.min(referenceWidth, availableWidth);
+        if (measuredWidth > 0) {
+            searchOverlay.style.width = `${measuredWidth}px`;
+        } else {
+            searchOverlay.style.removeProperty("width");
+        }
+    };
+    const measureSearchOverlay = () => {
+        if (!searchOverlay || !searchUi || searchOverlay.hasAttribute("data-search-hidden")) {
+            updateSearchOffset(0);
+            return;
+        }
+        positionSearchOverlay();
+        const rect = searchUi.container.getBoundingClientRect();
+        updateSearchOffset(rect.height > 0 ? rect.height : 0);
+    };
+    const setSearchOverlayVisibility = (isVisible) => {
+        if (!searchOverlay) return;
+        if (isVisible) {
+            searchOverlay.hidden = false;
+            searchOverlay.removeAttribute("data-search-hidden");
+            searchUi.container.style.display = "inline-flex";
+            if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+                window.requestAnimationFrame(measureSearchOverlay);
+            } else {
+                measureSearchOverlay();
+            }
+        } else {
+            searchOverlay.hidden = true;
+            searchOverlay.setAttribute("data-search-hidden", "true");
+            searchUi.container.style.display = "none";
+            updateSearchOffset(0);
+        }
+    };
 
     if (showToolbar) {
         toolbar = createElement("div", "editor-mode-toolbar");
@@ -159,15 +225,22 @@ export function createMarkdownEditorHost(options) {
         viewButton.setAttribute("type", "button");
 
         toggleGroup.append(editButton, viewButton);
-        if (searchUi) {
-            utilityGroup.appendChild(searchUi.container);
-        }
         toolbar.append(toggleGroup, utilityGroup);
         container.insertBefore(toolbar, container.firstChild);
-    } else if (searchUi) {
-        searchMount = createElement("div", "editor-search-floating");
-        searchMount.appendChild(searchUi.container);
-        container.insertBefore(searchMount, container.firstChild);
+    }
+
+    if (searchUi) {
+        searchOverlay = createElement("div", "editor-search-layer");
+        searchOverlay.setAttribute("data-search-hidden", "true");
+        searchOverlay.hidden = true;
+        searchOverlay.appendChild(searchUi.container);
+        container.appendChild(searchOverlay);
+        updateSearchOffset(0);
+        searchUi.container.style.display = "none";
+        if (typeof ResizeObserver === "function") {
+            searchResizeObserver = new ResizeObserver(() => measureSearchOverlay());
+            searchResizeObserver.observe(searchUi.container);
+        }
     }
 
     const easyMdeAvailable = typeof window !== "undefined" && typeof window.EasyMDE === "function";
@@ -188,7 +261,9 @@ export function createMarkdownEditorHost(options) {
             input: searchUi.input,
             previousButton: searchUi.previousButton,
             nextButton: searchUi.nextButton,
-            countElement: searchUi.countElement
+            countElement: searchUi.countElement,
+            onVisibilityChange: setSearchOverlayVisibility,
+            onMetricsChange: measureSearchOverlay
         })
         : null;
     configureEasyMde(easyMdeInstance, { syncTextareaValue, searchManager });
@@ -262,7 +337,8 @@ export function createMarkdownEditorHost(options) {
             setMode(MODE_EDIT);
         }
         searchManager.setEnabled(true);
-        return searchManager.focus({ selectAll });
+        const focused = searchManager.focus({ selectAll });
+        return focused;
     }
 
     /**
@@ -387,12 +463,27 @@ export function createMarkdownEditorHost(options) {
         if (searchManager) {
             searchManager.destroy();
         }
+        if (searchResizeObserver) {
+            searchResizeObserver.disconnect();
+        }
         easyMdeInstance.toTextArea();
         if (showToolbar && toolbar) {
             toolbar.remove();
         }
-        if (searchMount) {
-            searchMount.remove();
+        if (searchOverlay) {
+            const overlayRef = /** @type {any} */ (searchOverlay);
+            const enablePointerInteraction = overlayRef.__enablePointerInteraction;
+            const disablePointerInteraction = overlayRef.__disablePointerInteraction;
+            const pointerInteractiveElements = overlayRef.__pointerInteractiveElements;
+            if (Array.isArray(pointerInteractiveElements)) {
+                for (const element of pointerInteractiveElements) {
+                    if (element && typeof element.removeEventListener === "function") {
+                        element.removeEventListener("focus", enablePointerInteraction);
+                        element.removeEventListener("blur", disablePointerInteraction);
+                    }
+                }
+            }
+            searchOverlay.remove();
         }
     }
 
@@ -499,7 +590,15 @@ export function createMarkdownEditorHost(options) {
      * }} params
      */
     function createSearchManager(params) {
-        const { codemirror, input, previousButton, nextButton, countElement } = params;
+        const {
+            codemirror,
+            input,
+            previousButton,
+            nextButton,
+            countElement,
+            onVisibilityChange,
+            onMetricsChange
+        } = params;
         if (!codemirror || typeof codemirror.getDoc !== "function") {
             return {
                 focus: () => false,
@@ -516,6 +615,7 @@ export function createMarkdownEditorHost(options) {
         let currentIndex = -1;
         let query = "";
         let isEnabled = true;
+        let isShiftPressed = false;
 
         const clearExistingMarkers = () => {
             for (const entry of matches) {
@@ -539,6 +639,7 @@ export function createMarkdownEditorHost(options) {
                 input.setAttribute("aria-disabled", "true");
                 previousButton.disabled = true;
                 nextButton.disabled = true;
+                if (typeof onMetricsChange === "function") onMetricsChange();
                 return;
             }
 
@@ -546,6 +647,7 @@ export function createMarkdownEditorHost(options) {
             const disableNavigation = !query || total <= 1;
             previousButton.disabled = disableNavigation;
             nextButton.disabled = disableNavigation;
+            if (typeof onMetricsChange === "function") onMetricsChange();
         };
 
         const revealCurrentMatch = ({ scroll } = { scroll: true }) => {
@@ -592,7 +694,6 @@ export function createMarkdownEditorHost(options) {
                     searchIndex = normalizedHaystack.indexOf(normalizedNeedle, searchIndex + needleLength);
                 }
             });
-
 
             if (matches.length === 0) {
                 currentIndex = -1;
@@ -680,15 +781,38 @@ export function createMarkdownEditorHost(options) {
                 return;
             }
             if (event.key === "Enter") {
+                if (event.shiftKey && !isShiftPressed) {
+                    event.preventDefault();
+                    return;
+                }
                 event.preventDefault();
-                jumpToMatch(event.shiftKey ? -1 : 1);
-            } else if (event.key === "Escape") {
+                const direction = isShiftPressed ? -1 : 1;
+                jumpToMatch(direction);
+                return;
+            }
+            if (event.key === "Escape") {
                 if (input.value.length > 0) {
                     event.preventDefault();
                     input.value = "";
                     refreshMatches({ maintainSelection: false });
                 }
             }
+        };
+
+        const handleModifierKeyDown = (event) => {
+            if (event.key === "Shift") {
+                isShiftPressed = true;
+            }
+        };
+
+        const handleModifierKeyUp = (event) => {
+            if (event.key === "Shift") {
+                isShiftPressed = false;
+            }
+        };
+
+        const handleBlur = () => {
+            isShiftPressed = false;
         };
 
         const handlePreviousClick = (event) => {
@@ -703,6 +827,9 @@ export function createMarkdownEditorHost(options) {
 
         input.addEventListener("input", handleInput);
         input.addEventListener("keydown", handleKeyDown);
+        input.addEventListener("keydown", handleModifierKeyDown);
+        input.addEventListener("keyup", handleModifierKeyUp);
+        input.addEventListener("blur", handleBlur);
         previousButton.addEventListener("click", handlePreviousClick);
         nextButton.addEventListener("click", handleNextClick);
 
@@ -717,12 +844,19 @@ export function createMarkdownEditorHost(options) {
                 input.disabled = !isEnabled;
                 if (!isEnabled) {
                     input.blur();
+                    isShiftPressed = false;
+                }
+                if (typeof onVisibilityChange === "function") {
+                    onVisibilityChange(isEnabled);
                 }
                 updateUi();
             },
             destroy: () => {
                 input.removeEventListener("input", handleInput);
                 input.removeEventListener("keydown", handleKeyDown);
+                input.removeEventListener("keydown", handleModifierKeyDown);
+                input.removeEventListener("keyup", handleModifierKeyUp);
+                input.removeEventListener("blur", handleBlur);
                 previousButton.removeEventListener("click", handlePreviousClick);
                 nextButton.removeEventListener("click", handleNextClick);
                 input.disabled = false;
@@ -730,6 +864,9 @@ export function createMarkdownEditorHost(options) {
                 clearExistingMarkers();
                 query = "";
                 currentIndex = -1;
+                if (typeof onVisibilityChange === "function") {
+                    onVisibilityChange(false);
+                }
                 updateUi();
             }
         };
@@ -966,27 +1103,35 @@ export function createMarkdownEditorHost(options) {
         if (searchManager) {
             keyMap["Cmd-F"] = () => {
                 focusSearchInput({ selectAll: true });
+                return true;
             };
             keyMap["Ctrl-F"] = () => {
                 focusSearchInput({ selectAll: true });
+                return true;
             };
             keyMap["Cmd-G"] = () => {
                 jumpSearch(1);
+                return true;
             };
             keyMap["Ctrl-G"] = () => {
                 jumpSearch(1);
+                return true;
             };
             keyMap["Shift-Cmd-G"] = () => {
                 jumpSearch(-1);
+                return true;
             };
             keyMap["Shift-Ctrl-G"] = () => {
                 jumpSearch(-1);
+                return true;
             };
             keyMap.F3 = () => {
                 jumpSearch(1);
+                return true;
             };
             keyMap["Shift-F3"] = () => {
                 jumpSearch(-1);
+                return true;
             };
         }
 
@@ -1020,8 +1165,32 @@ export function createMarkdownEditorHost(options) {
         codemirror.on("keydown", (cm, event) => {
             if (event.defaultPrevented) return;
 
-            const isModifier = event.metaKey || event.ctrlKey;
-            if (isModifier && (event.key === "Enter" || event.key === "s" || event.key === "S")) {
+            const hasModifier = event.metaKey || event.ctrlKey;
+            if (hasModifier && (event.key === "f" || event.key === "F")) {
+                event.preventDefault();
+                focusSearchInput({ selectAll: true });
+                return;
+            }
+            if (hasModifier && (event.key === "g" || event.key === "G")) {
+                event.preventDefault();
+                if (event.shiftKey) {
+                    jumpSearch(-1);
+                } else {
+                    jumpSearch(1);
+                }
+                return;
+            }
+            if (event.key === "F3") {
+                event.preventDefault();
+                if (event.shiftKey) {
+                    jumpSearch(-1);
+                } else {
+                    jumpSearch(1);
+                }
+                return;
+            }
+
+            if (hasModifier && (event.key === "Enter" || event.key === "s" || event.key === "S")) {
                 event.preventDefault();
                 emit("submit");
                 return;

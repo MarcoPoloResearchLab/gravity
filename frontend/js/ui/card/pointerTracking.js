@@ -13,7 +13,9 @@ const NON_EDITABLE_CARD_SURFACE_SELECTORS = Object.freeze([
 const INLINE_EDITOR_SURFACE_SELECTORS = Object.freeze([
     ".markdown-editor",
     ".EasyMDEContainer",
-    ".CodeMirror"
+    ".CodeMirror",
+    ".editor-search",
+    ".editor-search-layer"
 ]);
 
 /**
@@ -60,6 +62,9 @@ export function shouldKeepEditingAfterBlur(card) {
 
     const activeElement = document.activeElement;
     if (activeElement instanceof HTMLElement && card.contains(activeElement)) {
+        if (shouldIgnoreCardPointerTarget(activeElement)) {
+            return false;
+        }
         return true;
     }
 
