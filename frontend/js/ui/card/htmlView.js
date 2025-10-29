@@ -236,11 +236,31 @@ function attachExpandStripClickHandler(wrapper, toggle) {
     if (!(wrapper instanceof HTMLElement) || !(toggle instanceof HTMLElement)) {
         return;
     }
+    const isToggleInteractable = () => !(toggle.hidden || toggle.style.display === "none");
+    const isWithinExpandStrip = (clientY) => {
+        const hitHeight = getToggleHitHeight(toggle);
+        if (hitHeight <= 0) {
+            return false;
+        }
+        const wrapperRect = wrapper.getBoundingClientRect();
+        return clientY >= wrapperRect.bottom - hitHeight;
+    };
+    const updateExpandStripCursor = (event) => {
+        if (!(event instanceof MouseEvent)) {
+            return;
+        }
+        if (!isToggleInteractable()) {
+            wrapper.style.cursor = "";
+            return;
+        }
+        wrapper.style.cursor = isWithinExpandStrip(event.clientY) ? "pointer" : "";
+    };
+
     wrapper.addEventListener("click", (event) => {
         if (!(event instanceof MouseEvent)) {
             return;
         }
-        if (toggle.hidden || toggle.style.display === "none") {
+        if (!isToggleInteractable()) {
             return;
         }
         const target = event.target;
@@ -252,16 +272,15 @@ function attachExpandStripClickHandler(wrapper, toggle) {
                 return;
             }
         }
-        const hitHeight = getToggleHitHeight(toggle);
-        if (hitHeight <= 0) {
-            return;
-        }
-        const wrapperRect = wrapper.getBoundingClientRect();
-        if (event.clientY >= wrapperRect.bottom - hitHeight) {
+        if (isWithinExpandStrip(event.clientY)) {
             event.preventDefault();
             event.stopPropagation();
             toggle.click();
         }
+    });
+    wrapper.addEventListener("mousemove", updateExpandStripCursor);
+    wrapper.addEventListener("mouseleave", () => {
+        wrapper.style.cursor = "";
     });
 }
 

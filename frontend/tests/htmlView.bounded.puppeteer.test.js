@@ -334,6 +334,84 @@ test.describe("Bounded htmlViews", () => {
         }
     });
 
+    test("expand strip advertises a pointer cursor near the toggle", async () => {
+        const { page, teardown } = await openHtmlViewHarness(createBaselineRecords());
+        const cardSelector = `[data-note-id="${LONG_NOTE_ID}"]`;
+        const htmlViewSelector = `${cardSelector} .note-html-view`;
+        const toggleSelector = `${cardSelector} .note-expand-toggle`;
+        try {
+            await collapseAllHtmlViews(page);
+            await page.waitForSelector(toggleSelector, { timeout: 5000 });
+
+            const pointerTargets = await page.$eval(cardSelector, (card) => {
+                const htmlView = card.querySelector(".note-html-view");
+                const toggle = card.querySelector(".note-expand-toggle");
+                if (!(card instanceof HTMLElement) || !(htmlView instanceof HTMLElement) || !(toggle instanceof HTMLElement)) {
+                    throw new Error("expand strip prerequisites missing");
+                }
+                const cardRect = card.getBoundingClientRect();
+                const htmlRect = htmlView.getBoundingClientRect();
+                const toggleRect = toggle.getBoundingClientRect();
+                const cardCenterX = cardRect.left + cardRect.width / 2;
+                const bodyHoverY = htmlRect.top + Math.min(Math.max(htmlRect.height * 0.25, 12), Math.max(htmlRect.height - toggleRect.height * 2, htmlRect.height * 0.25));
+                const stripHoverY = toggleRect.top + toggleRect.height / 2;
+                return {
+                    bodyX: cardCenterX,
+                    bodyY: bodyHoverY,
+                    stripX: cardCenterX,
+                    stripY: stripHoverY
+                };
+            });
+
+            await page.mouse.move(pointerTargets.bodyX, pointerTargets.bodyY, { steps: 8 });
+            await page.evaluate((delayMs) => new Promise((resolve) => {
+                setTimeout(resolve, typeof delayMs === "number" ? delayMs : 0);
+            }), 40);
+            const cursorOverBody = await page.$eval(htmlViewSelector, (element) => {
+                const computedCursor = window.getComputedStyle(element).cursor;
+                return {
+                    inlineCursor: element instanceof HTMLElement ? element.style.cursor : "",
+                    computedCursor
+                };
+            });
+            assert.notEqual(
+                cursorOverBody.computedCursor,
+                "pointer",
+                `hovering the htmlView body should not force a pointer cursor (got "${cursorOverBody.computedCursor}")`
+            );
+
+            await page.mouse.move(pointerTargets.stripX, pointerTargets.stripY, { steps: 8 });
+            await page.evaluate((delayMs) => new Promise((resolve) => {
+                setTimeout(resolve, typeof delayMs === "number" ? delayMs : 0);
+            }), 40);
+            const cursorOverStrip = await page.$eval(htmlViewSelector, (element) => {
+                const computedCursor = window.getComputedStyle(element).cursor;
+                return {
+                    inlineCursor: element instanceof HTMLElement ? element.style.cursor : "",
+                    computedCursor
+                };
+            });
+            assert.equal(cursorOverStrip.inlineCursor, "pointer", "expand strip hover should set inline pointer cursor");
+            assert.equal(cursorOverStrip.computedCursor, "pointer", "expand strip hover should compute to pointer cursor");
+
+            await page.mouse.move(pointerTargets.bodyX, pointerTargets.bodyY, { steps: 8 });
+            await page.evaluate((delayMs) => new Promise((resolve) => {
+                setTimeout(resolve, typeof delayMs === "number" ? delayMs : 0);
+            }), 40);
+            const cursorReset = await page.$eval(htmlViewSelector, (element) => {
+                const computedCursor = window.getComputedStyle(element).cursor;
+                return {
+                    inlineCursor: element instanceof HTMLElement ? element.style.cursor : "",
+                    computedCursor
+                };
+            });
+            assert.notEqual(cursorReset.computedCursor, "pointer", "leaving the expand strip should reset the pointer cursor");
+            assert.equal(cursorReset.inlineCursor, "", "leaving the expand strip should clear the inline cursor override");
+        } finally {
+            await teardown();
+        }
+    });
+
     test("expand toggle handles expansion while content clicks enter edit mode", async () => {
         const { page, teardown } = await openHtmlViewHarness(createBaselineRecords());
         const cardSelector = `[data-note-id="${LONG_NOTE_ID}"]`;
