@@ -47,9 +47,15 @@ export const GravityStore = (() => {
      * @returns {void}
      */
     function saveAllNotes(records) {
-        const normalized = Array.isArray(records)
-            ? records.map((record) => createNoteRecord(record))
-            : [];
+        const normalized = [];
+        if (Array.isArray(records)) {
+            for (const record of records) {
+                const note = tryCreateNoteRecord(record);
+                if (note) {
+                    normalized.push(note);
+                }
+            }
+        }
         const deduped = dedupeRecordsById(normalized);
         const storageKey = getActiveStorageKey();
         localStorage.setItem(storageKey, JSON.stringify(deduped));
