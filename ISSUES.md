@@ -6,6 +6,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
 - [ ] [GN-120] Search in a note: have a shortcut and render a search filed in the right top corner of the text editing area. Check with MDE if built in tools can be leveraged
 - [ ] [GN-121] Search across notes. Use Cntr + Space to display a search dialog. The search works as a gravity point that pushes the irrelevant notes down and raises the relevant notes up. The search dialog is situated in the footer. The gravity point disappears when the search dialog is closed
+- [ ] [GN-122] Add settings section under the user's avatar when a user is logged. in. There is a dropdown there, add settings before log out. Include such things as font size, and gravity control (whether to gravitate the card to the top on change, on clipboard copy)
 
 ## Improvements (200–299)
 
@@ -158,4 +159,3 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 
     ```
     The google console screenshot is here ![Google console](<Google Console.png>)
- - [ ] Add settings and in gravity controls allow clicking on copy to gravitate the card to the top
