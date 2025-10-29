@@ -56,6 +56,16 @@ export function scheduleHtmlViewBubble(card, notesContainer) {
         }
         return;
     }
+    const isExpanded = resolvedCard.dataset.htmlViewExpanded === "true"
+        || resolvedCard.querySelector(".note-html-view.note-html-view--expanded") instanceof HTMLElement;
+    if (isExpanded) {
+        const pendingTimer = htmlViewBubbleTimers.get(resolvedCard);
+        if (pendingTimer) {
+            clearTimeout(pendingTimer);
+            htmlViewBubbleTimers.delete(resolvedCard);
+        }
+        return;
+    }
     if (card instanceof HTMLElement && card !== resolvedCard) {
         const staleTimer = htmlViewBubbleTimers.get(card);
         if (staleTimer) {

@@ -24,6 +24,25 @@ const SECOND_MARKDOWN = [
     "- [ ] Mirror task"
 ].join("\n");
 const RAPID_TOGGLE_ITERATIONS = 4;
+const GN310_LEADING_NOTE_ID = "gn310-leading";
+const GN310_TARGET_NOTE_ID = "gn310-target";
+const GN310_TRAILING_NOTE_ID = "gn310-trailing";
+const GN310_LEADING_MARKDOWN = [
+    "# Leading checklist note",
+    "",
+    "- [ ] Primary task"
+].join("\n");
+const GN310_TARGET_MARKDOWN = [
+    "# Anchored checklist note",
+    "",
+    "- [ ] Keep track of anchor",
+    "- [x] Secondary item"
+].join("\n");
+const GN310_TRAILING_MARKDOWN = [
+    "# Trailing checklist note",
+    "",
+    "- [ ] Downstream task"
+].join("\n");
 
 test.describe("Checklist htmlView interactions", () => {
     test("htmlView checkbox toggle keeps a single persisted note", async () => {
@@ -203,6 +222,107 @@ test.describe("Checklist htmlView interactions", () => {
             await teardown();
         }
     });
+
+    test("expanded htmlView checkbox toggle keeps the card anchored in place", async () => {
+        const now = Date.now();
+        const newerIso = new Date(now + 2 * 60 * 1000).toISOString();
+        const anchorIso = new Date(now - 30 * 1000).toISOString();
+        const olderIso = new Date(now - 5 * 60 * 1000).toISOString();
+        const seededRecords = [
+            buildNoteRecord({
+                noteId: GN310_LEADING_NOTE_ID,
+                markdownText: GN310_LEADING_MARKDOWN,
+                createdAtIso: newerIso,
+                updatedAtIso: newerIso,
+                lastActivityIso: newerIso
+            }),
+            buildNoteRecord({
+                noteId: GN310_TARGET_NOTE_ID,
+                markdownText: GN310_TARGET_MARKDOWN,
+                createdAtIso: anchorIso,
+                updatedAtIso: anchorIso,
+                lastActivityIso: anchorIso
+            }),
+            buildNoteRecord({
+                noteId: GN310_TRAILING_NOTE_ID,
+                markdownText: GN310_TRAILING_MARKDOWN,
+                createdAtIso: olderIso,
+                updatedAtIso: olderIso,
+                lastActivityIso: olderIso
+            })
+        ];
+
+        const { page, teardown } = await openChecklistPage(seededRecords);
+        const targetCardSelector = `.markdown-block[data-note-id="${GN310_TARGET_NOTE_ID}"]`;
+        const targetHtmlViewSelector = `${targetCardSelector} .note-html-view`;
+        const checkboxSelector = `${targetCardSelector} .note-html-view input[data-task-index="0"]`;
+
+        try {
+            await page.waitForSelector(targetHtmlViewSelector);
+            const initialOrder = await page.$$eval(".markdown-block[data-note-id]", (nodes) => {
+                return nodes
+                    .map((node) => node.getAttribute("data-note-id"))
+                    .filter((value) => typeof value === "string");
+            });
+            const initialIndex = initialOrder.indexOf(GN310_TARGET_NOTE_ID);
+            assert.ok(initialIndex > 0, "anchored note should render after at least one other card");
+
+            await page.click(`${targetCardSelector} .note-expand-toggle`);
+            await page.waitForSelector(`${targetHtmlViewSelector}.note-html-view--expanded`);
+
+            const expandedOrder = await page.$$eval(".markdown-block[data-note-id]", (nodes) => {
+                return nodes
+                    .map((node) => node.getAttribute("data-note-id"))
+                    .filter((value) => typeof value === "string");
+            });
+            assert.deepEqual(expandedOrder, initialOrder, "expanding the htmlView should not reorder cards");
+
+            const preToggleTop = await page.$eval(targetCardSelector, (element) => {
+                if (!(element instanceof HTMLElement)) {
+                    return Number.NaN;
+                }
+                const rect = element.getBoundingClientRect();
+                return rect.top;
+            });
+            assert.ok(Number.isFinite(preToggleTop), "pre-toggle viewport position should be measurable");
+
+            await page.waitForSelector(checkboxSelector);
+            await page.click(checkboxSelector);
+
+            await page.evaluate((delayMs) => new Promise((resolve) => {
+                setTimeout(resolve, typeof delayMs === "number" ? delayMs : 0);
+            }), 1100);
+
+            const postOrder = await page.$$eval(".markdown-block[data-note-id]", (nodes) => {
+                return nodes
+                    .map((node) => node.getAttribute("data-note-id"))
+                    .filter((value) => typeof value === "string");
+            });
+            assert.deepEqual(postOrder, expandedOrder, "checkbox toggle should not reorder cards");
+
+            const postToggleTop = await page.$eval(targetCardSelector, (element) => {
+                if (!(element instanceof HTMLElement)) {
+                    return Number.NaN;
+                }
+                const rect = element.getBoundingClientRect();
+                return rect.top;
+            });
+            assert.ok(Number.isFinite(postToggleTop), "post-toggle viewport position should be measurable");
+            const viewportTolerancePx = 16;
+            const delta = Math.abs(postToggleTop - preToggleTop);
+            assert.ok(
+                delta <= viewportTolerancePx,
+                `card top offset should remain stable (delta=${delta}, tolerance=${viewportTolerancePx})`
+            );
+
+            const htmlViewExpanded = await page.$eval(targetHtmlViewSelector, (element) => {
+                return element instanceof HTMLElement && element.classList.contains("note-html-view--expanded");
+            });
+            assert.equal(htmlViewExpanded, true, "expanded htmlView should remain expanded after toggling a checkbox");
+        } finally {
+            await teardown();
+        }
+    });
 });
 
 async function openChecklistPage(records) {
@@ -228,16 +348,27 @@ async function openChecklistPage(records) {
     return { page, teardown };
 }
 
-function buildNoteRecord({ noteId, markdownText, attachments }) {
+function buildNoteRecord({
+    noteId,
+    markdownText,
+    attachments = {},
+    createdAtIso,
+    updatedAtIso,
+    lastActivityIso,
+    pinned = false
+}) {
     const timestamp = new Date().toISOString();
+    const createdIso = typeof createdAtIso === "string" ? createdAtIso : timestamp;
+    const updatedIso = typeof updatedAtIso === "string" ? updatedAtIso : timestamp;
+    const activityIso = typeof lastActivityIso === "string" ? lastActivityIso : timestamp;
     return {
         noteId,
         markdownText,
         attachments,
-        createdAtIso: timestamp,
-        updatedAtIso: timestamp,
-        lastActivityIso: timestamp,
-        pinned: false
+        createdAtIso: createdIso,
+        updatedAtIso: updatedIso,
+        lastActivityIso: activityIso,
+        pinned
     };
 }
 
