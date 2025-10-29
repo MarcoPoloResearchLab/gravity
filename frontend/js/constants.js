@@ -11,6 +11,7 @@ export const LABEL_COPY_NOTE = "📋";
 export const LABEL_PIN_NOTE = "";
 export const LABEL_EDIT_MARKDOWN = "Edit (Markdown)";
 export const LABEL_VIEW_RENDERED = "View (Rendered)";
+export const LABEL_EDITOR_SEARCH_PLACEHOLDER = "Search note";
 export const LABEL_NEW_NOTE = "New note";
 export const LABEL_APP_TITLE = "Gravity Notes";
 export const LABEL_APP_SUBTITLE = "Append anywhere · Bubble to top · Auto-organize";
@@ -32,6 +33,7 @@ export const LABEL_SHORTCUT_NAVIGATE_NEXT = "Focus next note";
 export const LABEL_SHORTCUT_OPEN_HELP = "Show keyboard shortcuts";
 export const LABEL_SHORTCUT_DELETE_LINE = "Delete current line";
 export const LABEL_SHORTCUT_DUPLICATE_LINE = "Duplicate current line";
+export const LABEL_SHORTCUT_FIND_IN_NOTE = "Search within note";
 export const ARIA_LABEL_PIN_NOTE = "Pin note";
 export const ARIA_LABEL_UNPIN_NOTE = "Unpin note";
 export const LABEL_ENTER_FULL_SCREEN = "Enter full screen";
@@ -56,6 +58,11 @@ export const ERROR_CLIPBOARD_COPY_FAILED = "Clipboard copy failed";
 export const ERROR_IMAGE_READ_FAILED = "Failed to read pasted image";
 export const ERROR_TOP_EDITOR_NOT_FOUND = "Top editor host not found";
 export const ERROR_AUTHENTICATION_GENERIC = "Authentication error";
+
+export const ARIA_LABEL_EDITOR_SEARCH_INPUT = "Search within note";
+export const ARIA_LABEL_EDITOR_SEARCH_PREVIOUS = "Select previous match";
+export const ARIA_LABEL_EDITOR_SEARCH_NEXT = "Select next match";
+export const ARIA_LABEL_EDITOR_SEARCH_RESULTS = "Search results";
 
 export const CLIPBOARD_MIME_NOTE = "application/x-gravity-note+json";
 export const CLIPBOARD_DATA_ATTRIBUTE = "data-gravity-note-payload";

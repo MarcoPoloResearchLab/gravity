@@ -1205,7 +1205,8 @@ export function renderCard(record, options = {}) {
         textarea: editor,
         htmlViewElement: htmlViewPlaceholder,
         initialMode: MARKDOWN_MODE_VIEW,
-        showToolbar: false
+        showToolbar: false,
+        enableSearch: true
     });
     editor.classList.add("markdown-editor--enhanced");
     editor.style.removeProperty("display");

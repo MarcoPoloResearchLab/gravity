@@ -3,7 +3,12 @@
 import { createElement } from "../utils/dom.js";
 import {
     LABEL_EDIT_MARKDOWN,
-    LABEL_VIEW_RENDERED
+    LABEL_VIEW_RENDERED,
+    LABEL_EDITOR_SEARCH_PLACEHOLDER,
+    ARIA_LABEL_EDITOR_SEARCH_INPUT,
+    ARIA_LABEL_EDITOR_SEARCH_PREVIOUS,
+    ARIA_LABEL_EDITOR_SEARCH_NEXT,
+    ARIA_LABEL_EDITOR_SEARCH_RESULTS
 } from "../constants.js";
 import { logging } from "../utils/logging.js";
 import {
@@ -36,6 +41,7 @@ const BRACKET_PAIRS = Object.freeze({
     "`": "`"
 });
 const CLOSING_BRACKETS = new Set(Object.values(BRACKET_PAIRS));
+let searchControlIdSequence = 0;
 
 /**
  * @typedef {"edit" | "view"} MarkdownEditorMode
@@ -51,7 +57,8 @@ const CLOSING_BRACKETS = new Set(Object.values(BRACKET_PAIRS));
  *   textarea: HTMLTextAreaElement,
  *   htmlViewElement: HTMLElement,
  *   initialMode?: MarkdownEditorMode,
- *   showToolbar?: boolean
+ *   showToolbar?: boolean,
+ *   enableSearch?: boolean
  * }} MarkdownEditorOptions
  */
 
@@ -82,10 +89,11 @@ export function createMarkdownEditorHost(options) {
     const {
         container,
         textarea,
-        htmlViewElement,
-        initialMode = MODE_VIEW,
-        showToolbar = true
-    } = options;
+    htmlViewElement,
+    initialMode = MODE_VIEW,
+    showToolbar = true,
+    enableSearch = false
+} = options;
     if (!(container instanceof HTMLElement)) throw new Error("Markdown editor host requires a container element.");
     if (!(textarea instanceof HTMLTextAreaElement)) throw new Error("Markdown editor host requires a textarea element.");
     if (!(htmlViewElement instanceof HTMLElement)) throw new Error("Markdown editor host requires an HTML view element.");
@@ -135,6 +143,8 @@ export function createMarkdownEditorHost(options) {
     let toolbar = null;
     let editButton = null;
     let viewButton = null;
+    let searchUi = enableSearch ? createSearchUi() : null;
+    let searchMount = null;
 
     if (showToolbar) {
         toolbar = createElement("div", "editor-mode-toolbar");
@@ -149,8 +159,15 @@ export function createMarkdownEditorHost(options) {
         viewButton.setAttribute("type", "button");
 
         toggleGroup.append(editButton, viewButton);
+        if (searchUi) {
+            utilityGroup.appendChild(searchUi.container);
+        }
         toolbar.append(toggleGroup, utilityGroup);
         container.insertBefore(toolbar, container.firstChild);
+    } else if (searchUi) {
+        searchMount = createElement("div", "editor-search-floating");
+        searchMount.appendChild(searchUi.container);
+        container.insertBefore(searchMount, container.firstChild);
     }
 
     const easyMdeAvailable = typeof window !== "undefined" && typeof window.EasyMDE === "function";
@@ -159,12 +176,22 @@ export function createMarkdownEditorHost(options) {
     }
 
     let currentMode = sanitizeMode(initialMode);
+    let skipNextEditorFocus = false;
     const easyMdeInstance = createEasyMdeInstance(textarea);
     let isProgrammaticUpdate = false;
     let isDestroyed = false;
     let isApplyingListAutoRenumber = false;
     let renumberEnhancedOrderedLists = null;
-    configureEasyMde(easyMdeInstance, { syncTextareaValue });
+    const searchManager = searchUi
+        ? createSearchManager({
+            codemirror: easyMdeInstance.codemirror,
+            input: searchUi.input,
+            previousButton: searchUi.previousButton,
+            nextButton: searchUi.nextButton,
+            countElement: searchUi.countElement
+        })
+        : null;
+    configureEasyMde(easyMdeInstance, { syncTextareaValue, searchManager });
 
     applyMode(currentMode);
 
@@ -182,6 +209,9 @@ export function createMarkdownEditorHost(options) {
             editButton.setAttribute("aria-pressed", safeMode === MODE_EDIT ? "true" : "false");
             viewButton.setAttribute("aria-pressed", safeMode === MODE_VIEW ? "true" : "false");
         }
+        if (searchManager) {
+            searchManager.setEnabled(safeMode === MODE_EDIT);
+        }
     }
 
     function setMode(nextMode) {
@@ -189,7 +219,13 @@ export function createMarkdownEditorHost(options) {
         if (currentMode === safeMode) return;
         currentMode = safeMode;
         applyMode(safeMode);
-        if (safeMode === MODE_EDIT) focusEditPane();
+        if (safeMode === MODE_EDIT) {
+            if (skipNextEditorFocus) {
+                skipNextEditorFocus = false;
+            } else {
+                focusEditPane();
+            }
+        }
         emit("modechange", { mode: safeMode });
     }
 
@@ -214,6 +250,35 @@ export function createMarkdownEditorHost(options) {
         codemirror.refresh();
     }
 
+    /**
+     * @param {{ selectAll?: boolean }} [options]
+     * @returns {boolean}
+     */
+    function focusSearchInput(options = {}) {
+        if (!searchManager) return false;
+        const { selectAll = true } = options;
+        if (currentMode !== MODE_EDIT) {
+            skipNextEditorFocus = true;
+            setMode(MODE_EDIT);
+        }
+        searchManager.setEnabled(true);
+        return searchManager.focus({ selectAll });
+    }
+
+    /**
+     * @param {number} delta
+     * @returns {boolean}
+     */
+    function jumpSearch(delta) {
+        if (!searchManager) return false;
+        if (currentMode !== MODE_EDIT) {
+            skipNextEditorFocus = true;
+            setMode(MODE_EDIT);
+        }
+        searchManager.jump(delta);
+        return true;
+    }
+
     function getValue() {
         return easyMdeInstance.value();
     }
@@ -224,6 +289,9 @@ export function createMarkdownEditorHost(options) {
         easyMdeInstance.value(safeValue);
         isProgrammaticUpdate = false;
         syncTextareaValue();
+        if (searchManager) {
+            searchManager.refresh({ maintainSelection: false });
+        }
     }
 
     function syncTextareaValue() {
@@ -316,9 +384,15 @@ export function createMarkdownEditorHost(options) {
         isDestroyed = true;
         listeners.clear();
         renumberEnhancedOrderedLists = null;
+        if (searchManager) {
+            searchManager.destroy();
+        }
         easyMdeInstance.toTextArea();
         if (showToolbar && toolbar) {
             toolbar.remove();
+        }
+        if (searchMount) {
+            searchMount.remove();
         }
     }
 
@@ -361,6 +435,305 @@ export function createMarkdownEditorHost(options) {
         destroy,
         getTextarea: () => textarea
     };
+
+    /**
+     * @returns {{
+     *   container: HTMLElement,
+     *   input: HTMLInputElement,
+     *   previousButton: HTMLButtonElement,
+     *   nextButton: HTMLButtonElement,
+     *   countElement: HTMLElement
+     * }}
+     */
+    function createSearchUi() {
+        const controlId = `editor-search-${searchControlIdSequence += 1}`;
+        const containerElement = createElement("div", "editor-search");
+        const labelElement = createElement("label", "sr-only", LABEL_EDITOR_SEARCH_PLACEHOLDER);
+        labelElement.setAttribute("for", controlId);
+
+        const inputElement = /** @type {HTMLInputElement} */ (createElement("input", "editor-search__input"));
+        inputElement.type = "search";
+        inputElement.id = controlId;
+        inputElement.placeholder = LABEL_EDITOR_SEARCH_PLACEHOLDER;
+        inputElement.setAttribute("aria-label", ARIA_LABEL_EDITOR_SEARCH_INPUT);
+        inputElement.autocomplete = "off";
+        inputElement.dataset.test = "editor-search-input";
+
+        const countElement = /** @type {HTMLElement} */ (createElement("span", "editor-search__count", "0/0"));
+        countElement.dataset.test = "editor-search-count";
+        countElement.setAttribute("aria-live", "polite");
+        countElement.setAttribute("aria-label", `${ARIA_LABEL_EDITOR_SEARCH_RESULTS}: 0 of 0`);
+
+        const previousButton = /** @type {HTMLButtonElement} */ (createElement("button", "editor-search__button", "↑"));
+        previousButton.type = "button";
+        previousButton.setAttribute("aria-label", ARIA_LABEL_EDITOR_SEARCH_PREVIOUS);
+        previousButton.title = ARIA_LABEL_EDITOR_SEARCH_PREVIOUS;
+        previousButton.dataset.test = "editor-search-previous";
+        previousButton.disabled = true;
+
+        const nextButton = /** @type {HTMLButtonElement} */ (createElement("button", "editor-search__button", "↓"));
+        nextButton.type = "button";
+        nextButton.setAttribute("aria-label", ARIA_LABEL_EDITOR_SEARCH_NEXT);
+        nextButton.title = ARIA_LABEL_EDITOR_SEARCH_NEXT;
+        nextButton.dataset.test = "editor-search-next";
+        nextButton.disabled = true;
+
+        containerElement.append(labelElement, inputElement, countElement, previousButton, nextButton);
+
+        return {
+            container: containerElement,
+            input: inputElement,
+            previousButton,
+            nextButton,
+            countElement
+        };
+    }
+
+    /**
+     * @param {{
+     *   codemirror: any,
+     *   input: HTMLInputElement,
+     *   previousButton: HTMLButtonElement,
+     *   nextButton: HTMLButtonElement,
+     *   countElement: HTMLElement
+     * }} params
+     */
+    function createSearchManager(params) {
+        const { codemirror, input, previousButton, nextButton, countElement } = params;
+        if (!codemirror || typeof codemirror.getDoc !== "function") {
+            return {
+                focus: () => false,
+                jump: () => {},
+                refresh: () => {},
+                setEnabled: () => {},
+                destroy: () => {}
+            };
+        }
+
+        const doc = codemirror.getDoc();
+        /** @type {Array<{ from: any, to: any, marker: any }>} */
+        let matches = [];
+        let currentIndex = -1;
+        let query = "";
+        let isEnabled = true;
+
+        const clearExistingMarkers = () => {
+            for (const entry of matches) {
+                const marker = entry?.marker;
+                if (marker && typeof marker.clear === "function") {
+                    marker.clear();
+                }
+            }
+            matches = [];
+        };
+
+        const getMatchCountLabel = (current, total) => `${ARIA_LABEL_EDITOR_SEARCH_RESULTS}: ${current} of ${total}`;
+
+        const updateUi = () => {
+            const total = matches.length;
+            const displayIndex = total > 0 && currentIndex >= 0 ? currentIndex + 1 : 0;
+            countElement.textContent = `${displayIndex}/${total}`;
+            countElement.setAttribute("aria-label", getMatchCountLabel(displayIndex, total));
+
+            if (!isEnabled) {
+                input.setAttribute("aria-disabled", "true");
+                previousButton.disabled = true;
+                nextButton.disabled = true;
+                return;
+            }
+
+            input.removeAttribute("aria-disabled");
+            const disableNavigation = !query || total <= 1;
+            previousButton.disabled = disableNavigation;
+            nextButton.disabled = disableNavigation;
+        };
+
+        const revealCurrentMatch = ({ scroll } = { scroll: true }) => {
+            if (matches.length === 0 || currentIndex < 0) {
+                updateUi();
+                return;
+            }
+            const match = matches[currentIndex];
+            codemirror.operation(() => {
+                doc.setSelection(match.from, match.to, { scroll: false });
+                if (scroll) {
+                    try {
+                        codemirror.scrollIntoView({ from: match.from, to: match.to }, 80);
+                    } catch {
+                        codemirror.scrollIntoView(match.from, 80);
+                    }
+                }
+            });
+        };
+
+        const refreshMatches = ({ maintainSelection = false } = {}) => {
+            clearExistingMarkers();
+            const rawValue = input.value ?? "";
+            const trimmed = rawValue.trim();
+            query = trimmed;
+            if (trimmed.length === 0) {
+                currentIndex = -1;
+                updateUi();
+                return;
+            }
+
+            const haystack = doc.getValue();
+            const normalizedHaystack = typeof haystack === "string" ? haystack.toLocaleLowerCase() : "";
+            const normalizedNeedle = trimmed.toLocaleLowerCase();
+            const needleLength = trimmed.length;
+
+            codemirror.operation(() => {
+                let searchIndex = normalizedHaystack.indexOf(normalizedNeedle);
+                while (searchIndex !== -1) {
+                    const from = doc.posFromIndex(searchIndex);
+                    const to = doc.posFromIndex(searchIndex + needleLength);
+                    const marker = doc.markText(from, to, { className: "editor-search__highlight", clearOnEnter: false });
+                    matches.push({ from, to, marker });
+                    searchIndex = normalizedHaystack.indexOf(normalizedNeedle, searchIndex + needleLength);
+                }
+            });
+
+
+            if (matches.length === 0) {
+                currentIndex = -1;
+                updateUi();
+                return;
+            }
+
+            if (maintainSelection) {
+                const selection = doc.listSelections()?.[0];
+                if (selection) {
+                    const anchorIndex = doc.indexFromPos(selection.anchor);
+                    const headIndex = doc.indexFromPos(selection.head);
+                    const selectionStart = Math.min(anchorIndex, headIndex);
+                    const selectionEnd = Math.max(anchorIndex, headIndex);
+                    const retainedIndex = matches.findIndex((match) => {
+                        const matchStart = doc.indexFromPos(match.from);
+                        const matchEnd = doc.indexFromPos(match.to);
+                        return selectionStart >= matchStart && selectionEnd <= matchEnd;
+                    });
+                    if (retainedIndex !== -1) {
+                        currentIndex = retainedIndex;
+                    }
+                }
+            }
+
+            if (currentIndex < 0 || currentIndex >= matches.length) {
+                currentIndex = 0;
+            }
+
+            revealCurrentMatch({ scroll: !maintainSelection });
+            if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+                window.requestAnimationFrame(() => {
+                    focusInput({ selectAll: false });
+                });
+            } else {
+                focusInput({ selectAll: false });
+            }
+            updateUi();
+        };
+
+        const jumpToMatch = (delta) => {
+            if (!isEnabled) {
+                return;
+            }
+
+            if (!query || matches.length === 0) {
+                refreshMatches({ maintainSelection: false });
+            }
+
+            if (matches.length === 0) {
+                updateUi();
+                return;
+            }
+
+            if (currentIndex < 0 || currentIndex >= matches.length) {
+                currentIndex = delta >= 0 ? 0 : matches.length - 1;
+            } else {
+                currentIndex = (currentIndex + delta + matches.length) % matches.length;
+            }
+            revealCurrentMatch({ scroll: true });
+            updateUi();
+        };
+
+        const focusInput = ({ selectAll = true } = {}) => {
+            if (!isEnabled) {
+                return false;
+            }
+            try {
+                input.focus({ preventScroll: true });
+            } catch {
+                input.focus();
+            }
+            if (selectAll) {
+                input.select();
+            }
+            return true;
+        };
+
+        const handleInput = () => {
+            refreshMatches({ maintainSelection: false });
+        };
+
+        const handleKeyDown = (event) => {
+            if (event.defaultPrevented) {
+                return;
+            }
+            if (event.key === "Enter") {
+                event.preventDefault();
+                jumpToMatch(event.shiftKey ? -1 : 1);
+            } else if (event.key === "Escape") {
+                if (input.value.length > 0) {
+                    event.preventDefault();
+                    input.value = "";
+                    refreshMatches({ maintainSelection: false });
+                }
+            }
+        };
+
+        const handlePreviousClick = (event) => {
+            event.preventDefault();
+            jumpToMatch(-1);
+        };
+
+        const handleNextClick = (event) => {
+            event.preventDefault();
+            jumpToMatch(1);
+        };
+
+        input.addEventListener("input", handleInput);
+        input.addEventListener("keydown", handleKeyDown);
+        previousButton.addEventListener("click", handlePreviousClick);
+        nextButton.addEventListener("click", handleNextClick);
+
+        updateUi();
+
+        return {
+            focus: focusInput,
+            jump: jumpToMatch,
+            refresh: refreshMatches,
+            setEnabled: (enabled) => {
+                isEnabled = Boolean(enabled);
+                input.disabled = !isEnabled;
+                if (!isEnabled) {
+                    input.blur();
+                }
+                updateUi();
+            },
+            destroy: () => {
+                input.removeEventListener("input", handleInput);
+                input.removeEventListener("keydown", handleKeyDown);
+                previousButton.removeEventListener("click", handlePreviousClick);
+                nextButton.removeEventListener("click", handleNextClick);
+                input.disabled = false;
+                input.value = "";
+                clearExistingMarkers();
+                query = "";
+                currentIndex = -1;
+                updateUi();
+            }
+        };
+    }
 
     function createButton(label, handler) {
         const button = createElement("button", "editor-button", label);
@@ -508,7 +881,7 @@ export function createMarkdownEditorHost(options) {
             });
         };
 
-        codemirror.addKeyMap({
+        const keyMap = {
             Enter: (cm) => {
                 handleEnter(cm);
             },
@@ -588,7 +961,36 @@ export function createMarkdownEditorHost(options) {
                 executeDuplicateLine(cm);
                 normalizeOrderedLists();
             }
-        });
+        };
+
+        if (searchManager) {
+            keyMap["Cmd-F"] = () => {
+                focusSearchInput({ selectAll: true });
+            };
+            keyMap["Ctrl-F"] = () => {
+                focusSearchInput({ selectAll: true });
+            };
+            keyMap["Cmd-G"] = () => {
+                jumpSearch(1);
+            };
+            keyMap["Ctrl-G"] = () => {
+                jumpSearch(1);
+            };
+            keyMap["Shift-Cmd-G"] = () => {
+                jumpSearch(-1);
+            };
+            keyMap["Shift-Ctrl-G"] = () => {
+                jumpSearch(-1);
+            };
+            keyMap.F3 = () => {
+                jumpSearch(1);
+            };
+            keyMap["Shift-F3"] = () => {
+                jumpSearch(-1);
+            };
+        }
+
+        codemirror.addKeyMap(keyMap);
 
         codemirror.on("change", (cm, change) => {
             if (!isProgrammaticUpdate && !isApplyingListAutoRenumber) {
@@ -598,6 +1000,9 @@ export function createMarkdownEditorHost(options) {
             }
             ensureInputAttributes();
             syncTextareaValue();
+            if (searchManager) {
+                searchManager.refresh({ maintainSelection: true });
+            }
             emitChange();
         });
 

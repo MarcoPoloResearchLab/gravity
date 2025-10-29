@@ -689,6 +689,81 @@ body::-webkit-scrollbar {
 
 .editor-mode-utility-group { margin-left: auto; }
 
+.editor-search {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.markdown-editor-host--view .editor-search {
+    display: none;
+}
+
+.editor-search__input {
+    background: #111423;
+    border: 1px solid #28314a;
+    border-radius: 6px;
+    color: #e7e9ee;
+    font-size: 0.75rem;
+    padding: 0.2rem 0.55rem;
+    min-width: 9rem;
+}
+
+.editor-search__input:focus {
+    outline: none;
+    border-color: #3a4b71;
+    box-shadow: 0 0 0 1px #3a4b71;
+}
+
+.editor-search__count {
+    min-width: 2.6rem;
+    text-align: center;
+    font-size: 0.72rem;
+    color: #7c8db8;
+}
+
+.editor-search__button {
+    background: transparent;
+    border: 1px solid #28314a;
+    border-radius: 6px;
+    color: #9db7ff;
+    cursor: pointer;
+    width: 1.8rem;
+    height: 1.8rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    padding: 0;
+    transition: border-color 0.12s ease, color 0.12s ease, background-color 0.12s ease;
+}
+
+.editor-search__button:hover {
+    border-color: #3a4b71;
+    color: #c4d4ff;
+}
+
+.editor-search__button:focus-visible {
+    outline: 2px solid #3a4b71;
+    outline-offset: 2px;
+}
+
+.editor-search__button[disabled] {
+    opacity: 0.4;
+    pointer-events: none;
+}
+
+.editor-search-floating {
+    display: flex;
+    justify-content: flex-end;
+    width: 100%;
+    margin-bottom: 0.35rem;
+}
+
+.markdown-editor-host--view .editor-search-floating {
+    display: none;
+}
+
 .editor-button {
     background: transparent;
     border: 1px solid #28314a;
@@ -718,6 +793,11 @@ body::-webkit-scrollbar {
 
 .markdown-editor-host--edit .editor-mode-toggle[aria-pressed="true"] {
     background: #1f2840;
+}
+
+.editor-search__highlight {
+    background: rgba(157, 183, 255, 0.2);
+    border-bottom: 1px solid rgba(157, 183, 255, 0.35);
 }
 
 /* EasyMDE skin tweaks */
