@@ -55,6 +55,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Filter `GravityStore.saveAllNotes` to drop invalid persisted candidates prior to deduping so smart constructors stay enforced while CI/local `store.test.js` passes.
 - [ ] [GN-310] I had an expanded HTML view. I clicked on a checkmark. It has folded the expanded view and moved the html view to the top in its exanded view. What I was expecting: the checkmark becoming checked and no other movements on the screen. Ensure that checking on a checkmar in HTML rendered mode does not perform any immediate repositioniing of the card. The card visually stays where it is. It's markdown has changed and the other cards have changed their positions the active card does not move  
 - [ ] [GN-311] The cursor must look like a poining hand or whatever when it's in the bottom of the note -- hovering above the area that controls fodling and unfolding the note.
+- [ ] [GN-312] Clicking on the HTML view does not move the card but chages the text into markdown. Currently, it changes the text into markdown and moves the view. Instead, identify the exact place a click was made, and anchor this place so that when markdown editing is shown, the cursor is in the same position on the screen and the note is in makrdown editing.
 
 ## Maintenance (400–499)
 
