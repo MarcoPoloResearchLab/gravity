@@ -29,6 +29,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Switched EasyMDE to the contenteditable input style, kept native spellcheck hints, and added regression coverage that verifies browser grammar tooling can see the editor surface.
 - [ ] [GN-206] Develop a system that reloads all JS/CSS/HTML when a new version is released. Today, we are hosted on GitHub and the new version is probably the new code. Find a way to detect when the code changed and reload it if a browser holds an older version of code.
 - [ ] [GN-207] The icon for the full screen shall be placed under the avatar icon with Full Screen text as a menu item. The icon of the exiting screen shall be changed to a diagonal like with two slapp ticks, 90 degrees opening out.
+- [ ] [GN-208] Only display user's name, not email, under the avatar
 
 
 ## BugFixes (300–399)
