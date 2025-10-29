@@ -68,7 +68,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Introduced cursor tracking on the htmlView expand strip, added bounded htmlView coverage that hovers the body versus the strip, and verified the inline cursor flips to `pointer` only inside the expand zone (Puppeteer still blocked locally by snap-confine).
 - [x] [GN-312] Clicking on the HTML view does not move the card but chages the text into markdown. Currently, it changes the text into markdown and moves the view. Instead, identify the exact place a click was made, and anchor this place so that when markdown editing is shown, the cursor is in the same position on the screen and the note is in makrdown editing.
   - Passed the click clientY through to the inline editor, added caret viewport preservation, and extended the inline Puppeteer regression to assert the caret remains at the original screen position (run still blocked locally by snap-confine).
-- [ ] [GN-313] Clicking on the control part of the card when the text is in markdown mode does not siwtch the text back to HTM rendered view. It must switch the text back to html rendered mode and stay there. Improve the text to ensure that there is no regression and switching back to markdown -- swithcing outside of the markdown text signals finishing editing.
+- [x] [GN-313] Clicking on the control part of the card when the text is in markdown mode does not siwtch the text back to HTM rendered view. It must switch the text back to html rendered mode and stay there. Improve the text to ensure that there is no regression and switching back to markdown -- swithcing outside of the markdown text signals finishing editing.
+  - Added a control-strip regression in `editor.inline.puppeteer.test.js` and expanded the control column pointer handler so any interaction in `.card-controls` finalizes the card without bouncing back into markdown (local Puppeteer still blocked by snap-confine).
 
 ## Maintenance (400–499)
 

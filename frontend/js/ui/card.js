@@ -1113,6 +1113,20 @@ export function renderCard(record, options = {}) {
     const btnDelete = button(LABEL_DELETE_NOTE, () => deleteCard(card, notesContainer), { extraClass: "action-button--icon" });
     btnDelete.dataset.action = "delete";
 
+    const finalizeAfterControlInteraction = () => {
+        void finalizeCard(card, notesContainer, {
+            bubbleToTop: false,
+            suppressTopEditorAutofocus: true
+        });
+    };
+    const scheduleFinalize = typeof queueMicrotask === "function"
+        ? queueMicrotask
+        : (callback) => {
+            Promise.resolve().then(() => {
+                callback();
+            });
+        };
+
     actions.append(btnPin, btnCopy, btnMergeDown, btnMergeUp, arrowRow, btnDelete);
     actions.addEventListener("pointerdown", (event) => {
         if (!card.classList.contains("editing-in-place")) {
@@ -1126,19 +1140,7 @@ export function renderCard(record, options = {}) {
         if (actionType === "copy-note" || actionType === "toggle-pin") {
             return;
         }
-        const scheduleFinalize = typeof queueMicrotask === "function"
-            ? queueMicrotask
-            : (callback) => {
-                Promise.resolve().then(() => {
-                    callback();
-                });
-            };
-        scheduleFinalize(() => {
-            void finalizeCard(card, notesContainer, {
-                bubbleToTop: false,
-                suppressTopEditorAutofocus: true
-            });
-        });
+        scheduleFinalize(finalizeAfterControlInteraction);
     }, true);
 
     // Chips + content
@@ -1158,6 +1160,17 @@ export function renderCard(record, options = {}) {
 
     const controlsColumn = createElement("div", "card-controls");
     controlsColumn.append(chips, actions);
+
+    controlsColumn.addEventListener("pointerdown", (event) => {
+        if (!card.classList.contains("editing-in-place")) {
+            return;
+        }
+        const targetElement = event.target instanceof Element ? event.target : null;
+        if (targetElement && targetElement.closest(".actions [data-action]")) {
+            return;
+        }
+        scheduleFinalize(finalizeAfterControlInteraction);
+    }, true);
 
     registerInitialAttachments(editor, initialAttachments);
     enableClipboardImagePaste(editor);

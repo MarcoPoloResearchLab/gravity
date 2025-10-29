@@ -147,6 +147,20 @@ const GN308_MARKDOWN = [
     "",
     "Additional paragraphs keep the editor tall enough to verify the rendered view persists after the interaction."
 ].join("\n");
+const GN313_FILLER_ID = "inline-control-anchor-filler";
+const GN313_FILLER_MARKDOWN = [
+    "# Control Column Anchor Filler",
+    "",
+    "This preceding note keeps the target card away from the viewport top so viewport anchoring assertions remain meaningful."
+].join("\n");
+const GN313_NOTE_ID = "inline-control-anchor-target";
+const GN313_MARKDOWN = [
+    "# Control Strip Exit",
+    "",
+    "While editing this card, clicking the control column should finalize and restore the rendered htmlView without re-entering markdown mode.",
+    "",
+    "Additional prose ensures the card is tall enough to register viewport adjustments."
+].join("\n");
 const GN202_DOUBLE_CLICK_NOTE_ID = "inline-gesture-double-click";
 const GN202_DOUBLE_CLICK_MARKDOWN = "Double click activation baseline.";
 const GN202_TAP_NOTE_ID = "inline-gesture-tap";
@@ -1018,6 +1032,52 @@ test.describe("Markdown inline editor", () => {
                     `Caret should remain near the original click position (delta=${screenDelta.toFixed(2)}px)`
                 );
             }
+        } finally {
+            await teardown();
+        }
+    });
+
+    test("card controls exit markdown editing back to rendered htmlView", async () => {
+        const noteRecord = buildNoteRecord({
+            noteId: GN313_NOTE_ID,
+            markdownText: GN313_MARKDOWN
+        });
+        const { page, teardown } = await preparePage({
+            records: [
+                buildNoteRecord({
+                    noteId: GN313_FILLER_ID,
+                    markdownText: GN313_FILLER_MARKDOWN
+                }),
+                noteRecord
+            ]
+        });
+        const cardSelector = `.markdown-block[data-note-id="${GN313_NOTE_ID}"]`;
+        const controlTargetSelector = `${cardSelector} .card-controls`;
+        const htmlViewSelector = `${cardSelector} .note-html-view`;
+        try {
+            await page.waitForSelector(cardSelector);
+            await page.waitForSelector(htmlViewSelector);
+
+            await page.click(`${cardSelector} .note-html-view`, { clickCount: 2 });
+            await page.waitForSelector(`${cardSelector}.editing-in-place`);
+            await page.waitForSelector(`${cardSelector} .CodeMirror`, { timeout: 5000 });
+
+            await page.click(controlTargetSelector, { clickCount: 1 });
+
+            await page.waitForSelector(`${cardSelector}.editing-in-place`, { hidden: true });
+            const codeMirrorPresent = await page.$(`${cardSelector} .CodeMirror`);
+            assert.equal(codeMirrorPresent, null, "CodeMirror surface should be removed after control click exits editing");
+
+            const htmlViewRestored = await page.$eval(htmlViewSelector, (element) => {
+                if (!(element instanceof HTMLElement)) {
+                    return { expanded: false, hasMarkdown: false };
+                }
+                return {
+                    expanded: element.classList.contains("note-html-view--expanded"),
+                    hasMarkdown: element.querySelector(".markdown-content") instanceof HTMLElement
+                };
+            });
+            assert.ok(htmlViewRestored.hasMarkdown, "Rendered htmlView should be restored after leaving edit mode");
         } finally {
             await teardown();
         }
