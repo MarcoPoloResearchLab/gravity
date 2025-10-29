@@ -185,9 +185,16 @@ type snapshotResultPayload struct {
 }
 
 func (h *httpHandler) handleNotesSync(c *gin.Context) {
-	userID := c.GetString(userIDContextKey)
-	if userID == "" {
+	userIDValue := c.GetString(userIDContextKey)
+	if userIDValue == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	userID, err := notes.NewUserID(userIDValue)
+	if err != nil {
+		h.logger.Error("invalid user identifier in context", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "sync_failed"})
 		return
 	}
 
@@ -197,34 +204,74 @@ func (h *httpHandler) handleNotesSync(c *gin.Context) {
 		return
 	}
 
-	changes := make([]notes.ChangeRequest, 0, len(request.Operations))
+	changes := make([]notes.ChangeEnvelope, 0, len(request.Operations))
+	now := time.Now().UTC()
 	for _, op := range request.Operations {
 		opType, err := parseOperation(op.Operation)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_operation"})
 			return
 		}
+
+		noteID, err := notes.NewNoteID(op.NoteID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_note_id"})
+			return
+		}
+
+		clientSeconds, createdSeconds, updatedSeconds := normalizeOperationTimestamps(op, now)
+
+		clientTimestamp, err := notes.NewUnixTimestamp(clientSeconds)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_client_time"})
+			return
+		}
+
+		createdTimestamp, err := notes.NewUnixTimestamp(createdSeconds)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_created_time"})
+			return
+		}
+
+		updatedTimestamp, err := notes.NewUnixTimestamp(updatedSeconds)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_updated_time"})
+			return
+		}
+
 		payloadJSON := ""
 		if len(op.Payload) > 0 {
 			payloadJSON = string(op.Payload)
 		}
-		changes = append(changes, notes.ChangeRequest{
-			UserID:            userID,
-			NoteID:            op.NoteID,
-			Operation:         opType,
-			ClientEditSeq:     op.ClientEditSeq,
-			ClientDevice:      op.ClientDevice,
-			ClientTimeSeconds: op.ClientTimeSeconds,
-			CreatedAtSeconds:  op.CreatedAtSeconds,
-			UpdatedAtSeconds:  op.UpdatedAtSeconds,
-			PayloadJSON:       payloadJSON,
+		envelope, err := notes.NewChangeEnvelope(notes.ChangeEnvelopeConfig{
+			UserID:          userID,
+			NoteID:          noteID,
+			Operation:       opType,
+			ClientEditSeq:   op.ClientEditSeq,
+			ClientDevice:    op.ClientDevice,
+			ClientTimestamp: clientTimestamp,
+			CreatedAt:       createdTimestamp,
+			UpdatedAt:       updatedTimestamp,
+			PayloadJSON:     payloadJSON,
+			IsDeleted:       opType == notes.OperationTypeDelete,
 		})
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_change"})
+			return
+		}
+		changes = append(changes, envelope)
 	}
 
 	result, err := h.notesService.ApplyChanges(c.Request.Context(), userID, changes)
 	if err != nil {
-		h.logger.Error("failed to apply note changes", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "sync_failed"})
+		var serviceErr *notes.ServiceError
+		if errors.As(err, &serviceErr) {
+			h.logger.Error("failed to apply note changes", zap.String("error_code", serviceErr.Code()), zap.Error(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "sync_failed", "code": serviceErr.Code()})
+		} else {
+			h.logger.Error("failed to apply note changes", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "sync_failed"})
+		}
 		return
 	}
 
@@ -243,8 +290,41 @@ func (h *httpHandler) handleNotesSync(c *gin.Context) {
 		})
 	}
 
-	h.broadcastNoteChanges(userID, result)
+	h.broadcastNoteChanges(userID.String(), result)
 	c.JSON(http.StatusOK, response)
+}
+
+func normalizeOperationTimestamps(op syncOperationPayload, now time.Time) (clientSeconds int64, createdSeconds int64, updatedSeconds int64) {
+	clientSeconds = op.ClientTimeSeconds
+	if clientSeconds <= 0 {
+		clientSeconds = now.Unix()
+	}
+
+	createdSeconds = op.CreatedAtSeconds
+	if createdSeconds <= 0 {
+		switch {
+		case op.ClientTimeSeconds > 0:
+			createdSeconds = op.ClientTimeSeconds
+		case op.UpdatedAtSeconds > 0:
+			createdSeconds = op.UpdatedAtSeconds
+		default:
+			createdSeconds = clientSeconds
+		}
+	}
+
+	updatedSeconds = op.UpdatedAtSeconds
+	if updatedSeconds <= 0 {
+		switch {
+		case op.ClientTimeSeconds > 0:
+			updatedSeconds = op.ClientTimeSeconds
+		case createdSeconds > 0:
+			updatedSeconds = createdSeconds
+		default:
+			updatedSeconds = clientSeconds
+		}
+	}
+
+	return clientSeconds, createdSeconds, updatedSeconds
 }
 
 func (h *httpHandler) broadcastNoteChanges(userID string, result notes.SyncResult) {
@@ -275,17 +355,23 @@ func (h *httpHandler) handleListNotes(c *gin.Context) {
 		return
 	}
 
-	notes, err := h.notesService.ListNotes(c.Request.Context(), userID)
+	storedNotes, err := h.notesService.ListNotes(c.Request.Context(), userID)
 	if err != nil {
-		h.logger.Error("failed to list notes", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "list_failed"})
+		var serviceErr *notes.ServiceError
+		if errors.As(err, &serviceErr) {
+			h.logger.Error("failed to list notes", zap.String("error_code", serviceErr.Code()), zap.Error(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "list_failed", "code": serviceErr.Code()})
+		} else {
+			h.logger.Error("failed to list notes", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "list_failed"})
+		}
 		return
 	}
 
 	response := snapshotResponsePayload{
-		Notes: make([]snapshotResultPayload, 0, len(notes)),
+		Notes: make([]snapshotResultPayload, 0, len(storedNotes)),
 	}
-	for _, note := range notes {
+	for _, note := range storedNotes {
 		response.Notes = append(response.Notes, snapshotResultPayload{
 			NoteID:            note.NoteID,
 			Version:           note.Version,

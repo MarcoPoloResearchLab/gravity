@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,6 +32,8 @@ var (
 	errMissingAudienceClaim  = errors.New("token missing audience claim")
 	errMissingAudienceConfig = errors.New("audience configuration required")
 	errMissingJWKSURL        = errors.New("jwks url configuration required")
+	errNoAllowedIssuers      = errors.New("no allowed issuers configured")
+	ErrInvalidVerifierConfig = errors.New("auth: invalid google verifier config")
 )
 
 // GoogleVerifierConfig bundles configuration required to instantiate a GoogleVerifier.
@@ -64,8 +67,18 @@ type GoogleVerifier struct {
 	issuers    map[string]struct{}
 }
 
-// NewGoogleVerifier constructs a verifier with sane defaults.
-func NewGoogleVerifier(cfg GoogleVerifierConfig) *GoogleVerifier {
+// NewGoogleVerifier constructs a verifier with validated configuration.
+func NewGoogleVerifier(cfg GoogleVerifierConfig) (*GoogleVerifier, error) {
+	audience := strings.TrimSpace(cfg.Audience)
+	if audience == "" {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidVerifierConfig, errMissingAudienceConfig)
+	}
+
+	jwksURL := strings.TrimSpace(cfg.JWKSURL)
+	if jwksURL == "" {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidVerifierConfig, errMissingJWKSURL)
+	}
+
 	cacheTTL := cfg.CacheTTL
 	if cacheTTL <= 0 {
 		cacheTTL = defaultJWKSCacheTTL
@@ -86,23 +99,27 @@ func NewGoogleVerifier(cfg GoogleVerifierConfig) *GoogleVerifier {
 		clock = time.Now
 	}
 
-	issuers := make(map[string]struct{}, len(cfg.AllowedIssuers))
+	issuers := make(map[string]struct{})
 	if len(cfg.AllowedIssuers) == 0 {
 		issuers[defaultIssuerGoogle] = struct{}{}
 		issuers[defaultIssuerAlt] = struct{}{}
 	} else {
 		for _, issuer := range cfg.AllowedIssuers {
-			if issuer == "" {
+			normalized := strings.TrimSpace(issuer)
+			if normalized == "" {
 				continue
 			}
-			issuers[issuer] = struct{}{}
+			issuers[normalized] = struct{}{}
+		}
+		if len(issuers) == 0 {
+			return nil, fmt.Errorf("%w: %v", ErrInvalidVerifierConfig, errNoAllowedIssuers)
 		}
 	}
 
 	return &GoogleVerifier{
 		config: GoogleVerifierConfig{
-			Audience:       cfg.Audience,
-			JWKSURL:        cfg.JWKSURL,
+			Audience:       audience,
+			JWKSURL:        jwksURL,
 			AllowedIssuers: cfg.AllowedIssuers,
 			HTTPClient:     httpClient,
 			CacheTTL:       cacheTTL,
@@ -114,7 +131,7 @@ func NewGoogleVerifier(cfg GoogleVerifierConfig) *GoogleVerifier {
 		clock:      clock,
 		cache:      &jwksCache{ttl: cacheTTL},
 		issuers:    issuers,
-	}
+	}, nil
 }
 
 // Verify validates the provided ID token and returns essential claims.

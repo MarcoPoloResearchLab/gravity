@@ -45,13 +45,22 @@ func TestAuthAndSyncFlow(t *testing.T) {
 		t.Fatalf("failed to migrate: %v", err)
 	}
 
-	notesService := notes.NewService(notes.ServiceConfig{Database: db})
-	tokenManager := auth.NewTokenIssuer(auth.TokenIssuerConfig{
+	notesService, err := notes.NewService(notes.ServiceConfig{
+		Database:   db,
+		IDProvider: notes.NewUUIDProvider(),
+	})
+	if err != nil {
+		t.Fatalf("failed to build notes service: %v", err)
+	}
+	tokenManager, err := auth.NewTokenIssuer(auth.TokenIssuerConfig{
 		SigningSecret: []byte("integration-secret"),
 		Issuer:        "gravity-auth",
 		Audience:      "gravity-api",
 		TokenTTL:      30 * time.Minute,
 	})
+	if err != nil {
+		t.Fatalf("failed to construct token issuer: %v", err)
+	}
 
 	handler, err := server.NewHTTPHandler(server.Dependencies{
 		GoogleVerifier: stubGoogleVerifier{},

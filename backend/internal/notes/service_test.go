@@ -1,14 +1,20 @@
 package notes
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 func TestResolveChangeAcceptsHigherEditSequence(t *testing.T) {
+	userID := mustUserID(t, "user-1")
+	noteID := mustNoteID(t, "note-1")
 	existing := &Note{
-		UserID:            "user-1",
-		NoteID:            "note-1",
+		UserID:            userID.String(),
+		NoteID:            noteID.String(),
 		UpdatedAtSeconds:  1700000000,
 		Version:           2,
 		LastWriterEditSeq: 4,
@@ -17,16 +23,17 @@ func TestResolveChangeAcceptsHigherEditSequence(t *testing.T) {
 		LastWriterDevice:  "phone",
 		CreatedAtSeconds:  1699990000,
 	}
-	change := ChangeRequest{
-		UserID:            existing.UserID,
-		NoteID:            existing.NoteID,
-		Operation:         OperationTypeUpsert,
-		ClientEditSeq:     5,
-		ClientDevice:      "web",
-		ClientTimeSeconds: 1700000500,
-		UpdatedAtSeconds:  1700000500,
-		PayloadJSON:       `{"content":"incoming"}`,
-	}
+	change := mustEnvelope(t, ChangeEnvelopeConfig{
+		UserID:          userID,
+		NoteID:          noteID,
+		Operation:       OperationTypeUpsert,
+		ClientEditSeq:   5,
+		ClientDevice:    "web",
+		ClientTimestamp: mustTimestamp(t, 1700000500),
+		CreatedAt:       mustTimestamp(t, 1700000400),
+		UpdatedAt:       mustTimestamp(t, 1700000500),
+		PayloadJSON:     `{"content":"incoming"}`,
+	})
 
 	outcome, err := resolveChange(existing, change, time.Unix(1700000600, 0).UTC())
 	if err != nil {
@@ -59,24 +66,27 @@ func TestResolveChangeAcceptsHigherEditSequence(t *testing.T) {
 }
 
 func TestResolveChangeRejectsLowerEditSequence(t *testing.T) {
+	userID := mustUserID(t, "user-1")
+	noteID := mustNoteID(t, "note-1")
 	existing := &Note{
-		UserID:            "user-1",
-		NoteID:            "note-1",
+		UserID:            userID.String(),
+		NoteID:            noteID.String(),
 		UpdatedAtSeconds:  1700000000,
 		Version:           6,
 		LastWriterEditSeq: 10,
 		PayloadJSON:       `{"content":"stored"}`,
 	}
-	change := ChangeRequest{
-		UserID:            existing.UserID,
-		NoteID:            existing.NoteID,
-		Operation:         OperationTypeUpsert,
-		ClientEditSeq:     8,
-		ClientDevice:      "tablet",
-		ClientTimeSeconds: 1700000001,
-		UpdatedAtSeconds:  1700000001,
-		PayloadJSON:       `{"content":"incoming"}`,
-	}
+	change := mustEnvelope(t, ChangeEnvelopeConfig{
+		UserID:          userID,
+		NoteID:          noteID,
+		Operation:       OperationTypeUpsert,
+		ClientEditSeq:   8,
+		ClientDevice:    "tablet",
+		ClientTimestamp: mustTimestamp(t, 1700000001),
+		CreatedAt:       mustTimestamp(t, 1699999000),
+		UpdatedAt:       mustTimestamp(t, 1700000001),
+		PayloadJSON:     `{"content":"incoming"}`,
+	})
 
 	outcome, err := resolveChange(existing, change, time.Unix(1700000600, 0).UTC())
 	if err != nil {
@@ -94,9 +104,11 @@ func TestResolveChangeRejectsLowerEditSequence(t *testing.T) {
 }
 
 func TestResolveChangeBreaksTieByUpdatedAt(t *testing.T) {
+	userID := mustUserID(t, "user-1")
+	noteID := mustNoteID(t, "note-1")
 	existing := &Note{
-		UserID:            "user-1",
-		NoteID:            "note-1",
+		UserID:            userID.String(),
+		NoteID:            noteID.String(),
 		UpdatedAtSeconds:  1700000000,
 		Version:           4,
 		LastWriterEditSeq: 7,
@@ -136,16 +148,17 @@ func TestResolveChangeBreaksTieByUpdatedAt(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			change := ChangeRequest{
-				UserID:            existing.UserID,
-				NoteID:            existing.NoteID,
-				Operation:         OperationTypeDelete,
-				ClientEditSeq:     7,
-				ClientDevice:      "wearable",
-				ClientTimeSeconds: tt.clientUpdatedAt,
-				UpdatedAtSeconds:  tt.clientUpdatedAt,
-				PayloadJSON:       "",
-			}
+			change := mustEnvelope(t, ChangeEnvelopeConfig{
+				UserID:          userID,
+				NoteID:          noteID,
+				Operation:       OperationTypeDelete,
+				ClientEditSeq:   7,
+				ClientDevice:    "wearable",
+				ClientTimestamp: mustTimestamp(t, tt.clientUpdatedAt),
+				CreatedAt:       mustTimestamp(t, 1699990000),
+				UpdatedAt:       mustTimestamp(t, tt.clientUpdatedAt),
+				PayloadJSON:     "",
+			})
 			outcome, err := resolveChange(existing, change, time.Unix(1700000600, 0).UTC())
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -159,9 +172,119 @@ func TestResolveChangeBreaksTieByUpdatedAt(t *testing.T) {
 			if outcome.UpdatedNote.LastWriterEditSeq != tt.expectedEditSeq {
 				t.Fatalf("unexpected edit seq %d", outcome.UpdatedNote.LastWriterEditSeq)
 			}
-			if outcome.Accepted && change.Operation == OperationTypeDelete && outcome.UpdatedNote.IsDeleted != true {
+			if outcome.Accepted && change.Operation() == OperationTypeDelete && outcome.UpdatedNote.IsDeleted != true {
 				t.Fatalf("accepted delete should mark note as deleted")
 			}
 		})
+	}
+}
+
+func TestNewChangeEnvelopeInvalidCases(t *testing.T) {
+	baseConfig := ChangeEnvelopeConfig{
+		UserID:          mustUserID(t, "user-1"),
+		NoteID:          mustNoteID(t, "note-1"),
+		Operation:       OperationTypeUpsert,
+		ClientEditSeq:   1,
+		ClientDevice:    "device",
+		ClientTimestamp: mustTimestamp(t, 1700000000),
+		CreatedAt:       mustTimestamp(t, 1700000000),
+		UpdatedAt:       mustTimestamp(t, 1700000000),
+	}
+
+	testCases := []struct {
+		name   string
+		mutate func(*ChangeEnvelopeConfig)
+	}{
+		{
+			name: "empty-user",
+			mutate: func(cfg *ChangeEnvelopeConfig) {
+				cfg.UserID = ""
+			},
+		},
+		{
+			name: "empty-note",
+			mutate: func(cfg *ChangeEnvelopeConfig) {
+				cfg.NoteID = ""
+			},
+		},
+		{
+			name: "unsupported-operation",
+			mutate: func(cfg *ChangeEnvelopeConfig) {
+				cfg.Operation = OperationType("truncate")
+			},
+		},
+		{
+			name: "negative-edit-seq",
+			mutate: func(cfg *ChangeEnvelopeConfig) {
+				cfg.ClientEditSeq = -1
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := baseConfig
+			tc.mutate(&cfg)
+			_, err := NewChangeEnvelope(cfg)
+			if !errors.Is(err, ErrInvalidChange) {
+				t.Fatalf("expected invalid change error, got %v", err)
+			}
+		})
+	}
+}
+
+func TestNewServiceRequiresDatabase(t *testing.T) {
+	_, err := NewService(ServiceConfig{IDProvider: stubIDProvider{}})
+	if !errors.Is(err, errMissingDatabase) {
+		t.Fatalf("expected missing database error, got %v", err)
+	}
+}
+
+func TestNewServiceRequiresIDProvider(t *testing.T) {
+	_, err := NewService(ServiceConfig{Database: &gorm.DB{}})
+	if !errors.Is(err, errMissingIDProvider) {
+		t.Fatalf("expected missing id provider error, got %v", err)
+	}
+}
+
+type stubIDProvider struct{}
+
+func (stubIDProvider) NewID() (string, error) {
+	return "stub-id", nil
+}
+
+func TestApplyChangesWrapsMissingDatabase(t *testing.T) {
+	service := &Service{}
+	_, err := service.ApplyChanges(context.Background(), mustUserID(t, "user-1"), nil)
+	if err == nil {
+		t.Fatal("expected error from missing database")
+	}
+	var serviceErr *ServiceError
+	if !errors.As(err, &serviceErr) {
+		t.Fatalf("expected ServiceError, got %T", err)
+	}
+	if serviceErr.Code() != "notes.apply_changes.missing_database" {
+		t.Fatalf("unexpected service error code: %s", serviceErr.Code())
+	}
+	if !errors.Is(err, errMissingDatabase) {
+		t.Fatalf("expected underlying missing database error, got %v", err)
+	}
+}
+
+func TestListNotesWrapsMissingDatabase(t *testing.T) {
+	service := &Service{}
+	_, err := service.ListNotes(context.Background(), "user-1")
+	if err == nil {
+		t.Fatal("expected error from missing database")
+	}
+	var serviceErr *ServiceError
+	if !errors.As(err, &serviceErr) {
+		t.Fatalf("expected ServiceError, got %T", err)
+	}
+	if serviceErr.Code() != "notes.list_notes.missing_database" {
+		t.Fatalf("unexpected service error code: %s", serviceErr.Code())
+	}
+	if !errors.Is(err, errMissingDatabase) {
+		t.Fatalf("expected underlying missing database error, got %v", err)
 	}
 }

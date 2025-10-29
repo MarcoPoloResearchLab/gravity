@@ -6,9 +6,11 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -60,12 +62,15 @@ func TestGoogleVerifierValidatesTokenUsingJWKS(t *testing.T) {
 		t.Fatalf("failed to sign token: %v", err)
 	}
 
-	verifier := NewGoogleVerifier(GoogleVerifierConfig{
+	verifier, err := NewGoogleVerifier(GoogleVerifierConfig{
 		Audience:       "test-client",
 		JWKSURL:        jwksServer.URL + "/oauth2/v3/certs",
 		AllowedIssuers: []string{"https://accounts.google.com", "accounts.google.com"},
 		HTTPClient:     jwksServer.Client(),
 	})
+	if err != nil {
+		t.Fatalf("unexpected constructor error: %v", err)
+	}
 
 	verified, err := verifier.Verify(context.Background(), signedToken)
 	if err != nil {
@@ -120,16 +125,59 @@ func TestGoogleVerifierRejectsInvalidAudience(t *testing.T) {
 		t.Fatalf("failed to sign token: %v", err)
 	}
 
-	verifier := NewGoogleVerifier(GoogleVerifierConfig{
+	verifier, err := NewGoogleVerifier(GoogleVerifierConfig{
 		Audience:       "test-client",
 		JWKSURL:        jwksServer.URL,
 		AllowedIssuers: []string{"https://accounts.google.com"},
 		HTTPClient:     jwksServer.Client(),
 	})
+	if err != nil {
+		t.Fatalf("unexpected constructor error: %v", err)
+	}
 
 	_, err = verifier.Verify(context.Background(), signedToken)
 	if err == nil {
 		t.Fatalf("expected verification to fail for mismatched audience")
+	}
+}
+
+func TestNewGoogleVerifierRequiresAudienceAndJWKS(t *testing.T) {
+	_, err := NewGoogleVerifier(GoogleVerifierConfig{
+		Audience:       "",
+		JWKSURL:        "https://example.com/jwks",
+		AllowedIssuers: []string{"https://accounts.google.com"},
+	})
+	if !errors.Is(err, ErrInvalidVerifierConfig) {
+		t.Fatalf("expected invalid verifier config error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), errMissingAudienceConfig.Error()) {
+		t.Fatalf("expected audience validation error to be reported, got %v", err)
+	}
+
+	_, err = NewGoogleVerifier(GoogleVerifierConfig{
+		Audience:       "test-client",
+		JWKSURL:        " ",
+		AllowedIssuers: []string{"https://accounts.google.com"},
+	})
+	if !errors.Is(err, ErrInvalidVerifierConfig) {
+		t.Fatalf("expected invalid verifier config error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), errMissingJWKSURL.Error()) {
+		t.Fatalf("expected jwks validation error to be reported, got %v", err)
+	}
+}
+
+func TestNewGoogleVerifierRejectsEmptyIssuerList(t *testing.T) {
+	_, err := NewGoogleVerifier(GoogleVerifierConfig{
+		Audience:       "test-client",
+		JWKSURL:        "https://example.com/jwks",
+		AllowedIssuers: []string{"", "   "},
+	})
+	if !errors.Is(err, ErrInvalidVerifierConfig) {
+		t.Fatalf("expected invalid verifier config error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), errNoAllowedIssuers.Error()) {
+		t.Fatalf("expected allowed issuers validation error to be reported, got %v", err)
 	}
 }
 

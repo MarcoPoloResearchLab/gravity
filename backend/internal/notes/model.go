@@ -1,5 +1,11 @@
 package notes
 
+import (
+	"errors"
+	"fmt"
+	"strings"
+)
+
 // OperationType enumerates supported client operations.
 type OperationType string
 
@@ -9,6 +15,75 @@ const (
 	// OperationTypeDelete marks a note as deleted.
 	OperationTypeDelete OperationType = "delete"
 )
+
+const maxIdentifierLength = 190
+
+var (
+	// ErrInvalidNoteID indicates that a note identifier is empty or exceeds storage bounds.
+	ErrInvalidNoteID = errors.New("notes: invalid note id")
+	// ErrInvalidUserID indicates that a user identifier is empty or exceeds storage bounds.
+	ErrInvalidUserID = errors.New("notes: invalid user id")
+	// ErrInvalidTimestamp indicates that a unix timestamp value is not positive.
+	ErrInvalidTimestamp = errors.New("notes: invalid unix timestamp")
+	// ErrInvalidChange indicates that a change violates domain invariants.
+	ErrInvalidChange = errors.New("notes: invalid change")
+)
+
+// NoteID represents a validated note identifier.
+type NoteID string
+
+// NewNoteID validates raw input and returns a NoteID.
+func NewNoteID(rawInput string) (NoteID, error) {
+	trimmed := strings.TrimSpace(rawInput)
+	if trimmed == "" {
+		return "", fmt.Errorf("%w: empty", ErrInvalidNoteID)
+	}
+	if len(trimmed) > maxIdentifierLength {
+		return "", fmt.Errorf("%w: exceeds %d characters", ErrInvalidNoteID, maxIdentifierLength)
+	}
+	return NoteID(trimmed), nil
+}
+
+// String returns the underlying string identifier.
+func (id NoteID) String() string {
+	return string(id)
+}
+
+// UserID represents a validated user identifier.
+type UserID string
+
+// NewUserID validates raw input and returns a UserID.
+func NewUserID(rawInput string) (UserID, error) {
+	trimmed := strings.TrimSpace(rawInput)
+	if trimmed == "" {
+		return "", fmt.Errorf("%w: empty", ErrInvalidUserID)
+	}
+	if len(trimmed) > maxIdentifierLength {
+		return "", fmt.Errorf("%w: exceeds %d characters", ErrInvalidUserID, maxIdentifierLength)
+	}
+	return UserID(trimmed), nil
+}
+
+// String returns the underlying string identifier.
+func (id UserID) String() string {
+	return string(id)
+}
+
+// UnixTimestamp represents a validated unix timestamp in seconds.
+type UnixTimestamp int64
+
+// NewUnixTimestamp validates the value and returns a UnixTimestamp.
+func NewUnixTimestamp(value int64) (UnixTimestamp, error) {
+	if value <= 0 {
+		return 0, fmt.Errorf("%w: %d", ErrInvalidTimestamp, value)
+	}
+	return UnixTimestamp(value), nil
+}
+
+// Int64 exposes the raw unix seconds value.
+func (ts UnixTimestamp) Int64() int64 {
+	return int64(ts)
+}
 
 // Note models the persisted note payload with conflict resolution metadata.
 type Note struct {
@@ -49,18 +124,113 @@ func (NoteChange) TableName() string {
 	return "note_changes"
 }
 
-// ChangeRequest describes the input supplied by a client during sync.
-type ChangeRequest struct {
-	UserID            string
-	NoteID            string
-	CreatedAtSeconds  int64
-	UpdatedAtSeconds  int64
-	ClientTimeSeconds int64
-	ClientEditSeq     int64
-	ClientDevice      string
-	Operation         OperationType
-	PayloadJSON       string
-	IsDeleted         bool
+// ChangeEnvelope captures a validated change request ready for conflict resolution.
+type ChangeEnvelope struct {
+	userID          UserID
+	noteID          NoteID
+	createdAt       UnixTimestamp
+	updatedAt       UnixTimestamp
+	clientTimestamp UnixTimestamp
+	clientEditSeq   int64
+	clientDevice    string
+	operation       OperationType
+	payloadJSON     string
+	isDeleted       bool
+}
+
+// ChangeEnvelopeConfig describes the validated inputs required to construct a ChangeEnvelope.
+type ChangeEnvelopeConfig struct {
+	UserID          UserID
+	NoteID          NoteID
+	CreatedAt       UnixTimestamp
+	UpdatedAt       UnixTimestamp
+	ClientTimestamp UnixTimestamp
+	ClientEditSeq   int64
+	ClientDevice    string
+	Operation       OperationType
+	PayloadJSON     string
+	IsDeleted       bool
+}
+
+// NewChangeEnvelope validates the provided configuration and returns a ChangeEnvelope.
+func NewChangeEnvelope(cfg ChangeEnvelopeConfig) (ChangeEnvelope, error) {
+	if cfg.UserID == "" {
+		return ChangeEnvelope{}, fmt.Errorf("%w: empty user id", ErrInvalidChange)
+	}
+	if cfg.NoteID == "" {
+		return ChangeEnvelope{}, fmt.Errorf("%w: empty note id", ErrInvalidChange)
+	}
+	if cfg.Operation != OperationTypeUpsert && cfg.Operation != OperationTypeDelete {
+		return ChangeEnvelope{}, fmt.Errorf("%w: unsupported operation %s", ErrInvalidChange, cfg.Operation)
+	}
+	if cfg.ClientEditSeq < 0 {
+		return ChangeEnvelope{}, fmt.Errorf("%w: negative client edit seq", ErrInvalidChange)
+	}
+
+	trimmedDevice := strings.TrimSpace(cfg.ClientDevice)
+
+	return ChangeEnvelope{
+		userID:          cfg.UserID,
+		noteID:          cfg.NoteID,
+		createdAt:       cfg.CreatedAt,
+		updatedAt:       cfg.UpdatedAt,
+		clientTimestamp: cfg.ClientTimestamp,
+		clientEditSeq:   cfg.ClientEditSeq,
+		clientDevice:    trimmedDevice,
+		operation:       cfg.Operation,
+		payloadJSON:     cfg.PayloadJSON,
+		isDeleted:       cfg.IsDeleted,
+	}, nil
+}
+
+// UserID returns the envelope's user identifier.
+func (c ChangeEnvelope) UserID() UserID {
+	return c.userID
+}
+
+// NoteID returns the envelope's note identifier.
+func (c ChangeEnvelope) NoteID() NoteID {
+	return c.noteID
+}
+
+// CreatedAt returns the creation timestamp.
+func (c ChangeEnvelope) CreatedAt() UnixTimestamp {
+	return c.createdAt
+}
+
+// UpdatedAt returns the update timestamp.
+func (c ChangeEnvelope) UpdatedAt() UnixTimestamp {
+	return c.updatedAt
+}
+
+// ClientTimestamp returns the client supplied timestamp.
+func (c ChangeEnvelope) ClientTimestamp() UnixTimestamp {
+	return c.clientTimestamp
+}
+
+// ClientEditSeq returns the client edit sequence number.
+func (c ChangeEnvelope) ClientEditSeq() int64 {
+	return c.clientEditSeq
+}
+
+// ClientDevice returns the trimmed client device label.
+func (c ChangeEnvelope) ClientDevice() string {
+	return c.clientDevice
+}
+
+// Operation returns the envelope operation type.
+func (c ChangeEnvelope) Operation() OperationType {
+	return c.operation
+}
+
+// Payload returns the JSON payload for the change.
+func (c ChangeEnvelope) Payload() string {
+	return c.payloadJSON
+}
+
+// IsDeleted indicates whether the change represents a deletion.
+func (c ChangeEnvelope) IsDeleted() bool {
+	return c.isDeleted
 }
 
 // ConflictOutcome captures the decision from resolveChange.

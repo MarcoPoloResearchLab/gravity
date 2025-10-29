@@ -1,32 +1,17 @@
 package notes
 
-import (
-	"errors"
-	"fmt"
-	"time"
-)
+import "time"
 
-var (
-	errUnsupportedOperation = errors.New("unsupported operation type")
-	errMissingNoteID        = errors.New("note identifier is required")
-	errMissingUserID        = errors.New("user identifier is required")
-)
-
-func resolveChange(existing *Note, change ChangeRequest, appliedAt time.Time) (ConflictOutcome, error) {
-	if change.NoteID == "" {
-		return ConflictOutcome{}, errMissingNoteID
-	}
-	if change.UserID == "" {
-		return ConflictOutcome{}, errMissingUserID
-	}
-	if change.Operation != OperationTypeUpsert && change.Operation != OperationTypeDelete {
-		return ConflictOutcome{}, fmt.Errorf("%w: %s", errUnsupportedOperation, change.Operation)
-	}
+func resolveChange(existing *Note, change ChangeEnvelope, appliedAt time.Time) (ConflictOutcome, error) {
+	userID := change.UserID().String()
+	noteID := change.NoteID().String()
+	clientEditSeq := change.ClientEditSeq()
+	clientUpdatedAt := change.UpdatedAt().Int64()
 
 	stored := Note{
-		UserID:            change.UserID,
-		NoteID:            change.NoteID,
-		CreatedAtSeconds:  change.CreatedAtSeconds,
+		UserID:            userID,
+		NoteID:            noteID,
+		CreatedAtSeconds:  change.CreatedAt().Int64(),
 		UpdatedAtSeconds:  0,
 		PayloadJSON:       "",
 		IsDeleted:         false,
@@ -40,8 +25,6 @@ func resolveChange(existing *Note, change ChangeRequest, appliedAt time.Time) (C
 	}
 
 	serverEditSeq := stored.LastWriterEditSeq
-	clientEditSeq := change.ClientEditSeq
-	clientUpdatedAt := change.UpdatedAtSeconds
 	serverUpdatedAt := stored.UpdatedAtSeconds
 
 	acceptChange := false
@@ -73,30 +56,30 @@ func resolveChange(existing *Note, change ChangeRequest, appliedAt time.Time) (C
 
 	updated := stored
 	if updated.CreatedAtSeconds == 0 {
-		if change.CreatedAtSeconds > 0 {
-			updated.CreatedAtSeconds = change.CreatedAtSeconds
-		} else if change.UpdatedAtSeconds > 0 {
-			updated.CreatedAtSeconds = change.UpdatedAtSeconds
+		if change.CreatedAt().Int64() > 0 {
+			updated.CreatedAtSeconds = change.CreatedAt().Int64()
+		} else if change.UpdatedAt().Int64() > 0 {
+			updated.CreatedAtSeconds = change.UpdatedAt().Int64()
 		} else {
 			updated.CreatedAtSeconds = appliedAt.Unix()
 		}
 	}
 
-	updated.LastWriterDevice = change.ClientDevice
+	updated.LastWriterDevice = change.ClientDevice()
 	updated.LastWriterEditSeq = clientEditSeq
-	if change.Operation == OperationTypeDelete {
+	if change.Operation() == OperationTypeDelete {
 		updated.IsDeleted = true
-	} else if change.IsDeleted {
+	} else if change.IsDeleted() {
 		updated.IsDeleted = true
 	} else {
 		updated.IsDeleted = false
-		updated.PayloadJSON = change.PayloadJSON
+		updated.PayloadJSON = change.Payload()
 	}
 
-	if change.Operation == OperationTypeDelete && change.PayloadJSON == "" {
+	if change.Operation() == OperationTypeDelete && change.Payload() == "" {
 		updated.PayloadJSON = stored.PayloadJSON
-	} else if change.PayloadJSON != "" {
-		updated.PayloadJSON = change.PayloadJSON
+	} else if change.Payload() != "" {
+		updated.PayloadJSON = change.Payload()
 	}
 
 	if clientUpdatedAt > serverUpdatedAt {
@@ -123,9 +106,9 @@ func resolveChange(existing *Note, change ChangeRequest, appliedAt time.Time) (C
 		UserID:            updated.UserID,
 		NoteID:            updated.NoteID,
 		AppliedAtSeconds:  appliedAt.Unix(),
-		ClientDevice:      change.ClientDevice,
-		ClientTimeSeconds: change.ClientTimeSeconds,
-		Operation:         change.Operation,
+		ClientDevice:      change.ClientDevice(),
+		ClientTimeSeconds: change.ClientTimestamp().Int64(),
+		Operation:         change.Operation(),
 		PayloadJSON:       updated.PayloadJSON,
 		PreviousVersion:   nil,
 		NewVersion:        nil,
