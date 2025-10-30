@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import { appConfig } from "../js/core/config.js";
-import { createSharedPage } from "./helpers/browserHarness.js";
+import { createSharedPage, waitForAppHydration, flushAlpineQueues } from "./helpers/browserHarness.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
@@ -247,6 +247,7 @@ test.describe("Bounded htmlViews", () => {
         try {
             await page.setViewport({ width: 520, height: 960 });
             await collapseAllHtmlViews(page);
+            await flushAlpineQueues(page);
             const cardSelector = `[data-note-id="${LONG_NOTE_ID}"]`;
             await page.waitForSelector(`${cardSelector} .note-expand-toggle`, { timeout: 5000 });
             const alignment = await page.$eval(cardSelector, (card) => {
@@ -495,6 +496,8 @@ async function openHtmlViewHarness(records) {
         }
     });
     await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
+    await waitForAppHydration(page);
+    await flushAlpineQueues(page);
     await page.waitForSelector("#top-editor .markdown-editor");
     await ensureHtmlViewRecords(page, records);
     return { page, teardown };
@@ -591,6 +594,7 @@ async function ensureHtmlViewRecords(page, records) {
     await page.evaluate(() => {
         window.scrollTo({ top: 0, behavior: "instant" });
     });
+    await flushAlpineQueues(page);
 }
 
 async function collapseAllHtmlViews(page) {
@@ -605,4 +609,5 @@ async function collapseAllHtmlViews(page) {
         });
         window.scrollTo({ top: 0, behavior: "instant" });
     });
+    await flushAlpineQueues(page);
 }

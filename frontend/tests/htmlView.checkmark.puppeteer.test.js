@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import { appConfig } from "../js/core/config.js";
-import { createSharedPage } from "./helpers/browserHarness.js";
+import { createSharedPage, waitForAppHydration, flushAlpineQueues } from "./helpers/browserHarness.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
@@ -43,9 +43,25 @@ test.describe("Checklist htmlView interactions", () => {
             const checkboxSelector = `${cardSelector} .note-html-view input[data-task-index="0"]`;
             await page.click(checkboxSelector);
 
-            await page.evaluate((delayMs) => new Promise((resolve) => {
-                setTimeout(resolve, typeof delayMs === "number" ? delayMs : 0);
-            }), 500);
+            await page.waitForFunction((config) => {
+                const raw = window.localStorage.getItem(config.storageKey);
+                if (!raw) {
+                    return false;
+                }
+                try {
+                    const records = JSON.parse(raw);
+                    if (!Array.isArray(records)) {
+                        return false;
+                    }
+                    const record = records.find((entry) => entry?.noteId === config.noteId);
+                    if (!record || typeof record.markdownText !== "string") {
+                        return false;
+                    }
+                    return record.markdownText.includes("- [x] Track first task");
+                } catch {
+                    return false;
+                }
+            }, { timeout: 2000 }, { storageKey: appConfig.storageKey, noteId: CHECKLIST_NOTE_ID });
             const interimMarkdown = await page.evaluate((config) => {
                 const raw = window.localStorage.getItem(config.storageKey);
                 if (!raw) {
@@ -105,12 +121,27 @@ test.describe("Checklist htmlView interactions", () => {
                 await page.click(secondSelector);
             }
 
-            await page.evaluate((delayMs) => new Promise((resolve) => {
-                setTimeout(resolve, typeof delayMs === "number" ? delayMs : 0);
-            }), 500);
-
-            const interimSummary = await snapshotStorage(page, appConfig.storageKey);
-
+            await page.waitForFunction((config) => {
+                const raw = window.localStorage.getItem(config.storageKey);
+                if (!raw) {
+                    return false;
+                }
+                try {
+                    const records = JSON.parse(raw);
+                    if (!Array.isArray(records)) {
+                        return false;
+                    }
+                    const firstCount = records.filter((entry) => entry?.noteId === config.firstId).length;
+                    const secondCount = records.filter((entry) => entry?.noteId === config.secondId).length;
+                    return firstCount === 1 && secondCount === 1;
+                } catch {
+                    return false;
+                }
+            }, { timeout: 2000 }, {
+                storageKey: appConfig.storageKey,
+                firstId: CHECKLIST_NOTE_ID,
+                secondId: SECOND_NOTE_ID
+            });
             const summary = await snapshotStorage(page, appConfig.storageKey);
             assert.equal(summary.totalRecords, 2, "two records remain after rapid toggles");
             assert.equal(summary.noteOccurrences[CHECKLIST_NOTE_ID], 1, "primary note stays unique");
@@ -185,9 +216,9 @@ test.describe("Checklist htmlView interactions", () => {
                 root.dispatchEvent(event);
             }, { storageKey: appConfig.storageKey, noteId: CHECKLIST_NOTE_ID });
 
-            await page.evaluate((delayMs) => new Promise((resolve) => {
-                setTimeout(resolve, typeof delayMs === "number" ? delayMs : 0);
-            }), 160);
+            await page.waitForFunction((selector) => {
+                return document.querySelectorAll(selector).length === 1;
+            }, { timeout: 2000 }, cardSelector);
 
             const renderedCardCount = await page.$$eval(cardSelector, (nodes) => nodes.length);
             assert.equal(renderedCardCount, 1, "only one card remains rendered after forced re-render");
@@ -221,6 +252,8 @@ async function openChecklistPage(records) {
     }, appConfig.storageKey, serialized);
 
     await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
+    await waitForAppHydration(page);
+    await flushAlpineQueues(page);
     await page.waitForSelector("#top-editor .markdown-editor");
     if (Array.isArray(records) && records.length > 0) {
         await page.waitForSelector(".markdown-block[data-note-id]");

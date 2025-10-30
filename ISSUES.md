@@ -31,7 +31,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 - [ ] [GN-206] Develop a system that reloads all JS/CSS/HTML when a new version is released. Today, we are hosted on GitHub and the new version is probably the new code. Find a way to detect when the code changed and reload it if a browser holds an older version of code.
 - [ ] [GN-207] The icon for the full screen shall be placed under the avatar icon with Full Screen text as a menu item. The icon of the exiting screen shall be changed to a diagonal like with two slapp ticks, 90 degrees opening out.
 - [ ] [GN-208] Only display user's name, not email, under the avatar
-- [ ] [GN-209] The tests are finicky and prone to errors every time we write new tests. Refactor the tests with the goal of hardening the tests -- making them more stable, less enviornment dependent and using best practices for alpine.js components testing. ensure introduce test randomization and run the tests 10 times in different order.
+- [x] [GN-209] The tests are finicky and prone to errors every time we write new tests. Refactor the tests with the goal of hardening the tests -- making them more stable, less enviornment dependent and using best practices for alpine.js components testing. ensure introduce test randomization and run the tests 10 times in different order.
+  - Added seeded shuffling with multi-iteration runs (default 6, stress 10) to `tests/run-tests.js`, stabilized Puppeteer fixtures with Alpine hydration helpers, hardened htmlView and inline-editor specs, and verified the suite across randomized iterations.
 
 
 ## BugFixes (300–399)

@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "node tests/run-tests.js",
+    "test:stress": "node tests/run-tests.js --stress",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

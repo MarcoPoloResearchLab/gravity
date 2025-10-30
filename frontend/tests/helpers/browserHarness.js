@@ -159,3 +159,42 @@ function normalizeTestUrl(value, allowBlank = false) {
 export function toImportSpecifier(absolutePath) {
     return pathToFileURL(absolutePath).href;
 }
+
+/**
+ * Wait for the Alpine-driven application shell to hydrate before continuing.
+ * @param {import("puppeteer").Page} page
+ * @param {{ timeoutMs?: number }} [options]
+ * @returns {Promise<void>}
+ */
+export async function waitForAppHydration(page, options = {}) {
+    const timeout = typeof options.timeoutMs === "number" && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+        ? options.timeoutMs
+        : 10000;
+    await page.waitForFunction(
+        () => {
+            const readyState = document.readyState === "complete" || document.readyState === "interactive";
+            const alpineReady = typeof window.Alpine === "object" && typeof window.Alpine.nextTick === "function";
+            const root = document.querySelector("[x-data]");
+            return readyState && alpineReady && root instanceof HTMLElement;
+        },
+        { timeout }
+    );
+    await flushAlpineQueues(page);
+}
+
+/**
+ * Flush Alpine.js nextTick microtasks and a rendering frame to stabilize the DOM.
+ * @param {import("puppeteer").Page} page
+ * @returns {Promise<void>}
+ */
+export async function flushAlpineQueues(page) {
+    await page.evaluate(() => new Promise((resolve) => {
+        if (!window.Alpine || typeof window.Alpine.nextTick !== "function") {
+            resolve();
+            return;
+        }
+        window.Alpine.nextTick(() => {
+            requestAnimationFrame(() => resolve());
+        });
+    }));
+}

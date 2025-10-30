@@ -5,7 +5,7 @@ import test from "node:test";
 
 import { appConfig } from "../js/core/config.js";
 import { EVENT_SYNC_SNAPSHOT_APPLIED } from "../js/constants.js";
-import { createSharedPage } from "./helpers/browserHarness.js";
+import { createSharedPage, waitForAppHydration, flushAlpineQueues } from "./helpers/browserHarness.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
@@ -51,7 +51,7 @@ test("snapshot events without changes do not churn rendered cards", async () => 
             window.__flickerObserver = observer;
         });
 
-        await sleep(page, 150);
+        await flushAlpineQueues(page);
         await page.evaluate(() => {
             window.__flickerRecords = [];
         });
@@ -104,14 +104,8 @@ async function preparePage() {
         window.__gravityForceMarkdownEditor = true;
     }, appConfig.storageKey, serialized);
     await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector(".markdown-block.top-editor");
+    await waitForAppHydration(page);
     return { page, teardown, records };
-}
-
-async function sleep(page, durationMs) {
-    await page.evaluate((ms) => new Promise((resolve) => {
-        setTimeout(resolve, typeof ms === "number" ? Math.max(ms, 0) : 0);
-    }), durationMs);
 }
 
 function buildNoteRecord({ noteId, markdownText, attachments = {} }) {
