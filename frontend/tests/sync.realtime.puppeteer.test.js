@@ -130,7 +130,10 @@ test.describe("Realtime synchronization", () => {
             const debugState = await extractSyncDebugState(pageB);
             console.log("[Realtime][Debug] sync state:", debugState);
             const runtimeConfig = await pageB.evaluate(async () => {
-                const module = await import("./js/core/config.js");
+                const importer = typeof window.importAppModule === "function"
+                    ? window.importAppModule
+                    : (specifier) => import(specifier);
+                const module = await importer("./js/core/config.js");
                 return module.appConfig.backendBaseUrl;
             });
             console.log("[Realtime][Debug] backend base URL:", runtimeConfig);

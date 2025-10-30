@@ -63,6 +63,14 @@ Network boundaries (`js/core/backendClient.js`, `js/core/classifier.js`) remain 
 - CDN assets for EasyMDE live in `frontend/index.html`; no bundler is used, so keep script and stylesheet references aligned with the documented versions.
 - Clipboard and drag-and-drop image handling route through `frontend/js/ui/imagePaste.js` (`insertAttachmentPlaceholders`) so storage logic and sanitisation remain centralised.
 
+#### Markdown Pipeline Documentation
+
+EasyMDE produces markdown, marked renders it to HTML, and DOMPurify sanitises the resulting markup before cards rehydrate. Consult the following reference files in the repository root whenever upgrading or adjusting the pipeline:
+
+- `MDE.v2.19.0.md` — EasyMDE integration guidelines and supported editor APIs.
+- `marked.js.md` — marked configuration notes and rendering behaviours.
+- `alpine.js.md` — Alpine factory patterns that host the editor and rendered views.
+
 **Storage, Configuration, and Auth**
 
 - `GravityStore` persists notes in `localStorage` for offline-first behaviour; reconciliation applies backend snapshots.

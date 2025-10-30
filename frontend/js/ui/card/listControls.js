@@ -1,6 +1,6 @@
 // @ts-check
 
-import { placeCardRespectingPinned } from "./layout.js";
+import { placeCardRespectingPinned } from "./layout.js?build=2024-10-05T12:00:00Z";
 
 /**
  * Update per-card action button visibility based on placement within the list.

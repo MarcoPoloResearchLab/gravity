@@ -50,7 +50,10 @@ test.describe("Auth session persistence (backend)", () => {
         await waitForSyncManagerUser(page, userId);
 
         const activeKeyBefore = await page.evaluate(async () => {
-            const module = await import("./js/core/store.js");
+            const importer = typeof window.importAppModule === "function"
+                ? window.importAppModule
+                : (specifier) => import(specifier);
+            const module = await importer("./js/core/store.js");
             return module.GravityStore.getActiveStorageKey();
         });
         assert.ok(typeof activeKeyBefore === "string" && activeKeyBefore.includes(encodeURIComponent(userId)));
@@ -59,7 +62,10 @@ test.describe("Auth session persistence (backend)", () => {
         await waitForSyncManagerUser(page, userId);
 
         const activeKeyAfter = await page.evaluate(async () => {
-            const module = await import("./js/core/store.js");
+            const importer = typeof window.importAppModule === "function"
+                ? window.importAppModule
+                : (specifier) => import(specifier);
+            const module = await importer("./js/core/store.js");
             return module.GravityStore.getActiveStorageKey();
         });
         assert.equal(activeKeyAfter, activeKeyBefore, "user scope should persist after reload");

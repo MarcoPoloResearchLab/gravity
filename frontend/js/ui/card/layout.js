@@ -1,6 +1,6 @@
 // @ts-check
 
-import { isNonBlankString } from "../../utils/string.js";
+import { isNonBlankString } from "../../utils/string.js?build=2024-10-05T12:00:00Z";
 
 let pinnedLayoutContainer = /** @type {HTMLElement|null} */ (null);
 let pinnedLayoutResizeListenerAttached = false;

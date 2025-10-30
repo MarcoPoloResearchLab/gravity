@@ -8,7 +8,7 @@ const DEFAULT_CHECK_INTERVAL_MS = 5 * 60 * 1000;
  *   manifestUrl: string,
  *   checkIntervalMs?: number,
  *   fetchImpl?: typeof fetch,
- *   reload?: () => void,
+ *   reload?: (nextVersion: string | null) => void,
  *   onVersionMismatch?: (currentVersion: string, remoteVersion: string) => void,
  *   onError?: (error: unknown) => void,
  *   autoStart?: boolean
@@ -80,7 +80,7 @@ export function initializeVersionRefresh(options) {
                 disposed = true;
                 clearTimer();
                 try {
-                    reload();
+                    reload(remoteVersion);
                 } catch (error) {
                     if (onError) {
                         onError(error);

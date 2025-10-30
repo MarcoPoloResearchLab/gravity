@@ -4,8 +4,8 @@ import {
     REALTIME_EVENT_HEARTBEAT,
     REALTIME_EVENT_NOTE_CHANGE,
     REALTIME_SOURCE_BACKEND
-} from "../constants.js";
-import { logging } from "../utils/logging.js";
+} from "../constants.js?build=2024-10-05T12:00:00Z";
+import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
 
 const RECONNECT_BASE_DELAY_MS = 1000;
 const RECONNECT_MAX_DELAY_MS = 30000;

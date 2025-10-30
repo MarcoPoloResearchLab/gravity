@@ -4,8 +4,8 @@ import {
     LABEL_ENTER_FULL_SCREEN,
     LABEL_EXIT_FULL_SCREEN,
     MESSAGE_FULLSCREEN_TOGGLE_FAILED
-} from "../constants.js";
-import { logging } from "../utils/logging.js";
+} from "../constants.js?build=2024-10-05T12:00:00Z";
+import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
 
 const FULLSCREEN_CHANGE_EVENT = "fullscreenchange";
 const STATE_ENTER = "enter";

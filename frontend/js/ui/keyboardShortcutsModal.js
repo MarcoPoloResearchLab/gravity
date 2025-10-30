@@ -1,6 +1,6 @@
 // @ts-check
 
-import { createElement } from "../utils/dom.js";
+import { createElement } from "../utils/dom.js?build=2024-10-05T12:00:00Z";
 import {
     LABEL_KEYBOARD_SHORTCUTS,
     LABEL_CLOSE_KEYBOARD_SHORTCUTS,
@@ -13,7 +13,7 @@ import {
     LABEL_SHORTCUT_OPEN_HELP,
     LABEL_SHORTCUT_DELETE_LINE,
     LABEL_SHORTCUT_DUPLICATE_LINE
-} from "../constants.js";
+} from "../constants.js?build=2024-10-05T12:00:00Z";
 
 const OVERLAY_CLASS = "keyboard-shortcuts-overlay";
 const MODAL_CLASS = "keyboard-shortcuts-modal";

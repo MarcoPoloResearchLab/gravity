@@ -1,9 +1,9 @@
 // @ts-check
 
-import { STORAGE_KEY_AUTH_STATE } from "../constants.js";
-import { logging } from "../utils/logging.js";
-import { decodeGoogleCredential } from "./auth.js";
-import { appConfig } from "./config.js";
+import { STORAGE_KEY_AUTH_STATE } from "../constants.js?build=2024-10-05T12:00:00Z";
+import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
+import { decodeGoogleCredential } from "./auth.js?build=2024-10-05T12:00:00Z";
+import { appConfig } from "./config.js?build=2024-10-05T12:00:00Z";
 
 /**
  * @typedef {{

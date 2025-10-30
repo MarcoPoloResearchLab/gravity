@@ -3,7 +3,7 @@
 import {
     LABEL_SIGN_OUT,
     LABEL_SIGN_IN_WITH_GOOGLE
-} from "../constants.js";
+} from "../constants.js?build=2024-10-05T12:00:00Z";
 
 /**
  * @typedef {{

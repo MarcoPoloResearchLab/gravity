@@ -218,7 +218,10 @@ test.describe("Synchronization scenarios", () => {
         });
         try {
             const hasOfflineNote = await pageReload.evaluate(async (noteId) => {
-                const module = await import("./js/core/store.js");
+                const importer = typeof window.importAppModule === "function"
+                    ? window.importAppModule
+                    : (specifier) => import(specifier);
+                const module = await importer("./js/core/store.js");
                 const records = module.GravityStore.loadAllNotes();
                 return Array.isArray(records) && records.some((record) => record?.noteId === noteId);
             }, queuedNoteId);
@@ -309,7 +312,10 @@ test.describe("Synchronization scenarios", () => {
             await pageB.waitForSelector(`.markdown-block[data-note-id="${noteId}"]`);
 
             const baseRecord = await pageB.evaluate(async (id) => {
-                const module = await import("./js/core/store.js");
+                const importer = typeof window.importAppModule === "function"
+                    ? window.importAppModule
+                    : (specifier) => import(specifier);
+                const module = await importer("./js/core/store.js");
                 return module.GravityStore.getById(id);
             }, noteId);
             assert.ok(baseRecord, "base record must exist on second session");
@@ -351,11 +357,17 @@ test.describe("Synchronization scenarios", () => {
             }, {}, noteId, "edited in session B");
 
             const updatedRecordA = await pageA.evaluate(async (id) => {
-                const module = await import("./js/core/store.js");
+                const importer = typeof window.importAppModule === "function"
+                    ? window.importAppModule
+                    : (specifier) => import(specifier);
+                const module = await importer("./js/core/store.js");
                 return module.GravityStore.getById(id);
             }, noteId);
             const updatedRecordB = await pageB.evaluate(async (id) => {
-                const module = await import("./js/core/store.js");
+                const importer = typeof window.importAppModule === "function"
+                    ? window.importAppModule
+                    : (specifier) => import(specifier);
+                const module = await importer("./js/core/store.js");
                 return module.GravityStore.getById(id);
             }, noteId);
 

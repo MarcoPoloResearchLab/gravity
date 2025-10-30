@@ -13,7 +13,8 @@ import {
     connectSharedBrowser,
     injectRuntimeConfig,
     waitForAppHydration,
-    flushAlpineQueues
+    flushAlpineQueues,
+    attachImportAppModule
 } from "./browserHarness.js";
 
 const APP_BOOTSTRAP_SELECTOR = "#top-editor .markdown-editor";
@@ -41,6 +42,7 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
     if (typeof beforeNavigate === "function") {
         await beforeNavigate(page);
     }
+    await attachImportAppModule(page);
     await injectRuntimeConfig(page, {
         development: {
             backendBaseUrl,
@@ -116,6 +118,7 @@ export async function initializePuppeteerTest(pageUrl = DEFAULT_PAGE_URL) {
     const browser = await connectSharedBrowser();
     const context = await browser.createBrowserContext();
     const page = await context.newPage();
+    await attachImportAppModule(page);
     await injectRuntimeConfig(page, {
         development: {
             backendBaseUrl: backend.baseUrl,

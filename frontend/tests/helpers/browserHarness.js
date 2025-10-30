@@ -2,6 +2,8 @@
 
 import { pathToFileURL } from "node:url";
 
+import { APP_BUILD_ID } from "../../js/constants.js";
+
 import {
     ensurePuppeteerSandbox,
     cleanupPuppeteerSandbox,
@@ -78,6 +80,7 @@ export async function createSharedPage(runtimeConfigOverrides = {}) {
     const browser = await connectSharedBrowser();
     const context = await browser.createBrowserContext();
     const page = await context.newPage();
+    await attachImportAppModule(page);
     await injectRuntimeConfig(page, runtimeConfigOverrides);
     const teardown = async () => {
         await page.close().catch(() => {});
@@ -197,4 +200,27 @@ export async function flushAlpineQueues(page) {
             requestAnimationFrame(() => resolve());
         });
     }));
+}
+
+/**
+ * Attach a helper that appends the current build identifier to dynamic app module imports.
+ * @param {import("puppeteer").Page} page
+ * @returns {Promise<void>}
+ */
+export async function attachImportAppModule(page) {
+    const normalizedBuildId = typeof APP_BUILD_ID === "string" ? APP_BUILD_ID.trim() : "";
+    await page.evaluateOnNewDocument((buildId) => {
+        const normalizedId = typeof buildId === "string" ? buildId : "";
+        // @ts-ignore
+        window.importAppModule = (specifier) => {
+            if (typeof specifier !== "string" || specifier.length === 0) {
+                return import(specifier);
+            }
+            if (normalizedId.length === 0 || specifier.includes("build=")) {
+                return import(specifier);
+            }
+            const delimiter = specifier.includes("?") ? "&" : "?";
+            return import(`${specifier}${delimiter}build=${normalizedId}`);
+        };
+    }, normalizedBuildId);
 }

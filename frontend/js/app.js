@@ -3,23 +3,23 @@
 
 import Alpine from "https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/module.esm.js";
 
-import { renderCard, updateActionButtons, insertCardRespectingPinned } from "./ui/card.js";
-import { initializeImportExport } from "./ui/importExport.js";
-import { GravityStore } from "./core/store.js";
-import { appConfig } from "./core/config.js";
-import { initializeRuntimeConfig } from "./core/runtimeConfig.js";
-import { createGoogleIdentityController, isGoogleIdentitySupportedOrigin } from "./core/auth.js";
-import { initializeAnalytics } from "./core/analytics.js";
-import { createSyncManager } from "./core/syncManager.js";
-import { createRealtimeSyncController } from "./core/realtimeSyncController.js";
+import { renderCard, updateActionButtons, insertCardRespectingPinned } from "./ui/card.js?build=2024-10-05T12:00:00Z";
+import { initializeImportExport } from "./ui/importExport.js?build=2024-10-05T12:00:00Z";
+import { GravityStore } from "./core/store.js?build=2024-10-05T12:00:00Z";
+import { appConfig } from "./core/config.js?build=2024-10-05T12:00:00Z";
+import { initializeRuntimeConfig } from "./core/runtimeConfig.js?build=2024-10-05T12:00:00Z";
+import { createGoogleIdentityController, isGoogleIdentitySupportedOrigin } from "./core/auth.js?build=2024-10-05T12:00:00Z";
+import { initializeAnalytics } from "./core/analytics.js?build=2024-10-05T12:00:00Z";
+import { createSyncManager } from "./core/syncManager.js?build=2024-10-05T12:00:00Z";
+import { createRealtimeSyncController } from "./core/realtimeSyncController.js?build=2024-10-05T12:00:00Z";
 import {
     loadAuthState,
     saveAuthState,
     clearAuthState,
     isAuthStateFresh,
     hasActiveAuthenticationSession
-} from "./core/authState.js";
-import { mountTopEditor } from "./ui/topEditor.js";
+} from "./core/authState.js?build=2024-10-05T12:00:00Z";
+import { mountTopEditor } from "./ui/topEditor.js?build=2024-10-05T12:00:00Z";
 import {
     LABEL_APP_SUBTITLE,
     LABEL_APP_TITLE,
@@ -41,15 +41,15 @@ import {
     MESSAGE_NOTES_SKIPPED,
     MESSAGE_NOTES_IMPORT_FAILED,
     APP_BUILD_ID
-} from "./constants.js";
-import { initializeKeyboardShortcutsModal } from "./ui/keyboardShortcutsModal.js";
-import { initializeNotesState } from "./ui/notesState.js";
-import { showSaveFeedback } from "./ui/saveFeedback.js";
-import { initializeAuthControls } from "./ui/authControls.js";
-import { createAvatarMenu } from "./ui/menu/avatarMenu.js";
-import { initializeFullScreenToggle } from "./ui/fullScreenToggle.js";
-import { initializeVersionRefresh } from "./utils/versionRefresh.js";
-import { logging } from "./utils/logging.js";
+} from "./constants.js?build=2024-10-05T12:00:00Z";
+import { initializeKeyboardShortcutsModal } from "./ui/keyboardShortcutsModal.js?build=2024-10-05T12:00:00Z";
+import { initializeNotesState } from "./ui/notesState.js?build=2024-10-05T12:00:00Z";
+import { showSaveFeedback } from "./ui/saveFeedback.js?build=2024-10-05T12:00:00Z";
+import { initializeAuthControls } from "./ui/authControls.js?build=2024-10-05T12:00:00Z";
+import { createAvatarMenu } from "./ui/menu/avatarMenu.js?build=2024-10-05T12:00:00Z";
+import { initializeFullScreenToggle } from "./ui/fullScreenToggle.js?build=2024-10-05T12:00:00Z";
+import { initializeVersionRefresh } from "./utils/versionRefresh.js?build=2024-10-05T12:00:00Z";
+import { logging } from "./utils/logging.js?build=2024-10-05T12:00:00Z";
 
 const CONSTANTS_VIEW_MODEL = Object.freeze({
     LABEL_APP_SUBTITLE,
@@ -59,6 +59,39 @@ const CONSTANTS_VIEW_MODEL = Object.freeze({
 });
 
 const NOTIFICATION_DEFAULT_DURATION_MS = 3000;
+
+/**
+ * @param {string} targetUrl
+ * @param {string} buildId
+ * @returns {string}
+ */
+function buildCacheBustedUrl(targetUrl, buildId) {
+    if (typeof window === "undefined") {
+        return targetUrl;
+    }
+    try {
+        const normalizedBuildId = typeof buildId === "string" ? buildId.trim() : "";
+        const resolved = new URL(targetUrl, window.location.origin);
+        if (normalizedBuildId.length > 0) {
+            resolved.searchParams.set("build", normalizedBuildId);
+        }
+        return resolved.toString();
+    } catch {
+        return targetUrl;
+    }
+}
+
+async function clearAssetCaches() {
+    if (typeof window === "undefined" || typeof caches === "undefined") {
+        return;
+    }
+    try {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((key) => caches.delete(key)));
+    } catch {
+        // Suppress cache-clearing failures; the reload will still proceed.
+    }
+}
 
 bootstrapApplication().catch((error) => {
     logging.error("Failed to bootstrap Gravity Notes", error);
@@ -179,12 +212,18 @@ function gravityApp() {
                 onVersionMismatch: () => {
                     this.emitNotification("Gravity Notes updated. Reloading…");
                 },
-                reload: () => {
-                    if (typeof window !== "undefined") {
-                        window.setTimeout(() => {
-                            window.location.reload();
-                        }, 600);
+                reload: (nextVersion) => {
+                    if (typeof window === "undefined") {
+                        return;
                     }
+                    const targetBuildId = typeof nextVersion === "string" && nextVersion.trim().length > 0
+                        ? nextVersion.trim()
+                        : APP_BUILD_ID;
+                    const targetUrl = buildCacheBustedUrl(window.location.href, targetBuildId);
+                    window.setTimeout(() => {
+                        const navigate = () => window.location.assign(targetUrl);
+                        clearAssetCaches().finally(navigate);
+                    }, 600);
                 },
                 onError: (error) => {
                     logging.warn("Version manifest check failed", error);
