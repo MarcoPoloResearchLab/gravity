@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // @ts-check
 
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -19,6 +20,13 @@ import {
   closeSharedBrowser,
   toImportSpecifier
 } from "./helpers/browserHarness.js";
+
+if (!process.env.TZ) {
+  process.env.TZ = "UTC";
+}
+if (!process.env.NODE_ENV) {
+  process.env.NODE_ENV = "test";
+}
 
 const CURRENT_FILE = fileURLToPath(import.meta.url);
 const TESTS_ROOT = path.dirname(CURRENT_FILE);
@@ -81,6 +89,151 @@ function parseTimeout(value, fallback) {
   const parsed = Number.parseInt(/** @type {any} */ (value), 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return parsed;
+}
+
+/**
+ * @param {unknown} value
+ * @param {number} fallback
+ */
+function parsePositiveInteger(value, fallback) {
+  if (typeof value === "number") {
+    if (Number.isFinite(value) && value > 0) return Math.floor(value);
+    return fallback;
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number.parseInt(value.trim(), 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.floor(parsed);
+    }
+  }
+  return fallback;
+}
+
+/**
+ * @param {unknown} value
+ * @param {boolean} fallback
+ */
+function parseBooleanOption(value, fallback) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true" || normalized === "1" || normalized === "yes") {
+      return true;
+    }
+    if (normalized === "false" || normalized === "0" || normalized === "no") {
+      return false;
+    }
+  }
+  return fallback;
+}
+
+/**
+ * @param {unknown} raw
+ * @returns {{ numeric: number | null, label: string | null }}
+ */
+function normalizeSeedValue(raw) {
+  if (typeof raw === "number") {
+    if (!Number.isFinite(raw)) {
+      return { numeric: null, label: null };
+    }
+    const normalized = (Math.floor(raw) >>> 0);
+    return { numeric: normalized, label: String(normalized) };
+  }
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (trimmed.length === 0) {
+      return { numeric: null, label: null };
+    }
+    const decimal = Number.parseInt(trimmed, 10);
+    if (Number.isFinite(decimal)) {
+      const numeric = (Math.floor(decimal) >>> 0);
+      return { numeric, label: trimmed };
+    }
+    const hexMatch = trimmed.match(/^0x([0-9a-f]+)$/iu);
+    if (hexMatch) {
+      const numeric = Number.parseInt(hexMatch[1], 16) >>> 0;
+      return { numeric, label: trimmed };
+    }
+    const hash = crypto.createHash("sha256").update(trimmed).digest();
+    const numeric = hash.readUInt32LE(0) >>> 0;
+    return { numeric, label: trimmed };
+  }
+  return { numeric: null, label: null };
+}
+
+/**
+ * @param {number} seed
+ * @returns {() => number}
+ */
+function createMulberry32(seed) {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6D2B79F5) | 0;
+    let t = Math.imul(state ^ (state >>> 15), 1 | state);
+    t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * @param {number} iterations
+ * @param {number | null} baseSeed
+ * @returns {number[]}
+ */
+function generateIterationSeeds(iterations, baseSeed) {
+  if (!Number.isFinite(iterations) || iterations <= 0) {
+    return [];
+  }
+  const count = Math.floor(iterations);
+  const seeds = [];
+  if (typeof baseSeed === "number" && Number.isFinite(baseSeed)) {
+    const random = createMulberry32(baseSeed >>> 0);
+    for (let index = 0; index < count; index += 1) {
+      const value = random();
+      const numeric = Math.floor(value * 0x100000000) >>> 0;
+      seeds.push(numeric);
+    }
+    return seeds;
+  }
+  for (let index = 0; index < count; index += 1) {
+    const bytes = crypto.randomBytes(4);
+    seeds.push(bytes.readUInt32LE(0) >>> 0);
+  }
+  return seeds;
+}
+
+/**
+ * @param {string[]} values
+ * @param {number} seed
+ * @returns {string[]}
+ */
+function shuffleWithSeed(values, seed) {
+  if (!Number.isFinite(seed)) {
+    return values.slice();
+  }
+  const items = values.slice();
+  const random = createMulberry32(seed >>> 0);
+  for (let index = items.length - 1; index > 0; index -= 1) {
+    const randomValue = random();
+    const swapIndex = Math.floor(randomValue * (index + 1));
+    const hold = items[index];
+    items[index] = items[swapIndex];
+    items[swapIndex] = hold;
+  }
+  return items;
+}
+
+/**
+ * @param {number | null} seed
+ * @returns {string}
+ */
+function formatSeed(seed) {
+  if (!Number.isFinite(seed)) {
+    return "n/a";
+  }
+  return `0x${(seed >>> 0).toString(16).padStart(8, "0")}`;
 }
 
 /**
@@ -157,6 +310,10 @@ globalThis.__gravityRuntimeContext = Object.freeze(context);
    *   screenshotAllowlist?: string[],
  *   screenshotDirectory?: string,
  *   screenshotForce?: boolean,
+ *   iterations?: number,
+ *   seed?: string,
+ *   randomize?: boolean,
+ *   stress?: boolean,
  *   passthroughArgs: string[]
  * }}
  */
@@ -166,6 +323,10 @@ function parseCommandLineArguments(argv) {
     screenshotAllowlist: undefined,
     screenshotDirectory: undefined,
     screenshotForce: undefined,
+    iterations: undefined,
+    seed: undefined,
+    randomize: undefined,
+    stress: undefined,
     passthroughArgs: []
   };
 
@@ -198,6 +359,36 @@ function parseCommandLineArguments(argv) {
     }
     if (argument === "--screenshot-force") {
       parsed.screenshotForce = true;
+      continue;
+    }
+    if (argument.startsWith("--iterations=")) {
+      const rawIterations = argument.slice("--iterations=".length).trim();
+      if (rawIterations.length > 0) {
+        const parsedIterations = Number.parseInt(rawIterations, 10);
+        if (Number.isFinite(parsedIterations) && parsedIterations > 0) {
+          parsed.iterations = Math.floor(parsedIterations);
+        }
+      }
+      continue;
+    }
+    if (argument === "--randomize") {
+      parsed.randomize = true;
+      continue;
+    }
+    if (argument === "--no-randomize") {
+      parsed.randomize = false;
+      continue;
+    }
+    if (argument === "--stress") {
+      parsed.iterations = Math.max(parsed.iterations ?? 0, 10);
+      parsed.stress = true;
+      continue;
+    }
+    if (argument.startsWith("--seed=")) {
+      const seedValue = argument.slice("--seed=".length).trim();
+      if (seedValue.length > 0) {
+        parsed.seed = seedValue;
+      }
       continue;
     }
     parsed.passthroughArgs.push(argument);
@@ -268,6 +459,66 @@ async function main() {
     screenshotRunRoot = path.join(SCREENSHOT_ARTIFACT_ROOT, timestamp);
     await fs.mkdir(screenshotRunRoot, { recursive: true });
   }
+
+  let iterationConfiguredExplicitly = false;
+  let iterationCount = parsePositiveInteger(cliArguments.iterations, 0);
+  if (iterationCount > 0) {
+    iterationConfiguredExplicitly = true;
+  } else {
+    iterationCount = parsePositiveInteger(process.env.GRAVITY_TEST_ITERATIONS, 0);
+    if (iterationCount > 0) {
+      iterationConfiguredExplicitly = true;
+    } else if (Object.prototype.hasOwnProperty.call(runtimeOptions, "iterations")) {
+      iterationCount = parsePositiveInteger(/** @type {any} */ (runtimeOptions).iterations, 0);
+      if (iterationCount > 0) {
+        iterationConfiguredExplicitly = true;
+      }
+    }
+  }
+  if (iterationCount <= 0) {
+    iterationCount = 3;
+  }
+  if (isCiEnvironment && !iterationConfiguredExplicitly) {
+    iterationCount = 1;
+  }
+  if (cliArguments.stress === true && iterationCount < 10) {
+    iterationCount = 10;
+  }
+
+  let randomizeTests;
+  if (typeof cliArguments.randomize === "boolean") {
+    randomizeTests = cliArguments.randomize;
+  } else if (typeof process.env.GRAVITY_TEST_RANDOMIZE === "string" && process.env.GRAVITY_TEST_RANDOMIZE.length > 0) {
+    randomizeTests = parseBooleanOption(process.env.GRAVITY_TEST_RANDOMIZE, true);
+  } else if (Object.prototype.hasOwnProperty.call(runtimeOptions, "randomize")) {
+    randomizeTests = parseBooleanOption(/** @type {any} */ (runtimeOptions).randomize, true);
+  } else {
+    randomizeTests = true;
+  }
+
+  const seedCandidates = [
+    typeof cliArguments.seed === "string" ? cliArguments.seed : null,
+    typeof process.env.GRAVITY_TEST_SEED === "string" ? process.env.GRAVITY_TEST_SEED : null,
+    Object.prototype.hasOwnProperty.call(runtimeOptions, "seed") ? /** @type {any} */ (runtimeOptions).seed : null
+  ];
+  let baseSeedNumeric = null;
+  let baseSeedLabel = null;
+  for (const candidate of seedCandidates) {
+    const { numeric, label } = normalizeSeedValue(candidate);
+    if (numeric !== null || label !== null) {
+      baseSeedNumeric = numeric;
+      baseSeedLabel = label;
+      break;
+    }
+  }
+  if (baseSeedNumeric === null && typeof baseSeedLabel === "string") {
+    const hashed = normalizeSeedValue(baseSeedLabel);
+    baseSeedNumeric = hashed.numeric;
+  }
+
+  const iterationSeeds = randomizeTests
+    ? generateIterationSeeds(iterationCount, baseSeedNumeric)
+    : Array.from({ length: iterationCount }, () => baseSeedNumeric);
 
   // Minimal mode = no browser/backend/launch guard. Used by harness self-tests.
   const minimal = Boolean(runtimeOptions.minimal);
@@ -358,9 +609,33 @@ async function main() {
     if (count === 0) return cliColors.dim(formatted);
     return format(formatted);
   };
+  const baseSeedSummary = (() => {
+    if (typeof baseSeedLabel === "string" && baseSeedLabel.length > 0 && Number.isFinite(baseSeedNumeric)) {
+      return `${baseSeedLabel} ⇢ ${formatSeed(baseSeedNumeric ?? 0)}`;
+    }
+    if (typeof baseSeedLabel === "string" && baseSeedLabel.length > 0) {
+      return baseSeedLabel;
+    }
+    if (Number.isFinite(baseSeedNumeric)) {
+      return formatSeed(baseSeedNumeric ?? 0);
+    }
+    return "generated";
+  })();
+
+  console.log(sectionHeading("Runner Configuration"));
+  console.log(`  iterations: ${cliColors.bold(String(iterationCount))}`);
+  console.log(`  ordering: ${randomizeTests ? cliColors.green("random") : cliColors.yellow("stable")}`);
+  if (randomizeTests) {
+    console.log(`  base seed: ${cliColors.bold(baseSeedSummary)}`);
+    iterationSeeds.forEach((seed, index) => {
+      const displaySeed = Number.isFinite(seed) ? formatSeed(seed ?? 0) : "n/a";
+      console.log(`    iteration ${String(index + 1).padStart(2, "0")}: ${displaySeed}`);
+    });
+  }
 
   let hasFailure = false;
   const summary = [];
+  const iterationMetadata = [];
   let totalDurationMs = 0;
   let passCount = 0;
   let failCount = 0;
@@ -392,90 +667,119 @@ async function main() {
       baseRuntimeContext = { ci: isCiEnvironment };
     }
 
-    for (const relative of files) {
-      const absolute = path.join(TESTS_ROOT, relative);
-      const effectiveTimeout = timeoutOverrides.get(relative) ?? timeoutMs;
-      const effectiveKillGrace = killOverrides.get(relative) ?? killGraceMs;
-      let screenshotDirectoryForTest = null;
+    for (let iterationIndex = 0; iterationIndex < iterationCount; iterationIndex += 1) {
+      const iterationSeed = randomizeTests ? iterationSeeds[iterationIndex] ?? null : iterationSeeds[iterationIndex] ?? null;
+      const iterationFiles = randomizeTests ? shuffleWithSeed(files, iterationSeed ?? 0) : files.slice();
+      iterationMetadata.push({
+        index: iterationIndex + 1,
+        seed: iterationSeed,
+        files: iterationFiles.slice()
+      });
+
+      const iterationLabelParts = [`Iteration ${iterationIndex + 1}/${iterationCount}`];
+      if (randomizeTests) {
+        iterationLabelParts.push(`seed ${formatSeed(iterationSeed)}`);
+      }
+      console.log(sectionHeading(iterationLabelParts.join(" ")));
+
+      let screenshotIterationRoot = null;
       if (screenshotRunRoot) {
-        const shortName = deriveShortTestName(relative);
-        screenshotDirectoryForTest = path.join(screenshotRunRoot, shortName);
-        await fs.mkdir(screenshotDirectoryForTest, { recursive: true });
+        const iterationDirectory = `iteration-${String(iterationIndex + 1).padStart(2, "0")}`;
+        screenshotIterationRoot = path.join(screenshotRunRoot, iterationDirectory);
+        await fs.mkdir(screenshotIterationRoot, { recursive: true });
       }
 
-      console.log(sectionHeading(relative));
+      for (const relative of iterationFiles) {
+        const absolute = path.join(TESTS_ROOT, relative);
+        const effectiveTimeout = timeoutOverrides.get(relative) ?? timeoutMs;
+        const effectiveKillGrace = killOverrides.get(relative) ?? killGraceMs;
 
-      /** @type {string[]} */
-      const args = [];
-      if (!raw) {
-        // Run with Node test runner
-        args.push("--test", absolute, `--test-timeout=${Math.max(effectiveTimeout, 1000)}`);
-      } else {
-        // Raw script execution (no test runner) — used to validate harness timeouts deterministically
-        args.push(absolute);
-      }
-
-      const runtimeContextForTest = {
-        ...baseRuntimeContext,
-        test: { file: relative },
-        screenshots: {
-          directory: screenshotDirectoryForTest,
-          policy: screenshotOptions.policy ?? null,
-          allowlist: Array.isArray(screenshotOptions.allowlist) ? screenshotOptions.allowlist : [],
-          force: screenshotForce
+        let screenshotDirectoryForTest = null;
+        if (screenshotIterationRoot) {
+          const shortName = deriveShortTestName(relative);
+          screenshotDirectoryForTest = path.join(screenshotIterationRoot, shortName);
+          await fs.mkdir(screenshotDirectoryForTest, { recursive: true });
         }
-      };
 
-      const { modulePath: runtimeModulePath, dispose: disposeRuntimeModule } = await createRuntimeModule(runtimeContextForTest);
+        console.log(sectionHeading(relative));
 
-      if (!raw) {
-        args.unshift("--import", runtimeModulePath);
-        if (!minimal) {
-          args.unshift("--import", guardSpecifier);
-        }
-      } else {
-        args.unshift("--import", runtimeModulePath);
-      }
-
-      try {
-        const result = await runTestProcess({
-          command: process.execPath,
-          args,
-          timeoutMs: effectiveTimeout,
-          killGraceMs: effectiveKillGrace,
-          onStdout: (chunk) => process.stdout.write(chunk),
-          onStderr: (chunk) => process.stderr.write(chunk)
-        });
-
-        summary.push({
-          file: relative,
-          durationMs: result.durationMs,
-          timedOut: result.timedOut,
-          exitCode: result.exitCode,
-          signal: result.signal,
-          terminationReason: result.terminationReason
-        });
-        totalDurationMs += result.durationMs;
-
-        if (result.timedOut) {
-          hasFailure = true;
-          timeoutCount += 1;
-          const timeoutMessage = `${cliColors.symbols.timeout} ${cliColors.yellow(`Timed out after ${formatDuration(effectiveTimeout)}`)}`;
-          console.error(`  ${timeoutMessage}`);
-          continue;
-        }
-        if (result.exitCode !== 0) {
-          hasFailure = true;
-          failCount += 1;
-          const signalDetail = result.signal ? `signal=${result.signal}` : `exitCode=${result.exitCode}`;
-          console.error(`  ${cliColors.symbols.fail} ${cliColors.red(`Failed (${signalDetail})`)}`);
+        /** @type {string[]} */
+        const args = [];
+        if (!raw) {
+          args.push("--test", absolute, `--test-timeout=${Math.max(effectiveTimeout, 1000)}`);
         } else {
-          passCount += 1;
-          const durationLabel = cliColors.dim(`(${formatDuration(result.durationMs)})`);
-          console.log(`  ${cliColors.symbols.pass} ${cliColors.green("Passed")} ${durationLabel}`);
+          args.push(absolute);
         }
-      } finally {
-        await disposeRuntimeModule();
+
+        const runtimeContextForTest = {
+          ...baseRuntimeContext,
+          test: {
+            file: relative,
+            iteration: iterationIndex + 1,
+            totalIterations: iterationCount,
+            seed: iterationSeed ?? null
+          },
+          screenshots: {
+            directory: screenshotDirectoryForTest,
+            policy: screenshotOptions.policy ?? null,
+            allowlist: Array.isArray(screenshotOptions.allowlist) ? screenshotOptions.allowlist : [],
+            force: screenshotForce
+          }
+        };
+
+        const { modulePath: runtimeModulePath, dispose: disposeRuntimeModule } = await createRuntimeModule(runtimeContextForTest);
+
+        if (!raw) {
+          args.unshift("--import", runtimeModulePath);
+          if (!minimal) {
+            args.unshift("--import", guardSpecifier);
+          }
+        } else {
+          args.unshift("--import", runtimeModulePath);
+        }
+
+        try {
+          const result = await runTestProcess({
+            command: process.execPath,
+            args,
+            timeoutMs: effectiveTimeout,
+            killGraceMs: effectiveKillGrace,
+            onStdout: (chunk) => process.stdout.write(chunk),
+            onStderr: (chunk) => process.stderr.write(chunk)
+          });
+
+          summary.push({
+            iteration: iterationIndex + 1,
+            seed: iterationSeed ?? null,
+            file: relative,
+            durationMs: result.durationMs,
+            timedOut: result.timedOut,
+            exitCode: result.exitCode,
+            signal: result.signal,
+            terminationReason: result.terminationReason
+          });
+          totalDurationMs += result.durationMs;
+
+          if (result.timedOut) {
+            hasFailure = true;
+            timeoutCount += 1;
+            const timeoutMessage = `${cliColors.symbols.timeout} ${cliColors.yellow(`Timed out after ${formatDuration(effectiveTimeout)}`)}`;
+            console.error(`  ${timeoutMessage}`);
+            continue;
+          }
+          if (result.exitCode !== 0) {
+            hasFailure = true;
+            failCount += 1;
+            const signalDetail = result.signal ? `signal=${result.signal}` : `exitCode=${result.exitCode}`;
+            console.error(`  ${cliColors.symbols.fail} ${cliColors.red(`Failed (${signalDetail})`)}`);
+          } else {
+            passCount += 1;
+            const durationLabel = cliColors.dim(`(${formatDuration(result.durationMs)})`);
+            console.log(`  ${cliColors.symbols.pass} ${cliColors.green("Passed")} ${durationLabel}`);
+          }
+        } finally {
+          await disposeRuntimeModule();
+        }
       }
     }
   } finally {
@@ -484,21 +788,33 @@ async function main() {
   }
 
   console.log(sectionHeading("Summary"));
-  for (const entry of summary) {
-    const status = entry.timedOut ? "timeout" : entry.exitCode === 0 ? "pass" : "fail";
-    const durationLabel = cliColors.dim(`(${formatDuration(entry.durationMs)})`);
-    if (status === "timeout") {
-      console.log(`  ${cliColors.symbols.timeout} ${cliColors.bold(entry.file)} ${cliColors.yellow("timeout")} ${durationLabel}`);
+  for (const iteration of iterationMetadata) {
+    const iterationEntries = summary.filter((entry) => entry.iteration === iteration.index);
+    const iterationHeadingParts = [`Iteration ${iteration.index}/${iterationCount}`];
+    if (randomizeTests) {
+      iterationHeadingParts.push(`seed ${formatSeed(iteration.seed ?? null)}`);
+    }
+    console.log(`  ${cliColors.bold(iterationHeadingParts.join(" "))}`);
+    if (iterationEntries.length === 0) {
+      console.log(`    ${cliColors.dim("no tests executed")}`);
       continue;
     }
-    if (status === "fail") {
-      const failureDetail = entry.signal ? `signal=${entry.signal}` : `exit=${entry.exitCode}`;
-      console.log(`  ${cliColors.symbols.fail} ${cliColors.bold(entry.file)} ${cliColors.red(failureDetail)} ${durationLabel}`);
-      continue;
+    for (const entry of iterationEntries) {
+      const status = entry.timedOut ? "timeout" : entry.exitCode === 0 ? "pass" : "fail";
+      const durationLabel = cliColors.dim(`(${formatDuration(entry.durationMs)})`);
+      if (status === "timeout") {
+        console.log(`    ${cliColors.symbols.timeout} ${cliColors.bold(entry.file)} ${cliColors.yellow("timeout")} ${durationLabel}`);
+        continue;
+      }
+      if (status === "fail") {
+        const failureDetail = entry.signal ? `signal=${entry.signal}` : `exit=${entry.exitCode}`;
+        console.log(`    ${cliColors.symbols.fail} ${cliColors.bold(entry.file)} ${cliColors.red(failureDetail)} ${durationLabel}`);
+        continue;
+      }
+      console.log(`    ${cliColors.symbols.pass} ${cliColors.bold(entry.file)} ${durationLabel}`);
     }
-    console.log(`  ${cliColors.symbols.pass} ${cliColors.bold(entry.file)} ${durationLabel}`);
-    }
-  
+  }
+
   const totalsLine = [
     formatCount(passCount, "passed", cliColors.green),
     formatCount(failCount, "failed", cliColors.red),

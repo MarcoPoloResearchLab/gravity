@@ -9,7 +9,12 @@ import {
     EVENT_NOTE_UPDATE
 } from "../../js/constants.js";
 import { startTestBackend } from "./backendHarness.js";
-import { connectSharedBrowser, injectRuntimeConfig } from "./browserHarness.js";
+import {
+    connectSharedBrowser,
+    injectRuntimeConfig,
+    waitForAppHydration,
+    flushAlpineQueues
+} from "./browserHarness.js";
 
 const APP_BOOTSTRAP_SELECTOR = "#top-editor .markdown-editor";
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -78,7 +83,7 @@ export function composeTestCredential(options) {
         : Math.floor(Date.now() / 1000);
     const expiresInSeconds = typeof options.expiresInSeconds === "number" && Number.isFinite(options.expiresInSeconds)
         ? options.expiresInSeconds
-        : 5 * 60;
+        : 60 * 60;
     const payload = {
         iss: DEFAULT_JWT_ISSUER,
         aud: DEFAULT_JWT_AUDIENCE,
@@ -212,6 +217,8 @@ export async function waitForSyncManagerUser(page, expectedUserId, timeoutMs) {
  * @returns {Promise<void>}
  */
 export async function waitForAppReady(page) {
+    await waitForAppHydration(page);
+    await flushAlpineQueues(page);
     await page.waitForSelector(APP_BOOTSTRAP_SELECTOR);
 }
 

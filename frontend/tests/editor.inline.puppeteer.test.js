@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import { appConfig } from "../js/core/config.js";
-import { createSharedPage } from "./helpers/browserHarness.js";
+import { createSharedPage, waitForAppHydration, flushAlpineQueues } from "./helpers/browserHarness.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
@@ -1006,8 +1006,16 @@ test.describe("Markdown inline editor", () => {
                     window.scrollTo(0, Math.max(0, maxScroll - 8));
                 }
             });
-            await pause(page, 50);
+            await flushAlpineQueues(page);
             await waitForViewportStability(page, cardSelector);
+            await page.waitForFunction((selector) => {
+                const element = document.querySelector(selector);
+                if (!(element instanceof HTMLElement)) {
+                    return false;
+                }
+                const rect = element.getBoundingClientRect();
+                return rect.bottom >= window.innerHeight - 6;
+            }, { timeout: 2000 }, cardSelector);
 
             const baseline = await page.$eval(cardSelector, (element) => {
                 if (!(element instanceof HTMLElement)) {
@@ -2639,6 +2647,8 @@ async function preparePage({ records, htmlViewBubbleDelayMs, waitUntil = "domcon
     }, appConfig.storageKey, serialized, typeof htmlViewBubbleDelayMs === "number" ? htmlViewBubbleDelayMs : null);
 
     await page.goto(PAGE_URL, { waitUntil });
+    await waitForAppHydration(page);
+    await flushAlpineQueues(page);
     await page.waitForSelector(getCodeMirrorInputSelector("#top-editor"));
     if (Array.isArray(records) && records.length > 0) {
         await page.waitForSelector(".markdown-block[data-note-id]");

@@ -70,9 +70,6 @@ test.describe("UI sync integration", () => {
             await page.keyboard.press("Enter");
             await page.keyboard.up("Meta");
             await page.keyboard.press("Tab");
-            await new Promise((resolve) => {
-                setTimeout(resolve, 250);
-            });
 
             await page.waitForSelector(".markdown-block:not(.top-editor)[data-note-id]");
 

@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { createSharedPage } from "./helpers/browserHarness.js";
+import { createSharedPage, waitForAppHydration, flushAlpineQueues } from "./helpers/browserHarness.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
@@ -16,7 +16,8 @@ test("base page load stays free of Google console warnings", async () => {
         messages.push({ type: message.type(), text: message.text() });
     });
     await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
-    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 500)));
+    await waitForAppHydration(page);
+    await flushAlpineQueues(page);
 
     try {
         const problematic = messages.filter(({ type, text }) => {
