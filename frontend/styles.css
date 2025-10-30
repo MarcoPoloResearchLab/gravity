@@ -129,10 +129,6 @@ body::-webkit-scrollbar {
     font-size: 0.82rem;
     font-weight: 600;
 }
-.auth-email {
-    font-size: 0.72rem;
-    opacity: 0.75;
-}
 .auth-status {
     font-size: 0.72rem;
     color: #8ea2d8;

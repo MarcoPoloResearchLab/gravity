@@ -303,7 +303,6 @@ function gravityApp() {
             const buttonHost = /** @type {HTMLElement|null} */ (this.$refs.authButtonHost ?? null);
             const profile = /** @type {HTMLElement|null} */ (this.$refs.authProfile ?? null);
             const displayName = /** @type {HTMLElement|null} */ (this.$refs.authDisplayName ?? null);
-            const email = /** @type {HTMLElement|null} */ (this.$refs.authEmail ?? null);
             const avatar = /** @type {HTMLImageElement|null} */ (this.$refs.authAvatar ?? null);
             const status = /** @type {HTMLElement|null} */ (this.$refs.authStatus ?? null);
             const signOutButton = /** @type {HTMLButtonElement|null} */ (this.$refs.authSignOutButton ?? null);
@@ -325,7 +324,6 @@ function gravityApp() {
                 buttonElement: buttonHost,
                 profileContainer: profile,
                 displayNameElement: displayName,
-                emailElement: email,
                 avatarElement: avatar ?? null,
                 statusElement: status ?? null,
                 signOutButton: signOutButton ?? null,

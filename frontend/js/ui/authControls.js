@@ -11,7 +11,7 @@ import {
  *   buttonElement: HTMLElement,
  *   profileContainer: HTMLElement,
  *   displayNameElement: HTMLElement,
- *   emailElement: HTMLElement,
+ *   emailElement?: HTMLElement | null,
  *   avatarElement?: HTMLImageElement | null,
  *   statusElement?: HTMLElement | null,
  *   signOutButton?: HTMLButtonElement | null,
@@ -38,7 +38,7 @@ export function initializeAuthControls(options) {
         buttonElement,
         profileContainer,
         displayNameElement,
-        emailElement,
+        emailElement = null,
         avatarElement = null,
         statusElement = null,
         signOutButton = null,
@@ -58,9 +58,7 @@ export function initializeAuthControls(options) {
     if (!(displayNameElement instanceof HTMLElement)) {
         throw new Error("Auth controls require a display name element.");
     }
-    if (!(emailElement instanceof HTMLElement)) {
-        throw new Error("Auth controls require an email element.");
-    }
+    const resolvedEmailElement = emailElement instanceof HTMLElement ? emailElement : null;
 
     const buttonParent = buttonElement.parentElement instanceof HTMLElement
         ? buttonElement.parentElement
@@ -192,7 +190,10 @@ export function initializeAuthControls(options) {
 
     function clearProfile() {
         displayNameElement.textContent = "";
-        emailElement.textContent = "";
+        if (resolvedEmailElement) {
+            resolvedEmailElement.textContent = "";
+            resolvedEmailElement.hidden = true;
+        }
         if (avatarElement) {
             avatarElement.hidden = true;
             avatarElement.removeAttribute("src");
@@ -207,15 +208,9 @@ export function initializeAuthControls(options) {
     function applyProfile(user) {
         const fallbackName = user.name || user.email || user.id;
         displayNameElement.textContent = fallbackName;
-        if (user.email && user.email !== fallbackName) {
-            emailElement.textContent = user.email;
-            emailElement.hidden = false;
-        } else if (user.email) {
-            emailElement.textContent = user.email;
-            emailElement.hidden = false;
-        } else {
-            emailElement.textContent = "";
-            emailElement.hidden = true;
+        if (resolvedEmailElement) {
+            resolvedEmailElement.textContent = "";
+            resolvedEmailElement.hidden = true;
         }
         if (avatarElement) {
             if (user.pictureUrl) {
