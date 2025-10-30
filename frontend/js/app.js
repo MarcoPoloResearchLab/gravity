@@ -60,6 +60,39 @@ const CONSTANTS_VIEW_MODEL = Object.freeze({
 
 const NOTIFICATION_DEFAULT_DURATION_MS = 3000;
 
+/**
+ * @param {string} targetUrl
+ * @param {string} buildId
+ * @returns {string}
+ */
+function buildCacheBustedUrl(targetUrl, buildId) {
+    if (typeof window === "undefined") {
+        return targetUrl;
+    }
+    try {
+        const normalizedBuildId = typeof buildId === "string" ? buildId.trim() : "";
+        const resolved = new URL(targetUrl, window.location.origin);
+        if (normalizedBuildId.length > 0) {
+            resolved.searchParams.set("build", normalizedBuildId);
+        }
+        return resolved.toString();
+    } catch {
+        return targetUrl;
+    }
+}
+
+async function clearAssetCaches() {
+    if (typeof window === "undefined" || typeof caches === "undefined") {
+        return;
+    }
+    try {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((key) => caches.delete(key)));
+    } catch {
+        // Suppress cache-clearing failures; the reload will still proceed.
+    }
+}
+
 bootstrapApplication().catch((error) => {
     logging.error("Failed to bootstrap Gravity Notes", error);
 });
@@ -179,12 +212,18 @@ function gravityApp() {
                 onVersionMismatch: () => {
                     this.emitNotification("Gravity Notes updated. Reloading…");
                 },
-                reload: () => {
-                    if (typeof window !== "undefined") {
-                        window.setTimeout(() => {
-                            window.location.reload();
-                        }, 600);
+                reload: (nextVersion) => {
+                    if (typeof window === "undefined") {
+                        return;
                     }
+                    const targetBuildId = typeof nextVersion === "string" && nextVersion.trim().length > 0
+                        ? nextVersion.trim()
+                        : APP_BUILD_ID;
+                    const targetUrl = buildCacheBustedUrl(window.location.href, targetBuildId);
+                    window.setTimeout(() => {
+                        const navigate = () => window.location.assign(targetUrl);
+                        clearAssetCaches().finally(navigate);
+                    }, 600);
                 },
                 onError: (error) => {
                     logging.warn("Version manifest check failed", error);

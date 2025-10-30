@@ -16,8 +16,8 @@ test.describe("GN-206 version refresh watcher", () => {
                 ok: true,
                 json: async () => ({ version: "v-current" })
             }),
-            reload: () => {
-                reloadCalls.push(Date.now());
+            reload: (nextVersion) => {
+                reloadCalls.push(nextVersion);
             },
             onVersionMismatch: (current, remote) => {
                 mismatchCalls.push({ current, remote });
@@ -36,7 +36,7 @@ test.describe("GN-206 version refresh watcher", () => {
     });
 
     test("reloads when manifest version diverges from the active build", async () => {
-        let reloadCount = 0;
+        const reloadVersions = [];
         const mismatchCalls = [];
         const controller = initializeVersionRefresh({
             currentVersion: "v-current",
@@ -45,8 +45,8 @@ test.describe("GN-206 version refresh watcher", () => {
                 ok: true,
                 json: async () => ({ version: "v-next" })
             }),
-            reload: () => {
-                reloadCount += 1;
+            reload: (nextVersion) => {
+                reloadVersions.push(nextVersion);
             },
             onVersionMismatch: (current, remote) => {
                 mismatchCalls.push({ current, remote });
@@ -57,7 +57,7 @@ test.describe("GN-206 version refresh watcher", () => {
         try {
             const result = await controller.checkNow();
             assert.equal(result.reloaded, true, "check should signal that a reload was triggered");
-            assert.equal(reloadCount, 1, "reload should be invoked exactly once on version mismatch");
+            assert.deepEqual(reloadVersions, ["v-next"], "reload should receive the remote version exactly once");
             assert.deepEqual(
                 mismatchCalls,
                 [{ current: "v-current", remote: "v-next" }],
