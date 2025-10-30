@@ -14,8 +14,37 @@ const DEFAULT_ENVIRONMENT_CONFIG = Object.freeze({
     })
 });
 
-/** @type {{ environment: ("production" | "development" | null), backendBaseUrl: string, llmProxyUrl: string } | null} */
-let runtimeConfig = null;
+const RUNTIME_CONFIG_STATE_KEY = Symbol.for("gravity.core.config.runtimeState");
+
+/**
+ * Resolve the shared runtime configuration backing store. Using a shared symbol keeps
+ * the browser modules (loaded with build fingerprints) and the Node test modules in
+ * sync even though their specifiers differ.
+ * @returns {{ config: { environment: ("production" | "development" | null), backendBaseUrl: string, llmProxyUrl: string } | null }}
+ */
+function resolveRuntimeConfigState() {
+    const globalScope = typeof globalThis === "object" && globalThis !== null ? globalThis : {};
+    const existing = /** @type {{ config: { environment: ("production" | "development" | null), backendBaseUrl: string, llmProxyUrl: string } | null } | undefined} */
+        (globalScope[RUNTIME_CONFIG_STATE_KEY]);
+    if (existing && typeof existing === "object" && Object.prototype.hasOwnProperty.call(existing, "config")) {
+        return existing;
+    }
+    const state = { config: null };
+    try {
+        Object.defineProperty(globalScope, RUNTIME_CONFIG_STATE_KEY, {
+            value: state,
+            enumerable: false,
+            configurable: false,
+            writable: false
+        });
+    } catch {
+        // Fallback assignment when defineProperty is unavailable (older runtimes / frozen globals).
+        /** @type {any} */ (globalScope)[RUNTIME_CONFIG_STATE_KEY] = state;
+    }
+    return state;
+}
+
+const runtimeConfigState = resolveRuntimeConfigState();
 
 const staticConfig = {
     timezone: { value: "America/Los_Angeles", enumerable: true },
@@ -56,7 +85,7 @@ export function setRuntimeConfig(config = {}) {
     const backendBaseUrl = normalizeUrl(config.backendBaseUrl ?? environmentDefaults?.backendBaseUrl ?? DEFAULT_BACKEND_BASE_URL);
     const llmProxyUrl = normalizeUrl(config.llmProxyUrl ?? environmentDefaults?.llmProxyUrl ?? DEFAULT_LLM_PROXY_URL);
 
-    runtimeConfig = Object.freeze({
+    runtimeConfigState.config = Object.freeze({
         environment: normalizedEnvironment,
         backendBaseUrl,
         llmProxyUrl
@@ -68,7 +97,7 @@ export function setRuntimeConfig(config = {}) {
  * @returns {void}
  */
 export function clearRuntimeConfigForTesting() {
-    runtimeConfig = null;
+    runtimeConfigState.config = null;
 }
 
 /**
@@ -76,8 +105,8 @@ export function clearRuntimeConfigForTesting() {
  * @returns {string}
  */
 export function resolveBackendBaseUrl() {
-    if (runtimeConfig?.backendBaseUrl) {
-        return runtimeConfig.backendBaseUrl;
+    if (runtimeConfigState.config?.backendBaseUrl) {
+        return runtimeConfigState.config.backendBaseUrl;
     }
     return DEFAULT_BACKEND_BASE_URL;
 }
@@ -87,8 +116,8 @@ export function resolveBackendBaseUrl() {
  * @returns {string}
  */
 export function resolveLlmProxyUrl() {
-    if (runtimeConfig?.llmProxyUrl !== undefined) {
-        return runtimeConfig.llmProxyUrl;
+    if (runtimeConfigState.config?.llmProxyUrl !== undefined) {
+        return runtimeConfigState.config.llmProxyUrl;
     }
     return DEFAULT_LLM_PROXY_URL;
 }
@@ -98,8 +127,8 @@ export function resolveLlmProxyUrl() {
  * @returns {("production" | "development" | null)}
  */
 export function resolveEnvironmentName() {
-    if (runtimeConfig?.environment) {
-        return runtimeConfig.environment;
+    if (runtimeConfigState.config?.environment) {
+        return runtimeConfigState.config.environment;
     }
     return inferEnvironmentFromLocation(typeof window !== "undefined" ? window.location : undefined);
 }
