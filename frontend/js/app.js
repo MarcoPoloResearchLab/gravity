@@ -310,7 +310,7 @@ function gravityApp() {
             const menuPanel = /** @type {HTMLElement|null} */ (this.$refs.authMenu ?? null);
             const avatarTrigger = /** @type {HTMLButtonElement|null} */ (this.$refs.authAvatarTrigger ?? null);
 
-            if (!container || !buttonHost || !profile || !displayName || !email) {
+            if (!container || !buttonHost || !profile || !displayName) {
                 return;
             }
 
