@@ -58,7 +58,10 @@ if (!puppeteerAvailable) {
                 await waitForSyncManagerUser(page, userId);
 
                 const activeKeyBefore = await page.evaluate(async () => {
-                    const module = await import("./js/core/store.js");
+                    const importer = typeof window.importAppModule === "function"
+                        ? window.importAppModule
+                        : (specifier) => import(specifier);
+                    const module = await importer("./js/core/store.js");
                     return module.GravityStore.getActiveStorageKey();
                 });
                 assert.ok(typeof activeKeyBefore === "string" && activeKeyBefore.includes(encodeURIComponent(userId)));
@@ -68,7 +71,10 @@ if (!puppeteerAvailable) {
                 await waitForSyncManagerUser(page, userId);
 
                 const activeKeyAfter = await page.evaluate(async () => {
-                    const module = await import("./js/core/store.js");
+                    const importer = typeof window.importAppModule === "function"
+                        ? window.importAppModule
+                        : (specifier) => import(specifier);
+                    const module = await importer("./js/core/store.js");
                     return module.GravityStore.getActiveStorageKey();
                 });
                 assert.equal(activeKeyAfter, activeKeyBefore);
@@ -178,7 +184,10 @@ if (!puppeteerAvailable) {
                 await waitForAppReady(page);
 
                 const activeKey = await page.evaluate(async () => {
-                    const module = await import("./js/core/store.js");
+                    const importer = typeof window.importAppModule === "function"
+                        ? window.importAppModule
+                        : (specifier) => import(specifier);
+                    const module = await importer("./js/core/store.js");
                     return module.GravityStore.getActiveStorageKey();
                 });
                 assert.equal(activeKey, GravityStore.getActiveStorageKey());
@@ -233,7 +242,10 @@ if (!puppeteerAvailable) {
                 await waitForAppReady(page);
 
                 const activeKey = await page.evaluate(async () => {
-                    const module = await import("./js/core/store.js");
+                    const importer = typeof window.importAppModule === "function"
+                        ? window.importAppModule
+                        : (specifier) => import(specifier);
+                    const module = await importer("./js/core/store.js");
                     return module.GravityStore.getActiveStorageKey();
                 });
                 assert.equal(activeKey, GravityStore.getActiveStorageKey(), "storage scope should remain default");

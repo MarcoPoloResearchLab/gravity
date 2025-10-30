@@ -2303,7 +2303,10 @@ test.describe("Markdown inline editor — actions", () => {
                 assert.ok(finalCardHeight >= initialCardHeight, "Card height stays consistent after save");
 
                 const storedMarkdown = await page.evaluate(async (noteId) => {
-                    const { GravityStore } = await import("./js/core/store.js");
+                    const importer = typeof window.importAppModule === "function"
+                        ? window.importAppModule
+                        : (specifier) => import(specifier);
+                    const { GravityStore } = await importer("./js/core/store.js");
                     const record = GravityStore.getById(noteId);
                     return record ? record.markdownText : null;
                 }, NOTE_ID);
@@ -2337,7 +2340,10 @@ test.describe("Markdown inline editor — actions", () => {
                 }, {}, cardSelector);
 
                 let storedMarkdown = await page.evaluate(async (noteId) => {
-                    const { GravityStore } = await import("./js/core/store.js");
+                    const importer = typeof window.importAppModule === "function"
+                        ? window.importAppModule
+                        : (specifier) => import(specifier);
+                    const { GravityStore } = await importer("./js/core/store.js");
                     const record = GravityStore.getById(noteId);
                     return record ? record.markdownText : null;
                 }, TASK_NOTE_ID);
@@ -2353,7 +2359,10 @@ test.describe("Markdown inline editor — actions", () => {
                 }, {}, cardSelector);
 
                 storedMarkdown = await page.evaluate(async (noteId) => {
-                    const { GravityStore } = await import("./js/core/store.js");
+                    const importer = typeof window.importAppModule === "function"
+                        ? window.importAppModule
+                        : (specifier) => import(specifier);
+                    const { GravityStore } = await importer("./js/core/store.js");
                     const record = GravityStore.getById(noteId);
                     return record ? record.markdownText : null;
                 }, TASK_NOTE_ID);

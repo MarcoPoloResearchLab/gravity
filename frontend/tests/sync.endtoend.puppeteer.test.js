@@ -82,7 +82,10 @@ test.describe("UI sync integration", () => {
                 if (typeof id !== "string" || id.length === 0) {
                     return null;
                 }
-                const module = await import("./js/core/store.js");
+                const importer = typeof window.importAppModule === "function"
+                    ? window.importAppModule
+                    : (specifier) => import(specifier);
+                const module = await importer("./js/core/store.js");
                 return module.GravityStore.getById(id);
             }, noteId);
 
