@@ -33,6 +33,7 @@ import { syncStoreFromDom } from "../storeSync.js";
 const htmlViewBubbleTimers = new WeakMap();
 const htmlViewFocusTargets = new WeakMap();
 const expandToggleAlignmentDisposers = new WeakMap();
+const deferredHtmlViewBubbles = new WeakMap();
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
 /**
@@ -45,7 +46,11 @@ export function scheduleHtmlViewBubble(card, notesContainer) {
     if (!(notesContainer instanceof HTMLElement)) {
         return;
     }
+    deferredHtmlViewBubbles.delete(card);
     const resolvedCard = resolveCardForBubble(card, notesContainer, null);
+    if (resolvedCard && resolvedCard !== card) {
+        deferredHtmlViewBubbles.delete(resolvedCard);
+    }
     if (!resolvedCard) {
         if (card instanceof HTMLElement) {
             const staleTimer = htmlViewBubbleTimers.get(card);
@@ -92,7 +97,11 @@ export function bubbleCardToTop(card, notesContainer, markdownOverride, override
     if (!(notesContainer instanceof HTMLElement)) {
         return;
     }
+    deferredHtmlViewBubbles.delete(card);
     const resolvedCard = resolveCardForBubble(card, notesContainer, overrideRecord ?? null);
+    if (resolvedCard && resolvedCard !== card) {
+        deferredHtmlViewBubbles.delete(resolvedCard);
+    }
     if (!resolvedCard) {
         if (card instanceof HTMLElement) {
             const pending = htmlViewBubbleTimers.get(card);
@@ -184,6 +193,7 @@ export function deleteHtmlView(card) {
     if (!(card instanceof HTMLElement)) {
         return;
     }
+    deferredHtmlViewBubbles.delete(card);
     const wrapper = card.querySelector(".note-html-view");
     if (!(wrapper instanceof HTMLElement)) {
         return;
@@ -350,6 +360,38 @@ export function restoreHtmlViewFocus(card) {
 }
 
 /**
+ * Defer bubbling for a card while its htmlView remains expanded.
+ * @param {HTMLElement} card
+ * @param {HTMLElement} notesContainer
+ * @returns {void}
+ */
+export function deferHtmlViewBubble(card, notesContainer) {
+    if (!(card instanceof HTMLElement)) {
+        return;
+    }
+    if (notesContainer instanceof HTMLElement) {
+        const pendingTimer = htmlViewBubbleTimers.get(card);
+        if (pendingTimer) {
+            clearTimeout(pendingTimer);
+            htmlViewBubbleTimers.delete(card);
+        }
+        deferredHtmlViewBubbles.set(card, notesContainer);
+        return;
+    }
+    deferredHtmlViewBubbles.delete(card);
+}
+
+function flushDeferredHtmlViewBubble(card) {
+    const notesContainer = deferredHtmlViewBubbles.get(card);
+    if (!(notesContainer instanceof HTMLElement)) {
+        deferredHtmlViewBubbles.delete(card);
+        return;
+    }
+    deferredHtmlViewBubbles.delete(card);
+    scheduleHtmlViewBubble(card, notesContainer);
+}
+
+/**
  * Expand or collapse the HTML view, ensuring only one card is expanded at a time.
  * @param {HTMLElement} card
  * @param {boolean} shouldExpand
@@ -412,6 +454,9 @@ export function setHtmlViewExpanded(card, shouldExpand) {
     }
     if (card.dataset.suppressHtmlViewScroll === "true") {
         delete card.dataset.suppressHtmlViewScroll;
+    }
+    if (!shouldExpand) {
+        flushDeferredHtmlViewBubble(card);
     }
     queueExpandToggleAlignment(card);
 }

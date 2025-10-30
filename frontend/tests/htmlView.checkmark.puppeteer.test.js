@@ -24,6 +24,34 @@ const SECOND_MARKDOWN = [
     "- [ ] Mirror task"
 ].join("\n");
 const RAPID_TOGGLE_ITERATIONS = 4;
+const ANCHORED_CHECKLIST_NOTE_ID = "htmlView-checklist-anchored";
+const LEADING_NOTE_ID = "htmlView-checklist-leading";
+const TRAILING_NOTE_ID = "htmlView-checklist-trailing";
+const LONG_CHECKLIST_MARKDOWN = [
+    "# Anchored checklist stability",
+    "",
+    "- [ ] Confirm first task toggles",
+    "- [ ] Confirm second task toggles",
+    "- [ ] Confirm third task toggles",
+    "- [ ] Confirm fourth task toggles",
+    "- [ ] Confirm fifth task toggles",
+    "",
+    "Paragraph one ensures the rendered htmlView overflows the bounded height and exposes the expand toggle control.",
+    "Paragraph two continues describing the checklist anchoring expectations for Gravity Notes when checkboxes change.",
+    "Paragraph three provides additional content so the htmlView requires expansion to show all lines without scrolling.",
+    "",
+    "Further narrative keeps the htmlView tall enough to exercise the expand affordance and anchoring logic."
+].join("\n");
+const LEADING_NOTE_MARKDOWN = [
+    "# Leading note in feed",
+    "",
+    "This record keeps the seeded order predictable so the checklist card starts in the second position."
+].join("\n");
+const TRAILING_NOTE_MARKDOWN = [
+    "# Trailing note in feed",
+    "",
+    "This record remains after the checklist so the test can detect unintended bubbling to the top."
+].join("\n");
 
 test.describe("Checklist htmlView interactions", () => {
     test("htmlView checkbox toggle keeps a single persisted note", async () => {
@@ -203,6 +231,115 @@ test.describe("Checklist htmlView interactions", () => {
             await teardown();
         }
     });
+
+    test("expanded htmlView checkbox toggle keeps the card anchored in place", async () => {
+        const now = Date.now();
+        const withOffset = (offsetMs) => new Date(now + offsetMs).toISOString();
+        const seededRecords = [
+            buildNoteRecord({
+                noteId: LEADING_NOTE_ID,
+                markdownText: LEADING_NOTE_MARKDOWN,
+                attachments: {},
+                createdAtIso: withOffset(2000),
+                updatedAtIso: withOffset(2000),
+                lastActivityIso: withOffset(2000)
+            }),
+            buildNoteRecord({
+                noteId: ANCHORED_CHECKLIST_NOTE_ID,
+                markdownText: LONG_CHECKLIST_MARKDOWN,
+                attachments: {},
+                createdAtIso: withOffset(1000),
+                updatedAtIso: withOffset(1000),
+                lastActivityIso: withOffset(1000)
+            }),
+            buildNoteRecord({
+                noteId: TRAILING_NOTE_ID,
+                markdownText: TRAILING_NOTE_MARKDOWN,
+                attachments: {},
+                createdAtIso: withOffset(0),
+                updatedAtIso: withOffset(0),
+                lastActivityIso: withOffset(0)
+            })
+        ];
+
+        const { page, teardown } = await openChecklistPage(seededRecords);
+        const anchoredCardSelector = `.markdown-block[data-note-id="${ANCHORED_CHECKLIST_NOTE_ID}"]`;
+        const htmlViewSelector = `${anchoredCardSelector} .note-html-view`;
+        const checkboxSelector = `${htmlViewSelector} input[data-task-index="0"]`;
+        const expandToggleSelector = `${anchoredCardSelector} .note-expand-toggle`;
+
+        try {
+            await page.waitForSelector(anchoredCardSelector);
+            await page.waitForSelector(checkboxSelector);
+            await page.waitForFunction((selector) => {
+                const button = document.querySelector(selector);
+                if (!(button instanceof HTMLElement)) {
+                    return false;
+                }
+                const computed = window.getComputedStyle(button);
+                const visible = computed.display !== "none" && computed.visibility !== "hidden";
+                return !button.hidden && visible;
+            }, {}, expandToggleSelector);
+
+            await page.click(expandToggleSelector);
+            await page.waitForSelector(`${htmlViewSelector}.note-html-view--expanded`);
+
+            const initialOrder = await page.evaluate(() => {
+                return Array.from(document.querySelectorAll(".markdown-block[data-note-id]"))
+                    .map((node) => node.getAttribute("data-note-id"))
+                    .filter((value) => typeof value === "string");
+            });
+            assert.deepEqual(
+                initialOrder,
+                [LEADING_NOTE_ID, ANCHORED_CHECKLIST_NOTE_ID, TRAILING_NOTE_ID],
+                "seeded records should render in the expected initial order"
+            );
+
+            const expandedBeforeToggle = await page.$eval(htmlViewSelector, (element) => {
+                if (!(element instanceof HTMLElement)) {
+                    return false;
+                }
+                return element.classList.contains("note-html-view--expanded");
+            });
+            assert.equal(expandedBeforeToggle, true, "htmlView must be expanded before toggling the checkbox");
+
+            await page.click(checkboxSelector);
+
+            await page.evaluate((delayMs) => new Promise((resolve) => {
+                const duration = typeof delayMs === "number" ? delayMs : 0;
+                setTimeout(resolve, duration);
+            }), 1200);
+
+            const postToggleOrder = await page.evaluate(() => {
+                return Array.from(document.querySelectorAll(".markdown-block[data-note-id]"))
+                    .map((node) => node.getAttribute("data-note-id"))
+                    .filter((value) => typeof value === "string");
+            });
+            assert.deepEqual(
+                postToggleOrder,
+                initialOrder,
+                "anchored checklist card should retain its relative order after toggling a checkbox"
+            );
+
+            const expandedAfterToggle = await page.$eval(htmlViewSelector, (element) => {
+                if (!(element instanceof HTMLElement)) {
+                    return false;
+                }
+                return element.classList.contains("note-html-view--expanded");
+            });
+            assert.equal(expandedAfterToggle, true, "expanded htmlView should remain expanded after the checkbox toggle");
+
+            const datasetExpandedState = await page.$eval(anchoredCardSelector, (card) => {
+                if (!(card instanceof HTMLElement)) {
+                    return "";
+                }
+                return card.dataset.htmlViewExpanded ?? "";
+            });
+            assert.equal(datasetExpandedState, "true", "card dataset should continue marking the htmlView as expanded");
+        } finally {
+            await teardown();
+        }
+    });
 });
 
 async function openChecklistPage(records) {
@@ -228,16 +365,27 @@ async function openChecklistPage(records) {
     return { page, teardown };
 }
 
-function buildNoteRecord({ noteId, markdownText, attachments }) {
+function buildNoteRecord({
+    noteId,
+    markdownText,
+    attachments = {},
+    createdAtIso,
+    updatedAtIso,
+    lastActivityIso,
+    pinned = false
+}) {
     const timestamp = new Date().toISOString();
+    const createdIso = typeof createdAtIso === "string" ? createdAtIso : timestamp;
+    const updatedIso = typeof updatedAtIso === "string" ? updatedAtIso : createdIso;
+    const activityIso = typeof lastActivityIso === "string" ? lastActivityIso : updatedIso;
     return {
         noteId,
         markdownText,
         attachments,
-        createdAtIso: timestamp,
-        updatedAtIso: timestamp,
-        lastActivityIso: timestamp,
-        pinned: false
+        createdAtIso: createdIso,
+        updatedAtIso: updatedIso,
+        lastActivityIso: activityIso,
+        pinned
     };
 }
 

@@ -47,7 +47,8 @@ import {
     queueHtmlViewFocus,
     restoreHtmlViewFocus,
     setHtmlViewExpanded,
-    collapseExpandedHtmlView
+    collapseExpandedHtmlView,
+    deferHtmlViewBubble
 } from "./card/htmlView.js";
 export { updateActionButtons, insertCardRespectingPinned } from "./card/listControls.js";
 import {
@@ -1314,10 +1315,16 @@ export function renderCard(record, options = {}) {
             markdownSource: toggledHtmlViewSource,
             badgesTarget: badges
         });
+        const wasExpanded = card.dataset.htmlViewExpanded === "true";
         const persisted = persistCardState(card, notesContainer, nextMarkdown, { bubbleToTop: false });
-        if (persisted) {
-            scheduleHtmlViewBubble(card, notesContainer);
+        if (!persisted) {
+            return;
         }
+        if (wasExpanded) {
+            deferHtmlViewBubble(card, notesContainer);
+            return;
+        }
+        scheduleHtmlViewBubble(card, notesContainer);
     }
 }
 
