@@ -40,6 +40,8 @@ export function initializeFullScreenToggle(options) {
     }
 
     let disposed = false;
+    const labelElement = button.querySelector("[data-role=\"fullscreen-label\"]");
+
     button.hidden = false;
     button.removeAttribute("aria-hidden");
     button.type = "button";
@@ -55,6 +57,9 @@ export function initializeFullScreenToggle(options) {
         button.setAttribute("aria-label", nextLabel);
         button.setAttribute("title", nextLabel);
         button.setAttribute("aria-pressed", isFullScreen ? "true" : "false");
+        if (labelElement instanceof HTMLElement) {
+            labelElement.textContent = nextLabel;
+        }
     };
 
     const handleFullScreenChange = () => {

@@ -12,6 +12,9 @@ and are grouped by the date the work landed on `master`.
 - Header includes a diagonal full-screen toggle with stateful icons and dedicated regression coverage (GN-204).
 - Background version watcher polls a manifest and reloads the app when a new deploy ships so browsers never run stale code (GN-206).
 
+### Changed
+- Full-screen toggle now lives inside the avatar menu with updated exit icon strokes and a text label (GN-207).
+
 ### Fixed
 - Html view interactions now reserve the chevron toggle for expansion while single clicks anywhere else enter inline edit mode (GN-109).
 - Inline editor now wraps selected text with matching backtick fences and escalates when the selection already contains backticks, covering GN-106 with new regression tests.

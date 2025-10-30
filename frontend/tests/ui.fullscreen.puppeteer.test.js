@@ -64,6 +64,24 @@ test.describe("GN-204 header full-screen toggle", () => {
 
             await page.goto(PAGE_URL);
             await page.waitForSelector(FULLSCREEN_TOGGLE_SELECTOR, { timeout: 3000 });
+            await page.evaluate((selector) => {
+                const button = document.querySelector(selector);
+                if (!(button instanceof HTMLElement)) {
+                    return;
+                }
+                button.hidden = false;
+                button.removeAttribute("hidden");
+                let ancestor = button.parentElement;
+                while (ancestor instanceof HTMLElement) {
+                    if (ancestor.hasAttribute("hidden")) {
+                        ancestor.removeAttribute("hidden");
+                    }
+                    if ("dataset" in ancestor && ancestor.dataset) {
+                        ancestor.dataset.open = "true";
+                    }
+                    ancestor = ancestor.parentElement;
+                }
+            }, FULLSCREEN_TOGGLE_SELECTOR);
 
             const initialState = await page.$eval(FULLSCREEN_TOGGLE_SELECTOR, (button) => ({
                 label: button.getAttribute("aria-label"),
