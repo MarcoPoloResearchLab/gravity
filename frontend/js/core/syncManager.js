@@ -1,12 +1,12 @@
 // @ts-check
 
-import { GravityStore } from "./store.js";
-import { createBackendClient } from "./backendClient.js";
-import { createSyncMetadataStore } from "./syncMetadataStore.js";
-import { createSyncQueue } from "./syncQueue.js";
-import { appConfig } from "./config.js";
-import { logging } from "../utils/logging.js";
-import { EVENT_SYNC_SNAPSHOT_APPLIED } from "../constants.js";
+import { GravityStore } from "./store.js?build=2024-10-05T12:00:00Z";
+import { createBackendClient } from "./backendClient.js?build=2024-10-05T12:00:00Z";
+import { createSyncMetadataStore } from "./syncMetadataStore.js?build=2024-10-05T12:00:00Z";
+import { createSyncQueue } from "./syncQueue.js?build=2024-10-05T12:00:00Z";
+import { appConfig } from "./config.js?build=2024-10-05T12:00:00Z";
+import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
+import { EVENT_SYNC_SNAPSHOT_APPLIED } from "../constants.js?build=2024-10-05T12:00:00Z";
 
 /**
  * @typedef {import("./syncMetadataStore.js").NoteMetadata} NoteMetadata

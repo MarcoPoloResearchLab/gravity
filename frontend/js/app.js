@@ -3,23 +3,23 @@
 
 import Alpine from "https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/module.esm.js";
 
-import { renderCard, updateActionButtons, insertCardRespectingPinned } from "./ui/card.js";
-import { initializeImportExport } from "./ui/importExport.js";
-import { GravityStore } from "./core/store.js";
-import { appConfig } from "./core/config.js";
-import { initializeRuntimeConfig } from "./core/runtimeConfig.js";
-import { createGoogleIdentityController, isGoogleIdentitySupportedOrigin } from "./core/auth.js";
-import { initializeAnalytics } from "./core/analytics.js";
-import { createSyncManager } from "./core/syncManager.js";
-import { createRealtimeSyncController } from "./core/realtimeSyncController.js";
+import { renderCard, updateActionButtons, insertCardRespectingPinned } from "./ui/card.js?build=2024-10-05T12:00:00Z";
+import { initializeImportExport } from "./ui/importExport.js?build=2024-10-05T12:00:00Z";
+import { GravityStore } from "./core/store.js?build=2024-10-05T12:00:00Z";
+import { appConfig } from "./core/config.js?build=2024-10-05T12:00:00Z";
+import { initializeRuntimeConfig } from "./core/runtimeConfig.js?build=2024-10-05T12:00:00Z";
+import { createGoogleIdentityController, isGoogleIdentitySupportedOrigin } from "./core/auth.js?build=2024-10-05T12:00:00Z";
+import { initializeAnalytics } from "./core/analytics.js?build=2024-10-05T12:00:00Z";
+import { createSyncManager } from "./core/syncManager.js?build=2024-10-05T12:00:00Z";
+import { createRealtimeSyncController } from "./core/realtimeSyncController.js?build=2024-10-05T12:00:00Z";
 import {
     loadAuthState,
     saveAuthState,
     clearAuthState,
     isAuthStateFresh,
     hasActiveAuthenticationSession
-} from "./core/authState.js";
-import { mountTopEditor } from "./ui/topEditor.js";
+} from "./core/authState.js?build=2024-10-05T12:00:00Z";
+import { mountTopEditor } from "./ui/topEditor.js?build=2024-10-05T12:00:00Z";
 import {
     LABEL_APP_SUBTITLE,
     LABEL_APP_TITLE,
@@ -41,15 +41,15 @@ import {
     MESSAGE_NOTES_SKIPPED,
     MESSAGE_NOTES_IMPORT_FAILED,
     APP_BUILD_ID
-} from "./constants.js";
-import { initializeKeyboardShortcutsModal } from "./ui/keyboardShortcutsModal.js";
-import { initializeNotesState } from "./ui/notesState.js";
-import { showSaveFeedback } from "./ui/saveFeedback.js";
-import { initializeAuthControls } from "./ui/authControls.js";
-import { createAvatarMenu } from "./ui/menu/avatarMenu.js";
-import { initializeFullScreenToggle } from "./ui/fullScreenToggle.js";
-import { initializeVersionRefresh } from "./utils/versionRefresh.js";
-import { logging } from "./utils/logging.js";
+} from "./constants.js?build=2024-10-05T12:00:00Z";
+import { initializeKeyboardShortcutsModal } from "./ui/keyboardShortcutsModal.js?build=2024-10-05T12:00:00Z";
+import { initializeNotesState } from "./ui/notesState.js?build=2024-10-05T12:00:00Z";
+import { showSaveFeedback } from "./ui/saveFeedback.js?build=2024-10-05T12:00:00Z";
+import { initializeAuthControls } from "./ui/authControls.js?build=2024-10-05T12:00:00Z";
+import { createAvatarMenu } from "./ui/menu/avatarMenu.js?build=2024-10-05T12:00:00Z";
+import { initializeFullScreenToggle } from "./ui/fullScreenToggle.js?build=2024-10-05T12:00:00Z";
+import { initializeVersionRefresh } from "./utils/versionRefresh.js?build=2024-10-05T12:00:00Z";
+import { logging } from "./utils/logging.js?build=2024-10-05T12:00:00Z";
 
 const CONSTANTS_VIEW_MODEL = Object.freeze({
     LABEL_APP_SUBTITLE,

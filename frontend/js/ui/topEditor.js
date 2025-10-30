@@ -1,16 +1,16 @@
 // @ts-check
 
-import { nowIso } from "../utils/datetime.js";
-import { generateNoteId } from "../utils/id.js";
-import { createElement } from "../utils/dom.js";
+import { nowIso } from "../utils/datetime.js?build=2024-10-05T12:00:00Z";
+import { generateNoteId } from "../utils/id.js?build=2024-10-05T12:00:00Z";
+import { createElement } from "../utils/dom.js?build=2024-10-05T12:00:00Z";
 import {
     ARIA_LABEL_NEW_NOTE,
     ERROR_NOTES_CONTAINER_NOT_FOUND,
     ERROR_TOP_EDITOR_NOT_FOUND,
     EVENT_NOTE_CREATE
-} from "../constants.js";
-import { triggerClassificationForCard, focusCardEditor } from "./card.js";
-import { renderHtmlView } from "./htmlView.js";
+} from "../constants.js?build=2024-10-05T12:00:00Z";
+import { triggerClassificationForCard, focusCardEditor } from "./card.js?build=2024-10-05T12:00:00Z";
+import { renderHtmlView } from "./htmlView.js?build=2024-10-05T12:00:00Z";
 import {
     enableClipboardImagePaste,
     registerInitialAttachments,
@@ -18,13 +18,13 @@ import {
     collectReferencedAttachments,
     resetAttachments,
     transformMarkdownWithAttachments
-} from "./imagePaste.js";
-import { createMarkdownEditorHost, MARKDOWN_MODE_EDIT } from "./markdownEditorHost.js";
+} from "./imagePaste.js?build=2024-10-05T12:00:00Z";
+import { createMarkdownEditorHost, MARKDOWN_MODE_EDIT } from "./markdownEditorHost.js?build=2024-10-05T12:00:00Z";
 import {
     isTopEditorAutofocusSuppressed,
     clearTopEditorAutofocusSuppression,
     suppressTopEditorAutofocus
-} from "./focusManager.js";
+} from "./focusManager.js?build=2024-10-05T12:00:00Z";
 
 /**
  * Mount the always-empty top editor. It never persists empties; on finalize

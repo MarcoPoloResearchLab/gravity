@@ -1,9 +1,9 @@
 /* global fetch */
 // @ts-check
 
-import { appConfig } from "./config.js";
-import { clampEnum } from "../utils/enum.js";
-import { titleCase, toTagToken } from "../utils/string.js";
+import { appConfig } from "./config.js?build=2024-10-05T12:00:00Z";
+import { clampEnum } from "../utils/enum.js?build=2024-10-05T12:00:00Z";
+import { titleCase, toTagToken } from "../utils/string.js?build=2024-10-05T12:00:00Z";
 import {
     CLASSIFIER_ALLOWED_HANDLES,
     CLASSIFIER_CATEGORIES,
@@ -11,7 +11,7 @@ import {
     CLASSIFIER_KNOWN_PROJECTS,
     CLASSIFIER_PRIVACY,
     CLASSIFIER_STATUSES
-} from "../constants.js";
+} from "../constants.js?build=2024-10-05T12:00:00Z";
 
 /**
  * Create a classifier client with an injectable fetch implementation for testing.

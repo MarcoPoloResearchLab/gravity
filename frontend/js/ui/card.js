@@ -1,10 +1,10 @@
 // @ts-check
 
-import { nowIso } from "../utils/datetime.js";
-import { createElement } from "../utils/dom.js";
-import { copyToClipboard } from "../utils/clipboard.js";
-import { isNonBlankString } from "../utils/string.js";
-import { updateActionButtons, insertCardRespectingPinned } from "./card/listControls.js";
+import { nowIso } from "../utils/datetime.js?build=2024-10-05T12:00:00Z";
+import { createElement } from "../utils/dom.js?build=2024-10-05T12:00:00Z";
+import { copyToClipboard } from "../utils/clipboard.js?build=2024-10-05T12:00:00Z";
+import { isNonBlankString } from "../utils/string.js?build=2024-10-05T12:00:00Z";
+import { updateActionButtons, insertCardRespectingPinned } from "./card/listControls.js?build=2024-10-05T12:00:00Z";
 import {
     ARIA_LABEL_COPY_MARKDOWN,
     ARIA_LABEL_COPY_RENDERED,
@@ -27,10 +27,10 @@ import {
     EVENT_NOTE_UPDATE,
     EVENT_NOTE_DELETE,
     EVENT_NOTE_PIN_TOGGLE
-} from "../constants.js";
-import { GravityStore } from "../core/store.js";
-import { ClassifierClient } from "../core/classifier.js";
-import { logging } from "../utils/logging.js";
+} from "../constants.js?build=2024-10-05T12:00:00Z";
+import { GravityStore } from "../core/store.js?build=2024-10-05T12:00:00Z";
+import { ClassifierClient } from "../core/classifier.js?build=2024-10-05T12:00:00Z";
+import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
 import {
     applyPinnedState,
     applyPinnedStateForToggle,
@@ -38,7 +38,7 @@ import {
     enforcePinnedAnchor,
     handlePinnedLayoutRefresh,
     placeCardRespectingPinned
-} from "./card/layout.js";
+} from "./card/layout.js?build=2024-10-05T12:00:00Z";
 import {
     scheduleHtmlViewBubble,
     bubbleCardToTop,
@@ -48,12 +48,12 @@ import {
     restoreHtmlViewFocus,
     setHtmlViewExpanded,
     collapseExpandedHtmlView
-} from "./card/htmlView.js";
-export { updateActionButtons, insertCardRespectingPinned } from "./card/listControls.js";
+} from "./card/htmlView.js?build=2024-10-05T12:00:00Z";
+export { updateActionButtons, insertCardRespectingPinned } from "./card/listControls.js?build=2024-10-05T12:00:00Z";
 import {
     renderHtmlViewToString,
     getHtmlViewPlainText
-} from "./htmlView.js";
+} from "./htmlView.js?build=2024-10-05T12:00:00Z";
 import {
     enableClipboardImagePaste,
     waitForPendingImagePastes,
@@ -61,19 +61,19 @@ import {
     getAllAttachments,
     collectReferencedAttachments,
     transformMarkdownWithAttachments
-} from "./imagePaste.js";
-import { createMarkdownEditorHost, MARKDOWN_MODE_EDIT, MARKDOWN_MODE_VIEW } from "./markdownEditorHost.js";
-import { syncStoreFromDom } from "./storeSync.js";
-import { showSaveFeedback } from "./saveFeedback.js";
-import { togglePinnedNote, clearPinnedNoteIfMatches } from "./notesState.js";
-import { suppressTopEditorAutofocus } from "./focusManager.js";
+} from "./imagePaste.js?build=2024-10-05T12:00:00Z";
+import { createMarkdownEditorHost, MARKDOWN_MODE_EDIT, MARKDOWN_MODE_VIEW } from "./markdownEditorHost.js?build=2024-10-05T12:00:00Z";
+import { syncStoreFromDom } from "./storeSync.js?build=2024-10-05T12:00:00Z";
+import { showSaveFeedback } from "./saveFeedback.js?build=2024-10-05T12:00:00Z";
+import { togglePinnedNote, clearPinnedNoteIfMatches } from "./notesState.js?build=2024-10-05T12:00:00Z";
+import { suppressTopEditorAutofocus } from "./focusManager.js?build=2024-10-05T12:00:00Z";
 import {
     initializePointerTracking,
     shouldKeepEditingAfterBlur,
     shouldIgnoreCardPointerTarget,
     isPointerWithinInlineEditorSurface,
     clearLastPointerDownTarget
-} from "./card/pointerTracking.js";
+} from "./card/pointerTracking.js?build=2024-10-05T12:00:00Z";
 import {
     setEditorHost,
     getEditorHost,
@@ -86,12 +86,12 @@ import {
     getOrCreatePendingHeightFrames,
     clearPendingHeightFrames,
     disposeCardState
-} from "./card/cardState.js";
+} from "./card/cardState.js?build=2024-10-05T12:00:00Z";
 import {
     clearCopyFeedbackTimer,
     storeCopyFeedbackTimer,
     hasCopyFeedbackTimer
-} from "./card/copyFeedback.js";
+} from "./card/copyFeedback.js?build=2024-10-05T12:00:00Z";
 
 const DIRECTION_PREVIOUS = -1;
 const DIRECTION_NEXT = 1;

@@ -1,6 +1,6 @@
 // @ts-check
 
-import { logging } from "../utils/logging.js";
+import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
 
 /**
  * @typedef {{ accessToken: string, expiresIn: number }} BackendToken

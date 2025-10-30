@@ -7,8 +7,8 @@ import {
     EVENT_NOTES_IMPORTED,
     EVENT_NOTIFICATION_REQUEST,
     MESSAGE_NOTES_IMPORT_FAILED
-} from "../constants.js";
-import { GravityStore } from "../core/store.js";
+} from "../constants.js?build=2024-10-05T12:00:00Z";
+import { GravityStore } from "../core/store.js?build=2024-10-05T12:00:00Z";
 
 const JSON_MIME_TYPE = ACCEPT_IMPORT_NOTES_JSON;
 

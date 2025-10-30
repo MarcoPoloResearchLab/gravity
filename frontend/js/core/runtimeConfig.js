@@ -1,6 +1,6 @@
 // @ts-check
 
-import { setRuntimeConfig } from "./config.js";
+import { setRuntimeConfig } from "./config.js?build=2024-10-05T12:00:00Z";
 
 const ENVIRONMENT_LABELS = Object.freeze({
     PRODUCTION: "production",

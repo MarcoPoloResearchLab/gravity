@@ -1,6 +1,6 @@
 // @ts-check
 
-import { DATA_URL_PREFIX, PASTED_IMAGE_ALT_TEXT_PREFIX } from "../constants.js";
+import { DATA_URL_PREFIX, PASTED_IMAGE_ALT_TEXT_PREFIX } from "../constants.js?build=2024-10-05T12:00:00Z";
 
 /**
  * @param {unknown} candidate

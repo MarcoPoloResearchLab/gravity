@@ -1,6 +1,6 @@
 // @ts-check
 
-import { GravityStore } from "../core/store.js";
+import { GravityStore } from "../core/store.js?build=2024-10-05T12:00:00Z";
 
 /** @typedef {import("../types.d.js").NoteRecord} NoteRecord */
 

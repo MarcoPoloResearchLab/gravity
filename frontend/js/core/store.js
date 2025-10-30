@@ -1,8 +1,8 @@
 // @ts-check
 
-import { appConfig } from "./config.js";
-import { ERROR_IMPORT_INVALID_PAYLOAD } from "../constants.js";
-import { sanitizeAttachmentDictionary } from "./attachments.js";
+import { appConfig } from "./config.js?build=2024-10-05T12:00:00Z";
+import { ERROR_IMPORT_INVALID_PAYLOAD } from "../constants.js?build=2024-10-05T12:00:00Z";
+import { sanitizeAttachmentDictionary } from "./attachments.js?build=2024-10-05T12:00:00Z";
 
 const EMPTY_STRING = "";
 const STORAGE_KEY_BASE = appConfig.storageKey;
