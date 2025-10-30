@@ -349,16 +349,15 @@ test.describe("Bounded htmlViews", () => {
             }, {}, htmlViewSelector);
 
             await page.click(toggleSelector);
-            await page.waitForFunction((selector) => {
-                const node = document.querySelector(selector);
-                return node instanceof HTMLElement && node.classList.contains("note-html-view--expanded");
-            }, {}, htmlViewSelector);
+            await flushAlpineQueues(page);
+            await page.waitForSelector(`${htmlViewSelector}.note-html-view--expanded`, { timeout: 5000 });
 
             await page.click(toggleSelector);
-            await page.waitForFunction((selector) => {
-                const node = document.querySelector(selector);
-                return node instanceof HTMLElement && !node.classList.contains("note-html-view--expanded");
-            }, {}, htmlViewSelector);
+            await flushAlpineQueues(page);
+            await page.waitForSelector(`${htmlViewSelector}.note-html-view--expanded`, {
+                timeout: 5000,
+                hidden: true
+            });
 
             await page.$eval(`${cardSelector} .markdown-content`, (element) => {
                 element.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));

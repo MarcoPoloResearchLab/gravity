@@ -55,6 +55,7 @@ and are grouped by the date the work landed on `master`.
 - Expanded the htmlView expand toggle hit area so the entire bottom strip responds to clicks (GN-201).
 - Unified double-click and tap gestures with single clicks when entering or leaving inline edit mode (GN-202).
 - Reflowed card controls above note content on narrow viewports to improve mobile ergonomics (GN-203).
+- Cache-busting reloads append the manifest build to asset URLs and clear Cache Storage before navigating so stale bundles do not linger after deploys (GN-206).
 
 ### Documentation
 - Folded `MIGRATION.md` into `ARCHITECTURE.md`, clarifying event contracts, module guidance, and third-party reading expectations (GN-54).
@@ -111,6 +112,7 @@ and are grouped by the date the work landed on `master`.
 - Centered inline edits and preserved viewport position when bubbling notes so clicking a card no longer snaps it to the top (GN-304).
 - Refreshed backend access tokens automatically when synchronization detects expiration, persisted the renewed credentials, and reconnected the realtime stream to keep cross-device notes up to date (GN-303).
 - Concealed browser-native scrollbars by hiding the root scrollbar pseudo element while keeping the feed scrollable, enforced with a regression test (GN-305).
+- Hardened the inline editor anchoring and htmlView expansion Puppeteer tests to eliminate intermittent flakiness under randomized multi-iteration runs (GN-209).
 
 ## 2025-09-25
 

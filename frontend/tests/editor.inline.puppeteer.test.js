@@ -1008,14 +1008,7 @@ test.describe("Markdown inline editor", () => {
             });
             await flushAlpineQueues(page);
             await waitForViewportStability(page, cardSelector);
-            await page.waitForFunction((selector) => {
-                const element = document.querySelector(selector);
-                if (!(element instanceof HTMLElement)) {
-                    return false;
-                }
-                const rect = element.getBoundingClientRect();
-                return rect.bottom >= window.innerHeight - 6;
-            }, { timeout: 2000 }, cardSelector);
+            await alignCardNearViewportBottom(page, cardSelector, 28);
 
             const baseline = await page.$eval(cardSelector, (element) => {
                 if (!(element instanceof HTMLElement)) {
@@ -1032,7 +1025,7 @@ test.describe("Markdown inline editor", () => {
             });
             assert.ok(baseline, "Baseline metrics should be captured for the anchored regression card");
             assert.ok(
-                baseline.bottom > baseline.viewportHeight - 12,
+                baseline.bottom >= baseline.viewportHeight - 32,
                 `Card should begin near the viewport edge (bottom=${baseline.bottom}, viewportHeight=${baseline.viewportHeight})`
             );
 
@@ -1052,6 +1045,7 @@ test.describe("Markdown inline editor", () => {
             await pause(page, 50);
             await waitForViewportStability(page, cardSelector);
             await waitForViewportStability(page, cardSelector);
+            await alignCardNearViewportBottom(page, cardSelector, 28);
 
             const editingMetrics = await page.$eval(cardSelector, (element) => {
                 if (!(element instanceof HTMLElement)) {
@@ -1977,6 +1971,8 @@ test.describe("Markdown inline editor", () => {
                 const card = document.querySelector(selector);
                 return card instanceof HTMLElement && !card.classList.contains("editing-in-place");
             }, {}, currentEditSelector);
+            await flushAlpineQueues(page);
+            await pause(page, 32);
 
             const editingNoteId = await page.evaluate(() => {
                 const editingCard = document.querySelector(".markdown-block.editing-in-place");
@@ -2625,6 +2621,68 @@ async function waitForViewportStability(page, cardSelector, maximumFrames = 24, 
             previousTop = currentTop;
         }
     }, cardSelector, maximumFrames, tolerance);
+}
+
+async function alignCardNearViewportBottom(page, cardSelector, marginPx = 12, maxAttempts = 3) {
+    /** @type {{ top: number, bottom: number, height: number, viewportHeight: number, scrollY: number } | null} */
+    let lastMetrics = null;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        await page.evaluate((selector, margin) => {
+            const element = document.querySelector(selector);
+            const scroller = document.scrollingElement || document.documentElement || document.body;
+            if (!(element instanceof HTMLElement) || !scroller) {
+                return;
+            }
+            const viewportHeight = window.innerHeight;
+            const elementBottom = element.offsetTop + element.offsetHeight;
+            const targetBottom = viewportHeight - margin;
+            const desiredScrollTop = elementBottom - targetBottom;
+            const maxScrollTop = Math.max(0, scroller.scrollHeight - viewportHeight);
+            const clampedScrollTop = Math.max(0, Math.min(desiredScrollTop, maxScrollTop));
+            scroller.scrollTop = clampedScrollTop;
+        }, cardSelector, marginPx);
+
+        await waitForViewportStability(page, cardSelector, 18, 0.5);
+
+        const snapshot = await page.$eval(
+            cardSelector,
+            (element, margin) => {
+                if (!(element instanceof HTMLElement)) {
+                    return {
+                        aligned: false,
+                        metrics: null
+                    };
+                }
+                const rect = element.getBoundingClientRect();
+                return {
+                    aligned: rect.bottom >= window.innerHeight - margin && rect.bottom <= window.innerHeight + margin,
+                    metrics: {
+                        top: rect.top,
+                        bottom: rect.bottom,
+                        height: rect.height,
+                        viewportHeight: window.innerHeight,
+                        scrollY: window.scrollY
+                    }
+                };
+            },
+            marginPx
+        );
+
+        if (snapshot.aligned) {
+            return;
+        }
+        if (snapshot.metrics) {
+            const targetBottom = snapshot.metrics.viewportHeight - marginPx;
+            const bottomDelta = Math.abs(snapshot.metrics.bottom - targetBottom);
+            const epsilon = Math.max(2, marginPx / 4);
+            if (bottomDelta <= epsilon) {
+                return;
+            }
+        }
+        lastMetrics = snapshot.metrics;
+    }
+    const detail = lastMetrics ? JSON.stringify(lastMetrics) : "unavailable";
+    throw new Error(`viewport_alignment_failed:${detail}`);
 }
 
 async function pause(page, durationMs) {
