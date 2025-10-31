@@ -1314,8 +1314,9 @@ export function renderCard(record, options = {}) {
             markdownSource: toggledHtmlViewSource,
             badgesTarget: badges
         });
+        const shouldAnchorExpandedView = card.dataset.htmlViewExpanded === "true";
         const persisted = persistCardState(card, notesContainer, nextMarkdown, { bubbleToTop: false });
-        if (persisted) {
+        if (persisted && !shouldAnchorExpandedView) {
             scheduleHtmlViewBubble(card, notesContainer);
         }
     }

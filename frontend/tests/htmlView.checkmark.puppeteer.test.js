@@ -234,6 +234,72 @@ test.describe("Checklist htmlView interactions", () => {
             await teardown();
         }
     });
+
+    test("expanded htmlView checkbox toggle keeps the card anchored in place", async () => {
+        const newerTimestamp = new Date().toISOString();
+        const olderTimestamp = new Date(Date.now() - 60000).toISOString();
+        const referenceRecord = buildNoteRecord({
+            noteId: SECOND_NOTE_ID,
+            markdownText: SECOND_MARKDOWN,
+            attachments: {},
+            createdAtIso: newerTimestamp,
+            updatedAtIso: newerTimestamp,
+            lastActivityIso: newerTimestamp
+        });
+        const anchoredRecord = buildNoteRecord({
+            noteId: CHECKLIST_NOTE_ID,
+            markdownText: CHECKLIST_MARKDOWN,
+            attachments: {},
+            createdAtIso: olderTimestamp,
+            updatedAtIso: olderTimestamp,
+            lastActivityIso: olderTimestamp
+        });
+
+        const { page, teardown } = await openChecklistPage([referenceRecord, anchoredRecord]);
+        const anchorCardSelector = `.markdown-block[data-note-id="${CHECKLIST_NOTE_ID}"]`;
+        const referenceCardSelector = `.markdown-block[data-note-id="${SECOND_NOTE_ID}"]`;
+        const anchorCheckboxSelector = `${anchorCardSelector} .note-html-view input[data-task-index="0"]`;
+        const anchorExpandedSelector = `${anchorCardSelector} .note-html-view.note-html-view--expanded`;
+
+        try {
+            await Promise.all([
+                page.waitForSelector(anchorCardSelector),
+                page.waitForSelector(referenceCardSelector)
+            ]);
+
+            const initialOrder = await getRenderedNoteOrder(page);
+            const initialAnchorIndex = initialOrder.indexOf(CHECKLIST_NOTE_ID);
+            assert.ok(initialAnchorIndex > 0, "anchored card should start after the reference card");
+
+            await page.click(`${anchorCardSelector} .note-expand-toggle`);
+            await page.waitForSelector(anchorExpandedSelector);
+            const initialTop = await getElementTop(page, anchorCardSelector);
+
+            await page.evaluate(() => {
+                window.__gravityHtmlViewBubbleDelayMs = 50;
+            });
+
+            await page.click(anchorCheckboxSelector);
+            await page.waitForSelector(`${anchorCardSelector} .note-html-view input[data-task-index="0"]:checked`);
+
+            await waitForDelay(page, 200);
+
+            const postOrder = await getRenderedNoteOrder(page);
+            assert.deepEqual(postOrder, initialOrder, "card order should remain unchanged after the checkbox toggle");
+
+            const postExpanded = await page.$eval(anchorCardSelector, (element) => {
+                const htmlView = element.querySelector(".note-html-view");
+                return htmlView instanceof HTMLElement && htmlView.classList.contains("note-html-view--expanded");
+            });
+            assert.equal(postExpanded, true, "htmlView should remain expanded after toggling the checkbox");
+
+            const postTop = await getElementTop(page, anchorCardSelector);
+            const topDifference = Math.abs(postTop - initialTop);
+            assert.ok(topDifference <= 4, `card should remain visually anchored (difference ${topDifference}px)`);
+        } finally {
+            await teardown();
+        }
+    });
 });
 
 async function openChecklistPage(records) {
@@ -261,16 +327,32 @@ async function openChecklistPage(records) {
     return { page, teardown };
 }
 
-function buildNoteRecord({ noteId, markdownText, attachments }) {
-    const timestamp = new Date().toISOString();
+function buildNoteRecord({
+    noteId,
+    markdownText,
+    attachments = {},
+    createdAtIso,
+    updatedAtIso,
+    lastActivityIso,
+    pinned = false
+}) {
+    const createdTimestamp = typeof createdAtIso === "string" && createdAtIso.length > 0
+        ? createdAtIso
+        : new Date().toISOString();
+    const updatedTimestamp = typeof updatedAtIso === "string" && updatedAtIso.length > 0
+        ? updatedAtIso
+        : createdTimestamp;
+    const activityTimestamp = typeof lastActivityIso === "string" && lastActivityIso.length > 0
+        ? lastActivityIso
+        : updatedTimestamp;
     return {
         noteId,
         markdownText,
         attachments,
-        createdAtIso: timestamp,
-        updatedAtIso: timestamp,
-        lastActivityIso: timestamp,
-        pinned: false
+        createdAtIso: createdTimestamp,
+        updatedAtIso: updatedTimestamp,
+        lastActivityIso: activityTimestamp,
+        pinned
     };
 }
 
@@ -296,4 +378,27 @@ async function snapshotStorage(page, storageKey) {
             return { totalRecords: 0, noteOccurrences: {} };
         }
     }, storageKey);
+}
+
+async function getRenderedNoteOrder(page) {
+    return page.evaluate(() => {
+        return Array.from(document.querySelectorAll(".markdown-block[data-note-id]"))
+            .map((element) => element.getAttribute("data-note-id"))
+            .filter((value) => typeof value === "string");
+    });
+}
+
+async function getElementTop(page, selector) {
+    return page.$eval(selector, (element) => {
+        if (!(element instanceof HTMLElement)) {
+            return Number.NaN;
+        }
+        const rect = element.getBoundingClientRect();
+        return rect.top;
+    });
+}
+
+async function waitForDelay(page, delayMs) {
+    const boundedDelay = Number.isFinite(delayMs) && delayMs > 0 ? delayMs : 0;
+    await page.evaluate((ms) => new Promise((resolve) => setTimeout(resolve, ms)), boundedDelay);
 }
