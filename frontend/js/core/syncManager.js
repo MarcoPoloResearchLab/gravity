@@ -28,7 +28,8 @@ const BACKEND_TOKEN_EXPIRY_SKEW_MS = 1000;
  *   clock?: () => Date,
  *   randomUUID?: () => string,
  *   eventTarget?: EventTarget|null,
- *   onBackendTokenRefreshed?: (token: { accessToken: string, expiresAtMs: number }) => void
+ *   onBackendTokenRefreshed?: (token: { accessToken: string, expiresAtMs: number }) => void,
+ *   requestCredential?: () => Promise<string|null>
  * }} [options]
  */
 export function createSyncManager(options = {}) {
@@ -46,6 +47,9 @@ export function createSyncManager(options = {}) {
     const syncEventTarget = options.eventTarget ?? defaultEventTarget;
     const backendTokenCallback = typeof options.onBackendTokenRefreshed === "function"
         ? options.onBackendTokenRefreshed
+        : null;
+    const requestCredential = typeof options.requestCredential === "function"
+        ? options.requestCredential
         : null;
 
     /** @type {{ userId: string|null, backendToken: { accessToken: string, expiresAtMs: number }|null, metadata: Record<string, NoteMetadata>, queue: PendingOperation[], flushing: boolean, googleCredential: string|null }} */
@@ -536,33 +540,67 @@ export function createSyncManager(options = {}) {
         if (pendingTokenRefresh) {
             return pendingTokenRefresh;
         }
-        const credential = state.googleCredential;
-        if (!credential) {
-            state.backendToken = null;
-            persistState();
-            return null;
-        }
         pendingTokenRefresh = (async () => {
-            try {
-                const exchanged = await backendClient.exchangeGoogleCredential({ credential });
-                const refreshedToken = {
-                    accessToken: exchanged.accessToken,
-                    expiresAtMs: clock().getTime() + exchanged.expiresIn * 1000
-                };
-                state.backendToken = refreshedToken;
-                persistState();
-                notifyBackendTokenRefreshed(refreshedToken);
-                return refreshedToken;
-            } catch (error) {
-                logging.error(error);
+            let credential = state.googleCredential;
+            if (!isNonEmptyString(credential) && requestCredential) {
+                try {
+                    credential = await requestCredential();
+                    if (isNonEmptyString(credential)) {
+                        state.googleCredential = credential;
+                        persistState();
+                    }
+                } catch (error) {
+                    logging.error(error);
+                }
+            }
+            if (!isNonEmptyString(credential)) {
                 state.backendToken = null;
                 persistState();
                 return null;
-            } finally {
-                pendingTokenRefresh = null;
             }
-        })();
+            const refreshedToken = await exchangeCredentialWithRetry(credential, requestCredential ? 1 : 0);
+            if (refreshedToken) {
+                state.backendToken = refreshedToken;
+                persistState();
+                notifyBackendTokenRefreshed(refreshedToken);
+            } else {
+                state.backendToken = null;
+                persistState();
+            }
+            return refreshedToken;
+        })().finally(() => {
+            pendingTokenRefresh = null;
+        });
         return pendingTokenRefresh;
+    }
+
+    async function exchangeCredentialWithRetry(credential, retriesRemaining) {
+        try {
+            const exchanged = await backendClient.exchangeGoogleCredential({ credential });
+            return {
+                accessToken: exchanged.accessToken,
+                expiresAtMs: clock().getTime() + exchanged.expiresIn * 1000
+            };
+        } catch (error) {
+            logging.error(error);
+            if (retriesRemaining > 0 && requestCredential) {
+                try {
+                    const refreshedCredential = await requestCredential();
+                    if (isNonEmptyString(refreshedCredential)) {
+                        if (refreshedCredential !== credential) {
+                            state.googleCredential = refreshedCredential;
+                        }
+                        persistState();
+                        return exchangeCredentialWithRetry(refreshedCredential, retriesRemaining - 1);
+                    }
+                } catch (requestError) {
+                    logging.error(requestError);
+                }
+            }
+            state.googleCredential = null;
+            persistState();
+            return null;
+        }
     }
 
     /**
@@ -613,6 +651,10 @@ function isValidRecord(record) {
  */
 function cloneRecord(record) {
     return JSON.parse(JSON.stringify(record));
+}
+
+function isNonEmptyString(value) {
+    return typeof value === "string" && value.length > 0;
 }
 
 /**

@@ -166,6 +166,9 @@ function gravityApp() {
                 eventTarget: this.$el ?? null,
                 onBackendTokenRefreshed: (token) => {
                     this.handleBackendTokenRefresh(token);
+                },
+                requestCredential: async () => {
+                    return this.requestFreshCredential();
                 }
             });
             this.realtimeSync = createRealtimeSyncController({ syncManager: this.syncManager });
@@ -430,6 +433,25 @@ function gravityApp() {
                 autoPrompt: shouldAutoPrompt
             });
             this.stopGoogleIdentityPolling();
+        },
+
+        async requestFreshCredential() {
+            this.ensureGoogleIdentityController();
+            const controller = this.authController;
+            if (!controller || typeof controller.requestCredential !== "function") {
+                return null;
+            }
+            try {
+                const credential = await controller.requestCredential();
+                if (typeof credential === "string" && credential.length > 0) {
+                    this.latestCredential = credential;
+                    this.persistAuthState();
+                    return credential;
+                }
+            } catch (error) {
+                logging.error(error);
+            }
+            return null;
         },
 
         /**
