@@ -75,7 +75,8 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 			exchangeGoogleCredential https://gravity.mprlab.com/js/core/backendClient.js:45
   We need a stable mechanism of keeping the user logged in. Research the GIS library recommendations and build a plan
   - Sync manager now requests a fresh Google credential when token exchange fails, the auth controller exposes `requestCredential`, and targeted tests confirm refresh logic recovers from expired sessions.
-- [ ] [GN-315] Spell-checker shows the incorect word but seelcting it does not replace the incorrect work -- and the incorrrect word stays
+- [x] [GN-315] Spell-checker shows the incorect word but seelcting it does not replace the incorrect work -- and the incorrrect word stays
+  - Attached listeners to the contenteditable input so spellcheck replacements sync through `scheduleNativeInputSync` and added a Puppeteer regression confirming corrected text persists after exiting inline edit mode.
 
 ## Maintenance (400–499)
 

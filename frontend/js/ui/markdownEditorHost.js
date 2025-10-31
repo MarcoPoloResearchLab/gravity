@@ -91,6 +91,15 @@ export function createMarkdownEditorHost(options) {
     if (!(htmlViewElement instanceof HTMLElement)) throw new Error("Markdown editor host requires an HTML view element.");
 
     const listeners = new Map();
+    /** @type {Array<() => void>} */
+    const cleanupHandlers = [];
+    let nativeInputSyncHandle = null;
+    let cancelNativeInputSync = null;
+    let ensureInputAttributesRef = () => {};
+    /** @type {HTMLElement | null} */
+    let nativeInputField = null;
+    /** @type {(() => void) | null} */
+    let nativeInputFieldCleanup = null;
     /**
      * @param {MarkdownEditorEvent} event
      * @param {any} detail
@@ -300,6 +309,99 @@ export function createMarkdownEditorHost(options) {
         emit("change", { value: getValue() });
     }
 
+    function scheduleNativeInputSync() {
+        if (nativeInputSyncHandle !== null) {
+            return;
+        }
+        const run = () => {
+            nativeInputSyncHandle = null;
+            cancelNativeInputSync = null;
+            ensureInputAttributesRef();
+            syncTextareaValue();
+            emitChange();
+        };
+        if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function" && typeof window.cancelAnimationFrame === "function") {
+            const handle = window.requestAnimationFrame(run);
+            nativeInputSyncHandle = handle;
+            cancelNativeInputSync = () => {
+                window.cancelAnimationFrame(handle);
+                nativeInputSyncHandle = null;
+                cancelNativeInputSync = null;
+            };
+        } else {
+            const handle = setTimeout(run, 0);
+            nativeInputSyncHandle = handle;
+            cancelNativeInputSync = () => {
+                clearTimeout(handle);
+                nativeInputSyncHandle = null;
+                cancelNativeInputSync = null;
+            };
+        }
+    }
+
+    function detachNativeInputListeners() {
+        if (typeof nativeInputFieldCleanup === "function") {
+            try {
+                nativeInputFieldCleanup();
+            } catch (error) {
+                logging.error(error);
+            }
+        }
+        nativeInputFieldCleanup = null;
+        nativeInputField = null;
+    }
+
+    /**
+     * @param {HTMLElement} inputField
+     */
+    function attachNativeInputListeners(inputField) {
+        if (!(inputField instanceof HTMLElement)) {
+            detachNativeInputListeners();
+            return;
+        }
+        if (nativeInputField === inputField) {
+            return;
+        }
+        detachNativeInputListeners();
+        const handleInput = () => {
+            scheduleNativeInputSync();
+        };
+        const handleCompositionEnd = () => {
+            scheduleNativeInputSync();
+        };
+        /**
+         * @param {InputEvent} event
+         */
+        const handleBeforeInput = (event) => {
+            const { inputType } = event;
+            if (inputType === "insertReplacementText" || inputType === "insertFromSpellcheck" || inputType === "deleteByCut" || inputType === "deleteByDrag") {
+                scheduleNativeInputSync();
+            }
+        };
+        const handleDrop = () => {
+            scheduleNativeInputSync();
+        };
+        inputField.addEventListener("input", handleInput);
+        inputField.addEventListener("compositionend", handleCompositionEnd);
+        inputField.addEventListener("beforeinput", handleBeforeInput);
+        inputField.addEventListener("drop", handleDrop);
+        const cleanup = () => {
+            inputField.removeEventListener("input", handleInput);
+            inputField.removeEventListener("compositionend", handleCompositionEnd);
+            inputField.removeEventListener("beforeinput", handleBeforeInput);
+            inputField.removeEventListener("drop", handleDrop);
+        };
+        nativeInputField = inputField;
+        nativeInputFieldCleanup = cleanup;
+        cleanupHandlers.push(() => {
+            cleanup();
+            if (nativeInputField === inputField) {
+                nativeInputField = null;
+                nativeInputFieldCleanup = null;
+            }
+        });
+    }
+
     function refresh() {
         easyMdeInstance.codemirror.refresh();
     }
@@ -314,8 +416,24 @@ export function createMarkdownEditorHost(options) {
     function destroy() {
         if (isDestroyed) return;
         isDestroyed = true;
+        if (typeof cancelNativeInputSync === "function") {
+            cancelNativeInputSync();
+            cancelNativeInputSync = null;
+        }
         listeners.clear();
         renumberEnhancedOrderedLists = null;
+        detachNativeInputListeners();
+        while (cleanupHandlers.length > 0) {
+            const cleanup = cleanupHandlers.pop();
+            if (typeof cleanup === "function") {
+                try {
+                    cleanup();
+                } catch (error) {
+                    logging.error(error);
+                }
+            }
+        }
+        ensureInputAttributesRef = () => {};
         easyMdeInstance.toTextArea();
         if (showToolbar && toolbar) {
             toolbar.remove();
@@ -406,9 +524,13 @@ export function createMarkdownEditorHost(options) {
                 inputField.setAttribute("autocorrect", "on");
                 inputField.setAttribute("autocapitalize", "sentences");
                 inputField.setAttribute("data-gramm", "true");
+                attachNativeInputListeners(inputField);
+            } else {
+                detachNativeInputListeners();
             }
         };
         ensureInputAttributes();
+        ensureInputAttributesRef = ensureInputAttributes;
 
         const htmlViewPane = instance?.gui?.preview;
         if (htmlViewPane instanceof HTMLElement) {
@@ -593,12 +715,13 @@ export function createMarkdownEditorHost(options) {
         codemirror.on("change", (cm, change) => {
             if (!isProgrammaticUpdate && !isApplyingListAutoRenumber) {
                 if (maybeRenumberOrderedLists(cm, change)) {
-                    syncTextareaValue();
+                    ensureInputAttributes();
+                    scheduleNativeInputSync();
+                    return;
                 }
             }
             ensureInputAttributes();
-            syncTextareaValue();
-            emitChange();
+            scheduleNativeInputSync();
         });
 
         codemirror.on("blur", () => {
