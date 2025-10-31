@@ -1029,31 +1029,27 @@ export function renderCard(record, options = {}) {
     btnDelete.dataset.action = "delete";
 
     actions.append(btnPin, btnCopy, btnMergeDown, btnMergeUp, arrowRow, btnDelete);
-    actions.addEventListener("pointerdown", (event) => {
+    const scheduleControlFinalize = () => {
         if (!card.classList.contains("editing-in-place")) {
             return;
         }
-        const target = event.target instanceof Element ? event.target.closest("[data-action]") : null;
-        if (!target) {
-            return;
-        }
-        const actionType = target.getAttribute("data-action");
-        if (actionType === "copy-note" || actionType === "toggle-pin") {
-            return;
-        }
-        const scheduleFinalize = typeof queueMicrotask === "function"
-            ? queueMicrotask
-            : (callback) => {
-                Promise.resolve().then(() => {
-                    callback();
-                });
-            };
-        scheduleFinalize(() => {
+        const finalizeTask = () => {
             void finalizeCard(card, notesContainer, {
                 bubbleToTop: false,
                 suppressTopEditorAutofocus: true
             });
-        });
+        };
+        if (typeof setTimeout === "function") {
+            setTimeout(finalizeTask, 0);
+        } else if (typeof queueMicrotask === "function") {
+            queueMicrotask(finalizeTask);
+        } else {
+            Promise.resolve().then(finalizeTask);
+        }
+    };
+
+    actions.addEventListener("pointerdown", () => {
+        scheduleControlFinalize();
     }, true);
 
     // Chips + content
@@ -1073,6 +1069,9 @@ export function renderCard(record, options = {}) {
 
     const controlsColumn = createElement("div", "card-controls");
     controlsColumn.append(chips, actions);
+    controlsColumn.addEventListener("pointerdown", () => {
+        scheduleControlFinalize();
+    }, true);
 
     registerInitialAttachments(editor, initialAttachments);
     enableClipboardImagePaste(editor);
