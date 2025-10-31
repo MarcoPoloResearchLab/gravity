@@ -21,7 +21,7 @@ import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
 /**
  * Create a controller that wires Google Identity Services to the application.
  * @param {GoogleIdentityOptions} options
- * @returns {{ signOut(reason?: string): void, dispose(): void }}
+ * @returns {{ signOut(reason?: string): void, dispose(): void, requestCredential(): Promise<string|null> }}
  */
 export function createGoogleIdentityController(options) {
     const {
@@ -53,6 +53,23 @@ export function createGoogleIdentityController(options) {
 
     let disposed = false;
     let currentUser = null;
+    /** @type {Set<{ finalize(value: string|null): void }>} */
+    const credentialWaiters = new Set();
+
+    function settleCredentialWaiters(value) {
+        if (credentialWaiters.size === 0) {
+            return;
+        }
+        const entries = Array.from(credentialWaiters);
+        credentialWaiters.clear();
+        for (const entry of entries) {
+            try {
+                entry.finalize(value);
+            } catch (error) {
+                logging.error(error);
+            }
+        }
+    }
 
     const handleCredentialResponse = (response) => {
         if (!response || typeof response.credential !== "string" || response.credential.length === 0) {
@@ -64,12 +81,14 @@ export function createGoogleIdentityController(options) {
             const payload = decodeGoogleCredential(response.credential);
             const user = normalizeUser(payload);
             currentUser = user;
+            settleCredentialWaiters(response.credential);
             dispatch(EVENT_AUTH_SIGN_IN, {
                 user,
                 credential: response.credential
             });
         } catch (error) {
             logging.error(error);
+            settleCredentialWaiters(null);
             dispatch(EVENT_AUTH_ERROR, {
                 reason: "credential-parse",
                 error: error instanceof Error ? error.message : "Unknown error"
@@ -124,12 +143,60 @@ export function createGoogleIdentityController(options) {
                 logging.error(error);
             }
         }
+        settleCredentialWaiters(null);
         dispatch(EVENT_AUTH_SIGN_OUT, { reason });
     }
 
     function disposeController() {
         disposed = true;
         currentUser = null;
+        settleCredentialWaiters(null);
+    }
+
+    function requestCredential() {
+        if (disposed || !identity || typeof identity.prompt !== "function") {
+            return Promise.resolve(null);
+        }
+        return new Promise((resolve) => {
+            const waiter = {
+                settled: false,
+                timeoutId: null,
+                finalize(value) {
+                    if (this.settled) {
+                        return;
+                    }
+                    this.settled = true;
+                    if (typeof clearTimeout === "function" && this.timeoutId !== null) {
+                        clearTimeout(this.timeoutId);
+                    }
+                    resolve(value);
+                }
+            };
+            credentialWaiters.add(waiter);
+            if (typeof setTimeout === "function") {
+                waiter.timeoutId = setTimeout(() => {
+                    if (credentialWaiters.delete(waiter)) {
+                        waiter.finalize(null);
+                    }
+                }, 10000);
+            }
+            try {
+                identity.prompt((notification) => {
+                    if (!notification) {
+                        return;
+                    }
+                    const dismissed = typeof notification.isDismissedMoment === "function" && notification.isDismissedMoment();
+                    const notDisplayed = typeof notification.isNotDisplayed === "function" && notification.isNotDisplayed();
+                    if ((dismissed || notDisplayed) && credentialWaiters.delete(waiter)) {
+                        waiter.finalize(null);
+                    }
+                });
+            } catch (error) {
+                logging.error(error);
+                credentialWaiters.delete(waiter);
+                waiter.finalize(null);
+            }
+        });
     }
 
     function dispatch(eventName, detail) {
@@ -152,7 +219,8 @@ export function createGoogleIdentityController(options) {
 
     return Object.freeze({
         signOut,
-        dispose: disposeController
+        dispose: disposeController,
+        requestCredential
     });
 }
 

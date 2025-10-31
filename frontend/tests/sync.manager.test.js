@@ -26,6 +26,20 @@ class LocalStorageStub {
     }
 }
 
+class ClockStub {
+    constructor(baseIso) {
+        this.currentMs = new Date(baseIso).getTime();
+    }
+
+    now() {
+        return new Date(this.currentMs);
+    }
+
+    advance(ms) {
+        this.currentMs += ms;
+    }
+}
+
 test.describe("SyncManager", () => {
     test.beforeEach(() => {
         global.localStorage = new LocalStorageStub();
@@ -157,6 +171,70 @@ test.describe("SyncManager", () => {
         assert.equal(debugState.activeUserId, null);
         assert.equal(debugState.backendToken, null);
         assert.equal(Array.isArray(debugState.pendingOperations) && debugState.pendingOperations.length, 0);
+    });
+
+    test("ensureBackendToken requests a fresh credential when the stored one stops working", async () => {
+        const clock = new ClockStub("2023-11-14T21:00:00.000Z");
+        const exchangeHistory = [];
+        const snapshotTokens = [];
+        let initialSignIn = true;
+        let firstRefreshShouldFail = true;
+
+        const backendClient = {
+            async exchangeGoogleCredential({ credential }) {
+                exchangeHistory.push(credential);
+                if (initialSignIn) {
+                    initialSignIn = false;
+                    return { accessToken: "token-initial", expiresIn: 60 };
+                }
+                if (credential === "initial-credential" && firstRefreshShouldFail) {
+                    firstRefreshShouldFail = false;
+                    throw new Error("unauthorized");
+                }
+                if (credential === "fresh-credential") {
+                    return { accessToken: "token-refreshed", expiresIn: 60 };
+                }
+                throw new Error(`unexpected credential ${credential}`);
+            },
+            async syncOperations() {
+                return { results: [] };
+            },
+            async fetchSnapshot({ accessToken }) {
+                snapshotTokens.push(accessToken);
+                return { notes: [] };
+            }
+        };
+
+        let credentialRequests = 0;
+        const syncManager = createSyncManager({
+            backendClient,
+            clock: () => clock.now(),
+            randomUUID: () => "operation-1",
+            requestCredential: async () => {
+                credentialRequests += 1;
+                return "fresh-credential";
+            }
+        });
+
+        const signInResult = await syncManager.handleSignIn({
+            userId: "user-refresh",
+            credential: "initial-credential"
+        });
+
+        assert.equal(signInResult.authenticated, true);
+        assert.deepEqual(exchangeHistory, ["initial-credential"]);
+
+        clock.advance(120 * 1000);
+        const synchronizeResult = await syncManager.synchronize({ flushQueue: false });
+
+        assert.equal(synchronizeResult.queueFlushed, true);
+        assert.equal(credentialRequests, 1);
+        assert.deepEqual(exchangeHistory, ["initial-credential", "initial-credential", "fresh-credential"]);
+        assert.equal(snapshotTokens.at(-1), "token-refreshed");
+        assert.equal(snapshotTokens.includes("token-refreshed"), true);
+
+        const debugState = syncManager.getDebugState();
+        assert.equal(debugState.backendToken?.accessToken, "token-refreshed");
     });
 
     test("synchronize refreshes snapshot without flushing queue when requested", async () => {
