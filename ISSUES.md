@@ -306,7 +306,7 @@ ok 2 - Markdown inline editor — actions
   - Added docs for notes domain constructors and card helpers to describe where validation occurs and how tests reuse the fixtures.
 - [x] [GN-418] Have a make file that allows to run tests for both backend and frontend from the root
   - Added a repository-root `Makefile` with `test-backend`, `test-frontend`, and aggregate `test` targets that wrap `go test` and `npm test` in the mandated timeout, plus optional flag overrides for local tuning.
-- [ ] [GN-419] The card.js is a tnagled mess of more than 2000 LOC. We need to simplify and refactor the card and make it a manageable alping component.
+- [ ] [GN-419] The card.js is a tangled mess of more than 2000 LOC. We need to simplify and refactor the card and make it a manageable alping component.
   - Multi-staged plan of refactoring
   - Eliminating duplicates, bugs and dead code
   - Centrally consolidate card's behaviour
