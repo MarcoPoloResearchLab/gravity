@@ -311,6 +311,7 @@ ok 2 - Markdown inline editor — actions
   - Eliminating duplicates, bugs and dead code
   - Centrally consolidate card's behaviour
   - Fully cover with tests
+- [ ] [GN-20] Add a command to Makefile to build and launch locak docker image through docker-compose.yml
 
 ## Planning (do not work on these, not ready)
 
