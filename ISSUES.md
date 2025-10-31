@@ -8,9 +8,32 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 - [ ] [GN-121] Search across notes. Use Cntr + Space to display a search dialog. The search works as a gravity point that pushes the irrelevant notes down and raises the relevant notes up. The search dialog is situated in the footer. The gravity point disappears when the search dialog is closed
 - [ ] [GN-122] Add settings section under the user's avatar when a user is logged. in. There is a dropdown there, add settings before log out. Include such things as font size, and gravity control (whether to gravitate the card to the top on change, on clipboard copy)
 - [ ] [GN-123] add a section to setting to delete all notes. show a modal pop up cfirmation that asks to type DELETYE before actually deleting all notes.
-- [ ] [GN-124] The moving behaviour: The active card visually stays where it is when being operated on, whether in markdown or HTML mode. It's markdown may change and the other cards will change their positions , ie.g. will travel down, but the active card does not move visually. The rest of the cards can move but the active card stays anchored. When the editing finishes it changes to HTML view -- but doesnt fold in, it stays the same size. It's the first card in the feed now, and other cards moved below it but it didnt'c change its position. 
+- [ ] [GN-124] The moving behaviour:
+
+  # Active Card Behavior (Minimal Spec)
+  1. **Anchor invariant**
+    * While active, the card’s on-screen Y position stays fixed during mode switches and edits. Other cards may reflow.
+  2. **Modes**
+    * `HTML_VIEW` ↔ `MD_EDIT`.
+  3. **HTML→Markdown (on click)**
+    * Do **not** scroll.
+    * Place caret at the click point’s corresponding text position.
+    * Enter `MD_EDIT` with the card anchored (same on-screen Y).
+  4. **During Markdown edit**
+    * Content may grow/shrink; auto-scroll inversely to height delta to keep the card’s Y constant.
+    * Other cards may move.
+  5. **Finish edit**
+    * Render to HTML **without collapsing** (keep the edit height).
+    * Promote to **first in feed** while compensating scroll so the card’s on-screen Y is unchanged.
+    * Remain in `HTML_VIEW`.
+  ## Implementation Rules (succinct)
+
+  * **Anchor capture:** Before any transition/re-render, record `anchorY = card.getBoundingClientRect().top`.
+  * **Post-render compensation:** After DOM update, compute `delta = card.getBoundingClientRect().top - anchorY`; then `window.scrollBy(0, delta * -1)`.
+  * **Caret mapping on click:** From HTML click Range → source Markdown offset (use your md/HTML source map or node `data.position`), set caret to that offset before applying the anchor compensation.
+
 - let's prepare a carefull plan and a list of behaviors that need to be defined or changed bases on this new visual behaviour
-- [ ] [GN-125] Have an info button the control panel for every note that will show when the note was created, when was it last edited, how manu words and charachters in it
+- [ ] [GN-125] Have an info button in the control panel for every note. The info button will show when the note was created, when was it last edited, how manu words and charachters in it
 
 ## Improvements (200–299)
 
@@ -67,6 +90,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Block checkbox interactions from scheduling htmlView bubbling when the card is expanded and add Puppeteer coverage that confirms expanded cards remain anchored after toggling a checklist item.
 - [x] [GN-311] The cursor must look like a poining hand or whatever when it's in the bottom of the note -- hovering above the area that controls fodling and unfolding the note.
   - Added a hover detector for the htmlView control strip, applied pointer cursor styling only within the activation zone, and captured a Puppeteer regression asserting the hover class toggles as expected.
+- [ ] [GN-312] Clicking on the HTML view should not move the card but changes the text into markdown. Currently, it changes the text into markdown and moves the view. Instead, identify the exact place a click was made, and anchor this place so that when markdown editing is shown, the cursor is in the same position on the screen and the note is in makrdown editing. It shall instantenously switch it to HTML and keep it as HTML. 
 - [x] [GN-313] Clicking on the control part of the card when the text is in markdown mode does not siwtch the text back to HTM rendered view. It must switch the text back to html rendered mode and stay there. Improve the text to ensure that there is no regression and switching back to markdown -- swithcing outside of the markdown text signals finishing editing.
   - Finalize inline editing for any control-column interaction and added Puppeteer coverage to ensure control clicks exit edit mode without bouncing back into markdown.
 - [x] [GN-314] The synchronization doesn't always work. I just added a note on another device then logged in a computer where a session was already running and got no not there
@@ -76,6 +100,170 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Sync manager now requests a fresh Google credential when token exchange fails, the auth controller exposes `requestCredential`, and targeted tests confirm refresh logic recovers from expired sessions.
 - [x] [GN-315] Spell-checker shows the incorect word but seelcting it does not replace the incorrect work -- and the incorrrect word stays
   - Attached listeners to the contenteditable input so spellcheck replacements sync through `scheduleNativeInputSync` and added a Puppeteer regression confirming corrected text persists after exiting inline edit mode.
+- [ ] [GN-316] The tesst on CI keeps failing. Let's refactor the tests and add levels of isolation. We must be in a position when a failed test means failed code.
+
+Presently, Markdown inline editor fails on master which means that the code is faulty. find the rrot cause of the failure and fix the code.
+
+  Iteration 1/1 seed 0x1aef4350
+    ✔ config.runtime.test.js (295ms)
+    ✔ persistence.sync.puppeteer.test.js (1492ms)
+    ✔ auth.status.puppeteer.test.js (1114ms)
+    ✔ card.state.test.js (289ms)
+    ✔ backend.sqlite.driver.test.js (289ms)
+    ✔ versionRefresh.test.js (279ms)
+    ✔ auth.sessionPersistence.offline.puppeteer.test.js (2862ms)
+    ✖ editor.inline.puppeteer.test.js exit=1 (20301ms)
+    ✔ sync.scenarios.puppeteer.test.js (2354ms)
+    ✔ pointerTracking.test.js (288ms)
+    ✔ fullstack.endtoend.puppeteer.test.js (819ms)
+    ✔ docker.packaging.test.js (276ms)
+    ✔ store.test.js (308ms)
+    ✔ auth.sessionPersistence.puppeteer.test.js (1053ms)
+    ✔ card.copy.puppeteer.test.js (1253ms)
+    ✔ htmlView.test.js (293ms)
+    ✔ htmlView.bounded.puppeteer.test.js (3848ms)
+    ✔ realtime.controller.test.js (875ms)
+    ✔ app.notifications.puppeteer.test.js (793ms)
+    ✔ auth.consoleWarnings.puppeteer.test.js (743ms)
+    ✔ auth.state.session.test.js (283ms)
+    ✔ harness/browser.singleton.test.js (292ms)
+    ✔ editor.enhanced.puppeteer.test.js (3198ms)
+    ✔ ui.stability.puppeteer.test.js (849ms)
+    ✔ harness/run-tests.harness.test.js (715ms)
+    ✔ htmlView.checkmark.puppeteer.test.js (2799ms)
+    ✔ copy.plaintext.test.js (282ms)
+    ✔ auth.google.test.js (284ms)
+    ✔ buildFingerprinting.test.js (291ms)
+    ✔ helpers/screenshotArtifacts.policy.test.js (283ms)
+    ✔ sync.manager.test.js (300ms)
+    ✔ persistence.backend.puppeteer.test.js (828ms)
+    ✔ htmlView.expansionPersistence.puppeteer.test.js (1374ms)
+    ✔ editor.duplicateRendering.puppeteer.test.js (1405ms)
+    ✔ harness/localScreenshots.puppeteer.test.js (294ms)
+    ✔ sync.endtoend.puppeteer.test.js (921ms)
+    ✔ ui.fullscreen.puppeteer.test.js (793ms)
+    ✔ htmlView.expandCursor.puppeteer.test.js (794ms)
+    ✔ runtimeConfig.initialize.test.js (778ms)
+    ✔ editor.grammar.puppeteer.test.js (725ms)
+    ✔ css.validity.test.js (287ms)
+    ✔ auth.avatarMenu.puppeteer.test.js (1018ms)
+    ✔ helpers/testHarness.test.js (884ms)
+    ✔ ui.styles.regression.puppeteer.test.js (1315ms)
+    ✔ sync.realtime.puppeteer.test.js (1854ms)
+    ✔ classifier.client.test.js (290ms)
+  Totals: 45 passed | 1 failed | 0 timed out
+
+  editor.inline.puppeteer.test.js
+TAP version 13
+# Subtest: Markdown inline editor
+    # Subtest: top editor clears after submitting long note
+    ok 1 - top editor clears after submitting long note
+      ---
+      duration_ms: 1180.180598
+      type: 'test'
+      ...
+    # Subtest: double clicking outside inline editor finalizes edit mode
+    ok 2 - double clicking outside inline editor finalizes edit mode
+      ---
+      duration_ms: 696.060183
+      type: 'test'
+      ...
+    # Subtest: inline editor matches htmlView padding and origin
+    ok 3 - inline editor matches htmlView padding and origin
+      ---
+      duration_ms: 556.84925
+      type: 'test'
+      ...
+    # Subtest: top editor grows when multiline input is typed
+    ok 4 - top editor grows when multiline input is typed
+      ---
+      duration_ms: 662.541722
+      type: 'test'
+      ...
+    # Subtest: top editor hides EasyMDE htmlView pane
+    ok 5 - top editor hides EasyMDE htmlView pane
+      ---
+      duration_ms: 462.735148
+      type: 'test'
+      ...
+    # Subtest: top editor respects external focus selections
+    ok 6 - top editor respects external focus selections
+      ---
+      duration_ms: 441.334406
+      type: 'test'
+      ...
+    # Subtest: editing cards expand without internal scrollbars
+    ok 7 - editing cards expand without internal scrollbars
+      ---
+      duration_ms: 458.882548
+      type: 'test'
+      ...
+    # Subtest: finalizing long edits clears height constraints
+    ok 8 - finalizing long edits clears height constraints
+      ---
+      duration_ms: 461.449335
+      type: 'test'
+      ...
+    # Subtest: top editor retains compact visual footprint
+    ok 9 - top editor retains compact visual footprint
+      ---
+      duration_ms: 387.188236
+      type: 'test'
+      ...
+    # Subtest: single click enters edit mode and expands overflowing htmlView
+    ok 10 - single click enters edit mode and expands overflowing htmlView
+      ---
+      duration_ms: 479.941368
+      type: 'test'
+      ...
+    # Subtest: inline editor renders without outer border
+    ok 11 - inline editor renders without outer border
+      ---
+      duration_ms: 442.553228
+      type: 'test'
+      ...
+    # Subtest: note cards render with a single subtle bottom divider
+    ok 12 - note cards render with a single subtle bottom divider
+      ---
+      duration_ms: 397.675801
+      type: 'test'
+      ...
+    # Subtest: htmlView click enters edit mode at click point without shifting card upward
+    ok 13 - htmlView click enters edit mode at click point without shifting card upward
+      ---
+      duration_ms: 550.957556
+      type: 'test'
+      ...
+    # Subtest: near-bottom cards stay anchored while editing and after submit
+      ...
+    # Subtest: duplicate line shortcut duplicates the active row
+    ok 9 - duplicate line shortcut duplicates the active row
+      ---
+      duration_ms: 431.616027
+      type: 'test'
+      ...
+    # Subtest: ordered list renumbers on enter
+    ok 10 - ordered list renumbers on enter
+      ---
+      duration_ms: 518.856634
+      type: 'test'
+      ...
+    1..10
+ok 2 - Markdown inline editor — actions
+  ---
+  duration_ms: 5106.746088
+  type: 'suite'
+  ...
+1..2
+# tests 37
+# suites 2
+# pass 36
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 20271.484481
+  ✖ Failed (exitCode=1)
 
 ## Maintenance (400–499)
 
