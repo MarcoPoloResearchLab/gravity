@@ -25,6 +25,7 @@ import {
     LABEL_APP_TITLE,
     LABEL_EXPORT_NOTES,
     LABEL_IMPORT_NOTES,
+    LABEL_ENTER_FULL_SCREEN,
     ERROR_NOTES_CONTAINER_NOT_FOUND,
     ERROR_AUTHENTICATION_GENERIC,
     EVENT_NOTE_CREATE,
@@ -55,7 +56,8 @@ const CONSTANTS_VIEW_MODEL = Object.freeze({
     LABEL_APP_SUBTITLE,
     LABEL_APP_TITLE,
     LABEL_EXPORT_NOTES,
-    LABEL_IMPORT_NOTES
+    LABEL_IMPORT_NOTES,
+    LABEL_ENTER_FULL_SCREEN
 });
 
 const NOTIFICATION_DEFAULT_DURATION_MS = 3000;
@@ -301,7 +303,6 @@ function gravityApp() {
             const buttonHost = /** @type {HTMLElement|null} */ (this.$refs.authButtonHost ?? null);
             const profile = /** @type {HTMLElement|null} */ (this.$refs.authProfile ?? null);
             const displayName = /** @type {HTMLElement|null} */ (this.$refs.authDisplayName ?? null);
-            const email = /** @type {HTMLElement|null} */ (this.$refs.authEmail ?? null);
             const avatar = /** @type {HTMLImageElement|null} */ (this.$refs.authAvatar ?? null);
             const status = /** @type {HTMLElement|null} */ (this.$refs.authStatus ?? null);
             const signOutButton = /** @type {HTMLButtonElement|null} */ (this.$refs.authSignOutButton ?? null);
@@ -309,7 +310,7 @@ function gravityApp() {
             const menuPanel = /** @type {HTMLElement|null} */ (this.$refs.authMenu ?? null);
             const avatarTrigger = /** @type {HTMLButtonElement|null} */ (this.$refs.authAvatarTrigger ?? null);
 
-            if (!container || !buttonHost || !profile || !displayName || !email) {
+            if (!container || !buttonHost || !profile || !displayName) {
                 return;
             }
 
@@ -323,7 +324,6 @@ function gravityApp() {
                 buttonElement: buttonHost,
                 profileContainer: profile,
                 displayNameElement: displayName,
-                emailElement: email,
                 avatarElement: avatar ?? null,
                 statusElement: status ?? null,
                 signOutButton: signOutButton ?? null,

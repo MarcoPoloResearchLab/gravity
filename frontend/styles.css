@@ -96,6 +96,9 @@ body::-webkit-scrollbar {
     border-radius: 0.55rem;
     color: #d5deff;
     cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
     font-size: 0.85rem;
     padding: 0.55rem 0.75rem;
     text-align: left;
@@ -114,6 +117,9 @@ body::-webkit-scrollbar {
     background: rgba(138, 52, 52, 0.28);
     color: #ffd6d6;
 }
+.fullscreen-toggle__label {
+    flex: 1 1 auto;
+}
 .auth-profile-text {
     display: flex;
     flex-direction: column;
@@ -122,10 +128,6 @@ body::-webkit-scrollbar {
 .auth-display-name {
     font-size: 0.82rem;
     font-weight: 600;
-}
-.auth-email {
-    font-size: 0.72rem;
-    opacity: 0.75;
 }
 .auth-status {
     font-size: 0.72rem;
@@ -156,35 +158,19 @@ body::-webkit-scrollbar {
     color: #ffffff;
     border-color: rgba(118, 146, 220, 0.7);
 }
-.app-controls {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-    align-items: center;
-    margin-left: auto;
-}
 .fullscreen-toggle {
-    width: 2.45rem;
-    height: 2.45rem;
-    display: inline-flex;
+    width: 100%;
+    display: flex;
     align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: 1px solid #28314a;
-    border-radius: 0.75rem;
-    color: #d5deff;
-    cursor: pointer;
-    transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
-}
-.fullscreen-toggle:hover,
-.fullscreen-toggle:focus-visible {
-    border-color: rgba(118, 146, 220, 0.7);
-    background: rgba(66, 94, 165, 0.2);
-    color: #ffffff;
+    justify-content: flex-start;
+    gap: 0.6rem;
+    color: inherit;
+    padding: 0.55rem 0.75rem;
 }
 .fullscreen-toggle__icon {
-    width: 1.4rem;
-    height: 1.4rem;
+    width: 1.25rem;
+    height: 1.25rem;
+    flex: 0 0 auto;
 }
 .fullscreen-toggle__enter,
 .fullscreen-toggle__exit {
@@ -192,7 +178,7 @@ body::-webkit-scrollbar {
 }
 .fullscreen-toggle__stroke {
     fill: none;
-    stroke: #d5deff;
+    stroke: currentColor;
     stroke-width: 1.6;
     stroke-linecap: round;
     stroke-linejoin: round;
@@ -204,12 +190,8 @@ body::-webkit-scrollbar {
 .fullscreen-toggle[data-fullscreen-state="exit"] .fullscreen-toggle__exit {
     display: block;
 }
-.fullscreen-toggle[data-fullscreen-state="exit"] .fullscreen-toggle__stroke {
-    stroke: #a5bfff;
-}
-.fullscreen-toggle:hover .fullscreen-toggle__stroke,
-.fullscreen-toggle:focus-visible .fullscreen-toggle__stroke {
-    stroke: #ffffff;
+.fullscreen-toggle[data-fullscreen-state="exit"]:not(:hover):not(:focus-visible) {
+    color: #a5bfff;
 }
 .app-control-button {
     background: transparent;
@@ -986,12 +968,6 @@ body.keyboard-shortcuts-open {
     .card-controls .action-group--row { gap: 0.4rem; }
     .action-button { flex: 1 1 auto; min-width: 0; }
     .app-header { align-items: stretch; }
-    .app-controls {
-        margin-left: 0;
-        width: 100%;
-        justify-content: flex-start;
-        row-gap: 0.5rem;
-    }
 }
 
 @media (max-width: 480px) {
