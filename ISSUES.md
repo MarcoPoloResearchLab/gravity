@@ -302,7 +302,8 @@ ok 2 - Markdown inline editor — actions
   - Added `test_helpers_test.go` helper functions for constructing IDs/timestamps/envelopes and wired the notes tests to use them.
 - [x] [GN-417] Document validation boundaries and constructor usage patterns
   - Added docs for notes domain constructors and card helpers to describe where validation occurs and how tests reuse the fixtures.
-- [ ] [GN-418] Have a make file that allows to run tests for both backend and frontend from the root
+- [x] [GN-418] Have a make file that allows to run tests for both backend and frontend from the root
+  - Added a repository-root `Makefile` with `test-backend`, `test-frontend`, and aggregate `test` targets that wrap `go test` and `npm test` in the mandated timeout, plus optional flag overrides for local tuning.
 
 ## Planning (do not work on these, not ready)
 
