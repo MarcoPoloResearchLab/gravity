@@ -147,6 +147,15 @@ const GN308_MARKDOWN = [
     "",
     "Additional paragraphs keep the editor tall enough to verify the rendered view persists after the interaction."
 ].join("\n");
+const GN315_NOTE_ID = "inline-spellcheck-replacement";
+const GN315_MARKDOWN = [
+    "# Spellcheck Replacement",
+    "",
+    "This note includes teh incorrect word in multiple places so spell corrections can be applied.",
+    "",
+    "Selecting the suggested correction must persist after exiting inline edit mode."
+].join("\n");
+const GN315_CORRECTED_FRAGMENT = "the incorrect word";
 const GN202_DOUBLE_CLICK_NOTE_ID = "inline-gesture-double-click";
 const GN202_DOUBLE_CLICK_MARKDOWN = "Double click activation baseline.";
 const GN202_TAP_NOTE_ID = "inline-gesture-tap";
@@ -987,12 +996,17 @@ test.describe("Markdown inline editor", () => {
             noteId: `${GN304_FILLER_PREFIX}-${index + 1}`,
             markdownText: `${GN304_FILLER_MARKDOWN}\n\nFiller block ${index + 1}.`
         }));
+        const trailingRecord = buildNoteRecord({
+            noteId: `${GN304_FILLER_PREFIX}-trailing`,
+            markdownText: `${GN304_FILLER_MARKDOWN}\n\nTrailing filler block.`
+        });
         const records = [
             ...fillerRecords,
             buildNoteRecord({
                 noteId: GN304_TARGET_NOTE_ID,
                 markdownText: GN304_TARGET_MARKDOWN
-            })
+            }),
+            trailingRecord
         ];
         const { page, teardown } = await preparePage({ records });
         const cardSelector = `.markdown-block[data-note-id="${GN304_TARGET_NOTE_ID}"]`;
@@ -1298,6 +1312,120 @@ test.describe("Markdown inline editor", () => {
             assert.ok(finalTelemetry, "Expected telemetry snapshot after clicking controls");
             assert.equal(finalTelemetry.mode, "view", "Card should return to rendered view after control click");
             assert.equal(finalTelemetry.hasEditingClass, false, "Editing indicator must be cleared after control click");
+        } finally {
+            await teardown();
+        }
+    });
+
+    test("spell corrections persist after native replacement", async () => {
+        const noteRecord = buildNoteRecord({
+            noteId: GN315_NOTE_ID,
+            markdownText: GN315_MARKDOWN
+        });
+        const { page, teardown } = await preparePage({
+            records: [noteRecord]
+        });
+        const cardSelector = `.markdown-block[data-note-id="${GN315_NOTE_ID}"]`;
+        const controlsSelector = `${cardSelector} .card-controls`;
+
+        try {
+            await page.waitForSelector(cardSelector, { timeout: 5000 });
+            await page.waitForSelector(controlsSelector, { timeout: 5000 });
+            await enterCardEditMode(page, cardSelector);
+            await page.waitForSelector(`${cardSelector}.editing-in-place`, { timeout: 5000 });
+
+            const replacementResult = await page.evaluate((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return { executed: false };
+                }
+                const host = /** @type {any} */ (card).__markdownHost;
+                if (!host) {
+                    return { executed: false };
+                }
+                const cmWrapper = card.querySelector(".CodeMirror");
+                const cmInstance = cmWrapper && typeof /** @type {any} */ (cmWrapper).CodeMirror !== "undefined"
+                    ? /** @type {any} */ (cmWrapper).CodeMirror
+                    : null;
+                if (!cmInstance || typeof cmInstance.getDoc !== "function" || typeof cmInstance.focus !== "function") {
+                    return { executed: false };
+                }
+                const doc = cmInstance.getDoc();
+                const value = doc.getValue();
+                const target = "teh";
+                const startIndex = value.indexOf(target);
+                if (startIndex === -1) {
+                    return { executed: false };
+                }
+                const endIndex = startIndex + target.length;
+                const startPos = doc.posFromIndex(startIndex);
+                const endPos = doc.posFromIndex(endIndex);
+                doc.setSelection(startPos, endPos);
+                cmInstance.focus();
+                const inputField = typeof cmInstance.getInputField === "function"
+                    ? cmInstance.getInputField()
+                    : null;
+                if (inputField instanceof HTMLElement && typeof inputField.focus === "function") {
+                    inputField.focus();
+                }
+                const executed = document.execCommand("insertText", false, "the");
+                return {
+                    executed,
+                    noteValue: doc.getValue()
+                };
+            }, cardSelector);
+            assert.equal(replacementResult.executed, true, "Spell correction simulation should insert replacement text");
+
+            await page.waitForFunction((selector, expectedFragment) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return false;
+                }
+                const host = /** @type {any} */ (card).__markdownHost;
+                if (!host || typeof host.getValue !== "function") {
+                    return false;
+                }
+                const textarea = typeof host.getTextarea === "function" ? host.getTextarea() : null;
+                if (!(textarea instanceof HTMLTextAreaElement)) {
+                    return false;
+                }
+                const currentValue = host.getValue();
+                if (!currentValue.includes(expectedFragment)) {
+                    return false;
+                }
+                return textarea.value.includes(expectedFragment);
+            }, { timeout: 2000 }, cardSelector, GN315_CORRECTED_FRAGMENT);
+
+            await page.$eval(controlsSelector, (element) => {
+                if (!(element instanceof HTMLElement)) {
+                    return;
+                }
+                element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, pointerType: "mouse" }));
+                element.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+            });
+
+            await page.waitForFunction((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return false;
+                }
+                if (card.classList.contains("editing-in-place")) {
+                    return false;
+                }
+                const host = /** @type {any} */ (card).__markdownHost;
+                return Boolean(host && typeof host.getMode === "function" && host.getMode() === "view");
+            }, { timeout: 2000 }, cardSelector);
+
+            const htmlSnapshot = await page.$eval(`${cardSelector} .note-html-view .markdown-content`, (element) => {
+                if (!(element instanceof HTMLElement)) {
+                    return "";
+                }
+                return element.textContent ?? "";
+            });
+            assert.ok(
+                htmlSnapshot.includes(GN315_CORRECTED_FRAGMENT),
+                `Rendered html view should include the corrected fragment. Received: ${htmlSnapshot}`
+            );
         } finally {
             await teardown();
         }
@@ -2687,59 +2815,40 @@ async function alignCardNearViewportBottom(page, cardSelector, marginPx = 12, ma
     /** @type {{ top: number, bottom: number, height: number, viewportHeight: number, scrollY: number } | null} */
     let lastMetrics = null;
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-        await page.evaluate((selector, margin) => {
+        const result = await page.evaluate((selector, margin) => {
             const element = document.querySelector(selector);
             const scroller = document.scrollingElement || document.documentElement || document.body;
             if (!(element instanceof HTMLElement) || !scroller) {
-                return;
+                return { aligned: false, metrics: null };
             }
+            element.scrollIntoView({ block: "end", inline: "nearest" });
+            if (margin > 0) {
+                const nextScrollTop = Math.max(0, scroller.scrollTop - margin);
+                scroller.scrollTop = nextScrollTop;
+            }
+            const rect = element.getBoundingClientRect();
             const viewportHeight = window.innerHeight;
-            const elementBottom = element.offsetTop + element.offsetHeight;
-            const targetBottom = viewportHeight - margin;
-            const desiredScrollTop = elementBottom - targetBottom;
-            const maxScrollTop = Math.max(0, scroller.scrollHeight - viewportHeight);
-            const clampedScrollTop = Math.max(0, Math.min(desiredScrollTop, maxScrollTop));
-            scroller.scrollTop = clampedScrollTop;
+            const epsilon = Math.max(2, margin / 4);
+            const desiredBottom = viewportHeight - margin;
+            const aligned = Math.abs(rect.bottom - desiredBottom) <= epsilon || rect.bottom >= desiredBottom;
+            return {
+                aligned,
+                metrics: {
+                    top: rect.top,
+                    bottom: rect.bottom,
+                    height: rect.height,
+                    viewportHeight,
+                    scrollY: window.scrollY
+                }
+            };
         }, cardSelector, marginPx);
 
         await waitForViewportStability(page, cardSelector, 18, 0.5);
 
-        const snapshot = await page.$eval(
-            cardSelector,
-            (element, margin) => {
-                if (!(element instanceof HTMLElement)) {
-                    return {
-                        aligned: false,
-                        metrics: null
-                    };
-                }
-                const rect = element.getBoundingClientRect();
-                return {
-                    aligned: rect.bottom >= window.innerHeight - margin && rect.bottom <= window.innerHeight + margin,
-                    metrics: {
-                        top: rect.top,
-                        bottom: rect.bottom,
-                        height: rect.height,
-                        viewportHeight: window.innerHeight,
-                        scrollY: window.scrollY
-                    }
-                };
-            },
-            marginPx
-        );
-
-        if (snapshot.aligned) {
+        if (result.aligned) {
             return;
         }
-        if (snapshot.metrics) {
-            const targetBottom = snapshot.metrics.viewportHeight - marginPx;
-            const bottomDelta = Math.abs(snapshot.metrics.bottom - targetBottom);
-            const epsilon = Math.max(2, marginPx / 4);
-            if (bottomDelta <= epsilon) {
-                return;
-            }
-        }
-        lastMetrics = snapshot.metrics;
+        lastMetrics = result.metrics;
     }
     const detail = lastMetrics ? JSON.stringify(lastMetrics) : "unavailable";
     throw new Error(`viewport_alignment_failed:${detail}`);
