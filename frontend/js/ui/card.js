@@ -106,6 +106,10 @@ const TRAILING_WHITESPACE_PATTERN = /[ \t]+$/;
 const VIEWPORT_ANCHOR_MARGIN_PX = 24;
 const VIEWPORT_STABILITY_ATTEMPTS = 12;
 
+/**
+ * @typedef {{ top: number, bottom: number, height: number, viewportHeight: number }} ViewportAnchor
+ */
+
 function calculateHtmlViewTextOffset(htmlViewElement, event) {
     if (!(htmlViewElement instanceof HTMLElement)) {
         return null;
@@ -408,7 +412,7 @@ function computeCenteredCardTop(cardHeight, viewportHeight) {
 /**
  * Adjust the viewport so the provided card maintains its intended position.
  * @param {HTMLElement} card
- * @param {{ behavior?: "center"|"preserve", baselineTop?: number|null, attempts?: number }} [options]
+ * @param {{ behavior?: "center"|"preserve", baselineTop?: number|null, anchor?: ViewportAnchor|null, attempts?: number }} [options]
  * @returns {void}
  */
 function maintainCardViewport(card, options = {}) {
@@ -417,6 +421,7 @@ function maintainCardViewport(card, options = {}) {
     }
     const {
         behavior = "preserve",
+        anchor = null,
         baselineTop = null,
         attempts = VIEWPORT_STABILITY_ATTEMPTS
     } = options;
@@ -425,7 +430,6 @@ function maintainCardViewport(card, options = {}) {
         return;
     }
     let remaining = Math.max(attempts, 1);
-
     const adjust = () => {
         if (!card.isConnected) {
             return;
@@ -440,19 +444,40 @@ function maintainCardViewport(card, options = {}) {
         let targetTop;
         if (behavior === "center") {
             targetTop = computeCenteredCardTop(rect.height, viewportHeight);
+        } else if (anchor && typeof anchor === "object") {
+            const anchorViewportHeight = Number.isFinite(anchor.viewportHeight) ? anchor.viewportHeight : viewportHeight;
+            const margin = Math.max(anchorViewportHeight * 0.05, VIEWPORT_ANCHOR_MARGIN_PX);
+            const anchoredToBottom = Number.isFinite(anchor.bottom)
+                && Number.isFinite(anchor.top)
+                && anchor.bottom >= anchorViewportHeight - margin
+                && anchor.top >= margin;
+            if (anchoredToBottom) {
+                const bottomOffset = anchorViewportHeight - anchor.bottom;
+                targetTop = viewportHeight - bottomOffset - rect.height;
+            } else if (Number.isFinite(anchor.top)) {
+                targetTop = anchor.top;
+            } else if (typeof baselineTop === "number") {
+                targetTop = baselineTop;
+            } else {
+                targetTop = rect.top;
+            }
         } else if (typeof baselineTop === "number") {
-            const minTop = VIEWPORT_ANCHOR_MARGIN_PX * -1;
-            const maxTop = Math.max(viewportHeight - rect.height - VIEWPORT_ANCHOR_MARGIN_PX, minTop);
-            targetTop = clamp(baselineTop, minTop, maxTop);
+            targetTop = baselineTop;
         } else {
             targetTop = rect.top;
         }
-        const delta = rect.top - targetTop;
+        const margin = Math.max(viewportHeight * 0.05, VIEWPORT_ANCHOR_MARGIN_PX);
+        const minTop = margin * -1;
+        const maxTop = Math.max(viewportHeight - rect.height - margin, minTop);
+        const clampedTargetTop = clamp(targetTop, minTop, maxTop);
+        const delta = rect.top - clampedTargetTop;
         if (Math.abs(delta) > 0.5) {
             const currentScroll = window.scrollY || window.pageYOffset || 0;
             const maxScroll = Math.max(0, scroller.scrollHeight - viewportHeight);
             const nextScroll = clamp(currentScroll + delta, 0, maxScroll);
-            window.scrollTo(0, nextScroll);
+            if (nextScroll !== currentScroll) {
+                window.scrollTo(0, nextScroll);
+            }
         }
         remaining -= 1;
         if (remaining > 0) {
@@ -1443,8 +1468,11 @@ function persistCardState(card, notesContainer, markdownText, options = {}) {
         return false;
     }
 
+    const storedViewportAnchor = bubbleToTop ? Reflect.get(card, "__editingViewportAnchor") : null;
     const viewportAnchor = bubbleToTop && card.classList.contains("editing-in-place")
-        ? captureViewportAnchor(card)
+        ? (storedViewportAnchor && typeof storedViewportAnchor === "object"
+            ? storedViewportAnchor
+            : captureViewportAnchor(card))
         : null;
 
     const timestamp = nowIso();
@@ -1477,7 +1505,7 @@ function persistCardState(card, notesContainer, markdownText, options = {}) {
             if (viewportAnchor) {
                 maintainCardViewport(card, {
                     behavior: "preserve",
-                    baselineTop: viewportAnchor.top
+                    anchor: viewportAnchor
                 });
             }
         } else {
@@ -1540,6 +1568,9 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
         bubbleSelfToTop = false
     } = options;
     const viewportAnchor = !bubbleSelfToTop ? captureViewportAnchor(card) : null;
+    if (viewportAnchor) {
+        Reflect.set(card, "__editingViewportAnchor", viewportAnchor);
+    }
     const centerCardOnEntry = !bubbleSelfToTop && shouldCenterCard(viewportAnchor);
 
     const wasEditing = card.classList.contains("editing-in-place");
@@ -1634,10 +1665,9 @@ function enableInPlaceEditing(card, notesContainer, options = {}) {
     requestAnimationFrame(() => {
         editorHost?.focus();
         if (!bubbleSelfToTop) {
-            const baselineTop = typeof viewportAnchor?.top === "number" ? viewportAnchor.top : null;
             maintainCardViewport(card, {
                 behavior: centerCardOnEntry ? "center" : "preserve",
-                baselineTop
+                anchor: viewportAnchor ?? null
             });
         }
     });
@@ -1926,6 +1956,7 @@ async function finalizeCard(card, notesContainer, options = {}) {
             editor.style.height = "";
             editor.style.minHeight = "";
         }
+        Reflect.deleteProperty(card, "__editingViewportAnchor");
     };
 
     // If cleared, delete the card entirely
