@@ -5,6 +5,7 @@ import test from "node:test";
 
 import {
     EVENT_AUTH_SIGN_OUT,
+    LABEL_ENTER_FULL_SCREEN,
     LABEL_EXPORT_NOTES,
     LABEL_IMPORT_NOTES,
     LABEL_SIGN_OUT
@@ -124,13 +125,14 @@ if (!puppeteerAvailable) {
             await page.click(".auth-avatar-trigger");
             await page.waitForSelector("[data-test='auth-menu'][data-open='true']");
 
-            const visibleItems = await page.$$eval("[data-test='auth-menu'] [data-test='auth-menu-item']", (elements) => {
+            const visibleItems = await page.$$eval("[data-test='auth-menu'] .auth-menu-item", (elements) => {
                 return elements.map((element) => element.textContent?.trim() ?? "").filter((text) => text.length > 0);
             });
 
             assert.deepEqual(visibleItems, [
                 LABEL_EXPORT_NOTES,
                 LABEL_IMPORT_NOTES,
+                LABEL_ENTER_FULL_SCREEN,
                 LABEL_SIGN_OUT
             ]);
 
