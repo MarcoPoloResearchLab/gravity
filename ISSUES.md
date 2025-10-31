@@ -67,7 +67,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
 - [ ] [GN-311] The cursor must look like a poining hand or whatever when it's in the bottom of the note -- hovering above the area that controls fodling and unfolding the note.
 - [ ] [GN-312] Clicking on the HTML view does not move the card but changes the text into markdown. Currently, it changes the text into markdown and moves the view. Instead, identify the exact place a click was made, and anchor this place so that when markdown editing is shown, the cursor is in the same position on the screen and the note is in makrdown editing. It shall instantenously switch it to HTML and keep it as HTML. 
 - [ ] [GN-313] Clicking on the control part of the card when the text is in markdown mode does not siwtch the text back to HTM rendered view. It must switch the text back to html rendered mode and stay there. Improve the text to ensure that there is no regression and switching back to markdown -- swithcing outside of the markdown text signals finishing editing.
-- [ ] [GN-314] The synchronization doest always work. I just added a note on another device then logged in a computer where a session was already running and got no not there
+- [ ] [GN-314] The synchronization doesn't always work. I just added a note on another device then logged in a computer where a session was already running and got no not there
 	- Error: unauthorized
 			exchangeGoogleCredential https://gravity.mprlab.com/js/core/backendClient.js:45
   We need a stable mechanism of keeping the user logged in. Research the GIS library recommendations and build a plan
