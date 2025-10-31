@@ -301,6 +301,10 @@ body::-webkit-scrollbar {
     border-radius: 0.5rem;
 }
 
+.note-html-view.note-html-view--toggle-hover {
+    cursor: pointer;
+}
+
 .note-html-view::after {
     content: "";
     position: absolute;
