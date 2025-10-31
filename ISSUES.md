@@ -99,7 +99,9 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Sync manager now requests a fresh Google credential when token exchange fails, the auth controller exposes `requestCredential`, and targeted tests confirm refresh logic recovers from expired sessions.
 - [x] [GN-315] Spell-checker shows the incorect word but seelcting it does not replace the incorrect work -- and the incorrrect word stays
   - Attached listeners to the contenteditable input so spellcheck replacements sync through `scheduleNativeInputSync` and added a Puppeteer regression confirming corrected text persists after exiting inline edit mode.
-- [ ] [GN-316] The tesst on CI keeps failing. Let's refactor the tests and add levels of isolation. We must be in a position when a failed test means failed code.
+- [x] [GN-316] The tesst on CI keeps failing. Let's refactor the tests and add levels of isolation. We must be in a position when a failed test means failed code.
+
+  - Reused the captured viewport anchor when bubbling cards to the top so inline submits preserve their screen position, and verified the inline editor suite across the flaky seeds now passes reliably.
 
 Presently, Markdown inline editor fails on master which means that the code is faulty. find the rrot cause of the failure and fix the code.
 
