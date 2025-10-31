@@ -34,6 +34,7 @@ const htmlViewBubbleTimers = new WeakMap();
 const htmlViewFocusTargets = new WeakMap();
 const expandToggleAlignmentDisposers = new WeakMap();
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+const HTML_VIEW_TOGGLE_HOVER_CLASS = "note-html-view--toggle-hover";
 
 /**
  * Queue an HTML view bubble after a checkbox interaction.
@@ -226,31 +227,27 @@ function attachExpandStripClickHandler(wrapper, toggle) {
     if (!(wrapper instanceof HTMLElement) || !(toggle instanceof HTMLElement)) {
         return;
     }
+    let toggleHoverActive = false;
+    const applyToggleHoverState = (isActive) => {
+        if (toggleHoverActive === isActive) {
+            return;
+        }
+        toggleHoverActive = isActive;
+        wrapper.classList.toggle(HTML_VIEW_TOGGLE_HOVER_CLASS, isActive);
+    };
+    wrapper.addEventListener("mousemove", (event) => {
+        const shouldHover = isToggleActivationArea(event, wrapper, toggle);
+        applyToggleHoverState(shouldHover);
+    });
+    wrapper.addEventListener("mouseleave", () => {
+        applyToggleHoverState(false);
+    });
     wrapper.addEventListener("click", (event) => {
-        if (!(event instanceof MouseEvent)) {
-            return;
-        }
-        if (toggle.hidden || toggle.style.display === "none") {
-            return;
-        }
-        const target = event.target;
-        if (target instanceof Element) {
-            if (target.closest(".note-expand-toggle")) {
-                return;
-            }
-            if (target.closest("input, textarea, select, button, a")) {
-                return;
-            }
-        }
-        const hitHeight = getToggleHitHeight(toggle);
-        if (hitHeight <= 0) {
-            return;
-        }
-        const wrapperRect = wrapper.getBoundingClientRect();
-        if (event.clientY >= wrapperRect.bottom - hitHeight) {
+        if (isToggleActivationArea(event, wrapper, toggle)) {
             event.preventDefault();
             event.stopPropagation();
             toggle.click();
+            applyToggleHoverState(false);
         }
     });
 }
@@ -295,6 +292,43 @@ function getToggleHitHeight(toggle) {
         }
     }
     return 0;
+}
+
+/**
+ * Determine whether a pointer event targets the fold/unfold activation region.
+ * @param {Event} event
+ * @param {HTMLElement} wrapper
+ * @param {HTMLElement} toggle
+ * @returns {boolean}
+ */
+function isToggleActivationArea(event, wrapper, toggle) {
+    if (!(event instanceof MouseEvent)) {
+        return false;
+    }
+    if (!(wrapper instanceof HTMLElement) || !(toggle instanceof HTMLElement)) {
+        return false;
+    }
+    if (toggle.hidden || toggle.style.display === "none") {
+        return false;
+    }
+    const target = event.target;
+    if (target instanceof Element) {
+        if (target.closest(".note-expand-toggle")) {
+            return false;
+        }
+        if (target.closest("input, textarea, select, button, a")) {
+            return false;
+        }
+    }
+    const hitHeight = getToggleHitHeight(toggle);
+    if (hitHeight <= 0) {
+        return false;
+    }
+    const wrapperRect = wrapper.getBoundingClientRect();
+    if (!Number.isFinite(wrapperRect.bottom)) {
+        return false;
+    }
+    return event.clientY >= wrapperRect.bottom - hitHeight;
 }
 
 /**

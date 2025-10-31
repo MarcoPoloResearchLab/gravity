@@ -63,10 +63,13 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Added a guard that throws `gravity.invalid_notes_collection` for non-array inputs and expanded `store.test.js` to lock in the behavior.
 - [x] [GN-309] Store tests fail after note record validation rejects persisted data from earlier builds.
   - Filter `GravityStore.saveAllNotes` to drop invalid persisted candidates prior to deduping so smart constructors stay enforced while CI/local `store.test.js` passes.
-- [ ] [GN-310] I had an expanded HTML view. I clicked on a checkmark. It has folded the expanded view and moved the html view to the top in its exanded view. What I was expecting: the checkmark becoming checked and no other movements on the screen. Ensure that checking on a checkmar in HTML rendered mode does not perform any immediate repositioniing of the card. The card visually stays where it is. It's markdown has changed and the other cards have changed their positions the active card does not move  
-- [ ] [GN-311] The cursor must look like a poining hand or whatever when it's in the bottom of the note -- hovering above the area that controls fodling and unfolding the note.
-- [ ] [GN-312] Clicking on the HTML view does not move the card but changes the text into markdown. Currently, it changes the text into markdown and moves the view. Instead, identify the exact place a click was made, and anchor this place so that when markdown editing is shown, the cursor is in the same position on the screen and the note is in makrdown editing. It shall instantenously switch it to HTML and keep it as HTML. 
-- [ ] [GN-313] Clicking on the control part of the card when the text is in markdown mode does not siwtch the text back to HTM rendered view. It must switch the text back to html rendered mode and stay there. Improve the text to ensure that there is no regression and switching back to markdown -- swithcing outside of the markdown text signals finishing editing.
+- [x] [GN-310] I had an expanded HTML view. I clicked on a checkmark. It has folded the expanded view and moved the html view to the top in its exanded view. What I was expecting: the checkmark becoming checked and no other movements on the screen. Ensure that checking on a checkmar in HTML rendered mode does not perform any immediate repositioniing of the card. The card visually stays where it is. It's markdown has changed and the other cards have changed their positions the active card does not move  
+  - Block checkbox interactions from scheduling htmlView bubbling when the card is expanded and add Puppeteer coverage that confirms expanded cards remain anchored after toggling a checklist item.
+- [x] [GN-311] The cursor must look like a poining hand or whatever when it's in the bottom of the note -- hovering above the area that controls fodling and unfolding the note.
+  - Added a hover detector for the htmlView control strip, applied pointer cursor styling only within the activation zone, and captured a Puppeteer regression asserting the hover class toggles as expected.
+- [ ] [GN-312] Clicking on the HTML view should not move the card but changes the text into markdown. Currently, it changes the text into markdown and moves the view. Instead, identify the exact place a click was made, and anchor this place so that when markdown editing is shown, the cursor is in the same position on the screen and the note is in makrdown editing. It shall instantenously switch it to HTML and keep it as HTML. 
+- [x] [GN-313] Clicking on the control part of the card when the text is in markdown mode does not siwtch the text back to HTM rendered view. It must switch the text back to html rendered mode and stay there. Improve the text to ensure that there is no regression and switching back to markdown -- swithcing outside of the markdown text signals finishing editing.
+  - Finalize inline editing for any control-column interaction and added Puppeteer coverage to ensure control clicks exit edit mode without bouncing back into markdown.
 - [ ] [GN-314] The synchronization doesn't always work. I just added a note on another device then logged in a computer where a session was already running and got no not there
 	- Error: unauthorized
 			exchangeGoogleCredential https://gravity.mprlab.com/js/core/backendClient.js:45
@@ -111,6 +114,7 @@ Entries record newly discovered requests or changes, with their outcomes. No ins
   - Added `test_helpers_test.go` helper functions for constructing IDs/timestamps/envelopes and wired the notes tests to use them.
 - [x] [GN-417] Document validation boundaries and constructor usage patterns
   - Added docs for notes domain constructors and card helpers to describe where validation occurs and how tests reuse the fixtures.
+- [ ] [GN-418] Have a make file that allows to run tests for both backend and frontend from the root
 
 ## Planning (do not work on these, not ready)
 

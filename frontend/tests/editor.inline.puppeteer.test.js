@@ -1252,6 +1252,57 @@ test.describe("Markdown inline editor", () => {
         }
     });
 
+    test("clicking the control column exits inline editing", async () => {
+        const noteRecord = buildNoteRecord({
+            noteId: GN105_NOTE_ID,
+            markdownText: GN105_MARKDOWN
+        });
+        const { page, teardown } = await preparePage({
+            records: [noteRecord]
+        });
+        const cardSelector = `.markdown-block[data-note-id="${GN105_NOTE_ID}"]`;
+        const controlsSelector = `${cardSelector} .card-controls`;
+
+        try {
+            await page.waitForSelector(cardSelector, { timeout: 5000 });
+            await page.waitForSelector(controlsSelector, { timeout: 5000 });
+            await enterCardEditMode(page, cardSelector);
+            await page.waitForSelector(`${cardSelector}.editing-in-place`, { timeout: 5000 });
+
+            const baselineTelemetry = await beginCardEditingTelemetry(page, cardSelector);
+            assert.ok(baselineTelemetry, "Expected telemetry snapshot before clicking controls");
+            assert.equal(baselineTelemetry.mode, "edit", "Card should begin in edit mode");
+
+            await page.$eval(controlsSelector, (element) => {
+                if (!(element instanceof HTMLElement)) {
+                    return;
+                }
+                element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, pointerType: "mouse" }));
+                element.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+            });
+
+            await page.waitForFunction((selector) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return false;
+                }
+                if (card.classList.contains("editing-in-place")) {
+                    return false;
+                }
+                const host = Reflect.get(card, "__markdownHost");
+                return Boolean(host && typeof host.getMode === "function" && host.getMode() === "view");
+            }, { timeout: 2000 }, cardSelector);
+
+            await page.waitForSelector(`${cardSelector} .note-html-view .markdown-content`, { timeout: 2000 });
+            const finalTelemetry = await collectCardEditingTelemetry(page, cardSelector);
+            assert.ok(finalTelemetry, "Expected telemetry snapshot after clicking controls");
+            assert.equal(finalTelemetry.mode, "view", "Card should return to rendered view after control click");
+            assert.equal(finalTelemetry.hasEditingClass, false, "Editing indicator must be cleared after control click");
+        } finally {
+            await teardown();
+        }
+    });
+
     test("single clicking a different card after double click editing finalizes the current card", async () => {
         const firstNote = buildNoteRecord({
             noteId: GN105_NOTE_ID,
