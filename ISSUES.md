@@ -306,12 +306,13 @@ ok 2 - Markdown inline editor — actions
   - Added docs for notes domain constructors and card helpers to describe where validation occurs and how tests reuse the fixtures.
 - [x] [GN-418] Have a make file that allows to run tests for both backend and frontend from the root
   - Added a repository-root `Makefile` with `test-backend`, `test-frontend`, and aggregate `test` targets that wrap `go test` and `npm test` in the mandated timeout, plus optional flag overrides for local tuning.
-- [ ] [GN-419] The card.js is a tangled mess of more than 2000 LOC. We need to simplify and refactor the card and make it a manageable alpine.js component. Use @card.refactor.recommendation.md plan.
+- [x] [GN-419] The card.js is a tangled mess of more than 2000 LOC. We need to simplify and refactor the card and make it a manageable alpine.js component. Use @card.refactor.recommendation.md plan.
   - Multi-staged plan of refactoring
   - Eliminating duplicates, bugs and dead code
   - Centrally consolidate card's behaviour
   - Fully cover with tests
-- [ ] [GN-420] Add a command to Makefile to build and launch local docker image through docker-compose.yml
+- [x] [GN-420] Add a command to Makefile to build and launch local docker image through docker-compose.yml
+  - Introduced a `compose-up` Makefile target that wraps `docker compose up --build --detach` with configurable binary/file variables.
 
 ## Planning (do not work on these, not ready)
 
