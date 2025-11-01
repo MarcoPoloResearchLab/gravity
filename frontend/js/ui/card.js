@@ -1,36 +1,31 @@
 // @ts-check
 
-import { nowIso } from "../utils/datetime.js?build=2024-10-05T12:00:00Z";
 import { createElement } from "../utils/dom.js?build=2024-10-05T12:00:00Z";
 import { copyToClipboard } from "../utils/clipboard.js?build=2024-10-05T12:00:00Z";
 import { isNonBlankString } from "../utils/string.js?build=2024-10-05T12:00:00Z";
-import { updateActionButtons, insertCardRespectingPinned } from "./card/listControls.js?build=2024-10-05T12:00:00Z";
+import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
 import {
     ARIA_LABEL_COPY_MARKDOWN,
     ARIA_LABEL_COPY_RENDERED,
+    ARIA_LABEL_PIN_NOTE,
+    ARIA_LABEL_UNPIN_NOTE,
     BADGE_LABEL_CODE,
-    LABEL_COLLAPSE_NOTE,
-    LABEL_EXPAND_NOTE,
     CLIPBOARD_METADATA_VERSION,
     ERROR_CLIPBOARD_COPY_FAILED,
     ERROR_NOTES_CONTAINER_NOT_FOUND,
+    LABEL_COLLAPSE_NOTE,
     LABEL_COPY_NOTE,
     LABEL_DELETE_NOTE,
-    LABEL_PIN_NOTE,
+    LABEL_EXPAND_NOTE,
     LABEL_MERGE_DOWN,
     LABEL_MERGE_UP,
     LABEL_MOVE_DOWN,
     LABEL_MOVE_UP,
-    MESSAGE_NOTE_COPIED,
-    ARIA_LABEL_PIN_NOTE,
-    ARIA_LABEL_UNPIN_NOTE,
-    EVENT_NOTE_UPDATE,
-    EVENT_NOTE_DELETE,
-    EVENT_NOTE_PIN_TOGGLE
+    LABEL_PIN_NOTE,
+    MESSAGE_NOTE_COPIED
 } from "../constants.js?build=2024-10-05T12:00:00Z";
-import { GravityStore } from "../core/store.js?build=2024-10-05T12:00:00Z";
-import { ClassifierClient } from "../core/classifier.js?build=2024-10-05T12:00:00Z";
-import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
+import { updateActionButtons, insertCardRespectingPinned } from "./card/listControls.js?build=2024-10-05T12:00:00Z";
+export { updateActionButtons, insertCardRespectingPinned } from "./card/listControls.js?build=2024-10-05T12:00:00Z";
 import {
     applyPinnedState,
     applyPinnedStateForToggle,
@@ -42,14 +37,32 @@ import {
 import {
     scheduleHtmlViewBubble,
     bubbleCardToTop,
-    createHtmlView as createHtmlViewBase,
-    deleteHtmlView as deleteHtmlViewBase,
     queueHtmlViewFocus,
     restoreHtmlViewFocus,
     setHtmlViewExpanded,
     collapseExpandedHtmlView
 } from "./card/htmlView.js?build=2024-10-05T12:00:00Z";
-export { updateActionButtons, insertCardRespectingPinned } from "./card/listControls.js?build=2024-10-05T12:00:00Z";
+import {
+    createHtmlView,
+    deleteHtmlView,
+    createMarkdownView,
+    deleteMarkdownView,
+    persistCardState,
+    createAttachmentSignature,
+    stripMarkdownImages
+} from "./card/renderPipeline.js?build=2024-10-05T12:00:00Z";
+import {
+    captureViewportAnchor,
+    shouldCenterCard,
+    clamp
+} from "./card/viewport.js?build=2024-10-05T12:00:00Z";
+import {
+    initializePointerTracking,
+    shouldKeepEditingAfterBlur,
+    shouldIgnoreCardPointerTarget,
+    isPointerWithinInlineEditorSurface,
+    clearLastPointerDownTarget
+} from "./card/pointerTracking.js?build=2024-10-05T12:00:00Z";
 import {
     renderHtmlViewToString,
     getHtmlViewPlainText
@@ -64,27 +77,14 @@ import {
 } from "./imagePaste.js?build=2024-10-05T12:00:00Z";
 import { createMarkdownEditorHost, MARKDOWN_MODE_EDIT, MARKDOWN_MODE_VIEW } from "./markdownEditorHost.js?build=2024-10-05T12:00:00Z";
 import { syncStoreFromDom } from "./storeSync.js?build=2024-10-05T12:00:00Z";
-import { showSaveFeedback } from "./saveFeedback.js?build=2024-10-05T12:00:00Z";
-import { togglePinnedNote, clearPinnedNoteIfMatches } from "./notesState.js?build=2024-10-05T12:00:00Z";
 import { suppressTopEditorAutofocus } from "./focusManager.js?build=2024-10-05T12:00:00Z";
-import {
-    initializePointerTracking,
-    shouldKeepEditingAfterBlur,
-    shouldIgnoreCardPointerTarget,
-    isPointerWithinInlineEditorSurface,
-    clearLastPointerDownTarget
-} from "./card/pointerTracking.js?build=2024-10-05T12:00:00Z";
+import { togglePinnedNote, clearPinnedNoteIfMatches } from "./notesState.js?build=2024-10-05T12:00:00Z";
 import {
     setEditorHost,
     getEditorHost,
-    incrementFinalizeSuppression,
-    decrementFinalizeSuppression,
-    isFinalizeSuppressed as isCardFinalizeSuppressed,
     getSuppressionState,
     setSuppressionState,
     clearSuppressionState,
-    getOrCreatePendingHeightFrames,
-    clearPendingHeightFrames,
     disposeCardState
 } from "./card/cardState.js?build=2024-10-05T12:00:00Z";
 import {
@@ -92,19 +92,45 @@ import {
     storeCopyFeedbackTimer,
     hasCopyFeedbackTimer
 } from "./card/copyFeedback.js?build=2024-10-05T12:00:00Z";
+import {
+    getCurrentEditingCard,
+    runMergeAction,
+    enableInPlaceEditing,
+    finalizeCard,
+    deleteCard,
+    mergeDown,
+    mergeUp,
+    focusCardEditor,
+    navigateToAdjacentCard,
+    suppressFinalize,
+    releaseFinalize,
+    isFinalizeSuppressed
+} from "./card/editLifecycle.js?build=2024-10-05T12:00:00Z";
+import {
+    dispatchNoteUpdate,
+    dispatchNoteDelete,
+    dispatchPinToggle
+} from "./card/events.js?build=2024-10-05T12:00:00Z";
+import {
+    triggerClassificationForCard,
+    applyChips
+} from "./card/classification.js?build=2024-10-05T12:00:00Z";
+
+export {
+    focusCardEditor,
+    navigateToAdjacentCard,
+    suppressFinalize,
+    releaseFinalize,
+    isFinalizeSuppressed,
+    triggerClassificationForCard
+};
 
 const DIRECTION_PREVIOUS = -1;
 const DIRECTION_NEXT = 1;
 const CARET_PLACEMENT_START = "start";
 const CARET_PLACEMENT_END = "end";
 const TASK_LINE_REGEX = /^(\s*(?:[-*+]|\d+[.)])\s+\[)( |x|X)(\])([^\n]*)$/;
-let currentEditingCard = null;
-let mergeInProgress = false;
 const COPY_FEEDBACK_DURATION_MS = 1800;
-const LINE_ENDING_NORMALIZE_PATTERN = /\r\n/g;
-const TRAILING_WHITESPACE_PATTERN = /[ \t]+$/;
-const VIEWPORT_ANCHOR_MARGIN_PX = 24;
-const VIEWPORT_STABILITY_ATTEMPTS = 12;
 
 /**
  * @typedef {{ top: number, bottom: number, height: number, viewportHeight: number }} ViewportAnchor
@@ -324,168 +350,6 @@ function findLastTextNode(node) {
         last = walker.currentNode;
     }
     return last;
-}
-
-/**
- * Clamp a numeric value into the provided range.
- * @param {number} value
- * @param {number} min
- * @param {number} max
- * @returns {number}
- */
-function clamp(value, min, max) {
-    if (Number.isNaN(value)) {
-        return min;
-    }
-    if (value < min) {
-        return min;
-    }
-    if (value > max) {
-        return max;
-    }
-    return value;
-}
-
-/**
- * Capture basic viewport metrics for a card prior to layout changes.
- * @param {HTMLElement} card
- * @returns {{ top: number, bottom: number, height: number, viewportHeight: number }|null}
- */
-function captureViewportAnchor(card) {
-    if (!(card instanceof HTMLElement) || typeof window === "undefined") {
-        return null;
-    }
-    const rect = card.getBoundingClientRect();
-    const viewportHeight = typeof window.innerHeight === "number"
-        ? window.innerHeight
-        : document.documentElement?.clientHeight ?? 0;
-    return {
-        top: rect.top,
-        bottom: rect.bottom,
-        height: rect.height,
-        viewportHeight
-    };
-}
-
-/**
- * Decide whether a card should be centered when entering edit mode.
- * @param {{ top: number, bottom: number, viewportHeight: number }|null} anchor
- * @returns {boolean}
- */
-function shouldCenterCard(anchor) {
-    if (!anchor) {
-        return true;
-    }
-    const viewportHeight = anchor.viewportHeight;
-    if (viewportHeight <= 0) {
-        return true;
-    }
-    const margin = Math.max(viewportHeight * 0.05, VIEWPORT_ANCHOR_MARGIN_PX);
-    const effectiveViewportHeight = viewportHeight - margin * 2;
-    if (!Number.isFinite(anchor.height) || anchor.height <= 0) {
-        return anchor.top < margin || anchor.bottom > viewportHeight - margin;
-    }
-    if (effectiveViewportHeight <= 0 || anchor.height >= effectiveViewportHeight) {
-        return false;
-    }
-    const topThreshold = margin;
-    const bottomThreshold = viewportHeight - margin;
-    return anchor.top < topThreshold || anchor.bottom > bottomThreshold;
-}
-
-/**
- * Compute a centered top offset for a card given the viewport height.
- * @param {number} cardHeight
- * @param {number} viewportHeight
- * @returns {number}
- */
-function computeCenteredCardTop(cardHeight, viewportHeight) {
-    if (!Number.isFinite(cardHeight) || !Number.isFinite(viewportHeight)) {
-        return 0;
-    }
-    const minTop = VIEWPORT_ANCHOR_MARGIN_PX * -1;
-    const maxTop = Math.max(viewportHeight - cardHeight - VIEWPORT_ANCHOR_MARGIN_PX, minTop);
-    const centered = (viewportHeight - cardHeight) / 2;
-    return clamp(centered, minTop, maxTop);
-}
-
-/**
- * Adjust the viewport so the provided card maintains its intended position.
- * @param {HTMLElement} card
- * @param {{ behavior?: "center"|"preserve", baselineTop?: number|null, anchor?: ViewportAnchor|null, attempts?: number }} [options]
- * @returns {void}
- */
-function maintainCardViewport(card, options = {}) {
-    if (!(card instanceof HTMLElement) || typeof window === "undefined") {
-        return;
-    }
-    const {
-        behavior = "preserve",
-        anchor = null,
-        baselineTop = null,
-        attempts = VIEWPORT_STABILITY_ATTEMPTS
-    } = options;
-    const scroller = document.scrollingElement || document.documentElement || document.body;
-    if (!(scroller instanceof HTMLElement)) {
-        return;
-    }
-    let remaining = Math.max(attempts, 1);
-    const adjust = () => {
-        if (!card.isConnected) {
-            return;
-        }
-        const viewportHeight = typeof window.innerHeight === "number"
-            ? window.innerHeight
-            : document.documentElement?.clientHeight ?? 0;
-        if (viewportHeight <= 0) {
-            return;
-        }
-        const rect = card.getBoundingClientRect();
-        let targetTop;
-        if (behavior === "center") {
-            targetTop = computeCenteredCardTop(rect.height, viewportHeight);
-        } else if (anchor && typeof anchor === "object") {
-            const anchorViewportHeight = Number.isFinite(anchor.viewportHeight) ? anchor.viewportHeight : viewportHeight;
-            const margin = Math.max(anchorViewportHeight * 0.05, VIEWPORT_ANCHOR_MARGIN_PX);
-            const anchoredToBottom = Number.isFinite(anchor.bottom)
-                && Number.isFinite(anchor.top)
-                && anchor.bottom >= anchorViewportHeight - margin
-                && anchor.top >= margin;
-            if (anchoredToBottom) {
-                const bottomOffset = anchorViewportHeight - anchor.bottom;
-                targetTop = viewportHeight - bottomOffset - rect.height;
-            } else if (Number.isFinite(anchor.top)) {
-                targetTop = anchor.top;
-            } else if (typeof baselineTop === "number") {
-                targetTop = baselineTop;
-            } else {
-                targetTop = rect.top;
-            }
-        } else if (typeof baselineTop === "number") {
-            targetTop = baselineTop;
-        } else {
-            targetTop = rect.top;
-        }
-        const margin = Math.max(viewportHeight * 0.05, VIEWPORT_ANCHOR_MARGIN_PX);
-        const minTop = margin * -1;
-        const maxTop = Math.max(viewportHeight - rect.height - margin, minTop);
-        const clampedTargetTop = clamp(targetTop, minTop, maxTop);
-        const delta = rect.top - clampedTargetTop;
-        if (Math.abs(delta) > 0.5) {
-            const currentScroll = window.scrollY || window.pageYOffset || 0;
-            const maxScroll = Math.max(0, scroller.scrollHeight - viewportHeight);
-            const nextScroll = clamp(currentScroll + delta, 0, maxScroll);
-            if (nextScroll !== currentScroll) {
-                window.scrollTo(0, nextScroll);
-            }
-        }
-        remaining -= 1;
-        if (remaining > 0) {
-            requestAnimationFrame(adjust);
-        }
-    };
-
-    requestAnimationFrame(adjust);
 }
 
 function mapPlainTextOffsetToMarkdown(source, plainOffset) {
@@ -855,76 +719,6 @@ function updatePinButtonState(card, pinned) {
     pinButton.setAttribute("aria-label", pinned ? ARIA_LABEL_UNPIN_NOTE : ARIA_LABEL_PIN_NOTE);
     pinButton.classList.toggle("action-button--pressed", pinned);
 }
-
-/**
- * Dispatch a note update event so the composition root can persist or re-render.
- * @param {HTMLElement} target
- * @param {import("../types.d.js").NoteRecord} record
- * @param {{ storeUpdated?: boolean, shouldRender?: boolean }} [options]
- * @returns {void}
- */
-function dispatchNoteUpdate(target, record, options = {}) {
-    if (!(target instanceof HTMLElement) || !record) {
-        return;
-    }
-    const { storeUpdated = true, shouldRender = false } = options;
-    const event = new CustomEvent(EVENT_NOTE_UPDATE, {
-        bubbles: true,
-        detail: {
-            record,
-            noteId: record.noteId,
-            storeUpdated,
-            shouldRender
-        }
-    });
-    target.dispatchEvent(event);
-}
-
-/**
- * Dispatch a note deletion request upstream.
- * @param {HTMLElement} target
- * @param {string} noteId
- * @param {{ storeUpdated?: boolean, shouldRender?: boolean }} [options]
- * @returns {void}
- */
-function dispatchNoteDelete(target, noteId, options = {}) {
-    if (!(target instanceof HTMLElement) || !isNonBlankString(noteId)) {
-        return;
-    }
-    const { storeUpdated = true, shouldRender = true } = options;
-    const event = new CustomEvent(EVENT_NOTE_DELETE, {
-        bubbles: true,
-        detail: {
-            noteId,
-            storeUpdated,
-            shouldRender
-        }
-    });
-    target.dispatchEvent(event);
-}
-
-/**
- * Dispatch a pin toggle notification upstream.
- * @param {HTMLElement} target
- * @param {string} noteId
- * @param {{ storeUpdated?: boolean, shouldRender?: boolean }} [options]
- * @returns {void}
- */
-function dispatchPinToggle(target, noteId, options = {}) {
-    if (!(target instanceof HTMLElement) || !isNonBlankString(noteId)) {
-        return;
-    }
-    const { storeUpdated = true, shouldRender = true } = options;
-    const event = new CustomEvent(EVENT_NOTE_PIN_TOGGLE, {
-        bubbles: true,
-        detail: {
-            noteId,
-            storeUpdated,
-            shouldRender
-        }
-    });
-    target.dispatchEvent(event);
-}
 /**
  * Render a persisted note card into the provided container.
  * @param {import("../types.d.js").NoteRecord} record
@@ -973,20 +767,25 @@ export function renderCard(record, options = {}) {
         const htmlViewElement = htmlViewCandidate instanceof HTMLElement ? htmlViewCandidate : null;
         const suppressedCards = new Set();
         const protectCard = (candidate) => {
-            if (!candidate) return;
-        const host = getEditorHost(candidate);
-        const existingSuppression = getSuppressionState(candidate) || {};
-        if (!existingSuppression.mode) {
-            existingSuppression.mode = host?.getMode() ?? null;
-            existingSuppression.wasEditing = candidate.classList.contains("editing-in-place");
-            setSuppressionState(candidate, existingSuppression);
-        }
+            if (!(candidate instanceof HTMLElement)) {
+                return;
+            }
+            const candidateHost = getEditorHost(candidate);
+            const existingSuppression = getSuppressionState(candidate) || {};
+            if (!existingSuppression.mode) {
+                existingSuppression.mode = candidateHost?.getMode() ?? null;
+                existingSuppression.wasEditing = candidate.classList.contains("editing-in-place");
+                setSuppressionState(candidate, existingSuppression);
+            }
             suppressedCards.add(candidate);
             suppressFinalize(candidate);
         };
 
         protectCard(card);
-        protectCard(currentEditingCard);
+        const editingCard = getCurrentEditingCard();
+        if (editingCard && editingCard !== card) {
+            protectCard(editingCard);
+        }
         try {
             const markdownValue = host.getValue();
             const attachments = getAllAttachments(editor);
@@ -1357,12 +1156,7 @@ function button(label, handler, options = {}) {
     if (variant === "merge") {
         element.addEventListener("mousedown", (event) => {
             event.preventDefault();
-            mergeInProgress = true;
-            try {
-                handler();
-            } finally {
-                setTimeout(() => (mergeInProgress = false), 50);
-            }
+            runMergeAction(handler);
         });
         return element;
     }
@@ -1375,27 +1169,6 @@ function button(label, handler, options = {}) {
     });
 
     return element;
-}
-
-function suppressFinalize(card) {
-    if (!(card instanceof HTMLElement)) {
-        return;
-    }
-    incrementFinalizeSuppression(card);
-}
-
-function releaseFinalize(card) {
-    if (!(card instanceof HTMLElement)) {
-        return;
-    }
-    decrementFinalizeSuppression(card);
-}
-
-function isFinalizeSuppressed(card) {
-    if (!(card instanceof HTMLElement)) {
-        return false;
-    }
-    return isCardFinalizeSuppressed(card);
 }
 
 function restoreSuppressedState(card) {
@@ -1441,96 +1214,6 @@ function showClipboardFeedback(container, message) {
 }
 
 
-function persistCardState(card, notesContainer, markdownText, options = {}) {
-    const { bubbleToTop = true } = options;
-    if (!(card instanceof HTMLElement) || typeof markdownText !== "string") {
-        return false;
-    }
-    const noteId = card.getAttribute("data-note-id");
-    if (!isNonBlankString(noteId)) {
-        return false;
-    }
-    const editor = /** @type {HTMLTextAreaElement|null} */ (card.querySelector(".markdown-editor"));
-    if (!(editor instanceof HTMLTextAreaElement)) {
-        return false;
-    }
-
-    const attachments = collectReferencedAttachments(editor);
-    const normalizedNext = normalizeMarkdownForComparison(markdownText);
-    const previousValue = typeof card.dataset.initialValue === "string" ? card.dataset.initialValue : "";
-    const normalizedPrevious = normalizeMarkdownForComparison(previousValue);
-    const nextAttachmentsSignature = createAttachmentSignature(attachments);
-    const previousAttachmentsSignature = typeof card.dataset.attachmentsSignature === "string"
-        ? card.dataset.attachmentsSignature
-        : "";
-
-    if (normalizedNext === normalizedPrevious && nextAttachmentsSignature === previousAttachmentsSignature) {
-        return false;
-    }
-
-    const storedViewportAnchor = bubbleToTop ? Reflect.get(card, "__editingViewportAnchor") : null;
-    const viewportAnchor = bubbleToTop && card.classList.contains("editing-in-place")
-        ? (storedViewportAnchor && typeof storedViewportAnchor === "object"
-            ? storedViewportAnchor
-            : captureViewportAnchor(card))
-        : null;
-
-    const timestamp = nowIso();
-
-    const createdAtIso = isNonBlankString(card.dataset.createdAtIso)
-        ? card.dataset.createdAtIso
-        : timestamp;
-    const record = {
-        noteId,
-        markdownText,
-        createdAtIso,
-        updatedAtIso: timestamp,
-        lastActivityIso: timestamp,
-        attachments,
-        pinned: card.dataset.pinned === "true"
-    };
-
-    card.dataset.initialValue = markdownText;
-    card.dataset.createdAtIso = createdAtIso;
-    card.dataset.updatedAtIso = timestamp;
-    card.dataset.lastActivityIso = timestamp;
-    card.dataset.attachmentsSignature = nextAttachmentsSignature;
-
-    const badgesElement = card.querySelector(".note-badges");
-
-    if (notesContainer instanceof HTMLElement) {
-        if (bubbleToTop) {
-            const htmlViewSource = transformMarkdownWithAttachments(markdownText, attachments);
-            bubbleCardToTop(card, notesContainer, htmlViewSource, record);
-            if (viewportAnchor) {
-                maintainCardViewport(card, {
-                    behavior: "preserve",
-                    anchor: viewportAnchor
-                });
-            }
-        } else {
-            const htmlViewSource = transformMarkdownWithAttachments(markdownText, attachments);
-            createHtmlView(card, {
-                markdownSource: htmlViewSource,
-                badgesTarget: badgesElement
-            });
-            syncStoreFromDom(notesContainer, { [noteId]: record });
-            updateActionButtons(notesContainer);
-        }
-    } else {
-        const htmlViewSource = transformMarkdownWithAttachments(markdownText, attachments);
-        createHtmlView(card, {
-            markdownSource: htmlViewSource,
-            badgesTarget: badgesElement
-        });
-    }
-
-    triggerClassificationForCard(noteId, markdownText, notesContainer);
-    showSaveFeedback();
-    dispatchNoteUpdate(card, record, { storeUpdated: true, shouldRender: false });
-    return true;
-}
-
 function toggleTaskAtIndex(markdown, targetIndex) {
     if (typeof markdown !== "string") {
         return null;
@@ -1562,471 +1245,6 @@ function toggleTaskAtIndex(markdown, targetIndex) {
     return nextLines.join("\n");
 }
 
-function enableInPlaceEditing(card, notesContainer, options = {}) {
-    const {
-        bubblePreviousCardToTop = true,
-        bubbleSelfToTop = false
-    } = options;
-    const viewportAnchor = !bubbleSelfToTop ? captureViewportAnchor(card) : null;
-    if (viewportAnchor) {
-        Reflect.set(card, "__editingViewportAnchor", viewportAnchor);
-    }
-    const centerCardOnEntry = !bubbleSelfToTop && shouldCenterCard(viewportAnchor);
-
-    const wasEditing = card.classList.contains("editing-in-place");
-    const htmlViewWrapper = card.querySelector(".note-html-view");
-    const wasHtmlViewExpanded = htmlViewWrapper instanceof HTMLElement && htmlViewWrapper.classList.contains("note-html-view--expanded");
-    const expandedCardHeight = wasHtmlViewExpanded ? card.getBoundingClientRect().height : null;
-    const expandedContentHeight = wasHtmlViewExpanded && htmlViewWrapper instanceof HTMLElement
-        ? htmlViewWrapper.getBoundingClientRect().height
-        : null;
-    if (wasHtmlViewExpanded) {
-        card.dataset.htmlViewExpanded = "true";
-    }
-    if (currentEditingCard && currentEditingCard !== card && !mergeInProgress) {
-        finalizeCard(currentEditingCard, notesContainer, { bubbleToTop: bubblePreviousCardToTop });
-    }
-    currentEditingCard = card;
-
-    // Remove edit mode from others
-    const all = notesContainer.querySelectorAll(".markdown-block");
-    all.forEach((candidate) => {
-        if (candidate === card) {
-            return;
-        }
-        candidate.classList.remove("editing-in-place");
-        const candidateHost = getEditorHost(candidate);
-        if (candidateHost && candidateHost.getMode() !== MARKDOWN_MODE_VIEW) {
-            candidateHost.setMode(MARKDOWN_MODE_VIEW);
-        }
-        const candidateTextarea = candidateHost && typeof candidateHost.getTextarea === "function"
-            ? candidateHost.getTextarea()
-            : /** @type {HTMLTextAreaElement|null} */ (candidate.querySelector(".markdown-editor"));
-        const candidateMarkdown = candidateHost && typeof candidateHost.getValue === "function"
-            ? candidateHost.getValue()
-            : candidateTextarea?.value ?? "";
-        const candidateAttachments = candidateTextarea instanceof HTMLTextAreaElement ? collectReferencedAttachments(candidateTextarea) : {};
-        const candidateHtmlViewSource = transformMarkdownWithAttachments(candidateMarkdown, candidateAttachments);
-        createHtmlView(candidate, {
-            markdownSource: candidateHtmlViewSource,
-            badgesTarget: candidate.querySelector(".note-badges")
-        });
-    });
-
-    const editor  = card.querySelector(".markdown-editor");
-    const badges  = card.querySelector(".note-badges");
-    const editorHost = getEditorHost(card);
-
-    // Remember original text so we can detect "no changes"
-    const initialValue = editorHost ? editorHost.getValue() : editor?.value ?? "";
-    card.dataset.initialValue = initialValue;
-
-    deleteHtmlView(card);
-    card.classList.add("editing-in-place");
-    createMarkdownView(editorHost);
-    lockEditingSurfaceHeight(card, {
-        cardHeight: expandedCardHeight,
-        contentHeight: expandedContentHeight
-    });
-
-    if (editorHost && typeof editorHost.on === "function" && typeof editorHost.off === "function") {
-        if (typeof card.__editingHeightCleanup === "function") {
-            try {
-                card.__editingHeightCleanup();
-            } catch (error) {
-                logging.error(error);
-            }
-            card.__editingHeightCleanup = null;
-        }
-        const synchronizeEditingHeight = () => {
-            const rect = card.getBoundingClientRect();
-            const currentCardHeight = normalizeHeight(rect?.height);
-            lockEditingSurfaceHeight(card, {
-                cardHeight: currentCardHeight > 0 ? currentCardHeight : expandedCardHeight,
-                contentHeight: 0
-            });
-        };
-        editorHost.on("change", synchronizeEditingHeight);
-        card.__editingHeightCleanup = () => {
-            editorHost.off("change", synchronizeEditingHeight);
-        };
-    }
-
-    if (bubbleSelfToTop) {
-        const firstCard = notesContainer.firstElementChild;
-        if (firstCard && firstCard !== card) {
-            notesContainer.insertBefore(card, firstCard);
-            syncStoreFromDom(notesContainer);
-            updateActionButtons(notesContainer);
-        }
-    }
-
-    // Focus after paint; then release the height lock
-    requestAnimationFrame(() => {
-        editorHost?.focus();
-        if (!bubbleSelfToTop) {
-            maintainCardViewport(card, {
-                behavior: centerCardOnEntry ? "center" : "preserve",
-                anchor: viewportAnchor ?? null
-            });
-        }
-    });
-
-    updateActionButtons(notesContainer);
-}
-
-function registerPendingHeightFrame(card, frameId) {
-    if (typeof frameId !== "number") {
-        return;
-    }
-    if (!(card instanceof HTMLElement)) {
-        return;
-    }
-    const handles = getOrCreatePendingHeightFrames(card);
-    handles.push(frameId);
-}
-
-function cancelPendingHeightFrames(card) {
-    if (!(card instanceof HTMLElement)) {
-        return;
-    }
-    const handles = getOrCreatePendingHeightFrames(card);
-    if (handles.length > 0 && typeof cancelAnimationFrame === "function") {
-        for (const handle of handles) {
-            cancelAnimationFrame(handle);
-        }
-    }
-    clearPendingHeightFrames(card);
-}
-
-function lockEditingSurfaceHeight(card, measurements) {
-    if (!(card instanceof HTMLElement)) {
-        return;
-    }
-    const normalizedCardHeight = normalizeHeight(measurements?.cardHeight);
-    const normalizedContentHeight = normalizeHeight(measurements?.contentHeight);
-    if (normalizedCardHeight <= 0) {
-        releaseEditingSurfaceHeight(card);
-        return;
-    }
-    const computedStyle = typeof window !== "undefined" && typeof window.getComputedStyle === "function"
-        ? window.getComputedStyle(card)
-        : null;
-    const paddingTop = computedStyle ? Number.parseFloat(computedStyle.paddingTop || "0") || 0 : 0;
-    const paddingBottom = computedStyle ? Number.parseFloat(computedStyle.paddingBottom || "0") || 0 : 0;
-    const verticalPadding = paddingTop + paddingBottom;
-    const interiorCardHeight = normalizedCardHeight > 0 ? Math.max(normalizedCardHeight - verticalPadding, 0) : 0;
-    const resolvedContentHeightBase = normalizedContentHeight > 0 ? normalizedContentHeight : interiorCardHeight;
-    const apply = (syncToContent = false) => {
-        if (!card.classList.contains("editing-in-place")) {
-            return;
-        }
-        const codeMirrorScroll = card.querySelector(".CodeMirror-scroll");
-        const codeMirror = card.querySelector(".CodeMirror");
-        const textarea = card.querySelector(".markdown-editor");
-        let contentHeight = resolvedContentHeightBase;
-        if (syncToContent) {
-            let naturalHeight = 0;
-            if (codeMirrorScroll instanceof HTMLElement) {
-                naturalHeight = normalizeHeight(codeMirrorScroll.scrollHeight);
-            } else if (codeMirror instanceof HTMLElement) {
-                naturalHeight = normalizeHeight(codeMirror.scrollHeight);
-            } else if (textarea instanceof HTMLElement) {
-                naturalHeight = normalizeHeight(textarea.scrollHeight);
-            }
-            if (naturalHeight > 0 && naturalHeight > contentHeight) {
-                contentHeight = naturalHeight;
-            }
-        }
-        const resolvedContentHeight = contentHeight > 0 ? contentHeight : 0;
-        const targetCardHeight = resolvedContentHeight > 0 ? resolvedContentHeight + verticalPadding : normalizedCardHeight;
-        card.style.setProperty("--note-expanded-edit-height", `${targetCardHeight}px`);
-        card.style.minHeight = `${targetCardHeight}px`;
-        card.style.maxHeight = "";
-        card.style.height = `${targetCardHeight}px`;
-        if (codeMirrorScroll instanceof HTMLElement) {
-            codeMirrorScroll.style.minHeight = `${contentHeight}px`;
-            codeMirrorScroll.style.maxHeight = "";
-            codeMirrorScroll.style.height = `${contentHeight}px`;
-            codeMirrorScroll.style.overflowY = "";
-        }
-        if (codeMirror instanceof HTMLElement) {
-            codeMirror.style.minHeight = `${contentHeight}px`;
-            codeMirror.style.maxHeight = "";
-            codeMirror.style.height = `${contentHeight}px`;
-        }
-        if (textarea instanceof HTMLElement) {
-            textarea.style.minHeight = `${contentHeight}px`;
-            textarea.style.maxHeight = "";
-            textarea.style.height = `${contentHeight}px`;
-        }
-    };
-    cancelPendingHeightFrames(card);
-
-    apply();
-    apply(true);
-    if (typeof requestAnimationFrame === "function") {
-        const firstFrame = requestAnimationFrame(() => {
-            if (!card.classList.contains("editing-in-place")) {
-                return;
-            }
-            apply();
-            if (typeof requestAnimationFrame === "function") {
-                const secondFrame = requestAnimationFrame(() => {
-                    if (!card.classList.contains("editing-in-place")) {
-                        return;
-                    }
-                    apply(true);
-                });
-                registerPendingHeightFrame(card, secondFrame);
-            } else {
-                apply(true);
-            }
-        });
-        registerPendingHeightFrame(card, firstFrame);
-    } else {
-        apply(true);
-    }
-}
-
-function normalizeHeight(value) {
-    if (typeof value !== "number" || !Number.isFinite(value)) {
-        return 0;
-    }
-    const rounded = Math.round(value);
-    return rounded > 0 ? rounded : 0;
-}
-
-function releaseEditingSurfaceHeight(card) {
-    if (!(card instanceof HTMLElement)) {
-        return;
-    }
-    cancelPendingHeightFrames(card);
-    card.style.removeProperty("--note-expanded-edit-height");
-    card.style.minHeight = "";
-    card.style.maxHeight = "";
-    card.style.height = "";
-    const codeMirrorScroll = card.querySelector(".CodeMirror-scroll");
-    if (codeMirrorScroll instanceof HTMLElement) {
-        codeMirrorScroll.style.minHeight = "";
-        codeMirrorScroll.style.maxHeight = "";
-        codeMirrorScroll.style.height = "";
-        codeMirrorScroll.style.overflowY = "";
-    }
-    const codeMirror = card.querySelector(".CodeMirror");
-    if (codeMirror instanceof HTMLElement) {
-        codeMirror.style.minHeight = "";
-        codeMirror.style.maxHeight = "";
-        codeMirror.style.height = "";
-    }
-    const textarea = card.querySelector(".markdown-editor");
-    if (textarea instanceof HTMLElement) {
-        textarea.style.minHeight = "";
-        textarea.style.maxHeight = "";
-        textarea.style.height = "";
-    }
-
-    if (typeof card.__pendingCollapseTimer === "number") {
-        clearTimeout(card.__pendingCollapseTimer);
-        card.__pendingCollapseTimer = null;
-    }
-
-    if (typeof card.__editingHeightCleanup === "function") {
-        try {
-            card.__editingHeightCleanup();
-        } finally {
-            card.__editingHeightCleanup = null;
-        }
-    }
-}
-
-function stripMarkdownImages(markdown) {
-    if (typeof markdown !== "string" || markdown.length === 0) return markdown || "";
-    return markdown.replace(/!\[[^\]]*\]\((data:[^)]+)\)/g, "$1");
-}
-
-/**
- * Create the HTML representation for a card by delegating to the base helper.
- * @param {HTMLElement} card
- * @param {{ markdownSource: string, badgesTarget?: HTMLElement|null }} options
- * @returns {HTMLElement|null}
- */
-function createHtmlView(card, options) {
-    return createHtmlViewBase(card, options);
-}
-
-/**
- * Cards never hide HTML views with styling; entering markdown mode must delete
- * the rendered HTML entirely so only the editor remains. Returning to HTML
- * view recreates it from the note's markdown via `createHtmlView`.
- * @param {HTMLElement} card
- */
-function deleteHtmlView(card) {
-    deleteHtmlViewBase(card);
-}
-
-/**
- * Switch the card into markdown view by ensuring the EasyMDE host is in edit
- * mode before calling callers-run operations.
- * @param {import("./markdownEditorHost.js").MarkdownEditorHost} host
- */
-function createMarkdownView(host) {
-    if (host && host.getMode() !== MARKDOWN_MODE_EDIT) {
-        host.setMode(MARKDOWN_MODE_EDIT);
-    }
-}
-
-/**
- * Return the card to HTML mode by placing the host in view mode.
- * @param {import("./markdownEditorHost.js").MarkdownEditorHost} host
- */
-function deleteMarkdownView(host) {
-    if (host && host.getMode() !== MARKDOWN_MODE_VIEW) {
-        host.setMode(MARKDOWN_MODE_VIEW);
-    }
-}
-
-async function finalizeCard(card, notesContainer, options = {}) {
-    const {
-        bubbleToTop = true,
-        forceBubble = false,
-        suppressTopEditorAutofocus: shouldSuppressTopEditorAutofocus = false
-    } = options;
-    if (!card || mergeInProgress) return;
-    if (isFinalizeSuppressed(card)) return;
-
-    const editorHost = getEditorHost(card);
-    const isEditMode = card.classList.contains("editing-in-place") || editorHost?.getMode() === MARKDOWN_MODE_EDIT;
-    const badgesContainer = card.querySelector(".note-badges");
-    const badgesTarget = badgesContainer instanceof HTMLElement ? badgesContainer : null;
-    if (!isEditMode) return;
-
-    if (shouldSuppressTopEditorAutofocus) {
-        suppressTopEditorAutofocus();
-        const activeElement = typeof document !== "undefined" ? document.activeElement : null;
-        if (activeElement instanceof HTMLElement && card.contains(activeElement)) {
-            activeElement.blur();
-        }
-        if (typeof document !== "undefined" && typeof requestAnimationFrame === "function") {
-            requestAnimationFrame(() => {
-                const { body } = document;
-                if (!(body instanceof HTMLElement)) {
-                    return;
-                }
-                const hadTabIndex = body.hasAttribute("tabindex");
-                if (!hadTabIndex) {
-                    body.setAttribute("tabindex", "-1");
-                }
-                try {
-                    body.focus({ preventScroll: true });
-                } catch {
-                    body.focus();
-                }
-                if (!hadTabIndex) {
-                    setTimeout(() => body.removeAttribute("tabindex"), 0);
-                }
-            });
-        }
-    }
-
-    const editor  = card.querySelector(".markdown-editor");
-    await (editorHost ? editorHost.waitForPendingImages() : waitForPendingImagePastes(editor));
-    const text    = editorHost ? editorHost.getValue() : editor.value;
-    const trimmed = text.trim();
-    const noteId = card.getAttribute("data-note-id");
-    const existingRecord = typeof noteId === "string" ? GravityStore.getById(noteId) : null;
-    const previousText = typeof card.dataset.initialValue === "string"
-        ? card.dataset.initialValue
-        : (existingRecord?.markdownText ?? text);
-    const previousAttachments = existingRecord?.attachments ?? {};
-    const normalizedPrevious = normalizeMarkdownForComparison(previousText);
-    const normalizedNext = normalizeMarkdownForComparison(text);
-    const attachments = collectReferencedAttachments(editor);
-    const attachmentsChanged = !areAttachmentDictionariesEqual(attachments, previousAttachments);
-    const changed = normalizedNext !== normalizedPrevious || attachmentsChanged;
-
-    const exitEditingMode = () => {
-        card.classList.remove("editing-in-place");
-        releaseEditingSurfaceHeight(card);
-        if (currentEditingCard === card) {
-            currentEditingCard = null;
-        }
-        deleteMarkdownView(editorHost);
-        if (editor instanceof HTMLTextAreaElement) {
-            editor.style.height = "";
-            editor.style.minHeight = "";
-        }
-        Reflect.deleteProperty(card, "__editingViewportAnchor");
-    };
-
-    // If cleared, delete the card entirely
-    if (trimmed.length === 0) {
-        exitEditingMode();
-        collapseExpandedHtmlView(card);
-        const id = card.getAttribute("data-note-id");
-        clearPinnedNoteIfMatches(id);
-        card.remove();
-        disposeCardState(card);
-        syncStoreFromDom(notesContainer);
-        updateActionButtons(notesContainer);
-        dispatchNoteDelete(notesContainer ?? card, id, { storeUpdated: true, shouldRender: false });
-        return;
-    }
-
-    if (!changed) {
-        const baselineTransformed = transformMarkdownWithAttachments(previousText, attachments);
-        if (editorHost) {
-            editorHost.setValue(previousText);
-        } else if (editor instanceof HTMLTextAreaElement) {
-            editor.value = previousText;
-        }
-        exitEditingMode();
-        createHtmlView(card, {
-            markdownSource: baselineTransformed,
-            badgesTarget
-        });
-        return;
-    }
-
-    const markdownWithAttachments = transformMarkdownWithAttachments(text, attachments);
-    const shouldBubble = forceBubble || bubbleToTop;
-    persistCardState(card, notesContainer, text, { bubbleToTop: shouldBubble });
-
-    exitEditingMode();
-    createHtmlView(card, {
-        markdownSource: markdownWithAttachments,
-        badgesTarget
-    });
-
-    if (typeof requestAnimationFrame === "function") {
-        await new Promise((resolve) => {
-            requestAnimationFrame(() => {
-                requestAnimationFrame(resolve);
-            });
-        });
-    }
-}
-
-function deleteCard(card, notesContainer) {
-    if (!card) return;
-    collapseExpandedHtmlView(card);
-    if (currentEditingCard === card) {
-        currentEditingCard = null;
-    }
-    card.classList.remove("editing-in-place");
-    const noteId = card.getAttribute("data-note-id");
-    if (noteId) {
-        clearPinnedNoteIfMatches(noteId);
-    }
-    card.remove();
-    enforcePinnedAnchor(notesContainer);
-    syncStoreFromDom(notesContainer);
-    updateActionButtons(notesContainer);
-    if (noteId) {
-        dispatchNoteDelete(notesContainer ?? card, noteId, { storeUpdated: true, shouldRender: false });
-    }
-}
-
 function move(card, direction, notesContainer) {
     const list = Array.from(notesContainer.children);
     const i = list.indexOf(card);
@@ -2038,365 +1256,4 @@ function move(card, direction, notesContainer) {
     enforcePinnedAnchor(notesContainer);
     syncStoreFromDom(notesContainer);
     updateActionButtons(notesContainer);
-}
-
-function mergeDown(card, notesContainer) {
-    const below = card.nextElementSibling;
-    if (!(below instanceof HTMLElement)) return;
-
-    collapseExpandedHtmlView(card);
-    collapseExpandedHtmlView(below);
-
-    const editorHere  = card.querySelector(".markdown-editor");
-    const editorBelow = below.querySelector(".markdown-editor");
-    const a = editorHere.value.trim();
-    const b = editorBelow.value.trim();
-    const merged = a && b ? `${a}\n\n${b}` : (a || b);
-
-    const attachmentsHere = getAllAttachments(editorHere);
-    const attachmentsBelow = getAllAttachments(editorBelow);
-    const mergedAttachments = { ...attachmentsBelow, ...attachmentsHere };
-
-    getEditorHost(card)?.setValue("");
-    const hostBelow = getEditorHost(below);
-    hostBelow?.setValue(merged);
-    registerInitialAttachments(editorBelow, mergedAttachments);
-    const mergedHtmlViewSource = transformMarkdownWithAttachments(merged, mergedAttachments);
-    createHtmlView(below, {
-        markdownSource: mergedHtmlViewSource,
-        badgesTarget: below.querySelector(".note-badges")
-    });
-
-    const idHere = card.getAttribute("data-note-id");
-    if (idHere) {
-        clearPinnedNoteIfMatches(idHere);
-    }
-    if (card === currentEditingCard) {
-        card.classList.remove("editing-in-place");
-        delete card.dataset.initialValue;
-        currentEditingCard = null;
-    }
-    card.remove();
-    disposeCardState(card);
-
-    const idBelow = below.getAttribute("data-note-id");
-    const ts = nowIso();
-    const createdAtBelow = isNonBlankString(below.dataset.createdAtIso)
-        ? below.dataset.createdAtIso
-        : ts;
-    const attachmentsUpdated = collectReferencedAttachments(editorBelow);
-    below.dataset.initialValue = merged;
-    below.dataset.createdAtIso = createdAtBelow;
-    below.dataset.updatedAtIso = ts;
-    below.dataset.lastActivityIso = ts;
-
-    const recordBelow = idBelow ? {
-        noteId: idBelow,
-        markdownText: merged,
-        createdAtIso: createdAtBelow,
-        updatedAtIso: ts,
-        lastActivityIso: ts,
-        attachments: attachmentsUpdated,
-        pinned: below.dataset.pinned === "true"
-    } : null;
-
-    enforcePinnedAnchor(notesContainer);
-    syncStoreFromDom(notesContainer, recordBelow ? { [recordBelow.noteId]: recordBelow } : undefined);
-    updateActionButtons(notesContainer);
-
-    if (idHere) {
-        dispatchNoteDelete(notesContainer ?? card, idHere, { storeUpdated: true, shouldRender: false });
-    }
-    if (recordBelow) {
-        dispatchNoteUpdate(below, recordBelow, { storeUpdated: true, shouldRender: false });
-    }
-}
-
-function mergeUp(card, notesContainer) {
-    if (card !== notesContainer.lastElementChild || notesContainer.children.length < 2) return;
-
-    const above = card.previousElementSibling;
-    if (!(above instanceof HTMLElement)) return;
-    const editorAbove  = above.querySelector(".markdown-editor");
-    const editorHere   = card.querySelector(".markdown-editor");
-    collapseExpandedHtmlView(card);
-    collapseExpandedHtmlView(above);
-
-    const a = editorAbove.value.trim();
-    const b = editorHere.value.trim();
-    const merged = a && b ? `${a}\n\n${b}` : (a || b);
-
-    const attachmentsAbove = getAllAttachments(editorAbove);
-    const attachmentsHere = getAllAttachments(editorHere);
-    const mergedAttachments = { ...attachmentsAbove, ...attachmentsHere };
-
-    getEditorHost(card)?.setValue("");
-    const hostAbove = getEditorHost(above);
-    hostAbove?.setValue(merged);
-    registerInitialAttachments(editorAbove, mergedAttachments);
-    const mergedHtmlViewSource = transformMarkdownWithAttachments(merged, mergedAttachments);
-    createHtmlView(above, {
-        markdownSource: mergedHtmlViewSource,
-        badgesTarget: above.querySelector(".note-badges")
-    });
-
-    const idHere = card.getAttribute("data-note-id");
-    if (idHere) {
-        clearPinnedNoteIfMatches(idHere);
-    }
-    if (card === currentEditingCard) {
-        card.classList.remove("editing-in-place");
-        delete card.dataset.initialValue;
-        currentEditingCard = null;
-    }
-    card.remove();
-    disposeCardState(card);
-
-    const idAbove = above.getAttribute("data-note-id");
-    const ts = nowIso();
-    const createdAtAbove = isNonBlankString(above.dataset.createdAtIso)
-        ? above.dataset.createdAtIso
-        : ts;
-    const attachmentsUpdated = collectReferencedAttachments(editorAbove);
-    above.dataset.initialValue = merged;
-    above.dataset.createdAtIso = createdAtAbove;
-    above.dataset.updatedAtIso = ts;
-    above.dataset.lastActivityIso = ts;
-
-    const recordAbove = idAbove ? {
-        noteId: idAbove,
-        markdownText: merged,
-        createdAtIso: createdAtAbove,
-        updatedAtIso: ts,
-        lastActivityIso: ts,
-        attachments: attachmentsUpdated,
-        pinned: above.dataset.pinned === "true"
-    } : null;
-
-    syncStoreFromDom(notesContainer, recordAbove ? { [recordAbove.noteId]: recordAbove } : undefined);
-    updateActionButtons(notesContainer);
-
-    if (idHere) {
-        dispatchNoteDelete(notesContainer ?? card, idHere, { storeUpdated: true, shouldRender: false });
-    }
-    if (recordAbove) {
-        dispatchNoteUpdate(above, recordAbove, { storeUpdated: true, shouldRender: false });
-    }
-}
-
-function navigateToAdjacentCard(card, direction, notesContainer) {
-    const targetCard = direction === DIRECTION_PREVIOUS ? card.previousElementSibling : card.nextElementSibling;
-    if (targetCard instanceof HTMLElement && targetCard.classList.contains("markdown-block")) {
-        const caretPlacement = direction === DIRECTION_PREVIOUS ? CARET_PLACEMENT_END : CARET_PLACEMENT_START;
-        return focusCardEditor(targetCard, notesContainer, {
-            caretPlacement,
-            bubblePreviousCardToTop: true
-        });
-    }
-
-    if (direction === DIRECTION_PREVIOUS) {
-        return focusTopEditorFromCard(card, notesContainer);
-    }
-
-    return false;
-}
-
-/**
- * Focus the editor for a specific card.
- * @param {HTMLElement} card
- * @param {HTMLElement} notesContainer
- * @param {{ caretPlacement?: typeof CARET_PLACEMENT_START | typeof CARET_PLACEMENT_END | number, bubblePreviousCardToTop?: boolean }} [options]
- * @returns {boolean}
- */
-export function focusCardEditor(card, notesContainer, options = {}) {
-    if (!(card instanceof HTMLElement)) return false;
-
-    const {
-        caretPlacement = CARET_PLACEMENT_START,
-        bubblePreviousCardToTop = false
-    } = options;
-
-    enableInPlaceEditing(card, notesContainer, { bubblePreviousCardToTop, bubbleSelfToTop: false });
-
-    requestAnimationFrame(() => {
-        const host = getEditorHost(card);
-        if (!host) return;
-
-        const textarea = typeof host.getTextarea === "function" ? host.getTextarea() : null;
-        const isNumericPlacement = typeof caretPlacement === "number" && Number.isFinite(caretPlacement);
-        const currentValue = typeof textarea?.value === "string" ? textarea.value : host.getValue();
-        const valueLength = typeof currentValue === "string" ? currentValue.length : 0;
-        const desiredIndex = isNumericPlacement
-            ? Math.max(0, Math.min(Math.floor(caretPlacement), valueLength))
-            : caretPlacement === CARET_PLACEMENT_END
-                ? valueLength
-                : 0;
-        const selectionStart = textarea && typeof textarea.selectionStart === "number"
-            ? textarea.selectionStart
-            : null;
-        const selectionEnd = textarea && typeof textarea.selectionEnd === "number"
-            ? textarea.selectionEnd
-            : null;
-        const selectionDefined = selectionStart !== null && selectionEnd !== null;
-        const expectedDefaultIndex = isNumericPlacement
-            ? desiredIndex
-            : caretPlacement === CARET_PLACEMENT_END
-                ? 0
-                : valueLength;
-        const selectionAtDefault = selectionDefined
-            && selectionStart === selectionEnd
-            && selectionStart === expectedDefaultIndex;
-        const shouldRespectExistingCaret = !isNumericPlacement && selectionDefined && !selectionAtDefault;
-
-        host.setMode(MARKDOWN_MODE_EDIT);
-        host.focus();
-        // Respect caret adjustments made before this frame (e.g. user repositioning the cursor)
-        if (!shouldRespectExistingCaret) {
-            if (isNumericPlacement) {
-                host.setCaretPosition(desiredIndex);
-            } else {
-                host.setCaretPosition(caretPlacement === CARET_PLACEMENT_END ? "end" : "start");
-            }
-        }
-    });
-
-    return true;
-}
-
-function focusTopEditorFromCard(card, notesContainer) {
-    const topWrapper = document.querySelector("#top-editor .markdown-block.top-editor");
-    const topHost = topWrapper?.__markdownHost;
-    if (!topHost) return false;
-
-    finalizeCard(card, notesContainer, { bubbleToTop: false });
-
-    requestAnimationFrame(() => {
-        topHost.setMode(MARKDOWN_MODE_EDIT);
-        topHost.focus();
-        topHost.setCaretPosition("end");
-    });
-
-    return true;
-}
-
-/**
- * Normalize Markdown text so that insignificant whitespace differences do not count as edits.
- * @param {string} value
- * @returns {string}
- */
-function normalizeMarkdownForComparison(value) {
-    if (typeof value !== "string") {
-        return "";
-    }
-    return value
-        .replace(LINE_ENDING_NORMALIZE_PATTERN, "\n")
-        .split("\n")
-        .map((line) => line.replace(TRAILING_WHITESPACE_PATTERN, ""))
-        .join("\n")
-        .trim();
-}
-
-/**
- * Compare attachment dictionaries for equality.
- * @param {Record<string, import("../types.d.js").AttachmentRecord>} current
- * @param {Record<string, import("../types.d.js").AttachmentRecord>} previous
- * @returns {boolean}
- */
-function areAttachmentDictionariesEqual(current, previous) {
-    const currentEntries = Object.entries(current || {});
-    const previousEntries = Object.entries(previous || {});
-    if (currentEntries.length !== previousEntries.length) {
-        return false;
-    }
-
-    currentEntries.sort(([a], [b]) => a.localeCompare(b));
-    previousEntries.sort(([a], [b]) => a.localeCompare(b));
-
-    for (let index = 0; index < currentEntries.length; index += 1) {
-        const [currentKey, currentRecord] = currentEntries[index];
-        const [previousKey, previousRecord] = previousEntries[index];
-        if (currentKey !== previousKey) {
-            return false;
-        }
-        if (!currentRecord || !previousRecord) {
-            return false;
-        }
-        if (currentRecord.dataUrl !== previousRecord.dataUrl) {
-            return false;
-        }
-        const currentAlt = typeof currentRecord.altText === "string" ? currentRecord.altText : "";
-        const previousAlt = typeof previousRecord.altText === "string" ? previousRecord.altText : "";
-        if (currentAlt !== previousAlt) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-/**
- * Create a stable signature for attachments to detect content changes.
- * @param {Record<string, import("../types.d.js").AttachmentRecord>} attachments
- * @returns {string}
- */
-function createAttachmentSignature(attachments) {
-    const entries = Object.entries(attachments || {});
-    if (entries.length === 0) {
-        return "";
-    }
-    entries.sort(([a], [b]) => a.localeCompare(b));
-    return entries
-        .map(([key, record]) => {
-            const dataLength = record && typeof record.dataUrl === "string" ? record.dataUrl.length : 0;
-            const altText = record && typeof record.altText === "string" ? record.altText : "";
-            return `${key}:${dataLength}:${altText}`;
-        })
-        .join("|");
-}
-
-/* ---------- Chips & classification ---------- */
-
-/**
- * Request a classification refresh for a note and update its chips on success.
- * @param {string} noteId
- * @param {string} text
- * @param {HTMLElement} notesContainer
- * @returns {void}
- */
-export function triggerClassificationForCard(noteId, text, notesContainer) {
-    const firstLine = text.split("\n").find((l) => l.trim().length > 0) || "";
-    const title = firstLine.replace(/^#\s*/, "").slice(0, 120).trim();
-
-    ClassifierClient.classifyOrFallback(title, text)
-        .then((classification) => {
-            const records = GravityStore.loadAllNotes();
-            const rec = records.find((r) => r.noteId === noteId);
-            if (!rec) return;
-            rec.classification = classification;
-            rec.lastActivityIso = nowIso();
-            GravityStore.saveAllNotes(records);
-
-            const card = notesContainer.querySelector(`.markdown-block[data-note-id="${noteId}"]`);
-            if (card) {
-                const chips = card.querySelector(".meta-chips");
-                applyChips(chips, classification);
-            }
-        })
-        .catch((error) => {
-            logging.error(error);
-        });
-}
-
-function applyChips(container, classification) {
-    container.innerHTML = "";
-    if (!classification) return;
-    const { category, privacy, status, tags } = classification;
-    if (category) container.appendChild(chip(category, "meta-chip meta-chip--cat"));
-    if (status)   container.appendChild(chip(status,   "meta-chip meta-chip--status"));
-    if (privacy)  container.appendChild(chip(privacy,  "meta-chip meta-chip--privacy"));
-    if (Array.isArray(tags)) tags.slice(0, 6).forEach((t) => container.appendChild(chip(`#${t}`, "meta-chip")));
-}
-
-function chip(text, className) {
-    return createElement("span", className, text);
 }
