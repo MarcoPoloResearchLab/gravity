@@ -311,7 +311,8 @@ ok 2 - Markdown inline editor — actions
   - Eliminating duplicates, bugs and dead code
   - Centrally consolidate card's behaviour
   - Fully cover with tests
-- [ ] [GN-420] Add a command to Makefile to build and launch local docker image through docker-compose.yml
+- [x] [GN-420] Add a command to Makefile to build and launch local docker image through docker-compose.yml
+  - Introduced a `compose-up` Makefile target that wraps `docker compose up --build --detach` with configurable binary/file variables.
 
 ## Planning (do not work on these, not ready)
 
