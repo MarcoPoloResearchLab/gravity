@@ -44,6 +44,9 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 
 ## BugFixes (300–399)
 
+- [ ] [GN-300] Integrate with TAuth service for user authentication and keeping user logged in. Deliver a plan of integration expressed as issues in @ISSUES.md. Read @tools/mpr-ui/docs/integration-guide.md, @tools/TAuth/ARCHITECTURE.md and @tools/TAuth/README.md.
+- [ ] [GN-301] Implement the plan delivered by GN-300
+
 ## Maintenance (400–499)
 
 ## Planning
