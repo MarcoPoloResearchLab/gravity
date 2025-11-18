@@ -8,3 +8,5 @@ node_modules/
 client_secret*json
 *.png
 frontend/tests/artifacts/
+
+tools/
