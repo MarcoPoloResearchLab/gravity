@@ -2,9 +2,17 @@
 
 import { appConfig } from "./config.js?build=2024-10-05T12:00:00Z";
 import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
-import { EVENT_AUTH_SIGN_IN, EVENT_AUTH_SIGN_OUT, EVENT_AUTH_ERROR } from "../constants.js?build=2024-10-05T12:00:00Z";
+import {
+    EVENT_AUTH_SIGN_IN,
+    EVENT_AUTH_SIGN_OUT,
+    EVENT_AUTH_ERROR,
+    EVENT_AUTH_CREDENTIAL_RECEIVED
+} from "../constants.js?build=2024-10-05T12:00:00Z";
 
-const DEFAULT_HEADERS = Object.freeze({ "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" });
+const DEFAULT_HEADERS = Object.freeze({
+    "Content-Type": "application/json",
+    "X-Requested-With": "XMLHttpRequest"
+});
 
 /**
  * Create a controller that bridges TAuth's auth-client to the Gravity UI.
@@ -33,7 +41,7 @@ export function createTAuthSession(options = {}) {
     };
 
     return Object.freeze({
-        async initialize() {
+        async initialize(googleController) {
             if (state.initialized || state.initializing) {
                 await state.initializing;
                 return;
@@ -52,6 +60,17 @@ export function createTAuthSession(options = {}) {
                         dispatch(events, EVENT_AUTH_SIGN_OUT, { reason: "session-ended" });
                     }
                 });
+                if (googleController) {
+                    googleController.setCredentialCallback(async (credential) => {
+                        try {
+                            const nonce = await controller.requestNonce();
+                            await controller.exchangeGoogleCredential({ credential, nonceToken: nonce });
+                        } catch (error) {
+                            logging.error("TAuth credential exchange failed", error);
+                            dispatch(events, EVENT_AUTH_ERROR, { reason: error instanceof Error ? error.message : "exchange_failed" });
+                        }
+                    });
+                }
                 state.initialized = true;
             })();
             await state.initializing;

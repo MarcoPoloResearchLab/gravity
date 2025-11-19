@@ -221,7 +221,12 @@ export function createGoogleIdentityController(options) {
     return Object.freeze({
         signOut,
         dispose: disposeController,
-        requestCredential
+        requestCredential,
+        setCredentialCallback(callback) {
+            if (typeof callback === "function") {
+                credentialCallback = callback;
+            }
+        }
     });
 }
 

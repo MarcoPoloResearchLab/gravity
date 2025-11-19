@@ -526,17 +526,12 @@ function gravityApp() {
          */
         handleAuthSignOutRequest() {
             this.avatarMenu?.close({ focusTrigger: false });
-            if (this.authController) {
-                this.realtimeSync?.disconnect();
+            this.realtimeSync?.disconnect();
+            if (this.tauthSession) {
+                void this.tauthSession.signOut();
+            } else if (this.authController) {
                 this.authController.signOut("manual");
-            } else {
-                this.authControls?.showSignedOut();
-                this.avatarMenu?.setEnabled(false);
-                GravityStore.setUserScope(null);
-                this.initializeNotes();
-                this.realtimeSync?.disconnect();
             }
-            void this.tauthSession?.signOut();
             this.cachedPersistedAuthState = undefined;
             this.backendAccessToken = null;
             this.backendAccessTokenExpiresAtMs = null;
