@@ -13,6 +13,7 @@ import { initializeAnalytics } from "./core/analytics.js?build=2024-10-05T12:00:
 import { createSyncManager } from "./core/syncManager.js?build=2024-10-05T12:00:00Z";
 import { createRealtimeSyncController } from "./core/realtimeSyncController.js?build=2024-10-05T12:00:00Z";
 import { ensureTAuthClientLoaded } from "./core/tauthClient.js?build=2024-10-05T12:00:00Z";
+import { createTAuthSession } from "./core/tauthSession.js?build=2024-10-05T12:00:00Z";
 import {
     loadAuthState,
     saveAuthState,
@@ -38,6 +39,7 @@ import {
     EVENT_AUTH_SIGN_IN,
     EVENT_AUTH_SIGN_OUT,
     EVENT_AUTH_ERROR,
+    EVENT_AUTH_CREDENTIAL_RECEIVED,
     EVENT_SYNC_SNAPSHOT_APPLIED,
     MESSAGE_NOTES_IMPORTED,
     MESSAGE_NOTES_SKIPPED,
@@ -127,6 +129,7 @@ function gravityApp() {
         authControls: /** @type {ReturnType<typeof initializeAuthControls>|null} */ (null),
         avatarMenu: /** @type {ReturnType<typeof createAvatarMenu>|null} */ (null),
         authController: /** @type {{ signOut(reason?: string): void, dispose(): void }|null} */ (null),
+        tauthSession: /** @type {ReturnType<typeof createTAuthSession>|null} */ (null),
         authUser: /** @type {{ id: string, email: string|null, name: string|null, pictureUrl: string|null }|null} */ (null),
         authPollHandle: /** @type {number|null} */ (null),
         cachedPersistedAuthState: /** @type {ReturnType<typeof loadAuthState>|null|undefined} */ (undefined),
@@ -137,6 +140,7 @@ function gravityApp() {
         backendAccessToken: /** @type {string|null} */ (null),
         backendAccessTokenExpiresAtMs: /** @type {number|null} */ (null),
         latestCredential: /** @type {string|null} */ (null),
+        pendingCredential: /** @type {string|null} */ (null),
         lastRenderedSignature: /** @type {string|null} */ (null),
         fullScreenToggleController: /** @type {{ dispose(): void }|null} */ (null),
         versionRefreshController: /** @type {{ dispose(): void, checkNow(): Promise<{ reloaded: boolean, remoteVersion: string|null }> }|null} */ (null),
@@ -164,6 +168,7 @@ function gravityApp() {
             this.configureMarked();
             this.registerEventBridges();
             this.initializeAuth();
+            this.initializeTAuthSession();
             this.initializeTopEditor();
             this.initializeImportExport();
             this.syncManager = createSyncManager({
@@ -353,6 +358,23 @@ function gravityApp() {
         },
 
         /**
+         * Initialize the TAuth session bridge if available.
+         * @returns {void}
+         */
+        initializeTAuthSession() {
+            if (this.tauthSession) {
+                return;
+            }
+            this.tauthSession = createTAuthSession({
+                baseUrl: appConfig.authBaseUrl,
+                eventTarget: this.$el ?? document
+            });
+            this.tauthSession.initialize().catch((error) => {
+                logging.error("Failed to initialize TAuth session", error);
+            });
+        },
+
+        /**
          * Attempt to rehydrate authentication from storage.
          * @returns {boolean}
          */
@@ -514,6 +536,7 @@ function gravityApp() {
                 this.initializeNotes();
                 this.realtimeSync?.disconnect();
             }
+            void this.tauthSession?.signOut();
             this.cachedPersistedAuthState = undefined;
             this.backendAccessToken = null;
             this.backendAccessTokenExpiresAtMs = null;
@@ -773,6 +796,15 @@ function gravityApp() {
                     ? String(detail.reason)
                     : ERROR_AUTHENTICATION_GENERIC;
             this.authControls?.showError(errorMessage);
+        });
+
+        root.addEventListener(EVENT_AUTH_CREDENTIAL_RECEIVED, (event) => {
+            const credential = typeof event?.detail?.credential === "string" && event.detail.credential.length > 0
+                ? event.detail.credential
+                : null;
+            if (credential) {
+                this.pendingCredential = credential;
+            }
         });
 
         root.addEventListener(EVENT_NOTIFICATION_REQUEST, (event) => {
