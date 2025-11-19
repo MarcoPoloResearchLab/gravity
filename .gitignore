@@ -10,3 +10,9 @@ client_secret*json
 frontend/tests/artifacts/
 
 tools/
+# Managed by gix gitignore workflow
+.env
+.env.*
+.DS_Store
+qodana.yaml
+bin/
