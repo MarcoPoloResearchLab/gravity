@@ -11,6 +11,7 @@ and are grouped by the date the work landed on `master`.
 - Local test runs now capture Puppeteer screenshots per suite while skipping CI to aid debugging (GN-70).
 - Header includes a diagonal full-screen toggle with stateful icons and dedicated regression coverage (GN-204).
 - Background version watcher polls a manifest and reloads the app when a new deploy ships so browsers never run stale code (GN-206).
+- Introduced the TAuth test harness plus `frontend/tests/auth.tauthFlow.puppeteer.test.js` to cover the nonce/exchange/sync flow end-to-end (GN-304).
 
 ### Changed
 - Full-screen toggle now lives inside the avatar menu with updated exit icon strokes and a text label (GN-207).
@@ -45,6 +46,7 @@ and are grouped by the date the work landed on `master`.
 - Reworked `README.md` to focus on user-facing workflows and migrated technical setup guidance into `ARCHITECTURE.md` (GN-400).
 - Documented the full-screen controller, keyboard shortcuts modal, analytics bootstrap, and version refresh utility in `ARCHITECTURE.md` so the guide matches the current code structure (GN-401).
 - Added `REFACTORING_PLAN.md` capturing backend smart constructor work, frontend card-controller decomposition, and testing upgrades required by POLICY.md (GN-402).
+- Captured the TAuth bootstrap/nonce/exchange contract and the new harness-based coverage in `ARCHITECTURE.md` (GN-304).
 
 ### Removed
 - Deleted the legacy `MIGRATION.md` now that the architecture guide houses the relevant details (GN-54).

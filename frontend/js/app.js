@@ -705,10 +705,14 @@ function gravityApp() {
             if (!user || !user.id) {
                 return;
             }
-            const credential = typeof detail?.credential === "string" ? detail.credential : "";
-            if (credential.length > 0) {
-                this.latestCredential = credential;
+            const providedCredential = typeof detail?.credential === "string" && detail.credential.length > 0
+                ? detail.credential
+                : null;
+            if (providedCredential) {
+                this.latestCredential = providedCredential;
             }
+            const activeCredential = providedCredential
+                ?? (typeof this.latestCredential === "string" && this.latestCredential.length > 0 ? this.latestCredential : null);
             const providedBackendToken = typeof detail?.backendAccessToken === "string" && detail.backendAccessToken.length > 0
                 ? detail.backendAccessToken
                 : null;
@@ -762,7 +766,18 @@ function gravityApp() {
                         expiresAtMs: this.backendAccessTokenExpiresAtMs
                     }
                     : null;
-                if (!credential && !backendTokenHint) {
+                let credentialForBackend = activeCredential;
+                if (!credentialForBackend && !backendTokenHint && typeof this.requestFreshCredential === "function") {
+                    try {
+                        credentialForBackend = await this.requestFreshCredential();
+                        if (credentialForBackend) {
+                            this.latestCredential = credentialForBackend;
+                        }
+                    } catch (error) {
+                        logging.error(error);
+                    }
+                }
+                if (!credentialForBackend && !backendTokenHint) {
                     applyGuestState();
                     this.authControls?.showError(ERROR_AUTHENTICATION_GENERIC);
                     return;
@@ -772,7 +787,7 @@ function gravityApp() {
                     const result = syncManager && typeof syncManager.handleSignIn === "function"
                         ? await syncManager.handleSignIn({
                             userId: user.id,
-                            credential,
+                            credential: credentialForBackend ?? undefined,
                             backendToken: backendTokenHint ?? undefined
                         })
                         : {
@@ -859,6 +874,8 @@ function gravityApp() {
             if (!credential) {
                 return;
             }
+            this.latestCredential = credential;
+            this.persistAuthState();
             void this.exchangeCredentialWithTAuth(credential);
         });
 

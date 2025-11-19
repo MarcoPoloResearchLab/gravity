@@ -36,7 +36,8 @@ export function createTAuthSession(options = {}) {
         initialized: false,
         initializing: null,
         baseUrl,
-        fetch: fetchImplementation
+        fetch: fetchImplementation,
+        lastCredential: null
     };
 
     return Object.freeze({
@@ -53,10 +54,14 @@ export function createTAuthSession(options = {}) {
                 await win.initAuthClient({
                     baseUrl,
                     onAuthenticated(profile) {
-                        dispatch(events, EVENT_AUTH_SIGN_IN, { user: normalizeProfile(profile) });
+                        dispatch(events, EVENT_AUTH_SIGN_IN, {
+                            user: normalizeProfile(profile),
+                            credential: state.lastCredential
+                        });
                     },
                     onUnauthenticated() {
                         dispatch(events, EVENT_AUTH_SIGN_OUT, { reason: "session-ended" });
+                        state.lastCredential = null;
                     }
                 });
                 state.initialized = true;
@@ -100,6 +105,7 @@ export function createTAuthSession(options = {}) {
             if (!credential) {
                 throw new Error("tauth.missing_credential");
             }
+            state.lastCredential = credential;
             const body = JSON.stringify({ google_id_token: credential, nonce_token: nonceToken ?? null });
             const response = await state.fetch(`${baseUrl}/auth/google`, {
                 method: "POST",

@@ -15,9 +15,13 @@ let sharedLaunchContext = null;
 const CONFIG_ROUTE_PATTERN = /\/data\/runtime\.config\.(development|production)\.json$/u;
 const DEFAULT_TEST_RUNTIME_CONFIG = Object.freeze({
     backendBaseUrl: "",
-    llmProxyUrl: ""
+    llmProxyUrl: "",
+    authBaseUrl: ""
 });
 const RUNTIME_CONFIG_SYMBOL = Symbol("gravityRuntimeConfigOverrides");
+const RUNTIME_CONFIG_HANDLER_SYMBOL = Symbol("gravityRuntimeConfigHandler");
+const REQUEST_HANDLERS_SYMBOL = Symbol("gravityRequestHandlers");
+const REQUEST_INTERCEPTION_READY_SYMBOL = Symbol("gravityRequestInterceptionReady");
 
 /**
  * Launch the shared Puppeteer browser for the entire test run.
@@ -97,34 +101,66 @@ export async function createSharedPage(runtimeConfigOverrides = {}) {
  * @returns {Promise<void>}
  */
 export async function injectRuntimeConfig(page, overrides = {}) {
-    if (!page[RUNTIME_CONFIG_SYMBOL]) {
-        page[RUNTIME_CONFIG_SYMBOL] = overrides;
-        await page.setRequestInterception(true);
-        page.on("request", (request) => {
-            const url = request.url();
-            if (CONFIG_ROUTE_PATTERN.test(url)) {
-                const match = url.match(CONFIG_ROUTE_PATTERN);
-                const environment = match && match[1] ? match[1] : "development";
-                const resolvedOverrides = resolveRuntimeConfigOverrides(page[RUNTIME_CONFIG_SYMBOL], environment);
-                const body = JSON.stringify({
-                    environment,
-                    backendBaseUrl: resolvedOverrides.backendBaseUrl,
-                    llmProxyUrl: resolvedOverrides.llmProxyUrl
-                });
-                request.respond({ status: 200, contentType: "application/json", body }).catch(() => {});
-                return;
-            }
-            request.continue().catch(() => {});
-        });
+    page[RUNTIME_CONFIG_SYMBOL] = overrides;
+    if (page[RUNTIME_CONFIG_HANDLER_SYMBOL]) {
         return;
     }
-    page[RUNTIME_CONFIG_SYMBOL] = overrides;
+    page[RUNTIME_CONFIG_HANDLER_SYMBOL] = true;
+    await registerRequestInterceptor(page, (request) => {
+        const url = request.url();
+        if (!CONFIG_ROUTE_PATTERN.test(url)) {
+            return false;
+        }
+        const match = url.match(CONFIG_ROUTE_PATTERN);
+        const environment = match && match[1] ? match[1] : "development";
+        const resolvedOverrides = resolveRuntimeConfigOverrides(page[RUNTIME_CONFIG_SYMBOL], environment);
+        const body = JSON.stringify({
+            environment,
+            backendBaseUrl: resolvedOverrides.backendBaseUrl,
+            llmProxyUrl: resolvedOverrides.llmProxyUrl,
+            authBaseUrl: resolvedOverrides.authBaseUrl
+        });
+        request.respond({ status: 200, contentType: "application/json", body }).catch(() => {});
+        return true;
+    });
+}
+
+/**
+ * Register a request interceptor that may respond to intercepted requests.
+ * @param {import("puppeteer").Page} page
+ * @param {(request: import("puppeteer").HTTPRequest) => boolean} handler
+ * @returns {Promise<void>}
+ */
+export async function registerRequestInterceptor(page, handler) {
+    if (!page[REQUEST_INTERCEPTION_READY_SYMBOL]) {
+        page[REQUEST_INTERCEPTION_READY_SYMBOL] = (async () => {
+            page[REQUEST_HANDLERS_SYMBOL] = [];
+            await page.setRequestInterception(true);
+            page.on("request", (request) => {
+                const handlers = Array.isArray(page[REQUEST_HANDLERS_SYMBOL]) ? page[REQUEST_HANDLERS_SYMBOL] : [];
+                for (const candidate of handlers) {
+                    try {
+                        if (candidate(request) === true) {
+                            return;
+                        }
+                    } catch {
+                        // Suppress handler errors to keep other interceptors functional.
+                    }
+                }
+                request.continue().catch(() => {});
+            });
+        })();
+    }
+    await page[REQUEST_INTERCEPTION_READY_SYMBOL];
+    const handlers = Array.isArray(page[REQUEST_HANDLERS_SYMBOL]) ? page[REQUEST_HANDLERS_SYMBOL] : [];
+    handlers.push(handler);
+    page[REQUEST_HANDLERS_SYMBOL] = handlers;
 }
 
 /**
  * @param {Record<string, any>} overrides
  * @param {"development" | "production"} environment
- * @returns {{ backendBaseUrl: string, llmProxyUrl: string }}
+ * @returns {{ backendBaseUrl: string, llmProxyUrl: string, authBaseUrl: string }}
  */
 function resolveRuntimeConfigOverrides(overrides, environment) {
     if (!overrides || typeof overrides !== "object") {
@@ -135,7 +171,8 @@ function resolveRuntimeConfigOverrides(overrides, environment) {
         : null;
     const backendBaseUrl = normalizeTestUrl(scoped?.backendBaseUrl ?? overrides.backendBaseUrl ?? DEFAULT_TEST_RUNTIME_CONFIG.backendBaseUrl);
     const llmProxyUrl = normalizeTestUrl(scoped?.llmProxyUrl ?? overrides.llmProxyUrl ?? DEFAULT_TEST_RUNTIME_CONFIG.llmProxyUrl, true);
-    return { backendBaseUrl, llmProxyUrl };
+    const authBaseUrl = normalizeTestUrl(scoped?.authBaseUrl ?? overrides.authBaseUrl ?? DEFAULT_TEST_RUNTIME_CONFIG.authBaseUrl, true);
+    return { backendBaseUrl, llmProxyUrl, authBaseUrl };
 }
 
 /**

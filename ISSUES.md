@@ -46,7 +46,7 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 - [ ] [GN-301] Add a runnable TAuth service to the local/dev stack (docker-compose, env templates, shared secrets).
 - [x] [GN-302] Replace the backend’s Google-token exchange with TAuth session validation (HS256 cookie verification, `/auth/google` removed, tests updated).
 - [ ] [GN-303] Frontend auth wiring: load `auth-client.js`, request `/auth/nonce`/`/auth/google`, and surface session/profile data via Alpine events and controls.
-- [ ] [GN-304] Add end-to-end coverage for the full TAuth flow (sign-in, refresh, sync) and document the contract once GN-304 is complete.
+- [ ] [GN-304] Add end-to-end coverage for the full TAuth flow (sign-in, refresh, sync) and document the contract once GN-304 is complete — harness + docs are in place, but `auth.tauthFlow.puppeteer.test.js` and `auth.sessionPersistence.puppeteer.test.js` still time out because Gravity never sees a credential/ backend token after TAuth emits `gravity:auth-sign-in` (app resets to guest immediately). Need to finish wiring the credential into the sign-in event so syncManager can exchange it.
 - [ ] [GN-305] Persistence + networking: update `syncManager`, `backendClient`, and storage to rely on cookie-authenticated fetches (no local backend tokens) and handle unauthorized responses.
 - [ ] [GN-306] Tooling/tests/docs: refresh Puppeteer suites, unit tests, and README/ARCHITECTURE to cover the new flow.
 

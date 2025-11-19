@@ -28,13 +28,20 @@ const DEFAULT_JWT_AUDIENCE = appConfig.googleClientId;
  * Prepare a new browser page configured for backend synchronization tests.
  * @param {import('puppeteer').Browser | import('puppeteer').BrowserContext} browser
  * @param {string} pageUrl
- * @param {{ backendBaseUrl: string, llmProxyUrl?: string, preserveLocalStorage?: boolean }} options
+ * @param {{
+ *   backendBaseUrl: string,
+ *   llmProxyUrl?: string,
+ *   authBaseUrl?: string,
+ *   beforeNavigate?: (page: import("puppeteer").Page) => (Promise<void>|void),
+ *   preserveLocalStorage?: boolean
+ * }} options
  * @returns {Promise<import('puppeteer').Page>}
  */
 export async function prepareFrontendPage(browser, pageUrl, options) {
     const {
         backendBaseUrl,
         llmProxyUrl = "",
+        authBaseUrl = "",
         beforeNavigate,
         preserveLocalStorage = false
     } = options;
@@ -46,7 +53,8 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
     await injectRuntimeConfig(page, {
         development: {
             backendBaseUrl,
-            llmProxyUrl
+            llmProxyUrl,
+            authBaseUrl
         }
     });
     await installBackendCredentialInterceptor(page, backendBaseUrl);
@@ -96,6 +104,7 @@ async function installBackendCredentialInterceptor(page, backendBaseUrl) {
                     if (typeof window.__gravityDecodeCredential === "function") {
                         const decoded = await window.__gravityDecodeCredential(credential);
                         if (decoded && typeof decoded.sessionToken === "string") {
+                            console.log("[backendHarness] intercept auth/google");
                             return new Response(JSON.stringify({
                                 access_token: decoded.sessionToken,
                                 expires_in: decoded.expiresIn ?? 5 * 60,
@@ -117,6 +126,39 @@ async function installBackendCredentialInterceptor(page, backendBaseUrl) {
             return originalFetch(input, init);
         };
     }, normalizedBaseUrl);
+}
+
+/**
+ * Merge runtime config overrides with defaults.
+ * @param {Record<string, any>} base
+ * @param {Record<string, any>|undefined} overrides
+ * @returns {Record<string, any>}
+ */
+function mergeRuntimeOverrides(base, overrides) {
+    const merged = {};
+    if (base && typeof base === "object") {
+        for (const [environment, value] of Object.entries(base)) {
+            if (value && typeof value === "object") {
+                merged[environment] = { ...value };
+            } else {
+                merged[environment] = value;
+            }
+        }
+    }
+    if (!overrides || typeof overrides !== "object") {
+        return merged;
+    }
+    for (const [environment, value] of Object.entries(overrides)) {
+        if (value && typeof value === "object") {
+            const existing = merged[environment] && typeof merged[environment] === "object"
+                ? merged[environment]
+                : {};
+            merged[environment] = { ...existing, ...value };
+        } else {
+            merged[environment] = value;
+        }
+    }
+    return merged;
 }
 
 /**
@@ -165,18 +207,37 @@ export function composeTestCredential(options) {
  *   teardown: () => Promise<void>
  * }>}
  */
-export async function initializePuppeteerTest(pageUrl = DEFAULT_PAGE_URL) {
+/**
+ * Initialize a standard Puppeteer test harness, optionally customizing runtime config or pre-navigation hooks.
+ * @param {string} [pageUrl]
+ * @param {{
+ *   runtimeConfig?: Record<string, any>,
+ *   beforeNavigate?: (page: import("puppeteer").Page) => (Promise<void>|void)
+ * }} [setupOptions]
+ * @returns {Promise<{
+ *   browser: import('puppeteer').Browser,
+ *   page: import('puppeteer').Page,
+ *   backend: { baseUrl: string, tokenFactory: (userId: string) => string, close: () => Promise<void> },
+ *   teardown: () => Promise<void>
+ * }>}
+ */
+export async function initializePuppeteerTest(pageUrl = DEFAULT_PAGE_URL, setupOptions = {}) {
     const backend = await startTestBackend();
     const browser = await connectSharedBrowser();
     const context = await browser.createBrowserContext();
     const page = await context.newPage();
     await attachImportAppModule(page);
-    await injectRuntimeConfig(page, {
+    const baseRuntimeOverrides = {
         development: {
             backendBaseUrl: backend.baseUrl,
             llmProxyUrl: ""
         }
-    });
+    };
+    const mergedRuntimeOverrides = mergeRuntimeOverrides(baseRuntimeOverrides, setupOptions.runtimeConfig);
+    await injectRuntimeConfig(page, mergedRuntimeOverrides);
+    if (typeof setupOptions.beforeNavigate === "function") {
+        await setupOptions.beforeNavigate(page);
+    }
     await installBackendCredentialInterceptor(page, backend.baseUrl);
     await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
     await waitForAppReady(page);
@@ -265,6 +326,86 @@ export async function waitForSyncManagerUser(page, expectedUserId, timeoutMs) {
         const debugState = syncManager.getDebugState();
         return debugState?.activeUserId === userId;
     }, options, expectedUserId);
+}
+
+/**
+ * Wait until the TAuth session bridge has been initialised.
+ * @param {import('puppeteer').Page} page
+ * @param {number} [timeoutMs]
+ * @returns {Promise<void>}
+ */
+export async function waitForTAuthSession(page, timeoutMs) {
+    const options = typeof timeoutMs === "number" && Number.isFinite(timeoutMs)
+        ? { timeout: timeoutMs }
+        : undefined;
+    await page.waitForFunction(() => {
+        const root = document.querySelector("[x-data]");
+        if (!root) {
+            return false;
+        }
+        const alpineComponent = (() => {
+            const legacy = /** @type {{ $data?: Record<string, any> }} */ (/** @type {any} */ (root).__x ?? null);
+            if (legacy && typeof legacy.$data === "object") {
+                return legacy.$data;
+            }
+            const alpine = typeof window !== "undefined" ? /** @type {{ $data?: (el: Element) => any }} */ (window.Alpine ?? null) : null;
+            if (alpine && typeof alpine.$data === "function") {
+                const scoped = alpine.$data(root);
+                if (scoped && typeof scoped === "object") {
+                    return scoped;
+                }
+            }
+            const stack = /** @type {Array<Record<string, any>>|undefined} */ (/** @type {any} */ (root)._x_dataStack);
+            if (Array.isArray(stack) && stack.length > 0) {
+                const candidate = stack[stack.length - 1];
+                if (candidate && typeof candidate === "object") {
+                    return candidate;
+                }
+            }
+            return null;
+        })();
+        return Boolean(alpineComponent?.tauthSession);
+    }, options);
+}
+
+/**
+ * Wait until the sync manager instance has been initialised.
+ * @param {import('puppeteer').Page} page
+ * @param {number} [timeoutMs]
+ * @returns {Promise<void>}
+ */
+export async function waitForSyncManagerReady(page, timeoutMs) {
+    const options = typeof timeoutMs === "number" && Number.isFinite(timeoutMs)
+        ? { timeout: timeoutMs }
+        : undefined;
+    await page.waitForFunction(() => {
+        const root = document.querySelector("[x-data]");
+        if (!root) {
+            return false;
+        }
+        const alpineComponent = (() => {
+            const legacy = /** @type {{ $data?: Record<string, any> }} */ (/** @type {any} */ (root).__x ?? null);
+            if (legacy && typeof legacy.$data === "object") {
+                return legacy.$data;
+            }
+            const alpine = typeof window !== "undefined" ? /** @type {{ $data?: (el: Element) => any }} */ (window.Alpine ?? null) : null;
+            if (alpine && typeof alpine.$data === "function") {
+                const scoped = alpine.$data(root);
+                if (scoped && typeof scoped === "object") {
+                    return scoped;
+                }
+            }
+            const stack = /** @type {Array<Record<string, any>>|undefined} */ (/** @type {any} */ (root)._x_dataStack);
+            if (Array.isArray(stack) && stack.length > 0) {
+                const candidate = stack[stack.length - 1];
+                if (candidate && typeof candidate === "object") {
+                    return candidate;
+                }
+            }
+            return null;
+        })();
+        return Boolean(alpineComponent?.syncManager);
+    }, options);
 }
 
 /**

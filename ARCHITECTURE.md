@@ -183,6 +183,13 @@ When serving from an alternate hostname, add a new profile or override the URLs 
 - The backend exposes a single binary API; run it locally with `go run ./cmd/gravity-api` or through Docker.
 - Authentication relies on the TAuth service under `tools/TAuth`; the root `docker-compose*.yml` files build this container automatically. Copy `backend/env.example` to `backend/.env` and `tauth/env.example` to `tauth/.env`, then run `docker compose -f docker-compose.dev.yml up --build` to start the trio (`frontend`, `backend`, `tauth`). TAuth listens on `http://localhost:8082`, shares the same Google Web Client ID as Gravity, and uses the `local-dev-shared-signing-secret` so downstream services can validate the HS256 cookies it mints.
 
+### TAuth flow and coverage
+
+1. `frontend/js/core/tauthClient.js` injects TAuth's `auth-client.js` when the app boots so `window.initAuthClient` / `window.logout` mirror the hosted script.
+2. Google Identity raises `gravity:auth-credential`; `tauthSession.requestNonce()` posts to `/auth/nonce`, and `exchangeGoogleCredential()` posts `{ google_id_token, nonce_token }` to `/auth/google` with `credentials: "include"`.
+3. Once a cookie lands, `initAuthClient` probes `/me` (or `/auth/refresh` when `/me` returns 401) and dispatches `gravity:auth-sign-in` with the profile data that `syncManager.handleSignIn` consumes to mint backend tokens and hydrate realtime sync. Logout reverses the flow via `/auth/logout` and `gravity:auth-sign-out`.
+4. `frontend/tests/helpers/tauthHarness.js` stubs the auth-client script plus `/auth/*` HTTP responses so `frontend/tests/auth.tauthFlow.puppeteer.test.js` can exercise the full nonce → exchange → backend-sync flow plus a refresh scenario that reloads the UI while keeping the session scope.
+
 ### Docker Workflow
 
 - `docker-compose.yml` provisions the Go API (`backend`) and a static web host (`frontend`) backed by [gHTTP](https://github.com/temirov/ghttp).

@@ -7,7 +7,8 @@ import {
     initializePuppeteerTest,
     dispatchSignIn,
     waitForSyncManagerUser,
-    resetToSignedOut
+    resetToSignedOut,
+    waitForSyncManagerReady
 } from "./helpers/syncTestUtils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -43,6 +44,7 @@ test.describe("Auth session persistence (backend)", () => {
 
         const { page, backend } = harness;
         await resetToSignedOut(page);
+        await waitForSyncManagerReady(page, 10000);
 
         const userId = "session-persist-user";
         const credential = backend.tokenFactory(userId);
