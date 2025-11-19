@@ -42,16 +42,15 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 
 ## Improvements (200–299)
 
-## BugFixes (300–399)
-
 - [x] [GN-300] Deliver a detailed plan for the TAuth integration (steps listed below).
-- [ ] [GN-301] Implement the plan end-to-end:
-- [ ] [GN-302] Add a runnable TAuth service to the local/dev stack (docker-compose, env templates, shared secrets).
-- [x] [GN-303] Replace the backend’s Google-token exchange with TAuth session validation (HS256 cookie verification, `/auth/google` removed, tests updated).
-- [ ] [GN-304] Frontend auth wiring: load `auth-client.js`, request `/auth/nonce`/`/auth/google`, and surface session/profile data via Alpine events and controls.
-- [ ] [GN-305] Add end-to-end coverage for the full TAuth flow (sign-in, refresh, sync) and document the contract once GN-304 is complete.
-- [ ] [GN-306] Persistence + networking: update `syncManager`, `backendClient`, and storage to rely on cookie-authenticated fetches (no local backend tokens) and handle unauthorized responses.
-- [ ] [GN-307] Tooling/tests/docs: refresh Puppeteer suites, unit tests, and README/ARCHITECTURE to cover the new flow.
+- [ ] [GN-301] Add a runnable TAuth service to the local/dev stack (docker-compose, env templates, shared secrets).
+- [x] [GN-302] Replace the backend’s Google-token exchange with TAuth session validation (HS256 cookie verification, `/auth/google` removed, tests updated).
+- [ ] [GN-303] Frontend auth wiring: load `auth-client.js`, request `/auth/nonce`/`/auth/google`, and surface session/profile data via Alpine events and controls.
+- [ ] [GN-304] Add end-to-end coverage for the full TAuth flow (sign-in, refresh, sync) and document the contract once GN-304 is complete.
+- [ ] [GN-305] Persistence + networking: update `syncManager`, `backendClient`, and storage to rely on cookie-authenticated fetches (no local backend tokens) and handle unauthorized responses.
+- [ ] [GN-306] Tooling/tests/docs: refresh Puppeteer suites, unit tests, and README/ARCHITECTURE to cover the new flow.
+
+## BugFixes (300–399)
 
 ## Maintenance (400–499)
 
