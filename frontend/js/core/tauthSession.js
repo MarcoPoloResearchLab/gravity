@@ -40,7 +40,7 @@ export function createTAuthSession(options = {}) {
     };
 
     return Object.freeze({
-        async initialize(credentialProvider) {
+        async initialize() {
             if (state.initialized || state.initializing) {
                 await state.initializing;
                 return;
@@ -59,18 +59,6 @@ export function createTAuthSession(options = {}) {
                         dispatch(events, EVENT_AUTH_SIGN_OUT, { reason: "session-ended" });
                     }
                 });
-                if (credentialProvider && typeof credentialProvider.requestCredential === "function") {
-                    try {
-                        const credential = await credentialProvider.requestCredential();
-                        if (credential) {
-                            const nonce = await controller.requestNonce();
-                            await controller.exchangeGoogleCredential({ credential, nonceToken: nonce });
-                        }
-                    } catch (error) {
-                        logging.error("TAuth credential acquisition failed", error);
-                        dispatch(events, EVENT_AUTH_ERROR, { reason: error instanceof Error ? error.message : "credential_failed" });
-                    }
-                }
                 state.initialized = true;
             })();
             await state.initializing;

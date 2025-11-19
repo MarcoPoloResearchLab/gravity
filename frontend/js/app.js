@@ -129,7 +129,9 @@ function gravityApp() {
         authControls: /** @type {ReturnType<typeof initializeAuthControls>|null} */ (null),
         avatarMenu: /** @type {ReturnType<typeof createAvatarMenu>|null} */ (null),
         authController: /** @type {{ signOut(reason?: string): void, dispose(): void }|null} */ (null),
+        authControllerPromise: /** @type {Promise<void>|null} */ (null),
         tauthSession: /** @type {ReturnType<typeof createTAuthSession>|null} */ (null),
+        tauthReadyPromise: /** @type {Promise<void>|null} */ (null),
         authUser: /** @type {{ id: string, email: string|null, name: string|null, pictureUrl: string|null }|null} */ (null),
         authPollHandle: /** @type {number|null} */ (null),
         cachedPersistedAuthState: /** @type {ReturnType<typeof loadAuthState>|null|undefined} */ (undefined),
@@ -140,7 +142,7 @@ function gravityApp() {
         backendAccessToken: /** @type {string|null} */ (null),
         backendAccessTokenExpiresAtMs: /** @type {number|null} */ (null),
         latestCredential: /** @type {string|null} */ (null),
-        pendingCredential: /** @type {string|null} */ (null),
+        authNonceToken: /** @type {string|null} */ (null),
         lastRenderedSignature: /** @type {string|null} */ (null),
         fullScreenToggleController: /** @type {{ dispose(): void }|null} */ (null),
         versionRefreshController: /** @type {{ dispose(): void, checkNow(): Promise<{ reloaded: boolean, remoteVersion: string|null }> }|null} */ (null),
@@ -167,8 +169,8 @@ function gravityApp() {
 
             this.configureMarked();
             this.registerEventBridges();
-            this.initializeAuth();
             this.initializeTAuthSession();
+            this.initializeAuth();
             this.initializeTopEditor();
             this.initializeImportExport();
             this.syncManager = createSyncManager({
@@ -354,7 +356,7 @@ function gravityApp() {
             }
 
             this.authControls.showSignedOut();
-            this.ensureGoogleIdentityController();
+            void this.ensureGoogleIdentityController();
         },
 
         /**
@@ -363,15 +365,16 @@ function gravityApp() {
          */
         initializeTAuthSession() {
             if (this.tauthSession) {
-                return;
+                return this.tauthReadyPromise ?? Promise.resolve();
             }
             this.tauthSession = createTAuthSession({
                 baseUrl: appConfig.authBaseUrl,
                 eventTarget: this.$el ?? document
             });
-            this.tauthSession.initialize().catch((error) => {
+            this.tauthReadyPromise = this.tauthSession.initialize().catch((error) => {
                 logging.error("Failed to initialize TAuth session", error);
             });
+            return this.tauthReadyPromise;
         },
 
         /**
@@ -425,8 +428,12 @@ function gravityApp() {
          * Ensure the Google Identity controller is instantiated once the API is available.
          * @returns {void}
          */
-        ensureGoogleIdentityController() {
-            if (this.authController) {
+        async ensureGoogleIdentityController(force = false) {
+            if (this.authController && !force) {
+                return;
+            }
+            if (this.authControllerPromise) {
+                await this.authControllerPromise;
                 return;
             }
             if (typeof window === "undefined") {
@@ -443,26 +450,47 @@ function gravityApp() {
                 return;
             }
 
-            let persistedAuthState = this.cachedPersistedAuthState;
-            if (typeof persistedAuthState === "undefined") {
-                persistedAuthState = loadAuthState();
-            }
-            this.cachedPersistedAuthState = persistedAuthState ?? null;
-            const shouldAutoPrompt = !(persistedAuthState && isAuthStateFresh(persistedAuthState));
+            this.authControllerPromise = (async () => {
+                if (this.tauthReadyPromise) {
+                    await this.tauthReadyPromise;
+                }
+                let persistedAuthState = this.cachedPersistedAuthState;
+                if (typeof persistedAuthState === "undefined") {
+                    persistedAuthState = loadAuthState();
+                }
+                this.cachedPersistedAuthState = persistedAuthState ?? null;
+                const shouldAutoPrompt = !(persistedAuthState && isAuthStateFresh(persistedAuthState));
 
-            const buttonHost = this.authControls?.getButtonHost() ?? null;
-            this.authController = createGoogleIdentityController({
-                clientId: appConfig.googleClientId,
-                google,
-                buttonElement: buttonHost ?? undefined,
-                eventTarget: this.$el,
-                autoPrompt: shouldAutoPrompt
-            });
-            this.stopGoogleIdentityPolling();
+                if (this.tauthSession) {
+                    try {
+                        this.authNonceToken = await this.tauthSession.requestNonce();
+                    } catch (error) {
+                        logging.error("Failed to request auth nonce", error);
+                        this.authNonceToken = null;
+                    }
+                }
+
+                const buttonHost = this.authControls?.getButtonHost() ?? null;
+                this.authController = createGoogleIdentityController({
+                    clientId: appConfig.googleClientId,
+                    google,
+                    buttonElement: buttonHost ?? undefined,
+                    eventTarget: this.$el,
+                    autoPrompt: shouldAutoPrompt,
+                    nonceToken: this.authNonceToken ?? undefined
+                });
+                this.stopGoogleIdentityPolling();
+            })();
+
+            try {
+                await this.authControllerPromise;
+            } finally {
+                this.authControllerPromise = null;
+            }
         },
 
         async requestFreshCredential() {
-            this.ensureGoogleIdentityController();
+            await this.ensureGoogleIdentityController();
             const controller = this.authController;
             if (!controller || typeof controller.requestCredential !== "function") {
                 return null;
@@ -478,6 +506,36 @@ function gravityApp() {
                 logging.error(error);
             }
             return null;
+        },
+
+        async exchangeCredentialWithTAuth(credential) {
+            if (!this.tauthSession || typeof credential !== "string" || credential.length === 0) {
+                return;
+            }
+            if (!this.authNonceToken) {
+                try {
+                    this.authNonceToken = await this.tauthSession.requestNonce();
+                } catch (error) {
+                    logging.error("Failed to request auth nonce", error);
+                    this.authControls?.showError(ERROR_AUTHENTICATION_GENERIC);
+                    return;
+                }
+            }
+            if (!this.authNonceToken) {
+                this.authControls?.showError(ERROR_AUTHENTICATION_GENERIC);
+                return;
+            }
+            try {
+                await this.tauthSession.exchangeGoogleCredential({
+                    credential,
+                    nonceToken: this.authNonceToken
+                });
+                this.authNonceToken = null;
+            } catch (error) {
+                logging.error("Credential exchange failed", error);
+                this.authControls?.showError(ERROR_AUTHENTICATION_GENERIC);
+                this.authNonceToken = null;
+            }
         },
 
         /**
@@ -497,7 +555,7 @@ function gravityApp() {
             const poll = () => {
                 if (window.google && window.google.accounts && window.google.accounts.id) {
                     this.stopGoogleIdentityPolling();
-                    this.ensureGoogleIdentityController();
+                    void this.ensureGoogleIdentityController();
                 }
             };
             poll();
@@ -536,6 +594,7 @@ function gravityApp() {
             this.backendAccessToken = null;
             this.backendAccessTokenExpiresAtMs = null;
             this.latestCredential = null;
+            this.authNonceToken = null;
         },
 
         /**
@@ -797,9 +856,10 @@ function gravityApp() {
             const credential = typeof event?.detail?.credential === "string" && event.detail.credential.length > 0
                 ? event.detail.credential
                 : null;
-            if (credential) {
-                this.pendingCredential = credential;
+            if (!credential) {
+                return;
             }
+            void this.exchangeCredentialWithTAuth(credential);
         });
 
         root.addEventListener(EVENT_NOTIFICATION_REQUEST, (event) => {
