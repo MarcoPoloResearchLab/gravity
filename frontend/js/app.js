@@ -12,6 +12,7 @@ import { createGoogleIdentityController, isGoogleIdentitySupportedOrigin } from 
 import { initializeAnalytics } from "./core/analytics.js?build=2024-10-05T12:00:00Z";
 import { createSyncManager } from "./core/syncManager.js?build=2024-10-05T12:00:00Z";
 import { createRealtimeSyncController } from "./core/realtimeSyncController.js?build=2024-10-05T12:00:00Z";
+import { ensureTAuthClientLoaded } from "./core/tauthClient.js?build=2024-10-05T12:00:00Z";
 import {
     loadAuthState,
     saveAuthState,
@@ -101,6 +102,9 @@ bootstrapApplication().catch((error) => {
 
 async function bootstrapApplication() {
     await initializeRuntimeConfig();
+    await ensureTAuthClientLoaded().catch((error) => {
+        logging.error("TAuth client failed to load", error);
+    });
     initializeAnalytics();
     document.addEventListener("alpine:init", () => {
         Alpine.data("gravityApp", gravityApp);
