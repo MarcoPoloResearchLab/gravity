@@ -5,8 +5,7 @@ import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
 import {
     EVENT_AUTH_SIGN_IN,
     EVENT_AUTH_SIGN_OUT,
-    EVENT_AUTH_ERROR,
-    EVENT_AUTH_CREDENTIAL_RECEIVED
+    EVENT_AUTH_ERROR
 } from "../constants.js?build=2024-10-05T12:00:00Z";
 
 const DEFAULT_HEADERS = Object.freeze({
@@ -41,7 +40,7 @@ export function createTAuthSession(options = {}) {
     };
 
     return Object.freeze({
-        async initialize(googleController) {
+        async initialize(credentialProvider) {
             if (state.initialized || state.initializing) {
                 await state.initializing;
                 return;
@@ -60,16 +59,17 @@ export function createTAuthSession(options = {}) {
                         dispatch(events, EVENT_AUTH_SIGN_OUT, { reason: "session-ended" });
                     }
                 });
-                if (googleController) {
-                    googleController.setCredentialCallback(async (credential) => {
-                        try {
+                if (credentialProvider && typeof credentialProvider.requestCredential === "function") {
+                    try {
+                        const credential = await credentialProvider.requestCredential();
+                        if (credential) {
                             const nonce = await controller.requestNonce();
                             await controller.exchangeGoogleCredential({ credential, nonceToken: nonce });
-                        } catch (error) {
-                            logging.error("TAuth credential exchange failed", error);
-                            dispatch(events, EVENT_AUTH_ERROR, { reason: error instanceof Error ? error.message : "exchange_failed" });
                         }
-                    });
+                    } catch (error) {
+                        logging.error("TAuth credential acquisition failed", error);
+                        dispatch(events, EVENT_AUTH_ERROR, { reason: error instanceof Error ? error.message : "credential_failed" });
+                    }
                 }
                 state.initialized = true;
             })();
