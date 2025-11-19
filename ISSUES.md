@@ -44,15 +44,14 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 
 ## BugFixes (300–399)
 
-- [x] [GN-300] Integrate with TAuth service for user authentication and keeping user logged in. Deliver a plan of integration expressed as issues in @ISSUES.md. (Plan captured via GN-302–GN-305 after reviewing the referenced guides.)
-- [ ] [GN-301] Implement the plan delivered by GN-300
-- [ ] [GN-302] Add a runnable TAuth service to the local/dev stack (docker-compose, env templates) and expose shared configuration (signing secret, Google client ID, allowed origins, base URL) so both Gravity frontend (runtime config + docs) and backend know where to reach it.
-- [x] [GN-303] Replace the backend’s Google-token exchange with TAuth session validation: accept the `app_session` cookie (and fallback Authorization header), verify HS256 signatures using the shared signing secret + issuer, drop `/auth/google`, and update config + integration tests to cover the new middleware. (Backend now trusts HS256 session cookies/tokens, `/auth/google` removed, and test harness/docs updated.)
-- [ ] [GN-304] Rebuild the frontend authentication flow to call TAuth (`/auth/nonce`, `/auth/google`, `/auth/logout`) while loading `auth-client.js` for session refresh; propagate profile data to existing Alpine stores, fire the `gravity:auth-*` events, and update backend client calls to use cookie-based `apiFetch`/`credentials: "include"` instead of Bearer tokens.
-- [ ] [GN-305] Add end-to-end coverage and docs for the TAuth flow: Puppeteer tests that sign in, survive refresh, auto-refresh sessions, and sync notes via the Gravity backend using TAuth cookies; README/ARCHITECTURE updates outlining the cross-service auth contract.
-- [ ] [GN-306] Frontend auth wiring: load TAuth `auth-client.js`, request `/auth/nonce`/`/auth/google`, and surface authenticated profile/session state through Alpine events + controls (replacing direct GSI credential dispatch).
-- [ ] [GN-307] Persistence + networking: update `syncManager`, `backendClient`, and runtime storage to rely on cookie-authenticated fetches (no local backend tokens), ensure sign-out clears state, and expose failure hooks for unauthorized responses.
-- [ ] [GN-308] Tooling/tests/docs: refresh Puppeteer harnesses, unit tests, and README/ARCHITECTURE references to cover the new TAuth-driven frontend flow.
+- [x] [GN-300] Deliver a detailed plan for the TAuth integration (steps listed below).
+- [ ] [GN-301] Implement the plan end-to-end:
+- [ ] [GN-302] Add a runnable TAuth service to the local/dev stack (docker-compose, env templates, shared secrets).
+- [x] [GN-303] Replace the backend’s Google-token exchange with TAuth session validation (HS256 cookie verification, `/auth/google` removed, tests updated).
+- [ ] [GN-304] Frontend auth wiring: load `auth-client.js`, request `/auth/nonce`/`/auth/google`, and surface session/profile data via Alpine events and controls.
+- [ ] [GN-305] Add end-to-end coverage for the full TAuth flow (sign-in, refresh, sync) and document the contract once GN-304 is complete.
+- [ ] [GN-306] Persistence + networking: update `syncManager`, `backendClient`, and storage to rely on cookie-authenticated fetches (no local backend tokens) and handle unauthorized responses.
+- [ ] [GN-307] Tooling/tests/docs: refresh Puppeteer suites, unit tests, and README/ARCHITECTURE to cover the new flow.
 
 ## Maintenance (400–499)
 
