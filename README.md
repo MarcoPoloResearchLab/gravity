@@ -54,3 +54,21 @@ Gravity Notes is a single-page Markdown notebook designed to keep you in flow. E
 ## Need More?
 
 Developers and curious tinkerers can find project structure, dependencies, and runbooks in the [Architecture & Developer Guide](ARCHITECTURE.md).
+
+## Local Stack (Docker)
+
+Spin up the full stack (frontend, backend, and the new TAuth service) with Docker:
+
+1. `cp backend/env.example backend/.env` and `cp tauth/env.example tauth/.env`, then customize the signing secret, Google Web Client ID, and allowed origins as needed. The defaults keep both services on the same HS256 secret and OAuth client ID. The backend expects:
+   - `GRAVITY_TAUTH_SIGNING_SECRET` – shared HS256 secret (matches `APP_JWT_SIGNING_KEY` from TAuth).
+   - `GRAVITY_TAUTH_ISSUER` – issuer embedded in the TAuth JWT (defaults to `mprlab-auth`).
+   - `GRAVITY_TAUTH_COOKIE_NAME` – cookie carrying the session token (`app_session`).
+2. `docker compose -f docker-compose.dev.yml up --build`
+
+The services expose the following host ports:
+
+- Frontend (static assets): `http://localhost:8000`
+- Gravity backend API: `http://localhost:8080`
+- TAuth (Google Sign-In + session cookies): `http://localhost:8082`
+
+Runtime config files under `frontend/data/` now declare `authBaseUrl`, allowing browser code to discover the active TAuth host in both development and production profiles.

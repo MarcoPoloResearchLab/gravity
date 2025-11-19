@@ -44,10 +44,10 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 
 ## BugFixes (300–399)
 
-- [ ] [GN-300] Integrate with TAuth service for user authentication and keeping user logged in. Deliver a plan of integration expressed as issues in @ISSUES.md. Read @tools/mpr-ui/docs/integration-guide.md, @tools/TAuth/ARCHITECTURE.md and @tools/TAuth/README.md.
+- [x] [GN-300] Integrate with TAuth service for user authentication and keeping user logged in. Deliver a plan of integration expressed as issues in @ISSUES.md. (Plan captured via GN-302–GN-305 after reviewing the referenced guides.)
 - [ ] [GN-301] Implement the plan delivered by GN-300
 - [ ] [GN-302] Add a runnable TAuth service to the local/dev stack (docker-compose, env templates) and expose shared configuration (signing secret, Google client ID, allowed origins, base URL) so both Gravity frontend (runtime config + docs) and backend know where to reach it.
-- [ ] [GN-303] Replace the backend’s Google-token exchange with TAuth session validation: accept the `app_session` cookie (and fallback Authorization header), verify HS256 signatures using the shared signing secret + issuer, drop `/auth/google`, and update config + integration tests to cover the new middleware.
+- [x] [GN-303] Replace the backend’s Google-token exchange with TAuth session validation: accept the `app_session` cookie (and fallback Authorization header), verify HS256 signatures using the shared signing secret + issuer, drop `/auth/google`, and update config + integration tests to cover the new middleware. (Backend now trusts HS256 session cookies/tokens, `/auth/google` removed, and test harness/docs updated.)
 - [ ] [GN-304] Rebuild the frontend authentication flow to call TAuth (`/auth/nonce`, `/auth/google`, `/auth/logout`) while loading `auth-client.js` for session refresh; propagate profile data to existing Alpine stores, fire the `gravity:auth-*` events, and update backend client calls to use cookie-based `apiFetch`/`credentials: "include"` instead of Bearer tokens.
 - [ ] [GN-305] Add end-to-end coverage and docs for the TAuth flow: Puppeteer tests that sign in, survive refresh, auto-refresh sessions, and sync notes via the Gravity backend using TAuth cookies; README/ARCHITECTURE updates outlining the cross-service auth contract.
 

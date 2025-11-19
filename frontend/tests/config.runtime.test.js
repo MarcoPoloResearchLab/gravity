@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
     clearRuntimeConfigForTesting,
+    resolveAuthBaseUrl,
     resolveBackendBaseUrl,
     resolveEnvironmentName,
     resolveLlmProxyUrl,
@@ -39,6 +40,20 @@ test("resolveLlmProxyUrl respects injected override", () => {
 test("resolveLlmProxyUrl preserves intentional blanks", () => {
     setRuntimeConfig({ llmProxyUrl: "   " });
     assert.equal(resolveLlmProxyUrl(), "");
+});
+
+test("resolveAuthBaseUrl falls back to default when unset", () => {
+    assert.equal(resolveAuthBaseUrl(), "http://localhost:8082");
+});
+
+test("resolveAuthBaseUrl uses injected override", () => {
+    setRuntimeConfig({ authBaseUrl: " https://tauth.example.com/ " });
+    assert.equal(resolveAuthBaseUrl(), "https://tauth.example.com");
+});
+
+test("resolveAuthBaseUrl honors environment defaults", () => {
+    setRuntimeConfig({ environment: "production" });
+    assert.equal(resolveAuthBaseUrl(), "https://tauth.mprlab.com");
 });
 
 test("resolveEnvironmentName normalizes injected value", () => {

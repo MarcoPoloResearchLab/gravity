@@ -8,7 +8,7 @@ import {
     EVENT_NOTE_CREATE,
     EVENT_NOTE_UPDATE
 } from "../../js/constants.js";
-import { startTestBackend } from "./backendHarness.js";
+import { startTestBackend, decodeSessionCredential } from "./backendHarness.js";
 import {
     connectSharedBrowser,
     injectRuntimeConfig,
@@ -49,6 +49,7 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
             llmProxyUrl
         }
     });
+    await installBackendCredentialInterceptor(page, backendBaseUrl);
     await page.evaluateOnNewDocument((storageKey, shouldPreserve) => {
         const initialized = window.sessionStorage.getItem("__gravityTestInitialized") === "true";
         if (!initialized) {
@@ -65,6 +66,57 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
     await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
     await waitForAppReady(page);
     return page;
+}
+
+async function installBackendCredentialInterceptor(page, backendBaseUrl) {
+    if (typeof backendBaseUrl !== "string" || backendBaseUrl.length === 0) {
+        return;
+    }
+    const normalizedBaseUrl = backendBaseUrl.replace(/\/+$/u, "");
+    if (!normalizedBaseUrl) {
+        return;
+    }
+    await page.exposeFunction("__gravityDecodeCredential", (value) => decodeSessionCredential(value));
+    await page.evaluateOnNewDocument((baseUrl) => {
+        const normalized = baseUrl.replace(/\/+$/u, "");
+        if (!normalized) {
+            return;
+        }
+        const originalFetch = window.fetch.bind(window);
+        window.fetch = async (input, init = {}) => {
+            const targetUrl = typeof input === "string"
+                ? input
+                : typeof input?.url === "string"
+                    ? input.url
+                    : "";
+            if (targetUrl && targetUrl.startsWith(`${normalized}/auth/google`)) {
+                try {
+                    const payload = typeof init?.body === "string" ? JSON.parse(init.body) : {};
+                    const credential = typeof payload?.id_token === "string" ? payload.id_token : "";
+                    if (typeof window.__gravityDecodeCredential === "function") {
+                        const decoded = await window.__gravityDecodeCredential(credential);
+                        if (decoded && typeof decoded.sessionToken === "string") {
+                            return new Response(JSON.stringify({
+                                access_token: decoded.sessionToken,
+                                expires_in: decoded.expiresIn ?? 5 * 60,
+                                token_type: "Bearer"
+                            }), {
+                                status: 200,
+                                headers: { "Content-Type": "application/json" }
+                            });
+                        }
+                    }
+                } catch {
+                    // fall through to error response
+                }
+                return new Response(JSON.stringify({ error: "invalid_credential" }), {
+                    status: 400,
+                    headers: { "Content-Type": "application/json" }
+                });
+            }
+            return originalFetch(input, init);
+        };
+    }, normalizedBaseUrl);
 }
 
 /**
@@ -125,6 +177,7 @@ export async function initializePuppeteerTest(pageUrl = DEFAULT_PAGE_URL) {
             llmProxyUrl: ""
         }
     });
+    await installBackendCredentialInterceptor(page, backend.baseUrl);
     await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
     await waitForAppReady(page);
 

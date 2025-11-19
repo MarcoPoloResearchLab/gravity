@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { createPrivateKey, createSign, generateKeyPairSync } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { once } from "node:events";
 import fs from "node:fs/promises";
 import http from "node:http";
@@ -12,7 +12,8 @@ const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), 
 const BACKEND_DIR = path.join(REPO_ROOT, "backend");
 const DEFAULT_GOOGLE_CLIENT_ID = "gravity-test-client";
 const DEFAULT_SIGNING_SECRET = "gravity-test-signing-secret";
-const DEFAULT_JWT_ISSUER = "https://accounts.google.com";
+const DEFAULT_SESSION_ISSUER = "mprlab-auth";
+const DEFAULT_SESSION_COOKIE = "app_session";
 const isWindows = process.platform === "win32";
 let backendBinaryPromise = null;
 
@@ -37,6 +38,8 @@ export async function startTestBackend(options = {}) {
     const normalizedOptions = {
         googleClientId: options.googleClientId ?? DEFAULT_GOOGLE_CLIENT_ID,
         signingSecret: options.signingSecret ?? DEFAULT_SIGNING_SECRET,
+        issuer: options.issuer ?? DEFAULT_SESSION_ISSUER,
+        cookieName: options.cookieName ?? DEFAULT_SESSION_COOKIE,
         logLevel: options.logLevel ?? "info"
     };
     const sharedContextBackend = attemptRuntimeContextBackend(normalizedOptions);
@@ -55,9 +58,6 @@ export async function startTestBackend(options = {}) {
     }
 
     const binaryPath = await ensureBackendBinary();
-    const rsaKeys = generateRsaKeyPair();
-    const jwksServer = await startJwksServer(rsaKeys.jwk);
-    const jwksUrl = `${jwksServer.url}/oauth2/v3/certs`;
 
     const backendPort = await getAvailablePort();
     const backendAddress = `127.0.0.1:${backendPort}`;
@@ -66,10 +66,10 @@ export async function startTestBackend(options = {}) {
     const backendProcess = await startBackendProcess({
         binaryPath,
         address: backendAddress,
-        jwksUrl,
         databasePath,
-        googleClientId: normalizedOptions.googleClientId,
         signingSecret: normalizedOptions.signingSecret,
+        issuer: normalizedOptions.issuer,
+        cookieName: normalizedOptions.cookieName,
         logLevel: normalizedOptions.logLevel
     });
     await waitForServerReady(backendAddress);
@@ -80,16 +80,17 @@ export async function startTestBackend(options = {}) {
         key: instanceKey,
         baseUrl: `http://${backendAddress}`,
         googleClientId: normalizedOptions.googleClientId,
-        signingKeyPem: rsaKeys.privateKeyPem,
-        signingKeyId: rsaKeys.keyId,
         tokenFactory(userId, expiresInSeconds = 5 * 60) {
-            return createSignedGoogleToken({
-                audience: normalizedOptions.googleClientId,
-                subject: userId,
-                issuer: DEFAULT_JWT_ISSUER,
-                privateKey: rsaKeys.privateKey,
-                keyId: rsaKeys.keyId,
+            const sessionToken = mintSessionToken({
+                userId,
+                issuer: normalizedOptions.issuer,
+                signingSecret: normalizedOptions.signingSecret,
                 expiresInSeconds
+            });
+            return encodeSessionCredential({
+                userId,
+                expiresIn: expiresInSeconds,
+                sessionToken
             });
         },
         async shutdown() {
@@ -106,7 +107,6 @@ export async function startTestBackend(options = {}) {
                     clearTimeout(killTimer);
                 }
             }
-            await jwksServer.close().catch(() => {});
             await fs.rm(databaseDirectory, { recursive: true, force: true }).catch(() => {});
         }
     };
@@ -131,35 +131,34 @@ function attemptRuntimeContextBackend(normalizedOptions) {
         return null;
     }
 
-    const { baseUrl, googleClientId, signingKeyPem, signingKeyId } = backend;
+    const { baseUrl, googleClientId, signingSecret, issuer, cookieName } = backend;
+    if (typeof baseUrl !== "string" || typeof signingSecret !== "string" || typeof issuer !== "string" || typeof cookieName !== "string") {
+        return null;
+    }
     if (normalizedOptions.googleClientId !== googleClientId) {
-        throw new Error(`Shared backend configured for client id ${googleClientId}, but ${normalizedOptions.googleClientId} was requested.`);
+        return null;
     }
-    if (typeof baseUrl !== "string" || typeof signingKeyPem !== "string" || typeof signingKeyId !== "string") {
-        throw new Error("Runtime context backend entry is incomplete.");
-    }
-
-    let privateKey;
-    try {
-        privateKey = createPrivateKey({ key: signingKeyPem, format: "pem", type: "pkcs8" });
-    } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
-        throw new Error(`Unable to reconstruct shared backend signing key: ${reason}`);
+    if (normalizedOptions.signingSecret !== signingSecret || normalizedOptions.issuer !== issuer || normalizedOptions.cookieName !== cookieName) {
+        return null;
     }
 
     return {
         baseUrl,
         googleClientId,
-        signingKeyPem,
-        signingKeyId,
+        signingSecret,
+        issuer,
+        cookieName,
         tokenFactory(userId, expiresInSeconds = 5 * 60) {
-            return createSignedGoogleToken({
-                audience: googleClientId,
-                subject: userId,
-                issuer: DEFAULT_JWT_ISSUER,
-                privateKey,
-                keyId: signingKeyId,
+            const sessionToken = mintSessionToken({
+                userId,
+                issuer,
+                signingSecret,
                 expiresInSeconds
+            });
+            return encodeSessionCredential({
+                userId,
+                expiresIn: expiresInSeconds,
+                sessionToken
             });
         },
         async close() {
@@ -203,8 +202,9 @@ function createSharedHandle(instance) {
     return {
         baseUrl: instance.baseUrl,
         googleClientId: instance.googleClientId,
-        signingKeyPem: instance.signingKeyPem,
-        signingKeyId: instance.signingKeyId,
+        signingSecret: instance.signingSecret,
+        issuer: instance.issuer,
+        cookieName: instance.cookieName,
         tokenFactory: instance.tokenFactory,
         async close() {
             if (released) {
@@ -271,51 +271,13 @@ export function fetchBackendNotes({ backendUrl, token, timeoutMs }) {
     });
 }
 
-function generateRsaKeyPair() {
-    const { privateKey, publicKey } = generateKeyPairSync("rsa", {
-        modulusLength: 2048
-    });
-    const jwk = publicKey.export({ format: "jwk" });
-    const keyId = "gravity-test-key";
-    return {
-        privateKey,
-        privateKeyPem: privateKey.export({ format: "pem", type: "pkcs8" }).toString(),
-        jwk: {
-            ...jwk,
-            kid: keyId,
-            use: "sig",
-            alg: "RS256"
-        },
-        keyId
-    };
-}
-
-async function startJwksServer(jwk) {
-    const server = http.createServer((req, res) => {
-        if (req.url === "/oauth2/v3/certs") {
-            res.statusCode = 200;
-            res.setHeader("Content-Type", "application/json");
-            res.end(JSON.stringify({ keys: [jwk] }));
-            return;
-        }
-        res.statusCode = 404;
-        res.end("not found");
-    });
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-    const address = /** @type {{ port: number }} */ (server.address());
-    return {
-        url: `http://127.0.0.1:${address.port}`,
-        close: () => new Promise((resolve) => server.close(() => resolve()))
-    };
-}
-
-async function startBackendProcess({ binaryPath, address, jwksUrl, databasePath, googleClientId, signingSecret, logLevel }) {
+async function startBackendProcess({ binaryPath, address, databasePath, signingSecret, issuer, cookieName, logLevel }) {
     const args = [
         "--http-address", address,
-        "--google-client-id", googleClientId,
-        "--google-jwks-url", jwksUrl,
         "--database-path", databasePath,
-        "--signing-secret", signingSecret,
+        "--tauth-signing-secret", signingSecret,
+        "--tauth-issuer", issuer,
+        "--tauth-cookie-name", cookieName,
         "--log-level", logLevel
     ];
     const child = spawn(binaryPath, args, {
@@ -444,37 +406,45 @@ function runCommand(command, args, options) {
     });
 }
 
-function createSignedGoogleToken({ audience, subject, issuer, privateKey, keyId, expiresInSeconds }) {
+function mintSessionToken({ userId, issuer, signingSecret, expiresInSeconds }) {
     const header = {
-        alg: "RS256",
-        typ: "JWT",
-        kid: keyId
+        alg: "HS256",
+        typ: "JWT"
     };
-    const nowSeconds = Math.floor(Date.now() / 1000);
+    const issuedAtSeconds = Math.floor(Date.now() / 1000);
     const payload = {
-        aud: audience,
+        user_id: userId,
+        user_email: `${userId}@example.com`,
+        user_display_name: "Gravity Test User",
+        user_avatar_url: "https://example.com/avatar.png",
+        user_roles: ["user"],
         iss: issuer,
-        sub: subject,
-        exp: nowSeconds + expiresInSeconds,
-        iat: nowSeconds
+        sub: userId,
+        iat: issuedAtSeconds,
+        nbf: issuedAtSeconds - 30,
+        exp: issuedAtSeconds + (Number.isFinite(expiresInSeconds) && expiresInSeconds > 0 ? expiresInSeconds : 5 * 60)
     };
-    const encodedHeader = base64UrlEncode(Buffer.from(JSON.stringify(header), "utf8"));
-    const encodedPayload = base64UrlEncode(Buffer.from(JSON.stringify(payload), "utf8"));
+    const encodedHeader = Buffer.from(JSON.stringify(header), "utf8").toString("base64url");
+    const encodedPayload = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
     const signingInput = `${encodedHeader}.${encodedPayload}`;
-    const signer = createSign("RSA-SHA256");
-    signer.update(signingInput);
-    signer.end();
-    const signature = signer.sign(privateKey);
-    const encodedSignature = base64UrlEncode(signature);
-    return `${signingInput}.${encodedSignature}`;
+    const signature = createHmac("sha256", signingSecret).update(signingInput).digest("base64url");
+    return `${signingInput}.${signature}`;
 }
 
-function base64UrlEncode(buffer) {
-    return Buffer.from(buffer)
-        .toString("base64")
-        .replace(/=+$/u, "")
-        .replace(/\+/gu, "-")
-        .replace(/\//gu, "_");
+function encodeSessionCredential(payload) {
+    return Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+}
+
+export function decodeSessionCredential(value) {
+    if (typeof value !== "string" || value.length === 0) {
+        return null;
+    }
+    try {
+        const decoded = Buffer.from(value, "base64url").toString("utf8");
+        return JSON.parse(decoded);
+    } catch {
+        return null;
+    }
 }
 
 function delay(ms) {

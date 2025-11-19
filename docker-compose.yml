@@ -3,6 +3,7 @@ services:
     image: ghcr.io/temirov/ghttp:latest
     depends_on:
       - backend
+      - tauth
     working_dir: /srv/gravity/frontend
     command: ["--directory", "/srv/gravity/frontend", "8000"]
     volumes:
@@ -14,6 +15,8 @@ services:
   backend:
     image: ghcr.io/marcopoloresearchlab/gravity-backend:latest
     pull_policy: always
+    depends_on:
+      - tauth
     env_file:
       - backend/.env
     ports:
@@ -22,5 +25,18 @@ services:
       - gravity_data:/data
     restart: unless-stopped
 
+  tauth:
+    build:
+      context: tools/TAuth
+      dockerfile: Dockerfile
+    env_file:
+      - tauth/.env
+    ports:
+      - "8082:8080"
+    volumes:
+      - tauth_data:/data
+    restart: unless-stopped
+
 volumes:
   gravity_data:
+  tauth_data:

@@ -646,16 +646,14 @@ async function main() {
       sharedBrowserContext = await launchSharedBrowser();
       if (!sharedBrowserContext) throw new Error("Shared browser failed to launch.");
       backendHandle = await startTestBackend();
-      if (!backendHandle.signingKeyPem || !backendHandle.signingKeyId) {
-        throw new Error("Shared backend did not expose signing metadata.");
-      }
       baseRuntimeContext = {
         ...baseRuntimeContext,
         backend: {
           baseUrl: backendHandle.baseUrl,
           googleClientId: backendHandle.googleClientId,
-          signingKeyPem: backendHandle.signingKeyPem,
-          signingKeyId: backendHandle.signingKeyId
+          signingSecret: backendHandle.signingSecret,
+          issuer: backendHandle.issuer,
+          cookieName: backendHandle.cookieName
         },
         browser: {
           wsEndpoint: sharedBrowserContext.wsEndpoint

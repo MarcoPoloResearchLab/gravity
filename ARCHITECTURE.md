@@ -77,7 +77,7 @@ EasyMDE produces markdown, marked renders it to HTML, and DOMPurify sanitises th
 - `createNoteRecord` validates note identifiers/markdown before writes so malformed payloads never hit storage.
 - `GravityStore.setUserScope(userId)` switches the storage namespace so each Google account receives an isolated notebook.
 - Runtime configuration loads from environment-specific JSON files under `data/`, selected according to the active hostname.
-- Authentication flows through Google Identity Services with `appConfig.googleClientId`, replaying sessions on reload.
+- Authentication flows through TAuth (which itself uses Google Identity Services). The frontend requests a token from TAuth, which issues the `app_session` cookie; backend endpoints validate that cookie (or an equivalent `Authorization: Bearer` header) using the shared HS256 signing secret and issuer.
 
 #### Frontend Dependencies
 
@@ -90,8 +90,8 @@ EasyMDE produces markdown, marked renders it to HTML, and DOMPurify sanitises th
 
 ### Backend (Go)
 
-- HTTP API (Gin): `/auth/google` (GSI credential exchange), `/notes` (snapshot), `/notes/sync` (ops queue).
-- Auth: verify Google ID tokens, then issue backend JWTs (HS256) with configurable TTL via Viper.
+- HTTP API (Gin): `/notes` (snapshot), `/notes/sync` (ops queue), `/notes/stream` (SSE).
+- Auth: trust `app_session` cookies minted by TAuth. Tokens are HS256 JWTs with issuer `mprlab-auth`; the backend validates them using the shared signing secret provided via configuration and allows a fallback `Authorization: Bearer <token>` header for non-cookie clients (tests, future service calls).
 - Data: GORM + SQLite (CGO-free driver) with `notes` and append-only `note_changes` tables for idempotency and audit.
 - Conflict strategy: `(client_edit_seq, updated_at)` precedence; server `version` remains monotonic per note.
 - Layout: Cobra CLI under `cmd/`, domain packages in `internal/`, zap for logging, configuration via Viper.
@@ -103,9 +103,10 @@ EasyMDE produces markdown, marked renders it to HTML, and DOMPurify sanitises th
 
 #### Configuration
 
-- `GRAVITY_GOOGLE_CLIENT_ID` — OAuth client ID expected by Google Identity Services.
-- `GRAVITY_AUTH_SIGNING_SECRET` — HS256 secret that signs issued JWTs.
-- Optional overrides: `GRAVITY_HTTP_ADDRESS` (default `0.0.0.0:8080`), `GRAVITY_GOOGLE_JWKS_URL`, `GRAVITY_DATABASE_PATH` (default `gravity.db`), `GRAVITY_TOKEN_TTL_MINUTES` (default `30`), `GRAVITY_LOG_LEVEL` (default `info`).
+- `GRAVITY_TAUTH_SIGNING_SECRET` — HS256 secret shared with TAuth; used to validate session cookies.
+- `GRAVITY_TAUTH_ISSUER` — Expected issuer embedded in the TAuth JWT (defaults to `mprlab-auth`).
+- `GRAVITY_TAUTH_COOKIE_NAME` — Cookie carrying the session JWT (defaults to `app_session`).
+- Optional overrides: `GRAVITY_HTTP_ADDRESS` (default `0.0.0.0:8080`), `GRAVITY_DATABASE_PATH` (default `gravity.db`), `GRAVITY_LOG_LEVEL` (default `info`).
 
 #### Local Execution
 
@@ -116,11 +117,8 @@ go run ./cmd/gravity-api --http-address :8080
 
 #### API Overview
 
-- `POST /auth/google`
-  - Request body: `{ "id_token": "<GSI ID token>" }`
-  - Flow: verifies the Google token offline via JWKS and returns `{ "access_token": "<jwt>", "expires_in": 1800 }`.
 - `POST /notes/sync`
-  - Requires `Authorization: Bearer <jwt>` header (the token issued by `/auth/google`).
+  - Requires either the `app_session` cookie (recommended) or an `Authorization: Bearer <jwt>` header. Tokens are the HS256 JWTs minted by TAuth.
   - Request body: `{ "operations": [{ "note_id": "uuid", "operation": "upsert" | "delete", "client_edit_seq": 1, "client_device": "web", "client_time_s": 1700000000, "created_at_s": 1700000000, "updated_at_s": 1700000000, "payload": { … } }] }`
   - Response: `{ "results": [{ "note_id": "uuid", "accepted": true, "version": 1, "updated_at_s": 1700000000, "last_writer_edit_seq": 1, "is_deleted": false, "payload": { … } }] }` where rejected changes return the authoritative server copy for reconciliation.
 
@@ -129,7 +127,7 @@ Conflict resolution follows the documented `(client_edit_seq, updated_at)` prece
 ### Client Sync Semantics
 
 - Queue `upsert` / `delete` operations with `client_edit_seq`, `client_time_s`, `updated_at_s`, and payload metadata.
-- On sign-in: exchange the Google credential for a backend token, flush the queue, fetch the snapshot, and re-render.
+- On sign-in: TAuth issues the `app_session` cookie after verifying the Google credential. Browser requests automatically include this cookie, so the frontend no longer exchanges credentials with the Gravity backend.
 - Classification flows through the proxy client with timeouts; when disabled or failing, conservative local defaults win.
 
 #### Runtime Configuration Profiles
@@ -183,6 +181,7 @@ When serving from an alternate hostname, add a new profile or override the URLs 
 
 - The frontend ships as static assets; serve `frontend/` via any static host or the provided Docker stack.
 - The backend exposes a single binary API; run it locally with `go run ./cmd/gravity-api` or through Docker.
+- Authentication relies on the TAuth service under `tools/TAuth`; the root `docker-compose*.yml` files build this container automatically. Copy `backend/env.example` to `backend/.env` and `tauth/env.example` to `tauth/.env`, then run `docker compose -f docker-compose.dev.yml up --build` to start the trio (`frontend`, `backend`, `tauth`). TAuth listens on `http://localhost:8082`, shares the same Google Web Client ID as Gravity, and uses the `local-dev-shared-signing-secret` so downstream services can validate the HS256 cookies it mints.
 
 ### Docker Workflow
 

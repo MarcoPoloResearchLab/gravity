@@ -3,29 +3,27 @@ package config
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/spf13/viper"
 )
 
 const (
-	envPrefix             = "GRAVITY"
-	defaultHTTPAddress    = "0.0.0.0:8080"
-	defaultGoogleJWKSURL  = "https://www.googleapis.com/oauth2/v3/certs"
-	defaultDatabasePath   = "gravity.db"
-	defaultLogLevel       = "info"
-	defaultTokenTTLMinute = 30
+	envPrefix           = "GRAVITY"
+	defaultHTTPAddress  = "0.0.0.0:8080"
+	defaultDatabasePath = "gravity.db"
+	defaultLogLevel     = "info"
+	defaultTauthIssuer  = "mprlab-auth"
+	defaultCookieName   = "app_session"
 )
 
 // AppConfig captures runtime configuration for the API server.
 type AppConfig struct {
-	HTTPAddress    string
-	GoogleClientID string
-	GoogleJWKSURL  string
-	SigningSecret  string
-	DatabasePath   string
-	TokenTTL       time.Duration
-	LogLevel       string
+	HTTPAddress       string
+	TAuthSigningKey   string
+	TAuthIssuer       string
+	TAuthCookieName   string
+	DatabasePath      string
+	LogLevel          string
 }
 
 // NewViper returns a viper instance with defaults and env bindings configured.
@@ -42,28 +40,22 @@ func ApplyDefaults(v *viper.Viper) {
 	v.AutomaticEnv()
 
 	v.SetDefault("http.address", defaultHTTPAddress)
-	v.SetDefault("google.jwks_url", defaultGoogleJWKSURL)
 	v.SetDefault("database.path", defaultDatabasePath)
 	v.SetDefault("log.level", defaultLogLevel)
-	v.SetDefault("token.ttl_minutes", defaultTokenTTLMinute)
+	v.SetDefault("tauth.issuer", defaultTauthIssuer)
+	v.SetDefault("tauth.cookie_name", defaultCookieName)
 }
 
 // Load parses runtime configuration from viper.
 func Load(v *viper.Viper) (AppConfig, error) {
 	cfg := AppConfig{
-		HTTPAddress:    v.GetString("http.address"),
-		GoogleClientID: v.GetString("google.client_id"),
-		GoogleJWKSURL:  v.GetString("google.jwks_url"),
-		SigningSecret:  v.GetString("auth.signing_secret"),
-		DatabasePath:   v.GetString("database.path"),
-		LogLevel:       v.GetString("log.level"),
+		HTTPAddress:     v.GetString("http.address"),
+		TAuthSigningKey: v.GetString("tauth.signing_secret"),
+		TAuthIssuer:     v.GetString("tauth.issuer"),
+		TAuthCookieName: v.GetString("tauth.cookie_name"),
+		DatabasePath:    v.GetString("database.path"),
+		LogLevel:        v.GetString("log.level"),
 	}
-
-	ttlMinutes := v.GetInt("token.ttl_minutes")
-	if ttlMinutes <= 0 {
-		ttlMinutes = defaultTokenTTLMinute
-	}
-	cfg.TokenTTL = time.Duration(ttlMinutes) * time.Minute
 
 	if err := cfg.validate(); err != nil {
 		return AppConfig{}, err
@@ -73,17 +65,17 @@ func Load(v *viper.Viper) (AppConfig, error) {
 }
 
 func (c AppConfig) validate() error {
-	if strings.TrimSpace(c.GoogleClientID) == "" {
-		return fmt.Errorf("google.client_id is required")
+	if strings.TrimSpace(c.TAuthSigningKey) == "" {
+		return fmt.Errorf("tauth.signing_secret is required")
 	}
-	if strings.TrimSpace(c.SigningSecret) == "" {
-		return fmt.Errorf("auth.signing_secret is required")
+	if strings.TrimSpace(c.TAuthIssuer) == "" {
+		return fmt.Errorf("tauth.issuer is required")
+	}
+	if strings.TrimSpace(c.TAuthCookieName) == "" {
+		return fmt.Errorf("tauth.cookie_name is required")
 	}
 	if strings.TrimSpace(c.DatabasePath) == "" {
 		return fmt.Errorf("database.path is required")
-	}
-	if c.TokenTTL <= 0 {
-		return fmt.Errorf("token.ttl_minutes must be positive")
 	}
 	return nil
 }

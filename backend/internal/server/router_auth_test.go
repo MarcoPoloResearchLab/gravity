@@ -1,7 +1,6 @@
 package server
 
 import (
-	contextpkg "context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -9,7 +8,6 @@ import (
 
 	"github.com/MarcoPoloResearchLab/gravity/backend/internal/auth"
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
@@ -26,8 +24,8 @@ func TestAuthorizeRequestLogsExpiredTokenAtInfoLevel(t *testing.T) {
 	core, logs := observer.New(zapcore.DebugLevel)
 	logger := zap.New(core)
 	handler := &httpHandler{
-		tokens: stubBackendTokenManager{
-			validateErr: jwt.ErrTokenExpired,
+		sessions: stubSessionValidator{
+			err: auth.ErrExpiredSessionToken,
 		},
 		logger: logger,
 	}
@@ -45,12 +43,12 @@ func TestAuthorizeRequestLogsExpiredTokenAtInfoLevel(t *testing.T) {
 	if entry.Level != zapcore.InfoLevel {
 		t.Fatalf("expected info level for expired token, got %s", entry.Level)
 	}
-	if entry.Message != "token validation failed" {
+	if entry.Message != "session token validation failed" {
 		t.Fatalf("unexpected log message: %q", entry.Message)
 	}
 	hasExpired := false
 	for _, field := range entry.Context {
-		if field.Type == zapcore.ErrorType && errors.Is(field.Interface.(error), jwt.ErrTokenExpired) {
+		if field.Type == zapcore.ErrorType && errors.Is(field.Interface.(error), auth.ErrExpiredSessionToken) {
 			hasExpired = true
 			break
 		}
@@ -71,8 +69,8 @@ func TestAuthorizeRequestLogsUnexpectedTokenErrorAtWarnLevel(t *testing.T) {
 	core, logs := observer.New(zapcore.DebugLevel)
 	logger := zap.New(core)
 	handler := &httpHandler{
-		tokens: stubBackendTokenManager{
-			validateErr: errors.New("signature mismatch"),
+		sessions: stubSessionValidator{
+			err: errors.New("signature mismatch"),
 		},
 		logger: logger,
 	}
@@ -90,19 +88,52 @@ func TestAuthorizeRequestLogsUnexpectedTokenErrorAtWarnLevel(t *testing.T) {
 	if entry.Level != zapcore.WarnLevel {
 		t.Fatalf("expected warn level for unexpected error, got %s", entry.Level)
 	}
-	if entry.Message != "token validation failed" {
+	if entry.Message != "session token validation failed" {
 		t.Fatalf("unexpected log message: %q", entry.Message)
 	}
 }
 
-type stubBackendTokenManager struct {
-	validateErr error
+func TestAuthorizeRequestPrefersCookieToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	request := httptest.NewRequest(http.MethodGet, "/notes", http.NoBody)
+	request.AddCookie(&http.Cookie{Name: "app_session", Value: "cookie-token"})
+	ctx.Request = request
+
+	handler := &httpHandler{
+		sessions: stubSessionValidator{
+			expectedToken: "cookie-token",
+			claims: auth.SessionClaims{
+				UserID: "user-123",
+			},
+		},
+		sessionCookie: "app_session",
+		logger:        zap.NewNop(),
+	}
+
+	handler.authorizeRequest(ctx)
+
+	if ctx.IsAborted() {
+		t.Fatalf("expected middleware to continue, context aborted")
+	}
+	if value, exists := ctx.Get(userIDContextKey); !exists || value != "user-123" {
+		t.Fatalf("expected user id context to be set, got %v", value)
+	}
 }
 
-func (s stubBackendTokenManager) IssueBackendToken(contextpkg.Context, auth.GoogleClaims) (string, int64, error) {
-	return "", 0, errors.New("not implemented")
+type stubSessionValidator struct {
+	expectedToken string
+	claims        auth.SessionClaims
+	err           error
 }
 
-func (s stubBackendTokenManager) ValidateToken(string) (string, error) {
-	return "", s.validateErr
+func (s stubSessionValidator) ValidateToken(token string) (auth.SessionClaims, error) {
+	if s.expectedToken != "" && token != s.expectedToken {
+		return auth.SessionClaims{}, errors.New("unexpected token")
+	}
+	if s.err != nil {
+		return auth.SessionClaims{}, s.err
+	}
+	return s.claims, nil
 }
