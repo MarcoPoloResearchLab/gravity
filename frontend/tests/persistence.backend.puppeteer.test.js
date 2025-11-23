@@ -24,7 +24,7 @@ const BACKEND_SYNC_TEST_TIMEOUT_MS = GLOBAL_TIMEOUT_MS;
 const PUPPETEER_WAIT_TIMEOUT_MS = Math.max(4000, Math.min(15000, Math.floor(GLOBAL_TIMEOUT_MS / 2)));
 
 test.describe("Backend sync integration", () => {
-    /** @type {{ close: () => Promise<void>, baseUrl: string, tokenFactory: (userId: string) => string }|null} */
+    /** @type {{ close: () => Promise<void>, baseUrl: string, tokenFactory: (userId: string) => string, createSessionToken: (userId: string) => string, cookieName: string }|null} */
     let backendContext = null;
 
     test.before(async () => {
@@ -74,7 +74,13 @@ test.describe("Backend sync integration", () => {
         try {
                 const credential = backendContext.tokenFactory(TEST_USER_ID);
                 await raceWithSignal(deadlineSignal, dispatchSignIn(page, credential, TEST_USER_ID));
-                await page.evaluate(async ({ userId, token }) => {
+                const sessionToken = backendContext.createSessionToken(TEST_USER_ID);
+                await page.setCookie({
+                    name: backendContext.cookieName,
+                    value: sessionToken,
+                    url: backendUrl
+                });
+                await page.evaluate(async ({ userId }) => {
                     const root = document.querySelector("[x-data]");
                     if (!root) {
                         throw new Error("root component not found");
@@ -104,9 +110,8 @@ test.describe("Backend sync integration", () => {
                     if (!syncManager || typeof syncManager.handleSignIn !== "function") {
                         throw new Error("sync manager not ready");
                     }
-                    await syncManager.handleSignIn({ userId, credential: token });
-                }, { userId: TEST_USER_ID, token: credential });
-                const debugStateBeforeWait = await extractSyncDebugState(page);
+                    await syncManager.handleSignIn({ userId });
+                }, { userId: TEST_USER_ID });
                 try {
                     await raceWithSignal(
                         deadlineSignal,
@@ -142,15 +147,12 @@ test.describe("Backend sync integration", () => {
                     storeUpdated: false,
                     shouldRender: false
                 }));
-                const debugState = await raceWithSignal(deadlineSignal, extractSyncDebugState(page));
-                assert.ok(debugState, "sync manager debug state available");
-                assert.ok(debugState.backendToken && debugState.backendToken.accessToken, "backend token captured");
-
                 const backendNotes = await raceWithSignal(
                     deadlineSignal,
                     waitForBackendNote({
                         backendUrl,
-                        token: debugState.backendToken.accessToken,
+                        sessionToken: backendContext.createSessionToken(TEST_USER_ID),
+                        cookieName: backendContext.cookieName,
                         noteId,
                         timeoutMs: PUPPETEER_WAIT_TIMEOUT_MS
                     })

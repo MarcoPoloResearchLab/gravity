@@ -44,23 +44,26 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 
 ## BugFixes (300–399)
 
-- [ ] [GN-300] Integrate with TAuth service for user authentication and keeping user logged in. Deliver a plan of integration expressed as issues in @ISSUES.md. Read @tools/mpr-ui/docs/integration-guide.md, @tools/TAuth/ARCHITECTURE.md and @tools/TAuth/README.md.  
-  - [ ] Capture a written integration plan (steps + owners) that references the required docs and records the dependency order for GN-302 → GN-305.
+- [x] [GN-300] Integrate with TAuth service for user authentication and keeping user logged in. Deliver a plan of integration expressed as issues in @ISSUES.md. Read @tools/mpr-ui/docs/integration-guide.md, @tools/TAuth/ARCHITECTURE.md and @tools/TAuth/README.md.  
+  - [x] Captured the dependency chain and owners for GN-302 → GN-305: GN-302 adds Docker/env plumbing, GN-303 migrates backend auth to TAuth cookies, GN-304 rewires the frontend (nonce fetch, `/auth/google`, cookie-based `apiFetch`, realtime/auth state cleanup), and GN-305 lands the black-box Playwright coverage + docs for `/auth/nonce`, `/auth/google`, `/auth/refresh`, `/auth/logout`. Doc review covered docs/mprui-integration.md, docs/mprui-custom-elements.md, docs/tauth-usage.md, tools/mpr-ui/demo/*, tools/mpr-ui/docs/integration-guide.md, tools/TAuth/README.md, and tools/TAuth/ARCHITECTURE.md so the plan references the upstream contract.
 - [ ] [GN-301] Implement the plan delivered by GN-300.  
-  - Status: blocked until GN-300 produces the detailed rollout plan and sequencing checklist.
+  - Status: GN-300 recorded the sequencing plan; proceed in order (GN-302/303 ✅, GN-304 in flight, then GN-305 + GN-306 cleanup).
 - [x] [GN-302] Add a runnable TAuth service to the local/dev stack (docker-compose, env templates) and expose shared configuration (signing secret, Google client ID, allowed origins, base URL) so both Gravity frontend (runtime config + docs) and backend know where to reach it.  
   - Docker compose (dev + prod) now builds/depends on a `tauth` service, `backend/env.example` + `tauth/env.example` share secrets/client IDs, and runtime config/README/ARCHITECTURE expose the new `authBaseUrl`.
 - [x] [GN-303] Replace the backend’s Google-token exchange with TAuth session validation: accept the `app_session` cookie (and fallback Authorization header), verify HS256 signatures using the shared signing secret + issuer, drop `/auth/google`, and update config + integration tests to cover the new middleware.  
   - Backend now validates TAuth cookies via `SessionValidator`, `/auth/google` was removed, config flags/envs expose `GRAVITY_TAUTH_*`, and the integration tests mint session cookies instead of stubbing Google exchanges.
 - [ ] [GN-304] Rebuild the frontend authentication flow to call TAuth (`/auth/nonce`, `/auth/google`, `/auth/logout`) while loading `auth-client.js` for session refresh; propagate profile data to existing Alpine stores, fire the `gravity:auth-*` events, and update backend client calls to use cookie-based `apiFetch`/`credentials: "include"` instead of Bearer tokens.  
   - Status: frontend continues to call Gravity’s `/auth/google` endpoint and persists Bearer tokens; the WIP `improvement/GN-304-tauth-e2e-coverage` branch never merged.  
-  - [ ] Land the TAuth session bridge (`ensureTAuthClientLoaded` + `createTAuthSession`) so Alpine bootstraps after the helper script loads and emits `gravity:auth-*` events with TAuth profiles.  
-  - [ ] Remove bespoke backend token issuance (`createBackendClient.exchangeGoogleCredential`) and teach the sync manager/Realtime layer to rely on cookie-authenticated fetches instead of Bearer headers.  
-  - [ ] Update the Google Identity wiring to request a nonce from TAuth before prompting and to pass credentials through `/auth/google` (no interception hacks in tests or dev builds).
+  - [ ] Land the TAuth session bridge (`ensureTAuthClientLoaded` + `createTAuthSession`) so Alpine bootstraps after the helper script loads, listens for `EVENT_AUTH_CREDENTIAL_RECEIVED`, requests `/auth/nonce`, exchanges GIS credentials at `/auth/google`, and emits `gravity:auth-*` events with TAuth profiles.  
+  - [ ] Remove bespoke backend token issuance (`createBackendClient.exchangeGoogleCredential`), drop `backendAccessToken` persistence, and teach the sync manager + realtime controller to rely on cookie-authenticated fetches (`window.apiFetch` + `credentials: "include"`) instead of Bearer headers.  
+  - [ ] Update the Google Identity wiring to request a nonce from TAuth before prompting, pass credentials through `/auth/google`, and surface retryable errors without the existing fetch-interception hacks in tests or dev builds.  
+  - [ ] Extend runtime-config consumers/tests (`browserHarness`, Puppeteer harnesses) so `authBaseUrl` overrides flow through before the frontend reads it.
 - [ ] [GN-305] Add end-to-end coverage and docs for the TAuth flow: Puppeteer tests that sign in, survive refresh, auto-refresh sessions, and sync notes via the Gravity backend using TAuth cookies; README/ARCHITECTURE updates outlining the cross-service auth contract.  
   - Status: existing tests still stub `/auth/google` via `fetch` interception and never exercise real cookies; README/ARCHITECTURE still describe the legacy Bearer token exchange.  
-  - [ ] Update the Playwright/Puppeteer harnesses to use the real TAuth helper (no inline intercept) so sign-in, refresh, and logout run against `/auth/nonce`, `/auth/google`, `/auth/refresh`, and `/auth/logout`.  
-  - [ ] Refresh README/ARCHITECTURE to document the cross-service contract (cookie scope, shared signing key, runtime config) once GN-304 replaces the bespoke flow.
+  - [ ] Update the Playwright/Puppeteer harnesses to use a TAuth harness (no inline intercept) so sign-in, refresh, logout, and realtime syncing run against `/auth/nonce`, `/auth/google`, `/auth/refresh`, and `/auth/logout` with real `app_session` / `app_refresh` cookies.  
+  - [ ] Add black-box tests that cover nonce mismatch handling, cookie-driven refresh, logout propagation, and backend sync while authenticated solely via cookies.  
+  - [ ] Refresh README/ARCHITECTURE (and related docs) to document the cross-service contract (cookie scope, shared signing key, runtime config, docker orchestration) once GN-304 replaces the bespoke flow.
+- [ ] [GN-306] Add a docker-compose profile that launches Gravity (frontend + backend) alongside TAuth using the shared env templates, modeled after `tools/mpr-ui/docker-compose.tauth.yml`, so contributors can run the integrated stack and e2e tests locally without bespoke scripts.
 
 ## Maintenance (400–499)
 

@@ -109,6 +109,17 @@ test.describe("Realtime synchronization", () => {
 
             await dispatchSignIn(pageA, credential, userId);
             await dispatchSignIn(pageB, credential, userId);
+            const sessionToken = backend.createSessionToken(userId);
+            await pageA.setCookie({
+                name: backend.cookieName,
+                value: sessionToken,
+                url: backend.baseUrl
+            });
+            await pageB.setCookie({
+                name: backend.cookieName,
+                value: backend.createSessionToken(userId),
+                url: backend.baseUrl
+            });
             await waitForSyncManagerUser(pageA, userId);
             await waitForSyncManagerUser(pageB, userId);
 
@@ -171,40 +182,6 @@ test.describe("Realtime synchronization", () => {
                 }
                 await appInstance.syncManager.synchronize({ flushQueue: false });
             });
-
-            const debugStateA = await extractSyncDebugState(pageA);
-            const backendToken = debugStateA?.backendToken?.accessToken ?? null;
-            if (backendToken) {
-                const snapshotResponse = await fetch(`${backend.baseUrl}/notes`, {
-                    method: "GET",
-                    headers: {
-                        Authorization: `Bearer ${backendToken}`
-                    }
-                });
-                const snapshotJson = await snapshotResponse.json();
-                console.log("[Realtime][Debug] backend snapshot", snapshotJson);
-
-                const controller = new AbortController();
-                const abortTimer = setTimeout(() => {
-                    controller.abort();
-                }, 500);
-                try {
-                    const streamResponse = await fetch(`${backend.baseUrl}/notes/stream`, {
-                        method: "GET",
-                        headers: {
-                            Authorization: `Bearer ${backendToken}`
-                        },
-                        signal: controller.signal
-                    });
-                    console.log("[Realtime][Debug] stream response", streamResponse.status, streamResponse.headers.get("content-type"));
-                } catch (error) {
-                    console.log("[Realtime][Debug] stream fetch error", String(error));
-                } finally {
-                    clearTimeout(abortTimer);
-                }
-            } else {
-                console.error("[Realtime][Debug] missing backend token", debugStateA);
-            }
 
             await pageB.evaluate(() => {
                 console.error("[Realtime][Debug] events after create", window.__GRAVITY_REALTIME_DEBUG__?.events ?? []);

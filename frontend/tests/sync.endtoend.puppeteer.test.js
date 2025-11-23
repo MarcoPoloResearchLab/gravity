@@ -8,8 +8,7 @@ import {
     prepareFrontendPage,
     dispatchSignIn,
     waitForSyncManagerUser,
-    waitForPendingOperations,
-    extractSyncDebugState
+    waitForPendingOperations
 } from "./helpers/syncTestUtils.js";
 import { connectSharedBrowser } from "./helpers/browserHarness.js";
 
@@ -57,6 +56,12 @@ test.describe("UI sync integration", () => {
         });
         try {
             await dispatchSignIn(page, credential, userId);
+            const sessionToken = backendContext.createSessionToken(userId);
+            await page.setCookie({
+                name: backendContext.cookieName,
+                value: sessionToken,
+                url: backendContext.baseUrl
+            });
             await waitForSyncManagerUser(page, userId);
 
             const editorSelector = "#top-editor .markdown-editor";
@@ -93,13 +98,10 @@ test.describe("UI sync integration", () => {
             assert.ok(typeof createdNote.noteId === "string" && createdNote.noteId.length > 0, "note id should be set");
 
             await waitForPendingOperations(page);
-            const debugState = await extractSyncDebugState(page);
-            const backendToken = debugState?.backendToken?.accessToken;
-            assert.ok(backendToken, "expected backend token after sync");
-
             await waitForBackendNote({
                 backendUrl: backendContext.baseUrl,
-                token: backendToken,
+                sessionToken: backendContext.createSessionToken(userId),
+                cookieName: backendContext.cookieName,
                 noteId: createdNote.noteId
             });
         } finally {

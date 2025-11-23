@@ -14,10 +14,8 @@ import { EVENT_SYNC_SNAPSHOT_APPLIED } from "../constants.js?build=2024-10-05T12
  */
 
 /**
- * @typedef {{ authenticated: boolean, queueFlushed: boolean, snapshotApplied: boolean, accessToken: string|null, accessTokenExpiresAtMs: number|null }} SignInResult
+ * @typedef {{ authenticated: boolean, queueFlushed: boolean, snapshotApplied: boolean }} SignInResult
  */
-
-const BACKEND_TOKEN_EXPIRY_SKEW_MS = 1000;
 
 /**
  * Create a synchronization manager responsible for coordinating backend persistence.
@@ -27,9 +25,7 @@ const BACKEND_TOKEN_EXPIRY_SKEW_MS = 1000;
  *   queueStore?: ReturnType<typeof createSyncQueue>,
  *   clock?: () => Date,
  *   randomUUID?: () => string,
- *   eventTarget?: EventTarget|null,
- *   onBackendTokenRefreshed?: (token: { accessToken: string, expiresAtMs: number }) => void,
- *   requestCredential?: () => Promise<string|null>
+ *   eventTarget?: EventTarget|null
  * }} [options]
  */
 export function createSyncManager(options = {}) {
@@ -45,24 +41,14 @@ export function createSyncManager(options = {}) {
         ? globalThis.document
         : null;
     const syncEventTarget = options.eventTarget ?? defaultEventTarget;
-    const backendTokenCallback = typeof options.onBackendTokenRefreshed === "function"
-        ? options.onBackendTokenRefreshed
-        : null;
-    const requestCredential = typeof options.requestCredential === "function"
-        ? options.requestCredential
-        : null;
 
-    /** @type {{ userId: string|null, backendToken: { accessToken: string, expiresAtMs: number }|null, metadata: Record<string, NoteMetadata>, queue: PendingOperation[], flushing: boolean, googleCredential: string|null }} */
+    /** @type {{ userId: string|null, metadata: Record<string, NoteMetadata>, queue: PendingOperation[], flushing: boolean }} */
     const state = {
         userId: null,
-        backendToken: null,
         metadata: {},
         queue: [],
-        flushing: false,
-        googleCredential: null
+        flushing: false
     };
-    /** @type {Promise<{ accessToken: string, expiresAtMs: number }|null>|null} */
-    let pendingTokenRefresh = null;
 
     return Object.freeze({
         /**
@@ -135,79 +121,32 @@ export function createSyncManager(options = {}) {
         },
 
         /**
-         * Handle sign-in by exchanging credentials, flushing queue, and reconciling a snapshot.
-         * @param {{ userId: string, credential?: string, backendToken?: { accessToken: string, expiresAtMs: number } }} params
+         * Handle sign-in by hydrating metadata, flushing the local queue, and reconciling a snapshot.
+         * @param {{ userId: string }} params
          * @returns {Promise<SignInResult>}
          */
         async handleSignIn(params) {
-            if (!params || !params.userId) {
-                return { authenticated: false, queueFlushed: false, snapshotApplied: false, accessToken: null, accessTokenExpiresAtMs: null };
+            if (!params || typeof params.userId !== "string" || params.userId.length === 0) {
+                return { authenticated: false, queueFlushed: false, snapshotApplied: false };
             }
 
             const loadedMetadata = metadataStore.load(params.userId);
             const loadedQueue = queueStore.load(params.userId);
-            const now = clock().getTime();
-
-            let backendToken = null;
-            const providedToken = params.backendToken;
-            if (providedToken
-                && typeof providedToken.accessToken === "string"
-                && providedToken.accessToken.length > 0
-                && typeof providedToken.expiresAtMs === "number"
-                && Number.isFinite(providedToken.expiresAtMs)
-                && providedToken.expiresAtMs > now) {
-                backendToken = {
-                    accessToken: providedToken.accessToken,
-                    expiresAtMs: providedToken.expiresAtMs
-                };
-            }
-
-            const credential = typeof params.credential === "string" && params.credential.length > 0
-                ? params.credential
-                : null;
-            state.googleCredential = credential;
-
-            if (!backendToken) {
-                if (!credential) {
-                    logging.error("Missing credential for backend token exchange");
-                    state.googleCredential = null;
-                    return { authenticated: false, queueFlushed: false, snapshotApplied: false, accessToken: null, accessTokenExpiresAtMs: null };
-                }
-                let exchanged;
-                try {
-                    exchanged = await backendClient.exchangeGoogleCredential({ credential });
-                } catch (error) {
-                    logging.error(error);
-                    state.googleCredential = null;
-                    return { authenticated: false, queueFlushed: false, snapshotApplied: false, accessToken: null, accessTokenExpiresAtMs: null };
-                }
-                backendToken = {
-                    accessToken: exchanged.accessToken,
-                    expiresAtMs: now + exchanged.expiresIn * 1000
-                };
-            }
 
             state.userId = params.userId;
             state.metadata = loadedMetadata;
             state.queue = loadedQueue;
-            state.backendToken = backendToken;
-            notifyBackendTokenRefreshed(state.backendToken);
 
             seedInitialOperations();
             persistState();
 
             const queueFlushed = await flushQueue();
-            let snapshotApplied = false;
-            if (queueFlushed) {
-                snapshotApplied = await refreshSnapshot();
-            }
+            const snapshotApplied = await refreshSnapshot();
 
             return {
-                authenticated: true,
+                authenticated: queueFlushed || snapshotApplied,
                 queueFlushed,
-                snapshotApplied,
-                accessToken: state.backendToken ? state.backendToken.accessToken : null,
-                accessTokenExpiresAtMs: state.backendToken ? state.backendToken.expiresAtMs : null
+                snapshotApplied
             };
         },
 
@@ -221,12 +160,9 @@ export function createSyncManager(options = {}) {
                 queueStore.clear(state.userId);
             }
             state.userId = null;
-            state.backendToken = null;
             state.metadata = {};
             state.queue = [];
             state.flushing = false;
-            state.googleCredential = null;
-            pendingTokenRefresh = null;
         },
 
         /**
@@ -235,11 +171,11 @@ export function createSyncManager(options = {}) {
          * @returns {Promise<{ queueFlushed: boolean, snapshotApplied: boolean }>}
          */
         async synchronize(options = {}) {
-            if (!state.userId || !state.backendToken) {
+            if (!state.userId) {
                 return { queueFlushed: false, snapshotApplied: false };
             }
             const shouldFlush = options.flushQueue !== false;
-            let queueFlushed = state.queue.length === 0;
+            let queueFlushed = !shouldFlush;
             if (shouldFlush) {
                 queueFlushed = await flushQueue();
             }
@@ -249,12 +185,11 @@ export function createSyncManager(options = {}) {
 
         /**
          * Expose internal state for diagnostics and testing.
-         * @returns {{ activeUserId: string|null, backendToken: { accessToken: string, expiresAtMs: number }|null, pendingOperations: PendingOperation[] }}
+         * @returns {{ activeUserId: string|null, pendingOperations: PendingOperation[] }}
          */
         getDebugState() {
             return {
                 activeUserId: state.userId,
-                backendToken: state.backendToken ? { ...state.backendToken } : null,
                 pendingOperations: state.queue.map((operation) => ({ ...operation }))
             };
         }
@@ -312,7 +247,7 @@ export function createSyncManager(options = {}) {
     }
 
     async function flushQueue() {
-        if (!state.userId || !state.backendToken) {
+        if (!state.userId) {
             return false;
         }
         if (state.flushing) {
@@ -320,10 +255,6 @@ export function createSyncManager(options = {}) {
         }
         if (state.queue.length === 0) {
             return true;
-        }
-        const ensuredToken = await ensureBackendToken();
-        if (!ensuredToken) {
-            return false;
         }
         state.flushing = true;
         try {
@@ -333,7 +264,6 @@ export function createSyncManager(options = {}) {
                 return true;
             }
             const response = await backendClient.syncOperations({
-                accessToken: ensuredToken.accessToken,
                 operations
             });
             applySyncResults(response?.results ?? [], operations);
@@ -350,17 +280,11 @@ export function createSyncManager(options = {}) {
     }
 
     async function refreshSnapshot() {
-        if (!state.userId || !state.backendToken) {
-            return false;
-        }
-        const ensuredToken = await ensureBackendToken();
-        if (!ensuredToken) {
+        if (!state.userId) {
             return false;
         }
         try {
-            const snapshot = await backendClient.fetchSnapshot({
-                accessToken: ensuredToken.accessToken
-            });
+            const snapshot = await backendClient.fetchSnapshot();
             applySnapshot(snapshot?.notes ?? []);
             persistState();
             return true;
@@ -524,100 +448,6 @@ export function createSyncManager(options = {}) {
         }
     }
 
-    /**
-     * Ensure a valid backend token is available, refreshing it when expired.
-     * @returns {Promise<{ accessToken: string, expiresAtMs: number }|null>}
-     */
-    async function ensureBackendToken() {
-        if (!state.userId) {
-            return null;
-        }
-        const activeToken = state.backendToken;
-        const nowMs = clock().getTime();
-        if (activeToken && activeToken.expiresAtMs - BACKEND_TOKEN_EXPIRY_SKEW_MS > nowMs) {
-            return activeToken;
-        }
-        if (pendingTokenRefresh) {
-            return pendingTokenRefresh;
-        }
-        pendingTokenRefresh = (async () => {
-            let credential = state.googleCredential;
-            if (!isNonEmptyString(credential) && requestCredential) {
-                try {
-                    credential = await requestCredential();
-                    if (isNonEmptyString(credential)) {
-                        state.googleCredential = credential;
-                        persistState();
-                    }
-                } catch (error) {
-                    logging.error(error);
-                }
-            }
-            if (!isNonEmptyString(credential)) {
-                state.backendToken = null;
-                persistState();
-                return null;
-            }
-            const refreshedToken = await exchangeCredentialWithRetry(credential, requestCredential ? 1 : 0);
-            if (refreshedToken) {
-                state.backendToken = refreshedToken;
-                persistState();
-                notifyBackendTokenRefreshed(refreshedToken);
-            } else {
-                state.backendToken = null;
-                persistState();
-            }
-            return refreshedToken;
-        })().finally(() => {
-            pendingTokenRefresh = null;
-        });
-        return pendingTokenRefresh;
-    }
-
-    async function exchangeCredentialWithRetry(credential, retriesRemaining) {
-        try {
-            const exchanged = await backendClient.exchangeGoogleCredential({ credential });
-            return {
-                accessToken: exchanged.accessToken,
-                expiresAtMs: clock().getTime() + exchanged.expiresIn * 1000
-            };
-        } catch (error) {
-            logging.error(error);
-            if (retriesRemaining > 0 && requestCredential) {
-                try {
-                    const refreshedCredential = await requestCredential();
-                    if (isNonEmptyString(refreshedCredential)) {
-                        if (refreshedCredential !== credential) {
-                            state.googleCredential = refreshedCredential;
-                        }
-                        persistState();
-                        return exchangeCredentialWithRetry(refreshedCredential, retriesRemaining - 1);
-                    }
-                } catch (requestError) {
-                    logging.error(requestError);
-                }
-            }
-            state.googleCredential = null;
-            persistState();
-            return null;
-        }
-    }
-
-    /**
-     * Notify listeners that a backend token has been refreshed.
-     * @param {{ accessToken: string, expiresAtMs: number }|null} token
-     * @returns {void}
-     */
-    function notifyBackendTokenRefreshed(token) {
-        if (!backendTokenCallback || !token) {
-            return;
-        }
-        try {
-            backendTokenCallback({ accessToken: token.accessToken, expiresAtMs: token.expiresAtMs });
-        } catch (error) {
-            logging.error(error);
-        }
-    }
 }
 
 /**
@@ -651,10 +481,6 @@ function isValidRecord(record) {
  */
 function cloneRecord(record) {
     return JSON.parse(JSON.stringify(record));
-}
-
-function isNonEmptyString(value) {
-    return typeof value === "string" && value.length > 0;
 }
 
 /**
