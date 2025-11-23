@@ -54,3 +54,23 @@ Gravity Notes is a single-page Markdown notebook designed to keep you in flow. E
 ## Need More?
 
 Developers and curious tinkerers can find project structure, dependencies, and runbooks in the [Architecture & Developer Guide](ARCHITECTURE.md).
+
+## Local Stack (Gravity + TAuth)
+
+Run the full application locally (frontend, backend, and the new TAuth service) via Docker:
+
+1. Copy the sample environment files and customize secrets as needed:
+   - `cp backend/env.example backend/.env`
+   - `cp tauth/env.example tauth/.env`
+
+   Make sure `GRAVITY_TAUTH_*` and `APP_*` entries share the same signing secret, issuer, cookie name, and Google OAuth Web Client ID so both services trust the same credentials.
+
+2. Start the stack: `docker compose -f docker-compose.dev.yml up --build`
+
+The compose file exposes:
+
+- Frontend static assets at `http://localhost:8000`
+- Gravity backend API at `http://localhost:8080`
+- TAuth (nonce + Google exchange + auth-client.js) at `http://localhost:8082`
+
+Runtime configuration files under `frontend/data/` now include `authBaseUrl`, so the browser can discover which TAuth origin to contact for `/auth/nonce`, `/auth/google`, and `/auth/logout` once the frontend wiring lands. Update `frontend/data/runtime.config.production.json` if your deployment uses a different TAuth hostname.
