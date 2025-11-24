@@ -11,7 +11,8 @@ import {
     prepareFrontendPage,
     dispatchSignIn,
     waitForSyncManagerUser,
-    waitForPendingOperations
+    waitForPendingOperations,
+    attachBackendSessionCookie
 } from "./helpers/syncTestUtils.js";
 import { connectSharedBrowser } from "./helpers/browserHarness.js";
 
@@ -59,12 +60,7 @@ test.describe("Full stack integration", () => {
         });
         try {
             await dispatchSignIn(page, credential, userId);
-            const sessionToken = backendContext.createSessionToken(userId);
-            await page.setCookie({
-                name: backendContext.cookieName,
-                value: sessionToken,
-                url: backendContext.baseUrl
-            });
+            await attachBackendSessionCookie(page, backendContext, userId);
             await waitForSyncManagerUser(page, userId);
 
             const noteId = "fullstack-sync-note";

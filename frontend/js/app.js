@@ -14,13 +14,6 @@ import { createSyncManager } from "./core/syncManager.js?build=2024-10-05T12:00:
 import { createRealtimeSyncController } from "./core/realtimeSyncController.js?build=2024-10-05T12:00:00Z";
 import { ensureTAuthClientLoaded } from "./core/tauthClient.js?build=2024-10-05T12:00:00Z";
 import { createTAuthSession } from "./core/tauthSession.js?build=2024-10-05T12:00:00Z";
-import {
-    loadAuthState,
-    saveAuthState,
-    clearAuthState,
-    isAuthStateFresh,
-    hasActiveAuthenticationSession
-} from "./core/authState.js?build=2024-10-05T12:00:00Z";
 import { mountTopEditor } from "./ui/topEditor.js?build=2024-10-05T12:00:00Z";
 import {
     LABEL_APP_SUBTITLE,
@@ -134,12 +127,10 @@ function gravityApp() {
         tauthReadyPromise: /** @type {Promise<void>|null} */ (null),
         authUser: /** @type {{ id: string, email: string|null, name: string|null, pictureUrl: string|null }|null} */ (null),
         authPollHandle: /** @type {number|null} */ (null),
-        cachedPersistedAuthState: /** @type {ReturnType<typeof loadAuthState>|null|undefined} */ (undefined),
         guestExportButton: /** @type {HTMLButtonElement|null} */ (null),
         syncManager: /** @type {ReturnType<typeof createSyncManager>|null} */ (null),
         realtimeSync: /** @type {{ connect(params: { baseUrl: string, accessToken: string, expiresAtMs?: number|null }): void, disconnect(): void, dispose(): void }|null} */ (null),
         syncIntervalHandle: /** @type {number|null} */ (null),
-        latestCredential: /** @type {string|null} */ (null),
         authNonceToken: /** @type {string|null} */ (null),
         lastRenderedSignature: /** @type {string|null} */ (null),
         fullScreenToggleController: /** @type {{ dispose(): void }|null} */ (null),
@@ -176,13 +167,7 @@ function gravityApp() {
             });
             this.realtimeSync = createRealtimeSyncController({ syncManager: this.syncManager });
 
-            const persistedAuthState = loadAuthState();
-            if (persistedAuthState && persistedAuthState.user && typeof persistedAuthState.user.id === "string" && persistedAuthState.user.id.length > 0) {
-                this.cachedPersistedAuthState = persistedAuthState;
-                GravityStore.setUserScope(persistedAuthState.user.id);
-            } else {
-                GravityStore.setUserScope(null);
-            }
+            GravityStore.setUserScope(null);
 
             if (typeof window !== "undefined") {
                 window.addEventListener("storage", (event) => {
@@ -205,12 +190,8 @@ function gravityApp() {
                     }, 3000);
                 }
             }
-            const restored = this.restoreAuthFromStorage();
-            if (!restored) {
-                GravityStore.setUserScope(null);
-                this.initializeNotes();
-                this.setGuestExportVisibility(true);
-            }
+            this.initializeNotes();
+            this.setGuestExportVisibility(true);
             initializeKeyboardShortcutsModal();
             this.versionRefreshController = initializeVersionRefresh({
                 currentVersion: APP_BUILD_ID,
@@ -236,25 +217,6 @@ function gravityApp() {
                 onError: (error) => {
                     logging.warn("Version manifest check failed", error);
                 }
-            });
-        },
-
-        /**
-         * Persist the active authentication state to storage.
-         * @returns {void}
-         */
-        persistAuthState() {
-            if (!this.authUser || typeof this.latestCredential !== "string" || this.latestCredential.length === 0) {
-                return;
-            }
-            saveAuthState({
-                user: {
-                    id: this.authUser.id,
-                    email: this.authUser.email,
-                    name: this.authUser.name,
-                    pictureUrl: this.authUser.pictureUrl
-                },
-                credential: this.latestCredential
             });
         },
 
@@ -342,49 +304,6 @@ function gravityApp() {
         },
 
         /**
-         * Attempt to rehydrate authentication from storage.
-         * @returns {boolean}
-         */
-        restoreAuthFromStorage() {
-            const cachedState = this.cachedPersistedAuthState;
-            const persisted = typeof cachedState === "undefined" ? loadAuthState() : cachedState;
-            this.cachedPersistedAuthState = undefined;
-            if (!persisted || !persisted.user || typeof persisted.user.id !== "string" || persisted.user.id.length === 0) {
-                if (persisted) {
-                    clearAuthState();
-                }
-                return false;
-            }
-            if (typeof persisted.credential !== "string" || persisted.credential.length === 0) {
-                if (persisted) {
-                    clearAuthState();
-                }
-                return false;
-            }
-            if (!isAuthStateFresh(persisted)) {
-                clearAuthState();
-                return false;
-            }
-            const target = this.$el instanceof HTMLElement ? this.$el : document.body;
-            if (!target) {
-                return false;
-            }
-            try {
-                target.dispatchEvent(new CustomEvent(EVENT_AUTH_SIGN_IN, {
-                    detail: {
-                        user: persisted.user,
-                        credential: persisted.credential,
-                        restored: true
-                    }
-                }));
-                return true;
-            } catch (error) {
-                logging.error(error);
-                return false;
-            }
-        },
-
-        /**
          * Ensure the Google Identity controller is instantiated once the API is available.
          * @returns {void}
          */
@@ -414,12 +333,7 @@ function gravityApp() {
                 if (this.tauthReadyPromise) {
                     await this.tauthReadyPromise;
                 }
-                let persistedAuthState = this.cachedPersistedAuthState;
-                if (typeof persistedAuthState === "undefined") {
-                    persistedAuthState = loadAuthState();
-                }
-                this.cachedPersistedAuthState = persistedAuthState ?? null;
-                const shouldAutoPrompt = !(persistedAuthState && isAuthStateFresh(persistedAuthState));
+                const shouldAutoPrompt = !(this.authUser && typeof this.authUser.id === "string" && this.authUser.id.length > 0);
 
                 if (this.tauthSession) {
                     try {
@@ -458,8 +372,6 @@ function gravityApp() {
             try {
                 const credential = await controller.requestCredential();
                 if (typeof credential === "string" && credential.length > 0) {
-                    this.latestCredential = credential;
-                    this.persistAuthState();
                     return credential;
                 }
             } catch (error) {
@@ -555,8 +467,6 @@ function gravityApp() {
             this.avatarMenu?.setEnabled(false);
             GravityStore.setUserScope(null);
             this.initializeNotes();
-            this.cachedPersistedAuthState = undefined;
-            this.latestCredential = null;
             this.authNonceToken = null;
         },
 
@@ -668,20 +578,14 @@ function gravityApp() {
             if (!credential) {
                 return;
             }
-            this.latestCredential = credential;
-            this.persistAuthState();
             void this.exchangeCredentialWithTAuth(credential);
         });
 
         root.addEventListener(EVENT_AUTH_SIGN_IN, (event) => {
-            const detail = /** @type {{ user?: { id?: string, email?: string|null, name?: string|null, pictureUrl?: string|null }, credential?: string|null, restored?: boolean }} */ (event?.detail ?? {});
+            const detail = /** @type {{ user?: { id?: string, email?: string|null, name?: string|null, pictureUrl?: string|null } }} */ (event?.detail ?? {});
             const user = detail?.user;
             if (!user || !user.id) {
                 return;
-            }
-            const credential = typeof detail?.credential === "string" ? detail.credential : "";
-            if (credential.length > 0) {
-                this.latestCredential = credential;
             }
 
             const applyGuestState = () => {
@@ -692,9 +596,7 @@ function gravityApp() {
                 GravityStore.setUserScope(null);
                 this.initializeNotes();
                 this.setGuestExportVisibility(true);
-                this.latestCredential = null;
                 this.authNonceToken = null;
-                clearAuthState();
                 this.realtimeSync?.disconnect();
             };
 
@@ -712,7 +614,6 @@ function gravityApp() {
                 GravityStore.setUserScope(this.authUser.id);
                 this.initializeNotes();
                 this.setGuestExportVisibility(false);
-                this.persistAuthState();
             };
 
             const attemptSignIn = async () => {
@@ -756,10 +657,7 @@ function gravityApp() {
             this.initializeNotes();
             this.syncManager?.handleSignOut();
             this.setGuestExportVisibility(true);
-            clearAuthState();
             this.realtimeSync?.disconnect();
-            this.cachedPersistedAuthState = undefined;
-            this.latestCredential = null;
             if (typeof window !== "undefined" && this.syncIntervalHandle !== null) {
                 window.clearInterval(this.syncIntervalHandle);
                 this.syncIntervalHandle = null;

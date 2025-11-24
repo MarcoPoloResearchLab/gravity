@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto";
+import http from "node:http";
 import path from "node:path";
+import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 import { appConfig } from "../../js/core/config.js";
@@ -23,6 +25,21 @@ const PROJECT_ROOT = path.resolve(TESTS_DIR, "..", "..");
 const DEFAULT_PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
 const DEFAULT_JWT_ISSUER = "https://accounts.google.com";
 const DEFAULT_JWT_AUDIENCE = appConfig.googleClientId;
+const STATIC_SERVER_HOST = "127.0.0.1";
+let staticServerOriginPromise = null;
+let staticServerHandle = null;
+const MIME_TYPES = new Map([
+    [".html", "text/html; charset=utf-8"],
+    [".js", "application/javascript; charset=utf-8"],
+    [".mjs", "application/javascript; charset=utf-8"],
+    [".css", "text/css; charset=utf-8"],
+    [".json", "application/json; charset=utf-8"],
+    [".svg", "image/svg+xml"],
+    [".png", "image/png"],
+    [".jpg", "image/jpeg"],
+    [".jpeg", "image/jpeg"],
+    [".ico", "image/x-icon"]
+]);
 
 /**
  * Prepare a new browser page configured for backend synchronization tests.
@@ -51,6 +68,35 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
             authBaseUrl
         }
     });
+    await page.evaluateOnNewDocument((config) => {
+        const targetPattern = /\/data\/runtime\.config\.(development|production)\.json$/;
+        const originalFetch = window.fetch;
+        window.fetch = async (input, init = {}) => {
+            const requestUrl = typeof input === "string"
+                ? input
+                : typeof input?.url === "string"
+                    ? input.url
+                    : "";
+            if (typeof requestUrl === "string" && targetPattern.test(requestUrl)) {
+                const payload = {
+                    environment: config.environment ?? "development",
+                    backendBaseUrl: config.backendBaseUrl,
+                    llmProxyUrl: config.llmProxyUrl,
+                    authBaseUrl: config.authBaseUrl
+                };
+                return new Response(JSON.stringify(payload), {
+                    status: 200,
+                    headers: { "Content-Type": "application/json" }
+                });
+            }
+            return originalFetch.call(window, input, init);
+        };
+    }, {
+        environment: "development",
+        backendBaseUrl,
+        llmProxyUrl,
+        authBaseUrl
+    });
     await page.evaluateOnNewDocument((storageKey, shouldPreserve) => {
         const initialized = window.sessionStorage.getItem("__gravityTestInitialized") === "true";
         if (!initialized) {
@@ -63,8 +109,8 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
             window.localStorage.setItem(storageKey, "[]");
         }
     }, appConfig.storageKey, preserveLocalStorage === true);
-
-    await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
+    const resolvedUrl = await resolvePageUrl(pageUrl);
+    await page.goto(resolvedUrl, { waitUntil: "domcontentloaded" });
     await waitForAppReady(page);
     return page;
 }
@@ -204,6 +250,30 @@ export async function dispatchSignIn(page, credential, userId) {
             bubbles: true
         }));
     }, EVENT_AUTH_SIGN_IN, credential, userId);
+}
+
+/**
+ * Attach a backend session cookie to the provided page using the shared backend harness.
+ * @param {import("puppeteer").Page} page
+ * @param {{ baseUrl: string, cookieName: string, createSessionToken: (userId: string, expiresInSeconds?: number) => string }} backend
+ * @param {string} userId
+ * @returns {Promise<void>}
+ */
+export async function attachBackendSessionCookie(page, backend, userId) {
+    if (!backend || typeof backend.baseUrl !== "string") {
+        throw new Error("attachBackendSessionCookie requires a backend handle.");
+    }
+    const sessionToken = backend.createSessionToken(userId);
+    try {
+        await page.setCookie({
+            name: backend.cookieName,
+            value: sessionToken,
+            url: backend.baseUrl
+        });
+    } catch {
+        // ignore failures; some browsers disallow setting cookies for file:// origins in automation
+    }
+    return sessionToken;
 }
 
 /**
@@ -351,7 +421,6 @@ export async function resetToSignedOut(page) {
     await page.evaluate(() => {
         window.sessionStorage.setItem("__gravityTestInitialized", "true");
         window.localStorage.setItem("gravityNotesData", "[]");
-        window.localStorage.removeItem("gravityAuthState");
         window.location.reload();
     });
     await page.waitForNavigation({ waitUntil: "domcontentloaded" });
@@ -537,4 +606,95 @@ function encodeSegment(value) {
  */
 function generateJwtIdentifier() {
     return randomBytes(16).toString("hex");
+}
+
+async function resolvePageUrl(rawUrl) {
+    try {
+        const parsed = new URL(rawUrl);
+        if (parsed.protocol !== "file:") {
+            return parsed.toString();
+        }
+        const origin = await ensureStaticServerOrigin();
+        const absolutePath = fileURLToPath(parsed);
+        const relativePath = path.relative(PROJECT_ROOT, absolutePath);
+        if (relativePath.startsWith("..")) {
+            throw new Error(`Cannot serve path outside project root: ${absolutePath}`);
+        }
+        const normalized = relativePath.split(path.sep).join("/");
+        return `${origin}/${normalized}`;
+    } catch {
+        return rawUrl;
+    }
+}
+
+async function ensureStaticServerOrigin() {
+    if (staticServerOriginPromise) {
+        return staticServerOriginPromise;
+    }
+    staticServerOriginPromise = new Promise((resolve, reject) => {
+        const server = http.createServer(async (req, res) => {
+            try {
+                await handleStaticRequest(req?.url ?? "/", res);
+            } catch {
+                res.statusCode = 500;
+                res.end("Internal Server Error");
+            }
+        });
+        server.on("error", (error) => {
+            server.close().catch(() => {});
+            reject(error);
+        });
+        server.listen(0, STATIC_SERVER_HOST, () => {
+            server.off("error", reject);
+            staticServerHandle = server;
+            const address = server.address();
+            if (!address || typeof address !== "object") {
+                reject(new Error("Static server missing address"));
+                return;
+            }
+            resolve(`http://${STATIC_SERVER_HOST}:${address.port}`);
+        });
+        server.unref();
+    }).catch((error) => {
+        staticServerOriginPromise = null;
+        throw error;
+    });
+    return staticServerOriginPromise;
+}
+
+async function handleStaticRequest(requestUrl, res) {
+    const url = new URL(requestUrl, "http://localhost");
+    let pathname = decodeURIComponent(url.pathname);
+    if (pathname.endsWith("/")) {
+        pathname += "index.html";
+    }
+    const absolutePath = path.resolve(PROJECT_ROOT, pathname.replace(/^\/+/u, ""));
+    if (!absolutePath.startsWith(PROJECT_ROOT)) {
+        res.statusCode = 403;
+        res.end("Forbidden");
+        return;
+    }
+    let filePath = absolutePath;
+    let stats;
+    try {
+        stats = await fs.stat(filePath);
+        if (stats.isDirectory()) {
+            filePath = path.join(filePath, "index.html");
+            stats = await fs.stat(filePath);
+        }
+    } catch {
+        res.statusCode = 404;
+        res.end("Not Found");
+        return;
+    }
+    try {
+        const data = await fs.readFile(filePath);
+        const ext = path.extname(filePath).toLowerCase();
+        res.statusCode = 200;
+        res.setHeader("Content-Type", MIME_TYPES.get(ext) ?? "application/octet-stream");
+        res.end(data);
+    } catch {
+        res.statusCode = 500;
+        res.end("Internal Server Error");
+    }
 }

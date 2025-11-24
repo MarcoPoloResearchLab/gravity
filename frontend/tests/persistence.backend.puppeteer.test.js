@@ -4,16 +4,18 @@ import test from "node:test";
 
 import {
     prepareFrontendPage,
-    dispatchSignIn,
     waitForSyncManagerUser,
-    extractSyncDebugState,
-    dispatchNoteCreate
+    dispatchNoteCreate,
+    waitForTAuthSession,
+    composeTestCredential
 } from "./helpers/syncTestUtils.js";
 import {
     startTestBackend,
     waitForBackendNote
 } from "./helpers/backendHarness.js";
 import { connectSharedBrowser } from "./helpers/browserHarness.js";
+import { installTAuthHarness } from "./helpers/tauthHarness.js";
+import { EVENT_AUTH_CREDENTIAL_RECEIVED } from "../js/constants.js";
 
 const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const PAGE_URL = `file://${path.join(REPO_ROOT, "index.html")}`;
@@ -62,9 +64,18 @@ test.describe("Backend sync integration", () => {
         const backendUrl = backendContext.baseUrl;
         browserConnection = await connectSharedBrowser();
         context = await browserConnection.createBrowserContext();
+        let harnessHandle = null;
         page = await raceWithSignal(deadlineSignal, prepareFrontendPage(context, PAGE_URL, {
             backendBaseUrl: backendUrl,
-            llmProxyUrl: backendUrl
+            llmProxyUrl: backendUrl,
+            authBaseUrl: backendUrl,
+            beforeNavigate: async (targetPage) => {
+                harnessHandle = await installTAuthHarness(targetPage, {
+                    baseUrl: backendUrl,
+                    cookieName: backendContext.cookieName,
+                    mintSessionToken: backendContext.createSessionToken
+                });
+            }
         }));
         page.on("console", (message) => {
             if (message.type() === "error") {
@@ -72,46 +83,30 @@ test.describe("Backend sync integration", () => {
             }
         });
         try {
-                const credential = backendContext.tokenFactory(TEST_USER_ID);
-                await raceWithSignal(deadlineSignal, dispatchSignIn(page, credential, TEST_USER_ID));
-                const sessionToken = backendContext.createSessionToken(TEST_USER_ID);
-                await page.setCookie({
-                    name: backendContext.cookieName,
-                    value: sessionToken,
-                    url: backendUrl
-                });
-                await page.evaluate(async ({ userId }) => {
-                    const root = document.querySelector("[x-data]");
-                    if (!root) {
-                        throw new Error("root component not found");
+                await waitForTAuthSession(page);
+                await raceWithSignal(deadlineSignal, page.evaluate((eventName, detail) => {
+                    const target = document.querySelector("body");
+                    if (!target) {
+                        throw new Error("Application root missing");
                     }
-                    const alpineComponent = (() => {
-                        const legacy = /** @type {{ $data?: Record<string, any> }} */ (/** @type {any} */ (root).__x ?? null);
-                        if (legacy && typeof legacy.$data === "object") {
-                            return legacy.$data;
-                        }
-                        const alpine = typeof window !== "undefined" ? /** @type {{ $data?: (el: Element) => any }} */ (window.Alpine ?? null) : null;
-                        if (alpine && typeof alpine.$data === "function") {
-                            const scoped = alpine.$data(root);
-                            if (scoped && typeof scoped === "object") {
-                                return scoped;
-                            }
-                        }
-                        const stack = /** @type {Array<Record<string, any>>|undefined} */ (/** @type {any} */ (root)._x_dataStack);
-                        if (Array.isArray(stack) && stack.length > 0) {
-                            const candidate = stack[stack.length - 1];
-                            if (candidate && typeof candidate === "object") {
-                                return candidate;
-                            }
-                        }
-                        return null;
-                    })();
-                    const syncManager = alpineComponent?.syncManager;
-                    if (!syncManager || typeof syncManager.handleSignIn !== "function") {
-                        throw new Error("sync manager not ready");
+                    target.dispatchEvent(new CustomEvent(eventName, {
+                        bubbles: true,
+                        detail
+                    }));
+                }, EVENT_AUTH_CREDENTIAL_RECEIVED, {
+                    credential: composeTestCredential({
+                        userId: TEST_USER_ID,
+                        email: `${TEST_USER_ID}@example.com`,
+                        name: "Integration Sync User",
+                        pictureUrl: "https://example.com/avatar.png"
+                    }),
+                    user: {
+                        id: TEST_USER_ID,
+                        email: `${TEST_USER_ID}@example.com`,
+                        name: "Integration Sync User",
+                        pictureUrl: "https://example.com/avatar.png"
                     }
-                    await syncManager.handleSignIn({ userId });
-                }, { userId: TEST_USER_ID });
+                }));
                 try {
                     await raceWithSignal(
                         deadlineSignal,

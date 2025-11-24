@@ -3,22 +3,19 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
+import { EVENT_AUTH_CREDENTIAL_RECEIVED } from "../js/constants.js";
+import { startTestBackend, waitForBackendNote } from "./helpers/backendHarness.js";
+import { connectSharedBrowser, registerRequestInterceptor } from "./helpers/browserHarness.js";
 import {
-    startTestBackend,
-    waitForBackendNote
-} from "./helpers/backendHarness.js";
-import {
-    connectSharedBrowser
-} from "./helpers/browserHarness.js";
-import {
+    composeTestCredential,
     prepareFrontendPage,
-    dispatchSignIn,
     waitForSyncManagerUser,
     waitForPendingOperations,
-    extractSyncDebugState,
+    waitForTAuthSession,
     dispatchNoteCreate,
     dispatchNoteUpdate
 } from "./helpers/syncTestUtils.js";
+import { installTAuthHarness } from "./helpers/tauthHarness.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
@@ -43,38 +40,10 @@ test.describe("Synchronization scenarios", () => {
         const browser = await connectSharedBrowser();
         const context = await browser.createBrowserContext();
         const userId = `transient-sync-user-${Date.now()}`;
-        const credential = backendContext.tokenFactory(userId);
-        const page = await prepareFrontendPage(context, PAGE_URL, {
-            backendBaseUrl: backendContext.baseUrl,
-            llmProxyUrl: "",
-            beforeNavigate: async (targetPage) => {
-                await targetPage.evaluateOnNewDocument((syncUrl) => {
-                    const originalFetch = window.fetch;
-                    let attempts = 0;
-                    window.__gravitySyncIntercept__ = { attempts };
-                    window.fetch = async (input, init = {}) => {
-                        const requestUrl = typeof input === "string"
-                            ? input
-                            : typeof input?.url === "string"
-                                ? input.url
-                                : "";
-                        if (typeof requestUrl === "string" && requestUrl.startsWith(syncUrl)) {
-                            attempts += 1;
-                            window.__gravitySyncIntercept__.attempts = attempts;
-                            if (attempts === 1) {
-                                throw new Error("Simulated network failure for sync");
-                            }
-                        }
-                        return originalFetch.call(window, input, init);
-                    };
-                }, `${backendContext.baseUrl}/notes/sync`);
-            }
-        });
+        const { page } = await bootstrapSession(context, backendContext, userId);
+        const syncInterceptor = await interceptSyncRequests(page, { mode: "fail-once" });
 
         try {
-            await dispatchSignIn(page, credential, userId);
-            await waitForSyncManagerUser(page, userId);
-
             const createdAtIso = new Date().toISOString();
             const noteId = `transient-note-${Date.now()}`;
             const noteMarkdown = "Transient failure note";
@@ -103,35 +72,16 @@ test.describe("Synchronization scenarios", () => {
                 const debugState = component?.syncManager?.getDebugState?.();
                 return Array.isArray(debugState?.pendingOperations) && debugState.pendingOperations.length === 1;
             }, { timeout: 5000 });
-            const initialAttempts = await page.evaluate(() => window.__gravitySyncIntercept__?.attempts ?? 0);
-            assert.equal(initialAttempts, 1, "initial sync attempt should fail exactly once");
+            assert.equal(syncInterceptor.getAttempts(), 1, "initial sync attempt should fail exactly once");
 
-            await page.evaluate(async () => {
-                const root = document.querySelector("[x-data]");
-                if (!root) {
-                    throw new Error("application root not found");
-                }
-                const alpine = /** @type {{ $data?: (element: Element) => any }} */ (window.Alpine ?? null);
-                if (!alpine || typeof alpine.$data !== "function") {
-                    throw new Error("Alpine data accessor unavailable");
-                }
-                const component = alpine.$data(root);
-                if (!component?.syncManager || typeof component.syncManager.synchronize !== "function") {
-                    throw new Error("sync manager not initialised");
-                }
-                await component.syncManager.synchronize({ flushQueue: true });
-            });
-
+            await forceSync(page, true);
             await waitForPendingOperations(page);
-            const retryAttempts = await page.evaluate(() => window.__gravitySyncIntercept__?.attempts ?? 0);
-            assert.ok(retryAttempts >= 2, "sync queue should retry after connectivity returns");
-
-            const debugState = await extractSyncDebugState(page);
-            assert.ok(debugState?.backendToken?.accessToken, "backend token must be present after retry");
+            assert.ok(syncInterceptor.getAttempts() >= 2, "sync queue should retry after connectivity returns");
 
             const snapshot = await waitForBackendNote({
                 backendUrl: backendContext.baseUrl,
-                token: debugState.backendToken.accessToken,
+                sessionToken: backendContext.createSessionToken(userId),
+                cookieName: backendContext.cookieName,
                 noteId
             });
             const noteEntry = Array.isArray(snapshot?.notes)
@@ -140,6 +90,7 @@ test.describe("Synchronization scenarios", () => {
             assert.ok(noteEntry, "backend snapshot should contain the queued note");
             assert.equal(noteEntry?.payload?.markdownText, noteMarkdown);
         } finally {
+            await syncInterceptor.clear();
             await page.close().catch(() => {});
             await context.close().catch(() => {});
             browser.disconnect();
@@ -152,36 +103,14 @@ test.describe("Synchronization scenarios", () => {
         const browser = await connectSharedBrowser();
         const context = await browser.createBrowserContext();
         const userId = `queued-session-user-${Date.now()}`;
-        const credential = backendContext.tokenFactory(userId);
-        const page = await prepareFrontendPage(context, PAGE_URL, {
-            backendBaseUrl: backendContext.baseUrl,
-            llmProxyUrl: "",
-            beforeNavigate: async (targetPage) => {
-                await targetPage.evaluateOnNewDocument((syncUrl) => {
-                    const originalFetch = window.fetch;
-                    window.fetch = async (input, init = {}) => {
-                        const requestUrl = typeof input === "string"
-                            ? input
-                            : typeof input?.url === "string"
-                                ? input.url
-                                : "";
-                        if (typeof requestUrl === "string" && requestUrl.startsWith(syncUrl)) {
-                            throw new Error("Offline sync queue override");
-                        }
-                        return originalFetch.call(window, input, init);
-                    };
-                }, `${backendContext.baseUrl}/notes/sync`);
-            }
-        });
+        const { page } = await bootstrapSession(context, backendContext, userId);
+        const offlineInterceptor = await interceptSyncRequests(page, { mode: "always-fail" });
 
         const createdAtIso = new Date().toISOString();
         const queuedNoteId = `queued-note-${Date.now()}`;
         const queuedMarkdown = "Queued while offline";
 
         try {
-            await dispatchSignIn(page, credential, userId);
-            await waitForSyncManagerUser(page, userId);
-
             await dispatchNoteCreate(page, {
                 record: {
                     noteId: queuedNoteId,
@@ -211,25 +140,27 @@ test.describe("Synchronization scenarios", () => {
             await page.close().catch(() => {});
         }
 
-        const pageReload = await prepareFrontendPage(context, PAGE_URL, {
-            backendBaseUrl: backendContext.baseUrl,
-            llmProxyUrl: "",
-            preserveLocalStorage: true
+        await offlineInterceptor.clear();
+
+        const { page: pageReload } = await bootstrapSession(context, backendContext, userId, {
+            preserveLocalStorage: true,
+            autoSignIn: false
         });
         try {
-            const hasOfflineNote = await pageReload.evaluate(async (noteId) => {
+            const hasOfflineNote = await pageReload.evaluate(async (noteId, scopedUserId) => {
                 const importer = typeof window.importAppModule === "function"
                     ? window.importAppModule
                     : (specifier) => import(specifier);
                 const module = await importer("./js/core/store.js");
+                if (typeof module.GravityStore?.setUserScope === "function") {
+                    module.GravityStore.setUserScope(scopedUserId);
+                }
                 const records = module.GravityStore.loadAllNotes();
                 return Array.isArray(records) && records.some((record) => record?.noteId === noteId);
-            }, queuedNoteId);
+            }, queuedNoteId, userId);
             assert.ok(hasOfflineNote, "offline note should persist locally before replay");
 
-            const replayCredential = backendContext.tokenFactory(userId);
-            await dispatchSignIn(pageReload, replayCredential, userId);
-            await waitForSyncManagerUser(pageReload, userId);
+            await signInViaTAuth(pageReload, userId);
             await waitForPendingOperations(pageReload);
 
             await pageReload.waitForSelector(`.markdown-block[data-note-id="${queuedNoteId}"]`);
@@ -239,12 +170,10 @@ test.describe("Synchronization scenarios", () => {
             );
             assert.ok(renderedMarkdown.includes("Queued while offline"), "rendered markdown should match queued content");
 
-            const debugState = await extractSyncDebugState(pageReload);
-            assert.ok(debugState?.backendToken?.accessToken, "backend token should exist after replay");
-
             const snapshot = await waitForBackendNote({
                 backendUrl: backendContext.baseUrl,
-                token: debugState.backendToken.accessToken,
+                sessionToken: backendContext.createSessionToken(userId),
+                cookieName: backendContext.cookieName,
                 noteId: queuedNoteId
             });
             const noteEntry = Array.isArray(snapshot?.notes)
@@ -266,22 +195,10 @@ test.describe("Synchronization scenarios", () => {
         const contextA = await browser.createBrowserContext();
         const contextB = await browser.createBrowserContext();
         const userId = `multi-session-user-${Date.now()}`;
-        const credentialA = backendContext.tokenFactory(userId);
-        const credentialB = backendContext.tokenFactory(userId);
-
-        const pageA = await prepareFrontendPage(contextA, PAGE_URL, {
-            backendBaseUrl: backendContext.baseUrl,
-            llmProxyUrl: ""
-        });
-        const pageB = await prepareFrontendPage(contextB, PAGE_URL, {
-            backendBaseUrl: backendContext.baseUrl,
-            llmProxyUrl: ""
-        });
+        const { page: pageA } = await bootstrapSession(contextA, backendContext, userId);
+        const { page: pageB } = await bootstrapSession(contextB, backendContext, userId);
 
         try {
-            await dispatchSignIn(pageA, credentialA, userId);
-            await waitForSyncManagerUser(pageA, userId);
-
             const noteId = `shared-note-${Date.now()}`;
             const initialTimestamp = new Date().toISOString();
             const initialMarkdown = "Shared session note";
@@ -298,15 +215,13 @@ test.describe("Synchronization scenarios", () => {
             });
             await waitForPendingOperations(pageA);
 
-            const debugStateA = await extractSyncDebugState(pageA);
-            assert.ok(debugStateA?.backendToken?.accessToken, "backend token should exist after initial creation");
             await waitForBackendNote({
                 backendUrl: backendContext.baseUrl,
-                token: debugStateA.backendToken.accessToken,
+                sessionToken: backendContext.createSessionToken(userId),
+                cookieName: backendContext.cookieName,
                 noteId
             });
 
-            await dispatchSignIn(pageB, credentialB, userId);
             await waitForSyncManagerUser(pageB, userId);
             await waitForPendingOperations(pageB);
             await pageB.waitForSelector(`.markdown-block[data-note-id="${noteId}"]`);
@@ -376,12 +291,10 @@ test.describe("Synchronization scenarios", () => {
             assert.equal(updatedRecordA.markdownText, updatedMarkdown);
             assert.equal(updatedRecordB.markdownText, updatedMarkdown);
 
-            const debugStateB = await extractSyncDebugState(pageB);
-            const backendToken = debugStateB?.backendToken?.accessToken ?? debugStateA?.backendToken?.accessToken ?? null;
-            assert.ok(backendToken, "backend token should be available to confirm snapshot");
             const snapshot = await waitForBackendNote({
                 backendUrl: backendContext.baseUrl,
-                token: backendToken,
+                sessionToken: backendContext.createSessionToken(userId),
+                cookieName: backendContext.cookieName,
                 noteId
             });
             const noteEntry = Array.isArray(snapshot?.notes)
@@ -398,3 +311,114 @@ test.describe("Synchronization scenarios", () => {
         }
     });
 });
+
+async function bootstrapSession(context, backend, userId, options = {}) {
+    const {
+        preserveLocalStorage = false,
+        autoSignIn = true,
+        beforeNavigate
+    } = options;
+    let harnessHandle = null;
+    const page = await prepareFrontendPage(context, PAGE_URL, {
+        backendBaseUrl: backend.baseUrl,
+        llmProxyUrl: "",
+        authBaseUrl: backend.baseUrl,
+        preserveLocalStorage,
+        beforeNavigate: async (targetPage) => {
+            harnessHandle = await installTAuthHarness(targetPage, {
+                baseUrl: backend.baseUrl,
+                cookieName: backend.cookieName,
+                mintSessionToken: backend.createSessionToken
+            });
+            if (typeof beforeNavigate === "function") {
+                await beforeNavigate(targetPage);
+            }
+        }
+    });
+    await waitForTAuthSession(page);
+    if (autoSignIn) {
+        await signInViaTAuth(page, userId);
+    }
+    return { page, harnessHandle };
+}
+
+async function signInViaTAuth(page, userId) {
+    const credential = composeTestCredential({
+        userId,
+        email: `${userId}@example.com`,
+        name: `Gravity User ${userId}`,
+        pictureUrl: "https://example.com/avatar.png"
+    });
+    await page.evaluate((eventName, detail) => {
+        const target = document.querySelector("body");
+        if (!target) {
+            throw new Error("Application root missing");
+        }
+        target.dispatchEvent(new CustomEvent(eventName, {
+            bubbles: true,
+            detail
+        }));
+    }, EVENT_AUTH_CREDENTIAL_RECEIVED, {
+        credential,
+        user: {
+            id: userId,
+            email: `${userId}@example.com`,
+            name: `Gravity User ${userId}`,
+            pictureUrl: "https://example.com/avatar.png"
+        }
+    });
+    await page.waitForFunction(() => {
+        return Boolean(window.__tauthHarnessEvents && window.__tauthHarnessEvents.authenticatedCount >= 1);
+    }, { timeout: 10000 });
+    await waitForSyncManagerUser(page, userId);
+}
+
+async function interceptSyncRequests(page, { mode }) {
+    let attempts = 0;
+    await registerRequestInterceptor(page, (request) => {
+        const url = request.url();
+        if (!url.includes("/notes/sync")) {
+            return false;
+        }
+        const method = request.method().toUpperCase();
+        if (method !== "POST") {
+            request.continue().catch(() => {});
+            return true;
+        }
+        attempts += 1;
+        if (mode === "fail-once" && attempts === 1) {
+            request.abort("failed").catch(() => {});
+            return true;
+        }
+        if (mode === "always-fail") {
+            request.abort("failed").catch(() => {});
+            return true;
+        }
+        request.continue().catch(() => {});
+        return true;
+    });
+    return {
+        getAttempts: () => attempts,
+        clear: async () => {}
+    };
+}
+
+async function forceSync(page, flushQueue) {
+    await page.evaluate(async (shouldFlush) => {
+        const root = document.querySelector("[x-data]");
+        if (!root) {
+            throw new Error("application root not found");
+        }
+        const alpine = /** @type {{ $data?: (element: Element) => any }} */ (window.Alpine ?? null);
+        if (!alpine || typeof alpine.$data !== "function") {
+            throw new Error("Alpine data accessor unavailable");
+        }
+        const component = alpine.$data(root);
+        if (!component?.syncManager || typeof component.syncManager.synchronize !== "function") {
+            throw new Error("sync manager not initialised");
+        }
+        await component.syncManager.synchronize({
+            flushQueue: shouldFlush === true
+        });
+    }, flushQueue);
+}

@@ -13,6 +13,7 @@ const (
 	defaultDatabasePath = "gravity.db"
 	defaultLogLevel     = "info"
 	defaultCookieName   = "app_session"
+	defaultIssuer       = "mprlab-auth"
 )
 
 // AppConfig captures runtime configuration for the API server.
@@ -42,6 +43,7 @@ func ApplyDefaults(v *viper.Viper) {
 	v.SetDefault("database.path", defaultDatabasePath)
 	v.SetDefault("log.level", defaultLogLevel)
 	v.SetDefault("tauth.cookie_name", defaultCookieName)
+	v.SetDefault("tauth.issuer", defaultIssuer)
 }
 
 // Load parses runtime configuration from viper.

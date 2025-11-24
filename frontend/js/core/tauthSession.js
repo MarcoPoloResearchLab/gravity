@@ -37,36 +37,21 @@ export function createTAuthSession(options = {}) {
         initializing: null,
         baseUrl,
         fetch: fetchImplementation,
-        lastCredential: null
+        initOptions: /** @type {{ baseUrl: string, onAuthenticated(profile: unknown): void, onUnauthenticated(): void }|null} */ (null)
+    };
+
+    const handleAuthenticated = (profile) => {
+        dispatch(events, EVENT_AUTH_SIGN_IN, {
+            user: normalizeProfile(profile)
+        });
+    };
+    const handleUnauthenticated = () => {
+        dispatch(events, EVENT_AUTH_SIGN_OUT, { reason: "session-ended" });
     };
 
     return Object.freeze({
         async initialize() {
-            if (state.initialized || state.initializing) {
-                await state.initializing;
-                return;
-            }
-            state.initializing = (async () => {
-                if (!win || typeof win.initAuthClient !== "function") {
-                    logging.warn("TAuth auth-client unavailable; skipping session initialization.");
-                    return;
-                }
-                await win.initAuthClient({
-                    baseUrl,
-                    onAuthenticated(profile) {
-                        dispatch(events, EVENT_AUTH_SIGN_IN, {
-                            user: normalizeProfile(profile),
-                            credential: state.lastCredential
-                        });
-                    },
-                    onUnauthenticated() {
-                        dispatch(events, EVENT_AUTH_SIGN_OUT, { reason: "session-ended" });
-                        state.lastCredential = null;
-                    }
-                });
-                state.initialized = true;
-            })();
-            await state.initializing;
+            await ensureInitialized(false);
         },
 
         async signOut() {
@@ -105,7 +90,6 @@ export function createTAuthSession(options = {}) {
             if (!credential) {
                 throw new Error("tauth.missing_credential");
             }
-            state.lastCredential = credential;
             const body = JSON.stringify({ google_id_token: credential, nonce_token: nonceToken ?? null });
             const response = await state.fetch(`${baseUrl}/auth/google`, {
                 method: "POST",
@@ -119,8 +103,57 @@ export function createTAuthSession(options = {}) {
                 dispatch(events, EVENT_AUTH_ERROR, { reason });
                 throw new Error(reason);
             }
+            const refreshed = await ensureInitialized(true);
+            if (!refreshed) {
+                const fallbackProfile = await safeJson(response);
+                const normalizedProfile = normalizeProfile(fallbackProfile);
+                if (normalizedProfile) {
+                    dispatch(events, EVENT_AUTH_SIGN_IN, {
+                        user: normalizedProfile
+                    });
+                }
+            }
         }
     });
+
+    async function ensureInitialized(forceReload) {
+        if (state.initializing) {
+            await state.initializing;
+            if (!forceReload) {
+                return state.initialized;
+            }
+        }
+        if (state.initialized && !forceReload) {
+            return true;
+        }
+        state.initializing = (async () => {
+            if (!win || typeof win.initAuthClient !== "function") {
+                logging.warn("TAuth auth-client unavailable; skipping session initialization.");
+                return false;
+            }
+            if (!state.initOptions) {
+                state.initOptions = {
+                    baseUrl,
+                    onAuthenticated: handleAuthenticated,
+                    onUnauthenticated: handleUnauthenticated
+                };
+            }
+            try {
+                await win.initAuthClient(state.initOptions);
+                return true;
+            } catch (error) {
+                logging.error("TAuth client initialization failed", error);
+                return false;
+            }
+        })();
+        try {
+            const result = await state.initializing;
+            state.initialized = Boolean(result);
+            return state.initialized;
+        } finally {
+            state.initializing = null;
+        }
+    }
 }
 
 function normalizeBaseUrl(value) {
@@ -160,8 +193,23 @@ function normalizeProfile(profile) {
     return {
         id: typeof profile.user_id === "string" ? profile.user_id : null,
         email: typeof profile.user_email === "string" ? profile.user_email : null,
-        name: typeof profile.user_display === "string" ? profile.user_display : null,
-        pictureUrl: typeof profile.user_avatar_url === "string" ? profile.user_avatar_url : null,
+        name: selectString(profile, ["display", "user_display", "user_display_name"]),
+        pictureUrl: selectString(profile, ["avatar_url", "user_avatar_url"]),
         raw: profile
     };
+}
+
+/**
+ * @param {Record<string, unknown>} profile
+ * @param {string[]} keys
+ * @returns {string|null}
+ */
+function selectString(profile, keys) {
+    for (const key of keys) {
+        const value = profile[key];
+        if (typeof value === "string" && value.trim().length > 0) {
+            return value;
+        }
+    }
+    return null;
 }

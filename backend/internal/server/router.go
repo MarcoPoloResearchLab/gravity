@@ -11,7 +11,6 @@ import (
 
 	"github.com/MarcoPoloResearchLab/gravity/backend/internal/auth"
 	"github.com/MarcoPoloResearchLab/gravity/backend/internal/notes"
-	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/sse"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -57,12 +56,21 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 
 	router := gin.New()
 	router.Use(gin.Recovery())
-	router.Use(cors.New(cors.Config{
-		AllowOrigins: []string{"*"},
-		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodOptions},
-		AllowHeaders: []string{"Authorization", "Content-Type"},
-		MaxAge:       12 * time.Hour,
-	}))
+	router.Use(func(c *gin.Context) {
+		origin := strings.TrimSpace(c.GetHeader("Origin"))
+		if origin != "" {
+			c.Header("Access-Control-Allow-Origin", origin)
+			c.Header("Vary", "Origin")
+			c.Header("Access-Control-Allow-Credentials", "true")
+			c.Header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+			c.Header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Requested-With, X-Client")
+		}
+		if c.Request.Method == http.MethodOptions {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+		c.Next()
+	})
 
 	sessionCookie := strings.TrimSpace(deps.SessionCookie)
 	if sessionCookie == "" {

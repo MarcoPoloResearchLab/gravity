@@ -31,6 +31,9 @@ let backendBinaryPromise = null;
  *   tokenFactory: (userId: string, expiresInSeconds?: number) => string,
  *   createSessionToken: (userId: string, expiresInSeconds?: number) => string,
  *   cookieName: string,
+ *   googleClientId: string,
+ *   signingKeyPem: string,
+ *   signingKeyId: string,
  *   close: () => Promise<void>
  * }>}
  */
@@ -80,9 +83,12 @@ export async function startTestBackend(options = {}) {
     sharedBackendInstance = {
         key: instanceKey,
         baseUrl: `http://${backendAddress}`,
+        googleClientId: "gravity-test-client",
         signingSecret: normalizedOptions.signingSecret,
         issuer: normalizedOptions.issuer,
         cookieName: normalizedOptions.cookieName,
+        signingKeyPem: deriveDummyPem(normalizedOptions.signingSecret),
+        signingKeyId: "tauth-session-secret",
         tokenFactory(userId) {
             return composeTestCredential({
                 userId,
@@ -136,8 +142,21 @@ function attemptRuntimeContextBackend(normalizedOptions) {
         return null;
     }
 
-    const { baseUrl, signingSecret, issuer, cookieName } = backend;
-    if (typeof baseUrl !== "string" || typeof signingSecret !== "string" || typeof issuer !== "string" || typeof cookieName !== "string") {
+    const {
+        baseUrl,
+        signingSecret,
+        issuer,
+        cookieName,
+        signingKeyPem,
+        signingKeyId,
+        googleClientId
+    } = backend;
+    if (
+        typeof baseUrl !== "string"
+        || typeof signingSecret !== "string"
+        || typeof issuer !== "string"
+        || typeof cookieName !== "string"
+    ) {
         return null;
     }
     if (normalizedOptions.signingSecret !== signingSecret || normalizedOptions.issuer !== issuer || normalizedOptions.cookieName !== cookieName) {
@@ -149,6 +168,9 @@ function attemptRuntimeContextBackend(normalizedOptions) {
         signingSecret,
         issuer,
         cookieName,
+        googleClientId: typeof googleClientId === "string" ? googleClientId : "gravity-test-client",
+        signingKeyPem: typeof signingKeyPem === "string" ? signingKeyPem : deriveDummyPem(signingSecret),
+        signingKeyId: typeof signingKeyId === "string" ? signingKeyId : "tauth-session-secret",
         tokenFactory(userId) {
             return composeTestCredential({
                 userId,
@@ -204,9 +226,12 @@ function createSharedHandle(instance) {
     sharedBackendRefs += 0;
     return {
         baseUrl: instance.baseUrl,
+        googleClientId: instance.googleClientId,
         tokenFactory: instance.tokenFactory,
         createSessionToken: instance.createSessionToken,
         cookieName: instance.cookieName,
+        signingKeyPem: instance.signingKeyPem,
+        signingKeyId: instance.signingKeyId,
         async close() {
             if (released) {
                 return;
@@ -462,6 +487,11 @@ function encodeSegment(value) {
         .replace(/\+/g, "-")
         .replace(/\//g, "_")
         .replace(/=+$/u, "");
+}
+
+function deriveDummyPem(secret) {
+    const encoded = Buffer.from(secret, "utf8").toString("base64");
+    return `-----BEGIN SESSION KEY-----\n${encoded}\n-----END SESSION KEY-----`;
 }
 
 function delay(ms) {

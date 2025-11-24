@@ -8,8 +8,8 @@ import {
     dispatchSignIn,
     waitForSyncManagerUser,
     waitForPendingOperations,
-    extractSyncDebugState,
-    dispatchNoteCreate
+    dispatchNoteCreate,
+    attachBackendSessionCookie
 } from "./helpers/syncTestUtils.js";
 import { startTestBackend, waitForBackendNote } from "./helpers/backendHarness.js";
 import { connectSharedBrowser } from "./helpers/browserHarness.js";
@@ -53,12 +53,7 @@ test.describe("Backend persistence", () => {
 
         try {
             await dispatchSignIn(pageA, credentialA, TEST_USER_ID);
-            const sessionTokenA = backendContext.createSessionToken(TEST_USER_ID);
-            await pageA.setCookie({
-                name: backendContext.cookieName,
-                value: sessionTokenA,
-                url: backendContext.baseUrl
-            });
+            await attachBackendSessionCookie(pageA, backendContext, TEST_USER_ID);
             await waitForSyncManagerUser(pageA, TEST_USER_ID);
             await waitForPendingOperations(pageA);
 
@@ -91,12 +86,7 @@ test.describe("Backend persistence", () => {
             });
 
             await dispatchSignIn(pageB, credentialB, TEST_USER_ID);
-            const sessionTokenB = backendContext.createSessionToken(TEST_USER_ID);
-            await pageB.setCookie({
-                name: backendContext.cookieName,
-                value: sessionTokenB,
-                url: backendContext.baseUrl
-            });
+            await attachBackendSessionCookie(pageB, backendContext, TEST_USER_ID);
             await waitForSyncManagerUser(pageB, TEST_USER_ID);
             await waitForPendingOperations(pageB);
             await pageB.waitForSelector(".auth-avatar:not([hidden])");

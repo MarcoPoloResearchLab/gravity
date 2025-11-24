@@ -63,10 +63,9 @@ Run the full application locally (frontend, backend, and the new TAuth service) 
    - `cp backend/env.example backend/.env`
    - `cp tauth/env.example tauth/.env`
 
-   Make sure `GRAVITY_TAUTH_*` and `APP_*` entries share the same signing secret, issuer, cookie name, and Google OAuth Web Client ID so both services trust the same credentials.
+   Make sure `GRAVITY_TAUTH_SIGNING_SECRET` matches `APP_JWT_SIGNING_KEY` so both services trust the same credentials. (Gravity defaults to TAuth’s built-in issuer `mprlab-auth` and cookie `app_session`; override them only if you’ve customized the TAuth deployment.)
 
 2. Start the stack: `docker compose -f docker-compose.dev.yml up --build`
-   - Need a quick-start orchestration modeled after the mpr-ui demo? Use `docker compose -f docker-compose.tauth.yml up --build` to run the frontend, backend, and TAuth services with the shared env templates and published images.
 
 The compose file exposes:
 

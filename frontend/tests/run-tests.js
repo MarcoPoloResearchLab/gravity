@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import util from "node:util";
 
 import {
   cliColors,
@@ -442,6 +443,7 @@ async function main() {
 
   const screenshotOptions = parseScreenshotOptions(mergedScreenshotConfig);
   const screenshotForce = Boolean(cliArguments.screenshotForce || (runtimeOptions.screenshots && runtimeOptions.screenshots.force));
+  const streamChildLogs = process.env.GRAVITY_TEST_STREAM_LOGS === "1";
 
   const shouldAutoProvision = !isCiEnvironment && !screenshotDirectorySetting && (
     screenshotForce ||
@@ -739,14 +741,19 @@ async function main() {
         }
 
         try {
-          const result = await runTestProcess({
+          /** @type {import("./helpers/testHarness.js").RunResult} */
+          let result;
+          const runOptions = {
             command: process.execPath,
             args,
             timeoutMs: effectiveTimeout,
-            killGraceMs: effectiveKillGrace,
-            onStdout: (chunk) => process.stdout.write(chunk),
-            onStderr: (chunk) => process.stderr.write(chunk)
-          });
+            killGraceMs: effectiveKillGrace
+          };
+          if (streamChildLogs) {
+            runOptions.onStdout = (chunk) => safeWrite(process.stdout, chunk);
+            runOptions.onStderr = (chunk) => safeWrite(process.stderr, chunk);
+          }
+          result = await runTestProcess(runOptions);
 
           summary.push({
             iteration: iterationIndex + 1,
@@ -860,6 +867,60 @@ function deriveShortTestName(relativePath) {
 function publishRuntimeContext(context) {
   globalThis.__gravityRuntimeContext = context;
 }
+
+function safeWrite(stream, chunk) {
+  if (!stream || typeof stream.write !== "function") {
+    return;
+  }
+  ensureEpipeGuard(stream);
+  try {
+    stream.write(chunk);
+  } catch (error) {
+    if (!error || error.code !== "EPIPE") {
+      throw error;
+    }
+  }
+}
+
+const EPIPE_GUARD_SYMBOL = Symbol("gravityEpipeGuard");
+
+function ensureEpipeGuard(stream) {
+  if (!stream || typeof stream.on !== "function") {
+    return;
+  }
+  if (stream[EPIPE_GUARD_SYMBOL]) {
+    return;
+  }
+  stream.on("error", (error) => {
+    if (error && error.code === "EPIPE") {
+      return;
+    }
+    throw error;
+  });
+  stream[EPIPE_GUARD_SYMBOL] = true;
+}
+
+function patchConsoleStreams() {
+  const mappings = [
+    ["log", process.stdout],
+    ["info", process.stdout],
+    ["warn", process.stderr],
+    ["error", process.stderr]
+  ];
+  for (const [method, targetStream] of mappings) {
+    const original = console[method].bind(console);
+    console[method] = (...args) => {
+      if (!targetStream) {
+        original(...args);
+        return;
+      }
+      const formatted = util.format(...args);
+      safeWrite(targetStream, `${formatted}\n`);
+    };
+  }
+}
+
+patchConsoleStreams();
 
 main()
   .then((exitCode) => {

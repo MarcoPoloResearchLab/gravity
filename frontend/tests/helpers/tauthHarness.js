@@ -60,7 +60,7 @@ export async function installTAuthHarness(page, options) {
                 contentType: "application/json",
                 headers: {
                     ...corsHeaders,
-                    "Access-Control-Allow-Headers": "content-type,x-requested-with",
+                    "Access-Control-Allow-Headers": "content-type,x-requested-with,x-client",
                     "Access-Control-Allow-Methods": "GET,POST,OPTIONS"
                 },
                 body: ""
@@ -176,7 +176,7 @@ export async function installTAuthHarness(page, options) {
 }
 
 /**
- * @typedef {{ user_id: string, user_email: string | null, user_display: string | null, user_avatar_url: string | null }} TAuthProfile
+ * @typedef {{ user_id: string, user_email: string | null, display: string | null, avatar_url: string | null, user_display?: string | null, user_avatar_url?: string | null }} TAuthProfile
  */
 
 function notifyAuthenticated(page, profile) {
@@ -250,6 +250,8 @@ function deriveProfileFromCredential(credential) {
     return {
         user_id: userId,
         user_email: userEmail,
+        display: userDisplay,
+        avatar_url: userAvatarUrl,
         user_display: userDisplay,
         user_avatar_url: userAvatarUrl
     };

@@ -103,9 +103,9 @@ EasyMDE produces markdown, marked renders it to HTML, and DOMPurify sanitises th
 
 #### Configuration
 
-- `GRAVITY_TAUTH_SIGNING_SECRET` — HS256 secret shared with TAuth; used to validate session cookies.
-- `GRAVITY_TAUTH_ISSUER` — Expected issuer embedded in the TAuth JWT (defaults to `mprlab-auth`).
-- `GRAVITY_TAUTH_COOKIE_NAME` — Cookie carrying the session JWT (defaults to `app_session`).
+- `GRAVITY_TAUTH_SIGNING_SECRET` — HS256 secret shared with TAuth; used to validate session cookies (required).
+- `GRAVITY_TAUTH_ISSUER` — Optional override for the expected issuer embedded in the TAuth JWT (defaults to `mprlab-auth`).
+- `GRAVITY_TAUTH_COOKIE_NAME` — Optional override for the cookie carrying the session JWT (defaults to `app_session`).
 - Optional overrides: `GRAVITY_HTTP_ADDRESS` (default `0.0.0.0:8080`), `GRAVITY_DATABASE_PATH` (default `gravity.db`), `GRAVITY_LOG_LEVEL` (default `info`).
 
 #### Local Execution
