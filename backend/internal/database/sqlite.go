@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/MarcoPoloResearchLab/gravity/backend/internal/notes"
+	"github.com/MarcoPoloResearchLab/gravity/backend/internal/users"
 	sqlite "github.com/glebarez/sqlite"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -26,7 +27,7 @@ func OpenSQLite(path string, logger *zap.Logger) (*gorm.DB, error) {
 	}
 	sqlDB.SetMaxOpenConns(1)
 
-	if err := db.AutoMigrate(&notes.Note{}, &notes.NoteChange{}); err != nil {
+	if err := db.AutoMigrate(&notes.Note{}, &notes.NoteChange{}, &users.Identity{}); err != nil {
 		return nil, err
 	}
 

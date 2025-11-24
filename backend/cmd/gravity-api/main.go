@@ -15,6 +15,7 @@ import (
 	"github.com/MarcoPoloResearchLab/gravity/backend/internal/logging"
 	"github.com/MarcoPoloResearchLab/gravity/backend/internal/notes"
 	"github.com/MarcoPoloResearchLab/gravity/backend/internal/server"
+	"github.com/MarcoPoloResearchLab/gravity/backend/internal/users"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
@@ -123,10 +124,19 @@ func runServer(ctx context.Context) error {
 		return err
 	}
 
+	identityService, err := users.NewService(users.ServiceConfig{
+		Database: db,
+		Clock:    time.Now,
+	})
+	if err != nil {
+		return err
+	}
+
 	handler, err := server.NewHTTPHandler(server.Dependencies{
 		SessionValidator: sessionValidator,
 		SessionCookie:    appConfig.TAuthCookieName,
 		NotesService:     notesService,
+		UserIdentities:   identityService,
 		Logger:           logger,
 	})
 	if err != nil {

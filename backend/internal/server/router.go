@@ -28,12 +28,17 @@ type SessionValidator interface {
 	ValidateToken(token string) (auth.SessionClaims, error)
 }
 
+type IdentityResolver interface {
+	ResolveCanonicalUserID(claims auth.SessionClaims) (string, error)
+}
+
 type Dependencies struct {
 	SessionValidator SessionValidator
 	SessionCookie    string
 	NotesService     *notes.Service
 	Logger           *zap.Logger
 	Realtime         *RealtimeDispatcher
+	UserIdentities   IdentityResolver
 }
 
 func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
@@ -78,11 +83,12 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 	}
 
 	handler := &httpHandler{
-		sessions:      deps.SessionValidator,
-		sessionCookie: sessionCookie,
-		notesService:  deps.NotesService,
-		logger:        logger,
-		realtime:      realtime,
+		sessions:       deps.SessionValidator,
+		sessionCookie:  sessionCookie,
+		notesService:   deps.NotesService,
+		logger:         logger,
+		realtime:       realtime,
+		userIdentities: deps.UserIdentities,
 	}
 
 	protected := router.Group("/")
@@ -95,11 +101,12 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 }
 
 type httpHandler struct {
-	sessions      SessionValidator
-	sessionCookie string
-	notesService  *notes.Service
-	logger        *zap.Logger
-	realtime      *RealtimeDispatcher
+	sessions       SessionValidator
+	sessionCookie  string
+	notesService   *notes.Service
+	logger         *zap.Logger
+	realtime       *RealtimeDispatcher
+	userIdentities IdentityResolver
 }
 
 type syncRequestPayload struct {
@@ -478,7 +485,22 @@ func (h *httpHandler) authorizeRequest(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
-	c.Set(userIDContextKey, claims.UserID)
+	userID := strings.TrimSpace(claims.UserID)
+	if h.userIdentities != nil {
+		resolved, resolveErr := h.userIdentities.ResolveCanonicalUserID(claims)
+		if resolveErr != nil {
+			h.logger.Warn("user identity resolution failed", zap.Error(resolveErr))
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+		userID = resolved
+	}
+	if userID == "" {
+		h.logger.Warn("resolved user id empty")
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	c.Set(userIDContextKey, userID)
 	c.Next()
 }
 
