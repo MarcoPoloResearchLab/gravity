@@ -31,9 +31,23 @@ func OpenSQLite(path string, logger *zap.Logger) (*gorm.DB, error) {
 		return nil, err
 	}
 
+	if err := migrateUserIDs(db); err != nil && logger != nil {
+		logger.Warn("user id migration failed", zap.Error(err))
+	}
+
 	if logger != nil {
 		logger.Info("database initialized", zap.String("path", path))
 	}
 
 	return db, nil
+}
+
+func migrateUserIDs(db *gorm.DB) error {
+	const prefix = "google:"
+	updateNotes := fmt.Sprintf("UPDATE notes SET user_id = '%s' || user_id WHERE user_id NOT LIKE '%s%%';", prefix, prefix)
+	if err := db.Exec(updateNotes).Error; err != nil {
+		return err
+	}
+	updateChanges := fmt.Sprintf("UPDATE note_changes SET user_id = '%s' || user_id WHERE user_id NOT LIKE '%s%%';", prefix, prefix)
+	return db.Exec(updateChanges).Error
 }
