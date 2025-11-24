@@ -295,7 +295,8 @@ function gravityApp() {
             }
             this.tauthSession = createTAuthSession({
                 baseUrl: appConfig.authBaseUrl,
-                eventTarget: this.$el ?? document
+                eventTarget: this.$el ?? document,
+                windowRef: typeof window !== "undefined" ? window : undefined
             });
             this.tauthReadyPromise = this.tauthSession.initialize().catch((error) => {
                 logging.error("Failed to initialize TAuth session", error);
