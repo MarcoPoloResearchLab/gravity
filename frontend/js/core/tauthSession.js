@@ -23,9 +23,9 @@ const DEFAULT_HEADERS = Object.freeze({
  * }} [options]
  */
 export function createTAuthSession(options = {}) {
-    const baseUrl = normalizeBaseUrl(options.baseUrl ?? appConfig.authBaseUrl);
-    const fetchImplementation = options.fetchImplementation ?? (typeof fetch === "function" ? fetch : null);
     const win = options.windowRef ?? (typeof window !== "undefined" ? window : null);
+    const baseUrl = normalizeBaseUrl(options.baseUrl ?? appConfig.authBaseUrl);
+    const fetchImplementation = resolveFetchImplementation(options.fetchImplementation, win);
     const events = options.eventTarget ?? (typeof document !== "undefined" ? document : null);
 
     if (!fetchImplementation) {
@@ -165,6 +165,30 @@ function normalizeBaseUrl(value) {
         return "";
     }
     return trimmed.replace(/\/+$/u, "");
+}
+
+function resolveFetchImplementation(customFetch, windowRef) {
+    if (typeof customFetch === "function") {
+        return customFetch;
+    }
+    if (typeof fetch === "function") {
+        const scope = resolveGlobalScope(windowRef);
+        if (typeof fetch.bind === "function") {
+            return fetch.bind(scope);
+        }
+        return (...args) => fetch.apply(scope, args);
+    }
+    return null;
+}
+
+function resolveGlobalScope(windowRef) {
+    if (windowRef && typeof windowRef === "object") {
+        return windowRef;
+    }
+    if (typeof globalThis === "object" && globalThis !== null) {
+        return globalThis;
+    }
+    return undefined;
 }
 
 function dispatch(target, type, detail) {
