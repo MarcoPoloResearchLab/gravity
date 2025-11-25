@@ -67,6 +67,16 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 
 ## Maintenance (400–499)
 
+- [ ] [PG-400] Add profiles to @docker-compose.yml orchestration: "dev" for local build (using context and Dockerfiles) and "docker" for pulling all images from ghcr, including pinguin image.
+- [ ] [PG-401] Only run GH build.yml pipeline if test.yml workflow succeeds. Example 
+```yml
+on:
+  workflow_run:
+    workflows: ["tests"]
+    types:
+      - completed
+```
+
 ## Planning
 **Do not work on these, not ready**
 
