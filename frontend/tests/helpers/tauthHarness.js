@@ -23,7 +23,8 @@ const DEFAULT_REFRESH_COOKIE = "app_refresh";
  *   baseUrl: string,
  *   getProfile(): TAuthProfile | null,
  *   getRequestLog(): Array<{ method: string, path: string }>,
- *   getPendingNonce(): string | null
+ *   getPendingNonce(): string | null,
+ *   triggerNonceMismatch(): void
  * }>}
  */
 export async function installTAuthHarness(page, options) {
@@ -43,7 +44,10 @@ export async function installTAuthHarness(page, options) {
         profile: initialProfile,
         pendingNonce: null,
         nonceCounter: 0,
-        requests: /** @type {Array<{ method: string, path: string }>} */ ([])
+        requests: /** @type {Array<{ method: string, path: string }>} */ ([]),
+        behavior: {
+            failNextNonceExchange: false
+        }
     };
 
     await registerRequestInterceptor(page, async (request) => {
@@ -90,6 +94,12 @@ export async function installTAuthHarness(page, options) {
             const nonceToken = typeof payload.nonce_token === "string" ? payload.nonce_token : "";
             if (!credential || !nonceToken || nonceToken !== state.pendingNonce) {
                 respondJson(request, 400, { error: "invalid_nonce" }, corsHeaders);
+                state.pendingNonce = null;
+                return true;
+            }
+            if (state.behavior.failNextNonceExchange) {
+                state.behavior.failNextNonceExchange = false;
+                respondJson(request, 400, { error: "nonce_mismatch" }, corsHeaders);
                 state.pendingNonce = null;
                 return true;
             }
@@ -171,6 +181,9 @@ export async function installTAuthHarness(page, options) {
         },
         getPendingNonce() {
             return state.pendingNonce;
+        },
+        triggerNonceMismatch() {
+            state.behavior.failNextNonceExchange = true;
         }
     };
 }
@@ -370,7 +383,48 @@ function buildAuthClientStub(profile) {
                 }
             };
             window.logout = async function logout() {
+                const baseUrl = typeof harness.options?.baseUrl === "string"
+                    ? harness.options.baseUrl.replace(/\\/+$/u, "")
+                    : "";
+                if (baseUrl) {
+                    try {
+                        await fetch(baseUrl + "/auth/logout", {
+                            method: "POST",
+                            credentials: "include",
+                            headers: { "X-Requested-With": "XMLHttpRequest" }
+                        });
+                    } catch (error) {
+                        console.warn("tauth harness logout failed", error);
+                    }
+                }
                 harness.emitUnauthenticated("logout");
+            };
+            window.apiFetch = async function apiFetch(resource, init) {
+                const requestInit = Object.assign({ credentials: "include" }, init || {});
+                const response = await fetch(resource, requestInit);
+                const baseUrl = typeof harness.options?.baseUrl === "string"
+                    ? harness.options.baseUrl.replace(/\\/+$/u, "")
+                    : "";
+                if (response.status !== 401 || !baseUrl) {
+                    return response;
+                }
+                try {
+                    const refreshResponse = await fetch(baseUrl + "/auth/refresh", {
+                        method: "POST",
+                        credentials: "include",
+                        headers: { "X-Requested-With": "XMLHttpRequest" }
+                    });
+                    if (!refreshResponse.ok) {
+                        if (typeof harness.options?.onUnauthenticated === "function") {
+                            harness.options.onUnauthenticated({ reason: "refresh_failed" });
+                        }
+                        return response;
+                    }
+                    return fetch(resource, requestInit);
+                } catch (error) {
+                    console.warn("tauth harness refresh failed", error);
+                    return response;
+                }
             };
         })();
     `;
