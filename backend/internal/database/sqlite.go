@@ -44,10 +44,11 @@ func OpenSQLite(path string, logger *zap.Logger) (*gorm.DB, error) {
 
 func migrateUserIDs(db *gorm.DB) error {
 	const prefix = "google:"
-	updateNotes := fmt.Sprintf("UPDATE notes SET user_id = '%s' || user_id WHERE user_id NOT LIKE '%s%%';", prefix, prefix)
+	start := len(prefix) + 1
+	updateNotes := fmt.Sprintf("UPDATE notes SET user_id = substr(user_id, %d) WHERE user_id LIKE '%s%%';", start, prefix)
 	if err := db.Exec(updateNotes).Error; err != nil {
 		return err
 	}
-	updateChanges := fmt.Sprintf("UPDATE note_changes SET user_id = '%s' || user_id WHERE user_id NOT LIKE '%s%%';", prefix, prefix)
+	updateChanges := fmt.Sprintf("UPDATE note_changes SET user_id = substr(user_id, %d) WHERE user_id LIKE '%s%%';", start, prefix)
 	return db.Exec(updateChanges).Error
 }
