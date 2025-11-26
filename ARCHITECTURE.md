@@ -192,9 +192,9 @@ When serving from an alternate hostname, add a new profile or override the URLs 
 
 ### Docker Workflow
 
-- `docker-compose.yml` provisions the static frontend host (gHTTP), Gravity backend, TAuth, and the shared Pinguin notifier. The `dev` profile builds the backend from local sources while `docker` pulls every image from GHCR.
-- Fetch the latest images with `docker compose pull`, then start the stack using `docker compose --profile dev up --build` (or `--profile docker up`). The UI serves from <http://localhost:8000>, the API from <http://localhost:8080>, TAuth from <http://localhost:8082>, and Pinguin runs internally for notification tests.
-- The backend container loads secrets from `backend/.env`, TAuth pulls from `tauth/.env`, and Pinguin pulls from `pinguin/.env`; adjust the files to point at different credentials or storage paths.
+- `docker-compose.yml` provisions the static frontend host (gHTTP), Gravity backend, TAuth, and (optionally) the shared Pinguin notifier. The `dev` profile builds the backend from local sources while `docker` pulls every image from GHCR.
+- Fetch the latest images with `docker compose pull`, then start the stack using `docker compose --profile dev up --build` (or `--profile docker up`). The UI serves from <http://localhost:8000>, the API from <http://localhost:8080>, TAuth from <http://localhost:8082>, and Pinguin (when configured) listens internally for notification scenarios.
+- Gravity uses `.env.gravity`, TAuth uses `.env.tauth`, and the optional Pinguin notifier uses `.env.pinguin.dev` (dev profile) or `.env.pinguin.docker` (docker profile); update the appropriate files before starting the stack so credentials and storage paths line up with your environment.
 - Tail logs with `docker compose logs -f gravity-backend-dev` (or `gravity-backend-docker`) and stop the stack using `docker compose down` when finished.
 
 ## Evolution by Theme (GN-IDs)

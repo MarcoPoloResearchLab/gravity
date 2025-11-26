@@ -1,98 +1,102 @@
+x-gravity-frontend: &gravity_frontend
+  image: ghcr.io/tyemirov/ghttp:latest
+  pull_policy: always
+  working_dir: /srv/gravity/frontend
+  command: ["--directory", "/srv/gravity/frontend", "8000"]
+  volumes:
+    - .:/srv/gravity:ro
+  ports:
+    - "8000:8000"
+  restart: unless-stopped
+
+x-gravity-backend: &gravity_backend
+  ports:
+    - "8080:8080"
+  volumes:
+    - gravity_data:/data
+  restart: unless-stopped
+
+x-tauth: &tauth
+  image: ghcr.io/tyemirov/tauth:latest
+  pull_policy: always
+  ports:
+    - "8082:8080"
+  volumes:
+    - tauth_data:/data
+  restart: unless-stopped
+
+x-pinguin: &pinguin
+  image: ghcr.io/tyemirov/pinguin:latest
+  pull_policy: always
+  volumes:
+    - pinguin_data:/app/data
+  restart: unless-stopped
+
 services:
   gravity-frontend-dev:
-    profiles:
-      - dev
-    image: ghcr.io/tyemirov/ghttp:latest
-    pull_policy: always
+    <<: *gravity_frontend
+    profiles: [dev]
     depends_on:
       gravity-backend-dev:
         condition: service_started
-      tauth:
+      tauth-dev:
         condition: service_started
-    working_dir: /srv/gravity/frontend
-    command: ["--directory", "/srv/gravity/frontend", "8000"]
-    volumes:
-      - .:/srv/gravity:ro
-    ports:
-      - "8000:8000"
-    restart: unless-stopped
 
   gravity-frontend-docker:
-    profiles:
-      - docker
-    image: ghcr.io/tyemirov/ghttp:latest
-    pull_policy: always
+    <<: *gravity_frontend
+    profiles: [docker]
     depends_on:
       gravity-backend-docker:
         condition: service_started
-      tauth:
+      tauth-docker:
         condition: service_started
-    working_dir: /srv/gravity/frontend
-    command: ["--directory", "/srv/gravity/frontend", "8000"]
-    volumes:
-      - .:/srv/gravity:ro
-    ports:
-      - "8000:8000"
-    restart: unless-stopped
 
   gravity-backend-dev:
-    profiles:
-      - dev
+    <<: *gravity_backend
+    profiles: [dev]
     build:
       context: backend
       dockerfile: Dockerfile
-    depends_on:
-      tauth:
-        condition: service_started
     env_file:
-      - .env.gravity.dev
-    ports:
-      - "8080:8080"
-    volumes:
-      - gravity_data:/data
-    restart: unless-stopped
+      - .env.gravity
+    depends_on:
+      tauth-dev:
+        condition: service_started
 
   gravity-backend-docker:
-    profiles:
-      - docker
+    <<: *gravity_backend
+    profiles: [docker]
     image: ghcr.io/marcopoloresearchlab/gravity-backend:latest
     pull_policy: always
-    depends_on:
-      tauth:
-        condition: service_started
     env_file:
-      - .env.gravity.docker
-    ports:
-      - "8080:8080"
-    volumes:
-      - gravity_data:/data
-    restart: unless-stopped
+      - .env.gravity
+    depends_on:
+      tauth-docker:
+        condition: service_started
 
-  tauth:
-    profiles:
-      - dev
-      - docker
-    image: ghcr.io/tyemirov/tauth:latest
-    pull_policy: always
+  tauth-dev:
+    <<: *tauth
+    profiles: [dev]
     env_file:
       - .env.tauth
-    ports:
-      - "8082:8080"
-    volumes:
-      - tauth_data:/data
-    restart: unless-stopped
 
-  pinguin:
-    profiles:
-      - dev
-      - docker
-    image: ghcr.io/tyemirov/pinguin:latest
-    pull_policy: always
+  tauth-docker:
+    <<: *tauth
+    profiles: [docker]
     env_file:
-      - .env.pinguin
-    volumes:
-      - pinguin_data:/app/data
-    restart: unless-stopped
+      - .env.tauth
+
+  pinguin-dev:
+    <<: *pinguin
+    profiles: [dev]
+    env_file:
+      - .env.pinguin.dev
+
+  pinguin-docker:
+    <<: *pinguin
+    profiles: [docker]
+    env_file:
+      - .env.pinguin.docker
 
 volumes:
   gravity_data:

@@ -24,4 +24,4 @@ Docker build standards for the repository. Follow AGENTS.md for shared documenta
 
 ### Environment Configuration
 
-- All environment configuration for a service must reside in a single `.env.<service>` file shared by both development and production Docker workflows. Do not scatter env variables across multiple files or inline them inside Dockerfiles/compose YAML.
+- Gravity reads from `.env.gravity`, TAuth from `.env.tauth`, and the optional Pinguin notifier uses profile-specific files (`.env.pinguin.dev` and `.env.pinguin.docker`). Keep these `.env.*` files authoritative and avoid sprinkling overrides directly inside Dockerfiles or compose YAML.
