@@ -6,6 +6,12 @@ on:
       - Backend Tests
     types:
       - completed
+  push:
+    branches:
+      - master
+    paths:
+      - backend/Dockerfile
+      - .github/workflows/backend-docker.yml
   workflow_dispatch:
 
 jobs:
@@ -17,6 +23,7 @@ jobs:
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'master'
+      || github.event_name == 'push' && github.ref == 'refs/heads/master'
       || github.event_name == 'workflow_dispatch'
     permissions:
       contents: read
