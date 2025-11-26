@@ -439,7 +439,7 @@ export function setHtmlViewExpanded(card, shouldExpand) {
                 const afterRect = viewElement.getBoundingClientRect();
                 const delta = afterRect.top - beforeViewportTop;
                 if (Math.abs(delta) > 1) {
-                    window.scrollBy({ top: delta, behavior: "auto" });
+                    window.scrollBy({ top: -delta, behavior: "auto" });
                 }
             });
         });
