@@ -22,6 +22,7 @@ const RUNTIME_CONFIG_SYMBOL = Symbol("gravityRuntimeConfigOverrides");
 const RUNTIME_CONFIG_HANDLER_SYMBOL = Symbol("gravityRuntimeConfigHandler");
 const REQUEST_HANDLERS_SYMBOL = Symbol("gravityRequestHandlers");
 const REQUEST_INTERCEPTION_READY_SYMBOL = Symbol("gravityRequestInterceptionReady");
+const REQUEST_HANDLER_REGISTRY_SYMBOL = Symbol("gravityRequestHandlerRegistry");
 
 /**
  * Launch the shared Puppeteer browser for the entire test run.
@@ -127,34 +128,128 @@ export async function injectRuntimeConfig(page, overrides = {}) {
 
 /**
  * Register a request interceptor that may respond to intercepted requests.
+ * Returns a disposer that removes the handler when invoked.
  * @param {import("puppeteer").Page} page
  * @param {(request: import("puppeteer").HTTPRequest) => boolean} handler
- * @returns {Promise<void>}
+ * @returns {Promise<() => void>}
  */
 export async function registerRequestInterceptor(page, handler) {
+    const controller = await createRequestInterceptorController(page);
+    return controller.add(handler);
+}
+
+/**
+ * Create a scoped request-interceptor controller that can register handlers and dispose them later.
+ * @param {import("puppeteer").Page} page
+ * @returns {Promise<{ add(handler: (request: import("puppeteer").HTTPRequest) => boolean): () => void, dispose(): void }>}
+ */
+export async function createRequestInterceptorController(page) {
+    await ensureRequestInterception(page);
+    const registry = page[REQUEST_HANDLER_REGISTRY_SYMBOL];
+    const attachedEntries = new Set();
+    return {
+        add(handler) {
+            if (typeof handler !== "function") {
+                throw new TypeError("Request interceptor handler must be a function.");
+            }
+            const entry = registry.add(handler);
+            attachedEntries.add(entry);
+            return () => {
+                if (!attachedEntries.has(entry)) {
+                    return;
+                }
+                attachedEntries.delete(entry);
+                registry.remove(entry);
+            };
+        },
+        dispose() {
+            for (const entry of attachedEntries) {
+                registry.remove(entry);
+            }
+            attachedEntries.clear();
+        }
+    };
+}
+
+async function ensureRequestInterception(page) {
     if (!page[REQUEST_INTERCEPTION_READY_SYMBOL]) {
         page[REQUEST_INTERCEPTION_READY_SYMBOL] = (async () => {
-            page[REQUEST_HANDLERS_SYMBOL] = [];
+            const handlers = [];
+            const registry = createHandlerRegistry(handlers);
+            page[REQUEST_HANDLERS_SYMBOL] = handlers;
+            page[REQUEST_HANDLER_REGISTRY_SYMBOL] = registry;
             await page.setRequestInterception(true);
-            page.on("request", (request) => {
-                const handlers = Array.isArray(page[REQUEST_HANDLERS_SYMBOL]) ? page[REQUEST_HANDLERS_SYMBOL] : [];
-                for (const candidate of handlers) {
+            page.on("request", async (request) => {
+                const currentHandlers = Array.isArray(page[REQUEST_HANDLERS_SYMBOL]) ? page[REQUEST_HANDLERS_SYMBOL] : [];
+                for (const entry of currentHandlers) {
+                    if (!entry || entry.disabled) {
+                        continue;
+                    }
                     try {
-                        if (candidate(request) === true) {
+                        const result = entry.fn(request);
+                        if (isThenable(result)) {
+                            if (await result === true) {
+                                return;
+                            }
+                            continue;
+                        }
+                        if (result === true) {
                             return;
                         }
-                    } catch {
-                        // Suppress handler errors to keep other interceptors functional.
+                    } catch (error) {
+                        if (process.env.GRAVITY_TEST_STREAM_LOGS === "1") {
+                            // eslint-disable-next-line no-console
+                            console.error("[request interceptor] handler failed", error);
+                        }
                     }
                 }
                 request.continue().catch(() => {});
             });
+            page.once("close", () => {
+                handlers.splice(0, handlers.length);
+                registry.clear();
+            });
         })();
     }
     await page[REQUEST_INTERCEPTION_READY_SYMBOL];
-    const handlers = Array.isArray(page[REQUEST_HANDLERS_SYMBOL]) ? page[REQUEST_HANDLERS_SYMBOL] : [];
-    handlers.push(handler);
-    page[REQUEST_HANDLERS_SYMBOL] = handlers;
+}
+
+function createHandlerRegistry(storage) {
+    return {
+        add(fn) {
+            const entry = { fn, disabled: false };
+            storage.push(entry);
+            return entry;
+        },
+        remove(entry) {
+            if (!entry || entry.disabled) {
+                return;
+            }
+            entry.disabled = true;
+            const index = storage.indexOf(entry);
+            if (index >= 0) {
+                storage.splice(index, 1);
+            }
+        },
+        clear() {
+            const items = storage.splice(0, storage.length);
+            for (const entry of items) {
+                entry.disabled = true;
+            }
+        }
+    };
+}
+
+/**
+ * @param {unknown} value
+ * @returns {value is Promise<unknown>}
+ */
+function isThenable(value) {
+    if (value === null || value === undefined) {
+        return false;
+    }
+    const candidate = /** @type {any} */ (value);
+    return (typeof candidate === "object" || typeof candidate === "function") && typeof candidate.then === "function";
 }
 
 /**

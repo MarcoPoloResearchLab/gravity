@@ -2,7 +2,7 @@
 
 import { Buffer } from "node:buffer";
 
-import { registerRequestInterceptor } from "./browserHarness.js";
+import { createRequestInterceptorController } from "./browserHarness.js";
 
 const DEFAULT_TAUTH_BASE_URL = "http://localhost:58081";
 const DEFAULT_SESSION_COOKIE = "app_session";
@@ -50,7 +50,8 @@ export async function installTAuthHarness(page, options) {
         }
     };
 
-    await registerRequestInterceptor(page, async (request) => {
+    const controller = await createRequestInterceptorController(page);
+    controller.add(async (request) => {
         if (!request.url().startsWith(baseUrl)) {
             return false;
         }
@@ -171,6 +172,10 @@ export async function installTAuthHarness(page, options) {
         return false;
     });
 
+    page.once("close", () => {
+        controller.dispose();
+    });
+
     return {
         baseUrl,
         getProfile() {
@@ -184,6 +189,9 @@ export async function installTAuthHarness(page, options) {
         },
         triggerNonceMismatch() {
             state.behavior.failNextNonceExchange = true;
+        },
+        dispose() {
+            controller.dispose();
         }
     };
 }

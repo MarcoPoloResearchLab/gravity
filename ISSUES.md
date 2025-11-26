@@ -62,6 +62,18 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
   - `auth.tauth.puppeteer.test.js` now drives nonce mismatch handling, cookie-driven refresh, and logout propagation via the real TAuth harness, and the broader sync suites exercise backend sync with cookies only.  
   - README + ARCHITECTURE describe the TAuth contract (nonce exchange, cookie scope, shared secrets, docker orchestration) so implementers know how the services interact.
 - [x] [GN-306] Add docker-compose profiles so `dev` builds Gravity locally while `docker` pulls GHCR images; wire both to TAuth + Pinguin with shared `.env` templates and document the workflow in README/ARCHITECTURE (Makefile defaults to `--profile dev`).
+- [x] [GN-307] Harden Puppeteer request interception so sync tests stop leaking “offline” handlers between steps.  
+  - `sync.scenarios.puppeteer.test.js` is the only suite that failed twice in the attached tri-iteration run (seeds `0x24a370f0`, `0xe525e838`, `0x254884bd`), and logs show its `interceptSyncRequests()` helper leaves interceptors active because `clear()` is a no-op and `registerRequestInterceptor()` never returns a removal handle. Those stale handlers keep aborting `/notes/sync` after the test tries to restore connectivity, so the queue never drains and the test exits non-zero.  
+  - Introduced `createRequestInterceptorController()` in `tests/helpers/browserHarness.js`, migrated CDN mirrors and the TAuth harness to disposable interceptors, and taught the sync scenarios helper to unregister network hooks so “offline” simulations stop leaking between tests.
+  - Validation: `timeout -k 350s -s SIGKILL 350s npm --prefix frontend test -- --iterations=1 --no-randomize --seed=0x11111111` now passes consistently.
+- [x] [GN-308] Introduce a dedicated `SyncScenarioHarness` so queue/metadata assertions stop duplicating brittle Alpine spelunking.  
+  - Wrap backend startup, TAuth harness installation, runtime-config overrides, and note factory helpers behind a single module (e.g., `tests/helpers/syncScenarioHarness.js`) that hands out `createSession({ userId, interceptMode })` and `waitForQueueLength(page, expected)` APIs. This keeps tests black-box at the UI boundary (per AGENTS/AGENTS.FRONTEND) while providing one vetted way to interact with `syncManager.getDebugState()`.  
+  - Added `tests/helpers/syncScenarioHarness.js` with deterministic note factories, queue/markdown helpers, backend polling, and a session builder that shares contexts and installs the TAuth stub before navigation.
+  - Validation: see GN-307 run; the harness exports were exercised via the refactored suite.
+- [x] [GN-309] Rewrite `sync.scenarios.puppeteer.test.js` on top of the new harness and split oversized cases for stability.  
+  - Replace the current 3-in-1 test with separate `test()` blocks (transient failure retry, offline queue replay, concurrent sessions) that each call into `SyncScenarioHarness` helpers instead of embedding their own Alpine and localStorage plumbing. Keep the scenarios black-box by dispatching `EVENT_NOTE_CREATE`/`EVENT_NOTE_UPDATE` and asserting against rendered cards, but rely on harness helpers for queue state/ backend snapshot polling.  
+  - Scenarios now use the shared harness APIs, reuse browser contexts when testing offline queues, and rely on helper-provided `waitForQueueLength`, `synchronize`, and backend polling utilities.
+  - Validation: the full front-end suite passes under `timeout -k 350s -s SIGKILL 350s npm --prefix frontend test -- --iterations=1 --no-randomize --seed=0x11111111`.
 
 ## Maintenance (400–499)
 

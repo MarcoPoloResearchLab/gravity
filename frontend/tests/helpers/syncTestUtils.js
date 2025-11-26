@@ -15,6 +15,7 @@ import {
     connectSharedBrowser,
     injectRuntimeConfig,
     registerRequestInterceptor,
+    createRequestInterceptorController,
     waitForAppHydration,
     flushAlpineQueues,
     attachImportAppModule
@@ -69,6 +70,7 @@ const CDN_STUBS = [
 ];
 let staticServerOriginPromise = null;
 let staticServerHandle = null;
+const CDN_INTERCEPTOR_SYMBOL = Symbol("gravityCdnInterceptor");
 const MIME_TYPES = new Map([
     [".html", "text/html; charset=utf-8"],
     [".js", "application/javascript; charset=utf-8"],
@@ -677,7 +679,12 @@ function generateJwtIdentifier() {
 }
 
 async function installCdnMirrors(page) {
-    await registerRequestInterceptor(page, (request) => {
+    if (page[CDN_INTERCEPTOR_SYMBOL]) {
+        return;
+    }
+    const controller = await createRequestInterceptorController(page);
+    page[CDN_INTERCEPTOR_SYMBOL] = controller;
+    controller.add((request) => {
         const url = request.url();
         const mirror = CDN_MIRRORS.find((entry) => entry.pattern.test(url));
         if (mirror) {
@@ -699,6 +706,10 @@ async function installCdnMirrors(page) {
             return true;
         }
         return false;
+    });
+    page.once("close", () => {
+        controller.dispose();
+        delete page[CDN_INTERCEPTOR_SYMBOL];
     });
 }
 
