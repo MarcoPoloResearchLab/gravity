@@ -66,14 +66,7 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 ## Maintenance (400–499)
 
 - [x] [PG-400] docker-compose.yml now exposes `dev` (local backend build) and `docker` (GHCR images) profiles, adds shared `.env` templates (backend, tauth, pinguin), and Makefile `up` target honors `COMPOSE_PROFILE`; docs updated to describe the new flow.
-- [ ] [PG-401] Only run GH build.yml pipeline if test.yml workflow succeeds. Example 
-```yml
-on:
-  workflow_run:
-    workflows: ["tests"]
-    types:
-      - completed
-```
+- [x] [PG-401] Backend Docker publish workflow now waits for the `Backend Tests` workflow to finish successfully on push to `master` (via `workflow_run`) before building/pushing images; manual `workflow_dispatch` remains available for emergencies.
 
 ## Planning
 **Do not work on these, not ready**
