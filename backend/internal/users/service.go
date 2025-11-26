@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/MarcoPoloResearchLab/gravity/backend/internal/auth"
@@ -23,7 +24,7 @@ type ServiceConfig struct {
 type Service struct {
 	db    *gorm.DB
 	now   func() time.Time
-	cache map[string]string
+	cache sync.Map
 }
 
 // NewService constructs the identity service and ensures the schema is present.
@@ -38,7 +39,7 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 	return &Service{
 		db:    cfg.Database,
 		now:   clock,
-		cache: make(map[string]string),
+		cache: sync.Map{},
 	}, nil
 }
 
@@ -51,8 +52,11 @@ func (s *Service) ResolveCanonicalUserID(claims auth.SessionClaims) (string, err
 	}
 
 	cacheKey := provider + ":" + subject
-	if canonical, ok := s.cache[cacheKey]; ok {
-		return canonical, nil
+	if cachedIdentifier, ok := s.cache.Load(cacheKey); ok {
+		canonicalIdentifier, ok := cachedIdentifier.(string)
+		if ok {
+			return canonicalIdentifier, nil
+		}
 	}
 
 	var identity Identity
@@ -98,7 +102,7 @@ func (s *Service) ResolveCanonicalUserID(claims auth.SessionClaims) (string, err
 		}
 	}
 
-	s.cache[cacheKey] = identity.UserID
+	s.cache.Store(cacheKey, identity.UserID)
 	return identity.UserID, nil
 }
 
