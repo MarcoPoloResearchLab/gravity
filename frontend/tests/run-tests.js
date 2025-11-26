@@ -495,7 +495,7 @@ async function main() {
   } else if (Object.prototype.hasOwnProperty.call(runtimeOptions, "randomize")) {
     randomizeTests = parseBooleanOption(/** @type {any} */ (runtimeOptions).randomize, true);
   } else {
-    randomizeTests = true;
+    randomizeTests = false;
   }
 
   const seedCandidates = [
