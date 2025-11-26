@@ -708,7 +708,7 @@ async function main() {
         /** @type {string[]} */
         const args = [];
         if (!raw) {
-          args.push("--test", absolute, `--test-timeout=${Math.max(effectiveTimeout, 1000)}`);
+          args.push("--test", `--test-timeout=${Math.max(effectiveTimeout, 1000)}`, absolute);
         } else {
           args.push(absolute);
         }

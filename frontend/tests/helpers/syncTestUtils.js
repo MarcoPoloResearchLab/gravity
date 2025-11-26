@@ -14,6 +14,7 @@ import { startTestBackend } from "./backendHarness.js";
 import {
     connectSharedBrowser,
     injectRuntimeConfig,
+    registerRequestInterceptor,
     waitForAppHydration,
     flushAlpineQueues,
     attachImportAppModule
@@ -26,6 +27,46 @@ const DEFAULT_PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
 const DEFAULT_JWT_ISSUER = "https://accounts.google.com";
 const DEFAULT_JWT_AUDIENCE = appConfig.googleClientId;
 const STATIC_SERVER_HOST = "127.0.0.1";
+const CDN_FIXTURES_ROOT = path.resolve(TESTS_DIR, "..", "fixtures", "cdn");
+const CDN_MIRRORS = [
+    {
+        pattern: /^https:\/\/cdn\.jsdelivr\.net\/npm\/alpinejs@3\.13\.5\/dist\/module\.esm\.js$/u,
+        filePath: path.join(CDN_FIXTURES_ROOT, "jsdelivr", "npm", "alpinejs@3.13.5", "dist", "module.esm.js"),
+        contentType: "application/javascript"
+    },
+    {
+        pattern: /^https:\/\/cdn\.jsdelivr\.net\/npm\/marked@12\.0\.2\/marked\.min\.js$/u,
+        filePath: path.join(CDN_FIXTURES_ROOT, "jsdelivr", "npm", "marked@12.0.2", "marked.min.js"),
+        contentType: "application/javascript"
+    },
+    {
+        pattern: /^https:\/\/cdn\.jsdelivr\.net\/npm\/dompurify@3\.1\.7\/dist\/purify\.min\.js$/u,
+        filePath: path.join(CDN_FIXTURES_ROOT, "jsdelivr", "npm", "dompurify@3.1.7", "dist", "purify.min.js"),
+        contentType: "application/javascript"
+    },
+    {
+        pattern: /^https:\/\/cdn\.jsdelivr\.net\/npm\/easymde@2\.19\.0\/dist\/easymde\.min\.js$/u,
+        filePath: path.join(CDN_FIXTURES_ROOT, "jsdelivr", "npm", "easymde@2.19.0", "dist", "easymde.min.js"),
+        contentType: "application/javascript"
+    },
+    {
+        pattern: /^https:\/\/cdn\.jsdelivr\.net\/npm\/easymde@2\.19\.0\/dist\/easymde\.min\.css$/u,
+        filePath: path.join(CDN_FIXTURES_ROOT, "jsdelivr", "npm", "easymde@2.19.0", "dist", "easymde.min.css"),
+        contentType: "text/css"
+    }
+];
+const CDN_STUBS = [
+    {
+        pattern: /^https:\/\/accounts\.google\.com\/gsi\/client$/u,
+        contentType: "application/javascript",
+        body: "window.google=window.google||{accounts:{id:{initialize(){},prompt(){},renderButton(){}}}};"
+    },
+    {
+        pattern: /^https:\/\/loopaware\.mprlab\.com\/widget\.js(?:\?.*)?$/u,
+        contentType: "application/javascript",
+        body: ""
+    }
+];
 let staticServerOriginPromise = null;
 let staticServerHandle = null;
 const MIME_TYPES = new Map([
@@ -57,6 +98,33 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
         preserveLocalStorage = false
     } = options;
     const page = await browser.newPage();
+    if (process.env.GRAVITY_TEST_STREAM_LOGS === "1") {
+        page.on("console", (message) => {
+            const type = message.type?.().toUpperCase?.() ?? "LOG";
+            // eslint-disable-next-line no-console
+            console.log(`[page ${type}] ${message.text?.() ?? message}`);
+        });
+        page.on("pageerror", (error) => {
+            // eslint-disable-next-line no-console
+            console.error(`[page error] ${error?.message ?? error}`);
+        });
+        page.on("requestfailed", (request) => {
+            // eslint-disable-next-line no-console
+            console.error(`[request failed] ${request.url?.() ?? "unknown"}: ${request.failure?.()?.errorText ?? "unknown"}`);
+        });
+        page.on("request", (request) => {
+            try {
+                const url = new URL(request.url?.() ?? "");
+                if (url.hostname !== "127.0.0.1" && url.hostname !== "localhost") {
+                    // eslint-disable-next-line no-console
+                    console.log(`[request] ${request.method?.() ?? "GET"} ${request.url?.()}`);
+                }
+            } catch {
+                // ignore malformed URLs
+            }
+        });
+    }
+    await installCdnMirrors(page);
     if (typeof beforeNavigate === "function") {
         await beforeNavigate(page);
     }
@@ -608,6 +676,32 @@ function generateJwtIdentifier() {
     return randomBytes(16).toString("hex");
 }
 
+async function installCdnMirrors(page) {
+    await registerRequestInterceptor(page, (request) => {
+        const url = request.url();
+        const mirror = CDN_MIRRORS.find((entry) => entry.pattern.test(url));
+        if (mirror) {
+            const headers = { "Access-Control-Allow-Origin": "*" };
+            fs.readFile(mirror.filePath)
+                .then((body) => request.respond({ status: 200, contentType: mirror.contentType, body, headers }).catch(() => {}))
+                .catch((error) => {
+                    if (process.env.GRAVITY_TEST_STREAM_LOGS === "1") {
+                        // eslint-disable-next-line no-console
+                        console.error(`[cdn mirror] missing ${mirror.filePath}: ${error?.message ?? error}`);
+                    }
+                    request.respond({ status: 404, contentType: mirror.contentType, body: "", headers }).catch(() => {});
+                });
+            return true;
+        }
+        const stub = CDN_STUBS.find((entry) => entry.pattern.test(url));
+        if (stub) {
+            request.respond({ status: 200, contentType: stub.contentType, body: stub.body, headers: { "Access-Control-Allow-Origin": "*" } }).catch(() => {});
+            return true;
+        }
+        return false;
+    });
+}
+
 async function resolvePageUrl(rawUrl) {
     try {
         const parsed = new URL(rawUrl);
@@ -652,7 +746,12 @@ async function ensureStaticServerOrigin() {
                 reject(new Error("Static server missing address"));
                 return;
             }
-            resolve(`http://${STATIC_SERVER_HOST}:${address.port}`);
+            const origin = `http://${STATIC_SERVER_HOST}:${address.port}`;
+            if (process.env.GRAVITY_TEST_STREAM_LOGS === "1") {
+                // eslint-disable-next-line no-console
+                console.log(`[static server] listening on ${origin}`);
+            }
+            resolve(origin);
         });
         server.unref();
     }).catch((error) => {
@@ -673,6 +772,10 @@ async function handleStaticRequest(requestUrl, res) {
         res.statusCode = 403;
         res.end("Forbidden");
         return;
+    }
+    if (process.env.GRAVITY_TEST_STREAM_LOGS === "1") {
+        // eslint-disable-next-line no-console
+        console.log(`[static server] request ${pathname}`);
     }
     let filePath = absolutePath;
     let stats;
