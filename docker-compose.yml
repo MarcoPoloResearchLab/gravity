@@ -2,7 +2,7 @@ services:
   gravity-frontend-dev:
     profiles:
       - dev
-    image: ghcr.io/temirov/ghttp:latest
+    image: ghcr.io/tyemirov/ghttp:latest
     pull_policy: always
     depends_on:
       gravity-backend-dev:
@@ -20,7 +20,7 @@ services:
   gravity-frontend-docker:
     profiles:
       - docker
-    image: ghcr.io/temirov/ghttp:latest
+    image: ghcr.io/tyemirov/ghttp:latest
     pull_policy: always
     depends_on:
       gravity-backend-docker:
@@ -45,7 +45,7 @@ services:
       tauth:
         condition: service_started
     env_file:
-      - backend/.env
+      - .env.gravity.dev
     ports:
       - "8080:8080"
     volumes:
@@ -61,7 +61,7 @@ services:
       tauth:
         condition: service_started
     env_file:
-      - backend/.env
+      - .env.gravity.docker
     ports:
       - "8080:8080"
     volumes:
@@ -75,7 +75,7 @@ services:
     image: ghcr.io/tyemirov/tauth:latest
     pull_policy: always
     env_file:
-      - tauth/.env
+      - .env.tauth
     ports:
       - "8082:8080"
     volumes:
@@ -89,7 +89,7 @@ services:
     image: ghcr.io/tyemirov/pinguin:latest
     pull_policy: always
     env_file:
-      - pinguin/.env
+      - .env.pinguin
     volumes:
       - pinguin_data:/app/data
     restart: unless-stopped
