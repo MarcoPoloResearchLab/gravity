@@ -61,11 +61,11 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 - [x] [GN-305] Add end-to-end coverage and docs for the TAuth flow: Puppeteer tests that sign in, survive refresh, auto-refresh sessions, and sync notes via the Gravity backend using TAuth cookies; README/ARCHITECTURE updates outlining the cross-service auth contract.  
   - `auth.tauth.puppeteer.test.js` now drives nonce mismatch handling, cookie-driven refresh, and logout propagation via the real TAuth harness, and the broader sync suites exercise backend sync with cookies only.  
   - README + ARCHITECTURE describe the TAuth contract (nonce exchange, cookie scope, shared secrets, docker orchestration) so implementers know how the services interact.
-- [ ] [GN-306] Add a docker-compose profile that launches Gravity (frontend + backend) alongside TAuth using the shared env templates, modeled after `tools/mpr-ui/docker-compose.tauth.yml`, so contributors can run the integrated stack and e2e tests locally without bespoke scripts.
+- [x] [GN-306] Add docker-compose profiles so `dev` builds Gravity locally while `docker` pulls GHCR images; wire both to TAuth + Pinguin with shared `.env` templates and document the workflow in README/ARCHITECTURE (Makefile defaults to `--profile dev`).
 
 ## Maintenance (400–499)
 
-- [ ] [PG-400] Add profiles to @docker-compose.yml orchestration: "dev" for local build (using context and Dockerfiles) and "docker" for pulling all images from ghcr, including pinguin image.
+- [x] [PG-400] docker-compose.yml now exposes `dev` (local backend build) and `docker` (GHCR images) profiles, adds shared `.env` templates (backend, tauth, pinguin), and Makefile `up` target honors `COMPOSE_PROFILE`; docs updated to describe the new flow.
 - [ ] [PG-401] Only run GH build.yml pipeline if test.yml workflow succeeds. Example 
 ```yml
 on:

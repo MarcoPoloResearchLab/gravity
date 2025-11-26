@@ -3,7 +3,8 @@ TIMEOUT_TEST := timeout -k 350s -s SIGKILL 350s
 BACKEND_TEST_FLAGS ?=
 FRONTEND_TEST_FLAGS ?=
 DOCKER_COMPOSE ?= docker compose
-COMPOSE_FILE ?= docker-compose.dev.yml
+COMPOSE_FILE ?= docker-compose.yml
+COMPOSE_PROFILE ?= dev
 GO ?= go
 STATICCHECK ?= staticcheck
 INEFFASSIGN ?= ineffassign
@@ -39,7 +40,7 @@ lint:
 ci: fmt lint test
 
 up:
-	$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) up --build --remove-orphans
+	$(DOCKER_COMPOSE) --profile $(COMPOSE_PROFILE) -f $(COMPOSE_FILE) up --build --remove-orphans
 
 frontend-deps:
 	@if [ ! -x frontend/node_modules/.bin/tsc ]; then \

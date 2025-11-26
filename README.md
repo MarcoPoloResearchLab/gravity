@@ -62,10 +62,13 @@ Run the full application locally (frontend, backend, and the new TAuth service) 
 1. Copy the sample environment files and customize secrets as needed:
    - `cp backend/env.example backend/.env`
    - `cp tauth/env.example tauth/.env`
+   - `cp pinguin/env.example pinguin/.env`
 
-   Make sure `GRAVITY_TAUTH_SIGNING_SECRET` matches `APP_JWT_SIGNING_KEY` so both services trust the same credentials. (Gravity defaults to TAuth’s built-in issuer `mprlab-auth` and cookie `app_session`; override them only if you’ve customized the TAuth deployment.)
+   Make sure `GRAVITY_TAUTH_SIGNING_SECRET` matches `APP_JWT_SIGNING_KEY` so both services trust the same credentials. (Gravity defaults to TAuth’s built-in issuer `mprlab-auth` and cookie `app_session`; override them only if you’ve customized the TAuth deployment.) The Pinguin notifier also needs its own SMTP/Twilio credentials if you plan to exercise notification flows locally.
 
-2. Start the stack: `docker compose -f docker-compose.dev.yml up --build`
+2. Start the stack with the development profile (local backend build): `docker compose --profile dev up --build`
+
+   Switch to the docker profile (`docker compose --profile docker up`) to run everything from prebuilt GHCR images.
 
 The compose file exposes:
 

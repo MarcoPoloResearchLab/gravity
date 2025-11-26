@@ -181,7 +181,7 @@ When serving from an alternate hostname, add a new profile or override the URLs 
 - `frontend/` — static site, Alpine composition root, browser tests, and npm tooling.
 - `backend/` — Go API, CLI entrypoints, and persistence layers.
 - `CHANGELOG.md`, `ISSUES.md`, `NOTES.md` — process journals and release history.
-- `docker-compose.yml` / `docker-compose.dev.yml` — local stack orchestration.
+- `docker-compose.yml` — local stack orchestration with `dev` and `docker` profiles.
 - `POLICY.md`, `AGENTS.md` — coding standards and confident programming policy.
 - `PLAN.md` — temporary per-issue scratchpad (ignored in commits).
 
@@ -192,10 +192,10 @@ When serving from an alternate hostname, add a new profile or override the URLs 
 
 ### Docker Workflow
 
-- `docker-compose.yml` provisions the Go API (`backend`) and a static web host (`frontend`) backed by [gHTTP](https://github.com/temirov/ghttp).
-- Fetch the latest images with `docker compose pull`, then start the stack using `docker compose up`. The UI serves from <http://localhost:8000> and the API from <http://localhost:8080>.
-- The backend container loads secrets from `backend/.env`; adjust the file to point at different credentials or storage paths.
-- Tail logs with `docker compose logs -f backend`, and stop the stack using `docker compose down` when finished.
+- `docker-compose.yml` provisions the static frontend host (gHTTP), Gravity backend, TAuth, and the shared Pinguin notifier. The `dev` profile builds the backend from local sources while `docker` pulls every image from GHCR.
+- Fetch the latest images with `docker compose pull`, then start the stack using `docker compose --profile dev up --build` (or `--profile docker up`). The UI serves from <http://localhost:8000>, the API from <http://localhost:8080>, TAuth from <http://localhost:8082>, and Pinguin runs internally for notification tests.
+- The backend container loads secrets from `backend/.env`, TAuth pulls from `tauth/.env`, and Pinguin pulls from `pinguin/.env`; adjust the files to point at different credentials or storage paths.
+- Tail logs with `docker compose logs -f gravity-backend-dev` (or `gravity-backend-docker`) and stop the stack using `docker compose down` when finished.
 
 ## Evolution by Theme (GN-IDs)
 

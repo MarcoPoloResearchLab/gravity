@@ -1,9 +1,14 @@
 services:
-  frontend:
+  gravity-frontend-dev:
+    profiles:
+      - dev
     image: ghcr.io/temirov/ghttp:latest
+    pull_policy: always
     depends_on:
-      - backend
-      - tauth
+      gravity-backend-dev:
+        condition: service_started
+      tauth:
+        condition: service_started
     working_dir: /srv/gravity/frontend
     command: ["--directory", "/srv/gravity/frontend", "8000"]
     volumes:
@@ -12,11 +17,49 @@ services:
       - "8000:8000"
     restart: unless-stopped
 
-  backend:
+  gravity-frontend-docker:
+    profiles:
+      - docker
+    image: ghcr.io/temirov/ghttp:latest
+    pull_policy: always
+    depends_on:
+      gravity-backend-docker:
+        condition: service_started
+      tauth:
+        condition: service_started
+    working_dir: /srv/gravity/frontend
+    command: ["--directory", "/srv/gravity/frontend", "8000"]
+    volumes:
+      - .:/srv/gravity:ro
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  gravity-backend-dev:
+    profiles:
+      - dev
+    build:
+      context: backend
+      dockerfile: Dockerfile
+    depends_on:
+      tauth:
+        condition: service_started
+    env_file:
+      - backend/.env
+    ports:
+      - "8080:8080"
+    volumes:
+      - gravity_data:/data
+    restart: unless-stopped
+
+  gravity-backend-docker:
+    profiles:
+      - docker
     image: ghcr.io/marcopoloresearchlab/gravity-backend:latest
     pull_policy: always
     depends_on:
-      - tauth
+      tauth:
+        condition: service_started
     env_file:
       - backend/.env
     ports:
@@ -26,6 +69,9 @@ services:
     restart: unless-stopped
 
   tauth:
+    profiles:
+      - dev
+      - docker
     image: ghcr.io/tyemirov/tauth:latest
     pull_policy: always
     env_file:
@@ -36,6 +82,19 @@ services:
       - tauth_data:/data
     restart: unless-stopped
 
+  pinguin:
+    profiles:
+      - dev
+      - docker
+    image: ghcr.io/tyemirov/pinguin:latest
+    pull_policy: always
+    env_file:
+      - pinguin/.env
+    volumes:
+      - pinguin_data:/app/data
+    restart: unless-stopped
+
 volumes:
   gravity_data:
   tauth_data:
+  pinguin_data:
