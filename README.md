@@ -59,13 +59,11 @@ Developers and curious tinkerers can find project structure, dependencies, and r
 
 Run the full application locally (frontend, backend, and the new TAuth service) via Docker:
 
-1. Copy each service’s environment file and customize secrets as needed:
+1. Copy the environment files and customize secrets as needed:
    - `cp .env.gravity.example .env.gravity`
    - `cp .env.tauth.example .env.tauth`
-   - `cp .env.pinguin.dev.example .env.pinguin.dev` (development profile)
-   - `cp .env.pinguin.docker.example .env.pinguin.docker` (docker profile)
 
-   Keep `GRAVITY_TAUTH_SIGNING_SECRET` in sync with `APP_JWT_SIGNING_KEY` so Gravity and TAuth agree on JWT signatures. If you plan to run the Pinguin notifier locally, supply valid SMTP/Twilio credentials inside the matching `.env.pinguin.*` file.
+   Keep `GRAVITY_TAUTH_SIGNING_SECRET` in sync with `APP_JWT_SIGNING_KEY` so Gravity and TAuth agree on JWT signatures.
 
 2. Start the stack with the development profile (local backend build): `docker compose --profile dev up --build`
 

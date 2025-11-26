@@ -24,4 +24,4 @@ Docker build standards for the repository. Follow AGENTS.md for shared documenta
 
 ### Environment Configuration
 
-- Gravity reads from `.env.gravity`, TAuth from `.env.tauth`, and the optional Pinguin notifier uses profile-specific files (`.env.pinguin.dev` and `.env.pinguin.docker`). Keep these `.env.*` files authoritative and avoid sprinkling overrides directly inside Dockerfiles or compose YAML.
+- Gravity reads from `.env.gravity` and TAuth from `.env.tauth`. Keep these `.env.*` files authoritative and avoid sprinkling overrides directly inside Dockerfiles or compose YAML.
