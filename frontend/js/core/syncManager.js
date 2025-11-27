@@ -8,6 +8,8 @@ import { appConfig } from "./config.js?build=2024-10-05T12:00:00Z";
 import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
 import { EVENT_SYNC_SNAPSHOT_APPLIED } from "../constants.js?build=2024-10-05T12:00:00Z";
 
+const debugEnabled = () => typeof globalThis !== "undefined" && globalThis.__debugSyncScenarios === true;
+
 /**
  * @typedef {import("./syncMetadataStore.js").NoteMetadata} NoteMetadata
  * @typedef {import("./syncQueue.js").PendingOperation} PendingOperation
@@ -130,6 +132,13 @@ export function createSyncManager(options = {}) {
                 return { authenticated: false, queueFlushed: false, snapshotApplied: false };
             }
 
+            if (debugEnabled()) {
+                try {
+                    console.log("syncManager.handleSignIn", params.userId);
+                } catch {
+                    // ignore console failures
+                }
+            }
             const loadedMetadata = metadataStore.load(params.userId);
             const loadedQueue = queueStore.load(params.userId);
 
@@ -140,6 +149,16 @@ export function createSyncManager(options = {}) {
             seedInitialOperations();
             persistState();
 
+            if (debugEnabled()) {
+                try {
+                    console.log("syncManager.handleSignIn.state", JSON.stringify({
+                        queueLength: state.queue.length,
+                        userId: state.userId
+                    }));
+                } catch {
+                    // ignore console failures
+                }
+            }
             const queueFlushed = await flushQueue();
             const snapshotApplied = await refreshSnapshot();
 
@@ -283,9 +302,39 @@ export function createSyncManager(options = {}) {
         if (!state.userId) {
             return false;
         }
+        if (debugEnabled()) {
+            try {
+                console.log("syncManager.refreshSnapshot", JSON.stringify({
+                    userId: state.userId,
+                    queueLength: state.queue.length
+                }));
+            } catch {
+                // ignore console failures
+            }
+        }
+        if (state.queue.length > 0) {
+            if (debugEnabled()) {
+                try {
+                    console.log("syncManager.refreshSnapshot.skipped", state.queue.length);
+                } catch {
+                    // ignore console failures
+                }
+            }
+            return false;
+        }
         try {
             const snapshot = await backendClient.fetchSnapshot();
             applySnapshot(snapshot?.notes ?? []);
+            if (debugEnabled()) {
+                try {
+                    console.log("syncManager.refreshSnapshot.applied", JSON.stringify({
+                        userId: state.userId,
+                        recordCount: Array.isArray(snapshot?.notes) ? snapshot.notes.length : 0
+                    }));
+                } catch {
+                    // ignore console failures
+                }
+            }
             persistState();
             return true;
         } catch (error) {

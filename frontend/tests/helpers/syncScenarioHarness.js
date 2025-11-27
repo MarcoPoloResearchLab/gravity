@@ -84,6 +84,11 @@ export async function createSyncScenarioHarness(options = {}) {
                 }
             }
         });
+        if (process.env.DEBUG_SYNC_SCENARIOS === "1") {
+            await page.evaluate(() => {
+                globalThis.__debugSyncScenarios = true;
+            });
+        }
         await waitForTAuthSession(page);
 
         const sessionHandle = {
@@ -232,29 +237,48 @@ export async function createSyncScenarioHarness(options = {}) {
             const importer = typeof window.importAppModule === "function"
                 ? window.importAppModule
                 : (specifier) => import(specifier);
-            const module = await importer("./js/core/store.js");
-            const setScope = typeof module.GravityStore?.setUserScope === "function"
-                ? module.GravityStore.setUserScope.bind(module.GravityStore)
-                : null;
-            if (setScope) {
-                setScope(scopedUserId ?? null);
-            }
-            const scopedRecords = module.GravityStore.loadAllNotes();
-            if (Array.isArray(scopedRecords)) {
-                const scopedMatch = scopedRecords.find((record) => record?.noteId === id);
-                if (scopedMatch) {
-                    return scopedMatch;
+            const { appConfig } = await importer("./js/core/config.js");
+            const baseKey = typeof appConfig?.storageKey === "string" && appConfig.storageKey.trim().length > 0
+                ? appConfig.storageKey.trim()
+                : "gravityNotesData";
+            const configuredPrefix = typeof appConfig?.storageKeyUserPrefix === "string"
+                ? appConfig.storageKeyUserPrefix.trim()
+                : "";
+            const prefixBase = configuredPrefix.length > 0 ? configuredPrefix : `${baseKey}:user`;
+            const userPrefix = prefixBase.endsWith(":") ? prefixBase : `${prefixBase}:`;
+            const resolveKey = (userIdCandidate) => {
+                if (typeof userIdCandidate === "string" && userIdCandidate.trim().length > 0) {
+                    return `${userPrefix}${encodeURIComponent(userIdCandidate.trim())}`;
                 }
+                return baseKey;
+            };
+            const parseRecords = (storageKey) => {
+                try {
+                    const raw = window.localStorage.getItem(storageKey);
+                    if (!raw) {
+                        return [];
+                    }
+                    const parsed = JSON.parse(raw);
+                    return Array.isArray(parsed) ? parsed : [];
+                } catch {
+                    return [];
+                }
+            };
+
+            const candidateKeys = [];
+            if (typeof scopedUserId === "string" && scopedUserId.trim().length > 0) {
+                candidateKeys.push(resolveKey(scopedUserId));
             }
-            if (scopedUserId && setScope) {
-                setScope(null);
-                const fallbackRecords = module.GravityStore.loadAllNotes();
-                const fallbackMatch = Array.isArray(fallbackRecords)
-                    ? fallbackRecords.find((record) => record?.noteId === id)
-                    : null;
-                setScope(scopedUserId);
-                if (fallbackMatch) {
-                    return fallbackMatch;
+            candidateKeys.push(baseKey);
+
+            for (const storageKey of candidateKeys) {
+                const records = parseRecords(storageKey);
+                if (!Array.isArray(records)) {
+                    continue;
+                }
+                const match = records.find((record) => record && record.noteId === id);
+                if (match) {
+                    return match;
                 }
             }
             return null;

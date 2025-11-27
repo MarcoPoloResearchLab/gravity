@@ -3,6 +3,10 @@ import test from "node:test";
 
 import { createSyncScenarioHarness } from "./helpers/syncScenarioHarness.js";
 
+if (process.env.DEBUG_SYNC_SCENARIOS === "1") {
+    console.log("DEBUG_SYNC_SCENARIOS env", process.env.DEBUG_SYNC_SCENARIOS);
+}
+
 test.describe("Synchronization scenarios", () => {
     /** @type {Awaited<ReturnType<typeof createSyncScenarioHarness>> | null} */
     let harness = null;
@@ -56,6 +60,21 @@ test.describe("Synchronization scenarios", () => {
             try {
                 await harness.recordLocalCreate(initialSession.page, queuedRecord);
                 await harness.waitForQueueLength(initialSession.page, 1);
+                if (process.env.DEBUG_SYNC_SCENARIOS === "1") {
+                    const localBeforeClose = await harness.hasLocalNote(initialSession.page, queuedRecord.noteId, userId);
+                    console.log("sync scenarios local before close", localBeforeClose);
+                    if (!localBeforeClose) {
+                        const diagnosticDump = await initialSession.page.evaluate(() => {
+                            const entries = [];
+                            for (let index = 0; index < window.localStorage.length; index += 1) {
+                                const key = window.localStorage.key(index);
+                                entries.push({ key, value: window.localStorage.getItem(key) });
+                            }
+                            return entries;
+                        });
+                        console.log("sync scenarios pre-close localStorage dump", diagnosticDump);
+                    }
+                }
             } finally {
                 await offlineInterceptor.dispose();
                 await initialSession.close({ keepContext: true });
@@ -69,6 +88,17 @@ test.describe("Synchronization scenarios", () => {
             });
             try {
                 const persistedOffline = await harness.hasLocalNote(replaySession.page, queuedRecord.noteId, userId);
+                if (!persistedOffline && process.env.DEBUG_SYNC_SCENARIOS === "1") {
+                    const localStorageDump = await replaySession.page.evaluate(() => {
+                        const entries = [];
+                        for (let index = 0; index < window.localStorage.length; index += 1) {
+                            const key = window.localStorage.key(index);
+                            entries.push({ key, value: window.localStorage.getItem(key) });
+                        }
+                        return entries;
+                    });
+                    console.log("sync scenarios localStorage dump", localStorageDump);
+                }
                 assert.ok(persistedOffline, "offline note should persist locally before replay");
 
                 await replaySession.signIn();

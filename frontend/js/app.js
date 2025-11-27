@@ -126,6 +126,7 @@ function gravityApp() {
         tauthSession: /** @type {ReturnType<typeof createTAuthSession>|null} */ (null),
         tauthReadyPromise: /** @type {Promise<void>|null} */ (null),
         authUser: /** @type {{ id: string, email: string|null, name: string|null, pictureUrl: string|null }|null} */ (null),
+        pendingSignInUserId: /** @type {string|null} */ (null),
         authPollHandle: /** @type {number|null} */ (null),
         guestExportButton: /** @type {HTMLButtonElement|null} */ (null),
         syncManager: /** @type {ReturnType<typeof createSyncManager>|null} */ (null),
@@ -588,6 +589,10 @@ function gravityApp() {
             if (!user || !user.id) {
                 return;
             }
+            if (this.authUser?.id === user.id || this.pendingSignInUserId === user.id) {
+                return;
+            }
+            this.pendingSignInUserId = user.id;
 
             const applyGuestState = () => {
                 this.authUser = null;
@@ -642,6 +647,10 @@ function gravityApp() {
                     logging.error(error);
                     applyGuestState();
                     this.authControls?.showError(ERROR_AUTHENTICATION_GENERIC);
+                } finally {
+                    if (this.pendingSignInUserId === user.id) {
+                        this.pendingSignInUserId = null;
+                    }
                 }
             };
 

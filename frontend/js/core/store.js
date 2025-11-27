@@ -20,6 +20,8 @@ export const ERROR_INVALID_NOTES_COLLECTION = "gravity.invalid_notes_collection"
 /** @typedef {import("../types.d.js").NoteRecord} NoteRecord */
 
 export const GravityStore = (() => {
+    const debugEnabled = () => typeof globalThis !== "undefined" && globalThis.__debugSyncScenarios === true;
+
     /**
      * @returns {NoteRecord[]}
      */
@@ -60,6 +62,15 @@ export const GravityStore = (() => {
         }
         const deduped = dedupeRecordsById(normalized);
         const storageKey = getActiveStorageKey();
+        if (debugEnabled()) {
+            try {
+                const identifiers = deduped.map((record) => record.noteId);
+                const stack = typeof Error === "function" ? new Error().stack : null;
+                console.log("GravityStore.saveAllNotes", storageKey, identifiers, stack);
+            } catch {
+                // ignore console failures
+            }
+        }
         localStorage.setItem(storageKey, JSON.stringify(deduped));
     }
 
@@ -147,6 +158,13 @@ export const GravityStore = (() => {
             return;
         }
 
+        if (debugEnabled()) {
+            try {
+                console.log("GravityStore.upsertNonEmpty", getActiveStorageKey(), sanitizedRecord.noteId);
+            } catch {
+                // ignore console failures
+            }
+        }
         if (existingIndex === -1) {
             allRecords.unshift(sanitizedRecord);
         } else {
