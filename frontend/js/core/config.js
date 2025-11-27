@@ -2,15 +2,18 @@
 
 const DEFAULT_BACKEND_BASE_URL = "http://localhost:8080";
 const DEFAULT_LLM_PROXY_URL = "https://llm-proxy.mprlab.com/v1/gravity/classify";
+const DEFAULT_AUTH_BASE_URL = "http://localhost:8082";
 
 const DEFAULT_ENVIRONMENT_CONFIG = Object.freeze({
     production: Object.freeze({
         backendBaseUrl: "https://gravity-api.mprlab.com",
-        llmProxyUrl: "https://llm-proxy.mprlab.com/v1/gravity/classify"
+        llmProxyUrl: "https://llm-proxy.mprlab.com/v1/gravity/classify",
+        authBaseUrl: "https://tauth.mprlab.com"
     }),
     development: Object.freeze({
         backendBaseUrl: "http://localhost:8080",
-        llmProxyUrl: "http://computercat:8081/v1/gravity/classify"
+        llmProxyUrl: "http://computercat:8081/v1/gravity/classify",
+        authBaseUrl: "http://localhost:8082"
     })
 });
 
@@ -20,11 +23,11 @@ const RUNTIME_CONFIG_STATE_KEY = Symbol.for("gravity.core.config.runtimeState");
  * Resolve the shared runtime configuration backing store. Using a shared symbol keeps
  * the browser modules (loaded with build fingerprints) and the Node test modules in
  * sync even though their specifiers differ.
- * @returns {{ config: { environment: ("production" | "development" | null), backendBaseUrl: string, llmProxyUrl: string } | null }}
+ * @returns {{ config: { environment: ("production" | "development" | null), backendBaseUrl: string, llmProxyUrl: string, authBaseUrl: string } | null }}
  */
 function resolveRuntimeConfigState() {
     const globalScope = typeof globalThis === "object" && globalThis !== null ? globalThis : {};
-    const existing = /** @type {{ config: { environment: ("production" | "development" | null), backendBaseUrl: string, llmProxyUrl: string } | null } | undefined} */
+    const existing = /** @type {{ config: { environment: ("production" | "development" | null), backendBaseUrl: string, llmProxyUrl: string, authBaseUrl: string } | null } | undefined} */
         (globalScope[RUNTIME_CONFIG_STATE_KEY]);
     if (existing && typeof existing === "object" && Object.prototype.hasOwnProperty.call(existing, "config")) {
         return existing;
@@ -64,6 +67,10 @@ const staticConfig = {
     llmProxyUrl: {
         enumerable: true,
         get: () => resolveLlmProxyUrl()
+    },
+    authBaseUrl: {
+        enumerable: true,
+        get: () => resolveAuthBaseUrl()
     }
 };
 
@@ -75,7 +82,7 @@ export const appConfig = (() => {
 
 /**
  * Inject the runtime configuration that downstream modules will consume.
- * @param {{ environment?: string|null, backendBaseUrl?: string|null, llmProxyUrl?: string|null }} [config]
+ * @param {{ environment?: string|null, backendBaseUrl?: string|null, llmProxyUrl?: string|null, authBaseUrl?: string|null }} [config]
  * @returns {void}
  */
 export function setRuntimeConfig(config = {}) {
@@ -84,11 +91,13 @@ export function setRuntimeConfig(config = {}) {
 
     const backendBaseUrl = normalizeUrl(config.backendBaseUrl ?? environmentDefaults?.backendBaseUrl ?? DEFAULT_BACKEND_BASE_URL);
     const llmProxyUrl = normalizeUrl(config.llmProxyUrl ?? environmentDefaults?.llmProxyUrl ?? DEFAULT_LLM_PROXY_URL);
+    const authBaseUrl = normalizeUrl(config.authBaseUrl ?? environmentDefaults?.authBaseUrl ?? DEFAULT_AUTH_BASE_URL);
 
     runtimeConfigState.config = Object.freeze({
         environment: normalizedEnvironment,
         backendBaseUrl,
-        llmProxyUrl
+        llmProxyUrl,
+        authBaseUrl
     });
 }
 
@@ -120,6 +129,17 @@ export function resolveLlmProxyUrl() {
         return runtimeConfigState.config.llmProxyUrl;
     }
     return DEFAULT_LLM_PROXY_URL;
+}
+
+/**
+ * Resolve the TAuth base URL from the injected config or defaults.
+ * @returns {string}
+ */
+export function resolveAuthBaseUrl() {
+    if (runtimeConfigState.config?.authBaseUrl !== undefined) {
+        return runtimeConfigState.config.authBaseUrl;
+    }
+    return DEFAULT_AUTH_BASE_URL;
 }
 
 /**

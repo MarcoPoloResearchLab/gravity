@@ -3,15 +3,18 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
+import { EVENT_AUTH_CREDENTIAL_RECEIVED } from "../js/constants.js";
 import { startTestBackend } from "./helpers/backendHarness.js";
 import {
     prepareFrontendPage,
-    dispatchSignIn,
     waitForSyncManagerUser,
     waitForPendingOperations,
-    extractSyncDebugState
+    extractSyncDebugState,
+    waitForTAuthSession,
+    composeTestCredential
 } from "./helpers/syncTestUtils.js";
 import { connectSharedBrowser } from "./helpers/browserHarness.js";
+import { installTAuthHarness } from "./helpers/tauthHarness.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
@@ -25,39 +28,8 @@ test.describe("Realtime synchronization", () => {
         const contextB = await browser.createBrowserContext();
 
         const userId = "realtime-user";
-        const credential = backend.tokenFactory(userId);
-
-        const pageA = await prepareFrontendPage(contextA, PAGE_URL, {
-            backendBaseUrl: backend.baseUrl,
-            llmProxyUrl: ""
-        });
-        const pageB = await prepareFrontendPage(contextB, PAGE_URL, {
-            backendBaseUrl: backend.baseUrl,
-            llmProxyUrl: ""
-        });
-
-        pageA.on("console", (message) => {
-            if (message.type() === "error") {
-                console.error("[Realtime][A]", message.text());
-            }
-        });
-        pageB.on("console", (message) => {
-            const args = message.args().map((arg) => {
-                try {
-                    return arg.jsonValue();
-                } catch {
-                    return null;
-                }
-            });
-            Promise.all(args).then((resolved) => {
-                console.log("[Realtime][B]", message.type(), message.text(), resolved);
-            }).catch(() => {
-                console.log("[Realtime][B]", message.type(), message.text());
-            });
-        });
-
-        try {
-            await pageB.evaluate(() => {
+        const instrumentRealtimeDebug = async (targetPage) => {
+            await targetPage.evaluate(() => {
                 const OriginalEventSource = window.EventSource;
                 if (!OriginalEventSource) {
                     return;
@@ -106,9 +78,36 @@ test.describe("Realtime synchronization", () => {
                     events: realtimeEvents
                 };
             });
+        };
 
-            await dispatchSignIn(pageA, credential, userId);
-            await dispatchSignIn(pageB, credential, userId);
+        const sessionA = await bootstrapRealtimeSession(contextA, backend, userId);
+        const sessionB = await bootstrapRealtimeSession(contextB, backend, userId, {
+            beforeAuth: instrumentRealtimeDebug
+        });
+        const { page: pageA } = sessionA;
+        const { page: pageB } = sessionB;
+
+        pageA.on("console", (message) => {
+            if (message.type() === "error") {
+                console.error("[Realtime][A]", message.text());
+            }
+        });
+        pageB.on("console", (message) => {
+            const args = message.args().map((arg) => {
+                try {
+                    return arg.jsonValue();
+                } catch {
+                    return null;
+                }
+            });
+            Promise.all(args).then((resolved) => {
+                console.log("[Realtime][B]", message.type(), message.text(), resolved);
+            }).catch(() => {
+                console.log("[Realtime][B]", message.type(), message.text());
+            });
+        });
+
+        try {
             await waitForSyncManagerUser(pageA, userId);
             await waitForSyncManagerUser(pageB, userId);
 
@@ -159,52 +158,7 @@ test.describe("Realtime synchronization", () => {
            await pageA.keyboard.up("Meta");
            await waitForPendingOperations(pageA);
 
-            await pageB.evaluate(async () => {
-                const root = document.querySelector("[x-data]");
-                const alpine = window.Alpine;
-                if (!root || !alpine) {
-                    return;
-                }
-                const appInstance = alpine.$data(root);
-                if (!appInstance?.syncManager || typeof appInstance.syncManager.synchronize !== "function") {
-                    return;
-                }
-                await appInstance.syncManager.synchronize({ flushQueue: false });
-            });
-
-            const debugStateA = await extractSyncDebugState(pageA);
-            const backendToken = debugStateA?.backendToken?.accessToken ?? null;
-            if (backendToken) {
-                const snapshotResponse = await fetch(`${backend.baseUrl}/notes`, {
-                    method: "GET",
-                    headers: {
-                        Authorization: `Bearer ${backendToken}`
-                    }
-                });
-                const snapshotJson = await snapshotResponse.json();
-                console.log("[Realtime][Debug] backend snapshot", snapshotJson);
-
-                const controller = new AbortController();
-                const abortTimer = setTimeout(() => {
-                    controller.abort();
-                }, 500);
-                try {
-                    const streamResponse = await fetch(`${backend.baseUrl}/notes/stream`, {
-                        method: "GET",
-                        headers: {
-                            Authorization: `Bearer ${backendToken}`
-                        },
-                        signal: controller.signal
-                    });
-                    console.log("[Realtime][Debug] stream response", streamResponse.status, streamResponse.headers.get("content-type"));
-                } catch (error) {
-                    console.log("[Realtime][Debug] stream fetch error", String(error));
-                } finally {
-                    clearTimeout(abortTimer);
-                }
-            } else {
-                console.error("[Realtime][Debug] missing backend token", debugStateA);
-            }
+            await synchronizeOnce(pageB, false);
 
             await pageB.evaluate(() => {
                 console.error("[Realtime][Debug] events after create", window.__GRAVITY_REALTIME_DEBUG__?.events ?? []);
@@ -227,10 +181,15 @@ test.describe("Realtime synchronization", () => {
                 waitError = error;
             }
 
-            const { receivedContent, pageDebug } = await pageB.evaluate(() => {
+            const { receivedContent, pageDebug } = await pageB.evaluate(async () => {
+                const importer = typeof window.importAppModule === "function"
+                    ? window.importAppModule
+                    : (specifier) => import(specifier);
+                const storeModule = await importer("./js/core/store.js");
+                const GravityStore = storeModule.GravityStore;
                 const card = document.querySelector('.markdown-block:not(.top-editor)[data-note-id]');
                 const content = card ? card.textContent ?? "" : "";
-                const storedNotes = typeof GravityStore !== "undefined" ? GravityStore.loadAllNotes() : [];
+                const storedNotes = GravityStore.loadAllNotes();
                 const events = Array.isArray(window.__GRAVITY_REALTIME_DEBUG__?.events) ? window.__GRAVITY_REALTIME_DEBUG__?.events ?? [] : [];
                 return { receivedContent: content, pageDebug: { storedNotes, events } };
             });
@@ -251,3 +210,95 @@ test.describe("Realtime synchronization", () => {
         }
     });
 });
+
+async function bootstrapRealtimeSession(context, backend, userId, options = {}) {
+    const beforeAuth = typeof options?.beforeAuth === "function" ? options.beforeAuth : null;
+    let harnessHandle = null;
+    const page = await prepareFrontendPage(context, PAGE_URL, {
+        backendBaseUrl: backend.baseUrl,
+        llmProxyUrl: "",
+        authBaseUrl: backend.baseUrl,
+        beforeNavigate: async (targetPage) => {
+            harnessHandle = await installTAuthHarness(targetPage, {
+                baseUrl: backend.baseUrl,
+                cookieName: backend.cookieName,
+                mintSessionToken: backend.createSessionToken
+            });
+        }
+    });
+    if (beforeAuth) {
+        await beforeAuth(page);
+    }
+    await waitForTAuthSession(page);
+    const resolvedAuthBaseUrl = await page.evaluate(async () => {
+        const importer = typeof window.importAppModule === "function"
+            ? window.importAppModule
+            : (specifier) => import(specifier);
+        const configModule = await importer("./js/core/config.js");
+        return configModule.appConfig.authBaseUrl;
+    });
+    console.log("[Realtime][Debug] authBaseUrl:", resolvedAuthBaseUrl);
+    const credential = composeTestCredential({
+        userId,
+        email: `${userId}@example.com`,
+        name: `Realtime User ${userId}`,
+        pictureUrl: "https://example.com/avatar.png"
+    });
+    await page.evaluate((eventName, detail) => {
+        const target = document.querySelector("body");
+        if (!target) {
+            throw new Error("Application root missing");
+        }
+        target.dispatchEvent(new CustomEvent(eventName, {
+            bubbles: true,
+            detail
+        }));
+    }, EVENT_AUTH_CREDENTIAL_RECEIVED, {
+        credential,
+        user: {
+            id: userId,
+            email: `${userId}@example.com`,
+            name: `Realtime User ${userId}`,
+            pictureUrl: "https://example.com/avatar.png"
+        }
+    });
+    if (harnessHandle) {
+        await waitForHarnessRequest(harnessHandle, "/auth/google");
+    }
+    await page.waitForFunction(() => {
+        return Boolean(window.__tauthHarnessEvents && window.__tauthHarnessEvents.authenticatedCount >= 1);
+    }, { timeout: 10000 });
+    await waitForSyncManagerUser(page, userId);
+    return { page, harnessHandle };
+}
+
+async function synchronizeOnce(page, flushQueue) {
+    await page.evaluate(async (shouldFlush) => {
+        const root = document.querySelector("[x-data]");
+        if (!root) {
+            throw new Error("application root not found");
+        }
+        const alpine = /** @type {{ $data?: (element: Element) => any }} */ (window.Alpine ?? null);
+        if (!alpine || typeof alpine.$data !== "function") {
+            throw new Error("Alpine data accessor unavailable");
+        }
+        const component = alpine.$data(root);
+        if (!component?.syncManager || typeof component.syncManager.synchronize !== "function") {
+            throw new Error("sync manager not initialised");
+        }
+        await component.syncManager.synchronize({ flushQueue: shouldFlush === true });
+    }, flushQueue);
+}
+
+async function waitForHarnessRequest(harnessHandle, expectedPath, timeoutMs = 10000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        const paths = harnessHandle.getRequestLog().map((entry) => entry.path);
+        if (paths.includes(expectedPath)) {
+            return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    const log = harnessHandle.getRequestLog();
+    throw new Error(`TAuth harness did not observe ${expectedPath} within ${timeoutMs}ms (seen: ${JSON.stringify(log)})`);
+}

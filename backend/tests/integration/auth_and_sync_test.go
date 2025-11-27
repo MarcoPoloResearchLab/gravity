@@ -2,9 +2,7 @@ package integration_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,23 +13,10 @@ import (
 	"github.com/MarcoPoloResearchLab/gravity/backend/internal/server"
 	"github.com/gin-gonic/gin"
 	sqlite "github.com/glebarez/sqlite"
+	"github.com/golang-jwt/jwt/v5"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
-
-type stubGoogleVerifier struct{}
-
-func (s stubGoogleVerifier) Verify(_ context.Context, token string) (auth.GoogleClaims, error) {
-	if token != "valid-id-token" {
-		return auth.GoogleClaims{}, errors.New("invalid token")
-	}
-	return auth.GoogleClaims{
-		Audience: "test-client",
-		Subject:  "user-abc",
-		Issuer:   "https://accounts.google.com",
-		Expiry:   time.Now().Add(10 * time.Minute),
-	}, nil
-}
 
 func TestAuthAndSyncFlow(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -52,21 +37,20 @@ func TestAuthAndSyncFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to build notes service: %v", err)
 	}
-	tokenManager, err := auth.NewTokenIssuer(auth.TokenIssuerConfig{
+	sessionValidator, err := auth.NewSessionValidator(auth.SessionValidatorConfig{
 		SigningSecret: []byte("integration-secret"),
-		Issuer:        "gravity-auth",
-		Audience:      "gravity-api",
-		TokenTTL:      30 * time.Minute,
+		Issuer:        "mprlab-auth",
+		CookieName:    "app_session",
 	})
 	if err != nil {
-		t.Fatalf("failed to construct token issuer: %v", err)
+		t.Fatalf("failed to construct session validator: %v", err)
 	}
 
 	handler, err := server.NewHTTPHandler(server.Dependencies{
-		GoogleVerifier: stubGoogleVerifier{},
-		TokenManager:   tokenManager,
-		NotesService:   notesService,
-		Logger:         zap.NewNop(),
+		SessionValidator: sessionValidator,
+		SessionCookie:    "app_session",
+		NotesService:     notesService,
+		Logger:           zap.NewNop(),
 	})
 	if err != nil {
 		t.Fatalf("failed to build handler: %v", err)
@@ -75,27 +59,10 @@ func TestAuthAndSyncFlow(t *testing.T) {
 	testServer := httptest.NewServer(handler)
 	defer testServer.Close()
 
-	authPayload := map[string]string{"id_token": "valid-id-token"}
-	authBody, _ := json.Marshal(authPayload)
-	authResp, err := http.Post(testServer.URL+"/auth/google", "application/json", bytes.NewReader(authBody))
-	if err != nil {
-		t.Fatalf("auth request failed: %v", err)
-	}
-	defer authResp.Body.Close()
-
-	if authResp.StatusCode != http.StatusOK {
-		t.Fatalf("unexpected status: %d", authResp.StatusCode)
-	}
-
-	var authResponse struct {
-		AccessToken string `json:"access_token"`
-		ExpiresIn   int64  `json:"expires_in"`
-	}
-	if err := json.NewDecoder(authResp.Body).Decode(&authResponse); err != nil {
-		t.Fatalf("failed to decode auth response: %v", err)
-	}
-	if authResponse.AccessToken == "" {
-		t.Fatalf("expected access token in response")
+	sessionToken := mustMintSessionToken(t, "integration-secret", "mprlab-auth", "user-abc", time.Now())
+	sessionCookie := &http.Cookie{
+		Name:  "app_session",
+		Value: sessionToken,
 	}
 
 	syncRequest := map[string]any{
@@ -114,7 +81,7 @@ func TestAuthAndSyncFlow(t *testing.T) {
 	}
 	syncBody, _ := json.Marshal(syncRequest)
 	syncReq, _ := http.NewRequest(http.MethodPost, testServer.URL+"/notes/sync", bytes.NewReader(syncBody))
-	syncReq.Header.Set("Authorization", "Bearer "+authResponse.AccessToken)
+	syncReq.AddCookie(sessionCookie)
 	syncReq.Header.Set("Content-Type", "application/json")
 
 	syncResp, err := http.DefaultClient.Do(syncReq)
@@ -141,7 +108,7 @@ func TestAuthAndSyncFlow(t *testing.T) {
 	}
 
 	snapshotReq, _ := http.NewRequest(http.MethodGet, testServer.URL+"/notes", nil)
-	snapshotReq.Header.Set("Authorization", "Bearer "+authResponse.AccessToken)
+	snapshotReq.AddCookie(sessionCookie)
 	snapshotResp, err := http.DefaultClient.Do(snapshotReq)
 	if err != nil {
 		t.Fatalf("snapshot request failed: %v", err)
@@ -188,7 +155,7 @@ func TestAuthAndSyncFlow(t *testing.T) {
 	}
 	staleBody, _ := json.Marshal(staleRequest)
 	staleReq, _ := http.NewRequest(http.MethodPost, testServer.URL+"/notes/sync", bytes.NewReader(staleBody))
-	staleReq.Header.Set("Authorization", "Bearer "+authResponse.AccessToken)
+	staleReq.AddCookie(sessionCookie)
 	staleReq.Header.Set("Content-Type", "application/json")
 
 	staleResp, err := http.DefaultClient.Do(staleReq)
@@ -212,4 +179,23 @@ func TestAuthAndSyncFlow(t *testing.T) {
 	if len(staleResult.Results) != 1 || staleResult.Results[0].Accepted {
 		t.Fatalf("expected rejection for stale change")
 	}
+}
+
+func mustMintSessionToken(t *testing.T, signingSecret, issuer, userID string, now time.Time) string {
+	t.Helper()
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, auth.SessionClaims{
+		UserID: userID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    issuer,
+			Subject:   userID,
+			IssuedAt:  jwt.NewNumericDate(now.Add(-time.Minute)),
+			NotBefore: jwt.NewNumericDate(now.Add(-time.Minute)),
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+		},
+	})
+	signed, err := token.SignedString([]byte(signingSecret))
+	if err != nil {
+		t.Fatalf("failed to sign token: %v", err)
+	}
+	return signed
 }

@@ -26,20 +26,6 @@ class LocalStorageStub {
     }
 }
 
-class ClockStub {
-    constructor(baseIso) {
-        this.currentMs = new Date(baseIso).getTime();
-    }
-
-    now() {
-        return new Date(this.currentMs);
-    }
-
-    advance(ms) {
-        this.currentMs += ms;
-    }
-}
-
 test.describe("SyncManager", () => {
     test.beforeEach(() => {
         global.localStorage = new LocalStorageStub();
@@ -53,12 +39,8 @@ test.describe("SyncManager", () => {
     test("handleSignIn exchanges credential, flushes queue, and reconciles snapshot", async () => {
         const operationsHandled = [];
         const backendClient = {
-            async exchangeGoogleCredential({ credential }) {
-                operationsHandled.push({ type: "exchange", credential });
-                return { accessToken: "backend-token", expiresIn: 1800 };
-            },
-            async syncOperations({ accessToken, operations }) {
-                operationsHandled.push({ type: "sync", accessToken, operations });
+            async syncOperations({ operations }) {
+                operationsHandled.push({ type: "sync", operations });
                 return {
                     results: operations.map((operation) => ({
                         note_id: operation.note_id,
@@ -71,8 +53,8 @@ test.describe("SyncManager", () => {
                     }))
                 };
             },
-            async fetchSnapshot({ accessToken }) {
-                operationsHandled.push({ type: "snapshot", accessToken });
+            async fetchSnapshot() {
+                operationsHandled.push({ type: "snapshot" });
                 return {
                     notes: [
                         {
@@ -114,30 +96,19 @@ test.describe("SyncManager", () => {
 
         assert.equal(operationsHandled.length, 0, "operations should queue offline before sign-in");
 
-        const baseTimeMs = new Date("2023-11-14T21:00:00.000Z").getTime();
         const signInResult = await syncManager.handleSignIn({
-            userId: "user-sync",
-            credential: "stub-google-credential"
+            userId: "user-sync"
         });
 
         assert.equal(signInResult.authenticated, true, "sign-in should report success");
         assert.equal(signInResult.queueFlushed, true, "queued operations should flush");
         assert.equal(signInResult.snapshotApplied, true, "snapshot should apply after flush");
-        assert.equal(signInResult.accessToken, "backend-token", "result should expose backend token");
-        assert.equal(
-            signInResult.accessTokenExpiresAtMs,
-            baseTimeMs + 1800 * 1000,
-            "result should expose backend token expiry"
-        );
 
-        assert.equal(operationsHandled.length >= 3, true, "exchange, sync, and snapshot should occur");
-        assert.equal(operationsHandled[0].type, "exchange");
-        assert.equal(operationsHandled[0].credential, "stub-google-credential");
-        assert.equal(operationsHandled[1].type, "sync");
-        assert.equal(operationsHandled[1].accessToken, "backend-token");
-        assert.equal(operationsHandled[1].operations.length, 1);
-        assert.equal(operationsHandled[1].operations[0].operation, "upsert");
-        assert.equal(operationsHandled[2].type, "snapshot");
+        assert.equal(operationsHandled.length >= 2, true, "sync and snapshot should occur");
+        assert.equal(operationsHandled[0].type, "sync");
+        assert.equal(operationsHandled[0].operations.length, 1);
+        assert.equal(operationsHandled[0].operations[0].operation, "upsert");
+        assert.equal(operationsHandled[1].type, "snapshot");
 
         const storedRecords = GravityStore.loadAllNotes();
         assert.equal(storedRecords.length, 1);
@@ -146,103 +117,34 @@ test.describe("SyncManager", () => {
         const debugState = syncManager.getDebugState();
         assert.equal(debugState.pendingOperations.length, 0);
         assert.equal(debugState.activeUserId, "user-sync");
-        assert.equal(debugState.backendToken?.accessToken, "backend-token");
-        assert.equal(debugState.backendToken?.expiresAtMs, baseTimeMs + 1800 * 1000);
     });
 
-    test("handleSignIn reports authentication failure when credential exchange fails", async () => {
+    test("handleSignIn reports authentication failure when userId missing", async () => {
         const syncManager = createSyncManager({
             backendClient: {
-                async exchangeGoogleCredential() {
-                    throw new Error("credential expired");
+                async syncOperations() {
+                    throw new Error("should not sync");
+                },
+                async fetchSnapshot() {
+                    throw new Error("should not fetch snapshot");
                 }
             }
         });
 
-        const result = await syncManager.handleSignIn({ userId: "user-expired", credential: "expired" });
+        const result = await syncManager.handleSignIn({ userId: "" });
 
         assert.equal(result.authenticated, false);
         assert.equal(result.queueFlushed, false);
         assert.equal(result.snapshotApplied, false);
-        assert.equal(result.accessToken, null);
-        assert.equal(result.accessTokenExpiresAtMs, null);
 
         const debugState = syncManager.getDebugState();
         assert.equal(debugState.activeUserId, null);
-        assert.equal(debugState.backendToken, null);
         assert.equal(Array.isArray(debugState.pendingOperations) && debugState.pendingOperations.length, 0);
-    });
-
-    test("ensureBackendToken requests a fresh credential when the stored one stops working", async () => {
-        const clock = new ClockStub("2023-11-14T21:00:00.000Z");
-        const exchangeHistory = [];
-        const snapshotTokens = [];
-        let initialSignIn = true;
-        let firstRefreshShouldFail = true;
-
-        const backendClient = {
-            async exchangeGoogleCredential({ credential }) {
-                exchangeHistory.push(credential);
-                if (initialSignIn) {
-                    initialSignIn = false;
-                    return { accessToken: "token-initial", expiresIn: 60 };
-                }
-                if (credential === "initial-credential" && firstRefreshShouldFail) {
-                    firstRefreshShouldFail = false;
-                    throw new Error("unauthorized");
-                }
-                if (credential === "fresh-credential") {
-                    return { accessToken: "token-refreshed", expiresIn: 60 };
-                }
-                throw new Error(`unexpected credential ${credential}`);
-            },
-            async syncOperations() {
-                return { results: [] };
-            },
-            async fetchSnapshot({ accessToken }) {
-                snapshotTokens.push(accessToken);
-                return { notes: [] };
-            }
-        };
-
-        let credentialRequests = 0;
-        const syncManager = createSyncManager({
-            backendClient,
-            clock: () => clock.now(),
-            randomUUID: () => "operation-1",
-            requestCredential: async () => {
-                credentialRequests += 1;
-                return "fresh-credential";
-            }
-        });
-
-        const signInResult = await syncManager.handleSignIn({
-            userId: "user-refresh",
-            credential: "initial-credential"
-        });
-
-        assert.equal(signInResult.authenticated, true);
-        assert.deepEqual(exchangeHistory, ["initial-credential"]);
-
-        clock.advance(120 * 1000);
-        const synchronizeResult = await syncManager.synchronize({ flushQueue: false });
-
-        assert.equal(synchronizeResult.queueFlushed, true);
-        assert.equal(credentialRequests, 1);
-        assert.deepEqual(exchangeHistory, ["initial-credential", "initial-credential", "fresh-credential"]);
-        assert.equal(snapshotTokens.at(-1), "token-refreshed");
-        assert.equal(snapshotTokens.includes("token-refreshed"), true);
-
-        const debugState = syncManager.getDebugState();
-        assert.equal(debugState.backendToken?.accessToken, "token-refreshed");
     });
 
     test("synchronize refreshes snapshot without flushing queue when requested", async () => {
         const calls = [];
         const backendClient = {
-            async exchangeGoogleCredential() {
-                return { accessToken: "sync-token", expiresIn: 600 };
-            },
             async syncOperations() {
                 calls.push("syncOperations");
                 return { results: [] };
@@ -254,94 +156,12 @@ test.describe("SyncManager", () => {
         };
 
         const syncManager = createSyncManager({ backendClient });
-        const signInResult = await syncManager.handleSignIn({ userId: "user-sync", credential: "credential" });
+        const signInResult = await syncManager.handleSignIn({ userId: "user-sync" });
         assert.equal(signInResult.authenticated, true);
-        assert.equal(Number.isFinite(signInResult.accessTokenExpiresAtMs), true);
 
         const synchronizeResult = await syncManager.synchronize({ flushQueue: false });
         assert.equal(synchronizeResult.snapshotApplied, true, "snapshot should apply during forced sync");
         assert.equal(calls.includes("fetchSnapshot"), true, "fetchSnapshot should be invoked");
         assert.equal(calls.includes("syncOperations"), false, "syncOperations should be skipped when flushing disabled");
-    });
-
-    test("synchronize refreshes expired backend tokens via credential exchange", async () => {
-        let nowMs = Date.parse("2023-11-14T21:00:00.000Z");
-        const exchanges = [];
-        const syncCalls = [];
-        const snapshotCalls = [];
-        const expirySequence = [120, 120, 120];
-        const backendClient = {
-            async exchangeGoogleCredential({ credential }) {
-                const expiresIn = expirySequence.shift() ?? 120;
-                exchanges.push({ credential, expiresIn });
-                return { accessToken: `token-${exchanges.length}`, expiresIn };
-            },
-            async syncOperations({ accessToken, operations }) {
-                syncCalls.push({ accessToken, operations });
-                return { results: [] };
-            },
-            async fetchSnapshot({ accessToken }) {
-                snapshotCalls.push(accessToken);
-                return { notes: [] };
-            }
-        };
-        const refreshedTokens = [];
-        const syncManager = createSyncManager({
-            backendClient,
-            clock: () => new Date(nowMs),
-            randomUUID: () => `operation-${syncCalls.length + 1}`,
-            onBackendTokenRefreshed: (token) => {
-                refreshedTokens.push(token);
-            }
-        });
-
-        const initialRecord = {
-            noteId: "note-refresh",
-            markdownText: "First draft",
-            createdAtIso: "2023-11-14T21:00:00.000Z",
-            updatedAtIso: "2023-11-14T21:00:00.000Z",
-            lastActivityIso: "2023-11-14T21:00:00.000Z"
-        };
-
-        GravityStore.upsertNonEmpty(initialRecord);
-
-        const signInResult = await syncManager.handleSignIn({
-            userId: "user-refresh",
-            credential: "credential-refresh"
-        });
-
-        assert.equal(signInResult.authenticated, true);
-        assert.equal(exchanges.length, 1);
-        assert.equal(refreshedTokens.length >= 1, true);
-        assert.equal(refreshedTokens[0].accessToken, "token-1");
-        assert.equal(signInResult.accessToken, "token-1");
-
-        nowMs += 130000;
-
-        const refreshedRecord = {
-            noteId: "note-refresh",
-            markdownText: "Updated draft",
-            createdAtIso: "2023-11-14T21:00:00.000Z",
-            updatedAtIso: "2023-11-14T21:00:02.000Z",
-            lastActivityIso: "2023-11-14T21:00:02.000Z"
-        };
-
-        GravityStore.upsertNonEmpty(refreshedRecord);
-        syncManager.recordLocalUpsert(refreshedRecord);
-
-        const synchronizeResult = await syncManager.synchronize();
-
-        assert.equal(synchronizeResult.queueFlushed, true);
-        assert.equal(exchanges.length >= 2, true, "token exchange should rerun when expiry reached");
-        assert.equal(syncCalls.length >= 1, true, "syncOperations should run after queuing update");
-        const latestAccessToken = refreshedTokens[refreshedTokens.length - 1].accessToken;
-        assert.equal(typeof latestAccessToken === "string" && latestAccessToken.length > 0, true);
-        assert.equal(syncCalls[syncCalls.length - 1].accessToken, latestAccessToken, "latest sync should use refreshed token");
-        assert.equal(snapshotCalls[snapshotCalls.length - 1], latestAccessToken, "snapshot refresh should reuse refreshed token");
-        assert.equal(refreshedTokens.length >= 2, true, "refresh callback should surface each new token");
-
-        const debugState = syncManager.getDebugState();
-        assert.equal(debugState.backendToken?.accessToken, latestAccessToken);
-        assert.equal(debugState.backendToken?.expiresAtMs > nowMs, true);
     });
 });

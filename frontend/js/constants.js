@@ -47,7 +47,6 @@ export const MESSAGE_FULLSCREEN_TOGGLE_FAILED = "Unable to toggle full screen mo
 
 export const FILENAME_EXPORT_NOTES_JSON = "gravity-notes.json";
 export const ACCEPT_IMPORT_NOTES_JSON = "application/json";
-export const STORAGE_KEY_AUTH_STATE = "gravityAuthState";
 
 export const ERROR_IMPORT_INVALID_PAYLOAD = "Imported file must contain a JSON array of notes.";
 export const ERROR_IMPORT_READ_FAILED = "Unable to read the selected import file.";
@@ -82,6 +81,7 @@ export const EVENT_NOTIFICATION_REQUEST = "gravity:notify";
 export const EVENT_AUTH_SIGN_IN = "gravity:auth-sign-in";
 export const EVENT_AUTH_SIGN_OUT = "gravity:auth-sign-out";
 export const EVENT_AUTH_ERROR = "gravity:auth-error";
+export const EVENT_AUTH_CREDENTIAL_RECEIVED = "gravity:auth-credential";
 export const EVENT_SYNC_SNAPSHOT_APPLIED = "gravity:sync-snapshot-applied";
 export const REALTIME_EVENT_NOTE_CHANGE = "note-change";
 export const REALTIME_EVENT_HEARTBEAT = "heartbeat";
