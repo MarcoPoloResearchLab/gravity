@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { createRealtimeSyncController } from "../js/core/realtimeSyncController.js";
 
-test.describe("RealtimeSyncController token expiry guard", () => {
+test.describe("RealtimeSyncController", () => {
     /** @type {typeof EventSource|undefined} */
     let originalEventSource;
 
@@ -22,45 +22,43 @@ test.describe("RealtimeSyncController token expiry guard", () => {
         FakeEventSource.reset();
     });
 
-    test("connect skips realtime stream when backend token already expired", () => {
-        let nowMs = Date.now();
+    test("connect opens a withCredentials EventSource", () => {
         const controller = createRealtimeSyncController({
-            syncManager: createNoopSyncManager(),
-            now: () => nowMs
+            syncManager: createNoopSyncManager()
         });
 
         controller.connect({
-            baseUrl: "https://example.test",
-            accessToken: "expired-token",
-            expiresAtMs: nowMs - 1000
+            baseUrl: "https://gravity.example"
         });
 
-        assert.equal(FakeEventSource.instances.length, 0, "EventSource should not start for expired token");
+        assert.equal(FakeEventSource.instances.length, 1, "connect should create an EventSource instance");
+        assert.equal(
+            FakeEventSource.instances[0].url,
+            "https://gravity.example/notes/stream",
+            "stream URL should target the backend"
+        );
+        assert.equal(
+            FakeEventSource.instances[0].init?.withCredentials,
+            true,
+            "EventSource should opt into cookie authentication"
+        );
         controller.dispose();
     });
 
-    test("connect disconnects realtime stream before backend token expiry", async () => {
-        let nowMs = Date.now();
+    test("disconnect closes the active EventSource", () => {
         const controller = createRealtimeSyncController({
-            syncManager: createNoopSyncManager(),
-            now: () => nowMs
+            syncManager: createNoopSyncManager()
         });
 
-        const expiresAtMs = nowMs + 1500;
         controller.connect({
-            baseUrl: "https://gravity.example",
-            accessToken: "live-token",
-            expiresAtMs
+            baseUrl: "https://gravity.example"
         });
+        assert.equal(FakeEventSource.instances.length, 1);
+        assert.equal(FakeEventSource.instances[0].closed, false, "EventSource should begin in an open state");
 
-        assert.equal(FakeEventSource.instances.length, 1, "EventSource should open when token is valid");
+        controller.disconnect();
 
-        // Advance the logical clock and wait for the expiry guard to execute.
-        nowMs = expiresAtMs + 10;
-        await delay(600);
-
-        assert.equal(FakeEventSource.instances.length, 1, "No additional reconnects should be attempted");
-        assert.equal(FakeEventSource.instances[0].closed, true, "EventSource should close before expiry");
+        assert.equal(FakeEventSource.instances[0].closed, true, "disconnect should close the EventSource");
         controller.dispose();
     });
 });
@@ -68,12 +66,13 @@ test.describe("RealtimeSyncController token expiry guard", () => {
 class FakeEventSource {
     /**
      * @param {string} url
-     * @param {{ withCredentials?: boolean }|undefined} _init
+     * @param {{ withCredentials?: boolean }|undefined} init
      */
-    constructor(url, _init) {
+    constructor(url, init = undefined) {
         this.url = url;
         this.closed = false;
         this.readyState = 0;
+        this.init = init;
         FakeEventSource.instances.push(this);
     }
 
@@ -108,14 +107,4 @@ function createNoopSyncManager() {
             return { queueFlushed: false, snapshotApplied: false };
         }
     };
-}
-
-/**
- * @param {number} milliseconds
- * @returns {Promise<void>}
- */
-function delay(milliseconds) {
-    return new Promise((resolve) => {
-        setTimeout(resolve, milliseconds);
-    });
 }

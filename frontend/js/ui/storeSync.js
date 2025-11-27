@@ -4,6 +4,8 @@ import { GravityStore } from "../core/store.js?build=2024-10-05T12:00:00Z";
 import { nowIso } from "../utils/datetime.js?build=2024-10-05T12:00:00Z";
 import { collectReferencedAttachments } from "./imagePaste.js?build=2024-10-05T12:00:00Z";
 
+const debugEnabled = () => typeof globalThis !== "undefined" && globalThis.__debugSyncScenarios === true;
+
 /**
  * Synchronize the DOM order of cards back into storage.
  * @param {HTMLElement} container
@@ -48,6 +50,15 @@ export function syncStoreFromDom(container, overrides = {}) {
             mergedRecord.lastActivityIso = timestamp;
         }
         nextRecords.push(mergedRecord);
+    }
+    if (debugEnabled()) {
+        try {
+            const storageKey = GravityStore.getActiveStorageKey?.() ?? null;
+            const identifiers = nextRecords.map((record) => record.noteId);
+            console.log("syncStoreFromDom.save", storageKey, identifiers);
+        } catch {
+            // ignore console failures in debug logging
+        }
     }
     GravityStore.saveAllNotes(nextRecords);
 }

@@ -59,13 +59,15 @@ Developers and curious tinkerers can find project structure, dependencies, and r
 
 Run the full application locally (frontend, backend, and the new TAuth service) via Docker:
 
-1. Copy the sample environment files and customize secrets as needed:
-   - `cp backend/env.example backend/.env`
-   - `cp tauth/env.example tauth/.env`
+1. Copy the environment files and customize secrets as needed:
+   - `cp .env.gravity.example .env.gravity`
+   - `cp .env.tauth.example .env.tauth`
 
-   Make sure `GRAVITY_TAUTH_*` and `APP_*` entries share the same signing secret, issuer, cookie name, and Google OAuth Web Client ID so both services trust the same credentials.
+   Keep `GRAVITY_TAUTH_SIGNING_SECRET` in sync with `APP_JWT_SIGNING_KEY` so Gravity and TAuth agree on JWT signatures.
 
-2. Start the stack: `docker compose -f docker-compose.dev.yml up --build`
+2. Start the stack with the development profile (local backend build): `docker compose --profile dev up --build`
+
+   Switch to the docker profile (`docker compose --profile docker up`) to run everything from prebuilt GHCR images.
 
 The compose file exposes:
 
@@ -74,3 +76,11 @@ The compose file exposes:
 - TAuth (nonce + Google exchange + auth-client.js) at `http://localhost:8082`
 
 Runtime configuration files under `frontend/data/` now include `authBaseUrl`, so the browser can discover which TAuth origin to contact for `/auth/nonce`, `/auth/google`, and `/auth/logout` once the frontend wiring lands. Update `frontend/data/runtime.config.production.json` if your deployment uses a different TAuth hostname.
+
+### Authentication Contract
+
+- Gravity no longer exchanges Google credentials itself. The browser loads `https://<tauth-origin>/static/auth-client.js`, fetches a nonce from `/auth/nonce`, and lets TAuth exchange the Google credential at `/auth/google`.
+- TAuth mints two cookies: `app_session` (short-lived HS256 JWT) and `app_refresh` (long-lived refresh token). Every request from the UI includes `app_session` automatically, so the Gravity backend simply validates the JWT using `GRAVITY_TAUTH_SIGNING_SECRET` / `GRAVITY_TAUTH_ISSUER`. No bearer tokens or local storage is used.
+- When a request returns `401`, the browser calls `/auth/refresh` on the TAuth origin; a fresh `app_session` cookie is minted and the original request is retried.
+- Signing out in the UI calls `/auth/logout`, revokes the refresh token, clears both cookies, and returns Gravity to the anonymous notebook.
+- The backend maintains its own canonical user table (`user_identities`) so every identity provider subject (e.g., `google:1234567890`) maps to the same Gravity user id. That gives us flexibility to add Apple/email logins later without touching the notes schema.

@@ -10,12 +10,10 @@ import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
 const RECONNECT_BASE_DELAY_MS = 1000;
 const RECONNECT_MAX_DELAY_MS = 30000;
 const FALLBACK_POLL_INTERVAL_MS = 3000;
-const TOKEN_EXPIRY_SKEW_MS = 1000;
-
 /**
  * Create a realtime synchronization controller.
  * @param {{ syncManager: ReturnType<typeof import("./syncManager.js").createSyncManager>, now?: () => number }} options
- * @returns {{ connect(params: { baseUrl: string, accessToken: string, expiresAtMs?: number|null }): void, disconnect(): void, dispose(): void }}
+ * @returns {{ connect(params: { baseUrl: string }): void, disconnect(): void, dispose(): void }}
  */
 export function createRealtimeSyncController(options) {
     const syncManager = options?.syncManager ?? null;
@@ -26,42 +24,27 @@ export function createRealtimeSyncController(options) {
 
     /** @type {EventSource|null} */
     let source = null;
-    /** @type {{ baseUrl: string, accessToken: string, expiresAtMs: number|null }|null} */
+    /** @type {{ baseUrl: string }|null} */
     let activeConfig = null;
     /** @type {number|null} */
     let reconnectTimer = null;
     /** @type {number|null} */
     let pollTimer = null;
-    /** @type {number|null} */
-    let expiryTimer = null;
     let reconnectDelayMs = RECONNECT_BASE_DELAY_MS;
 
     function connect(params) {
         const baseUrl = typeof params?.baseUrl === "string" ? params.baseUrl.trim() : "";
-        const accessToken = typeof params?.accessToken === "string" ? params.accessToken.trim() : "";
-        if (!baseUrl || !accessToken) {
+        if (!baseUrl) {
             return;
         }
-        const expiresAtMs = typeof params?.expiresAtMs === "number" && Number.isFinite(params.expiresAtMs)
-            ? params.expiresAtMs
-            : null;
-        if (hasTokenExpired(expiresAtMs)) {
-            disconnect();
-            return;
-        }
-        activeConfig = { baseUrl, accessToken, expiresAtMs };
+        activeConfig = { baseUrl };
         reconnectDelayMs = RECONNECT_BASE_DELAY_MS;
         schedulePolling();
-        scheduleExpiryGuard();
         establishConnection();
     }
 
     function establishConnection() {
         if (!activeConfig) {
-            return;
-        }
-        if (hasTokenExpired(activeConfig.expiresAtMs)) {
-            disconnect();
             return;
         }
         clearReconnectTimer();
@@ -71,8 +54,8 @@ export function createRealtimeSyncController(options) {
         }
 
         try {
-            const streamUrl = composeStreamUrl(activeConfig.baseUrl, activeConfig.accessToken);
-            source = new EventSource(streamUrl, { withCredentials: false });
+            const streamUrl = composeStreamUrl(activeConfig.baseUrl);
+            source = new EventSource(streamUrl, { withCredentials: true });
         } catch (error) {
             logging.error("Failed to open realtime stream", error);
             scheduleReconnect();
@@ -90,7 +73,6 @@ export function createRealtimeSyncController(options) {
             logging.error("Realtime stream encountered an error");
             scheduleReconnect();
         };
-        scheduleExpiryGuard();
     }
 
     /**
@@ -118,7 +100,6 @@ export function createRealtimeSyncController(options) {
     function disconnect() {
         clearReconnectTimer();
         clearPollingTimer();
-        clearExpiryGuard();
         if (source) {
             source.close();
             source = null;
@@ -169,40 +150,6 @@ export function createRealtimeSyncController(options) {
         }
     }
 
-    function scheduleExpiryGuard() {
-        clearExpiryGuard();
-        if (!activeConfig || typeof activeConfig.expiresAtMs !== "number") {
-            return;
-        }
-        const remaining = activeConfig.expiresAtMs - TOKEN_EXPIRY_SKEW_MS - now();
-        if (remaining <= 0) {
-            disconnect();
-            return;
-        }
-        expiryTimer = setTimeout(() => {
-            expiryTimer = null;
-            disconnect();
-        }, remaining);
-    }
-
-    function clearExpiryGuard() {
-        if (expiryTimer !== null) {
-            clearTimeout(expiryTimer);
-            expiryTimer = null;
-        }
-    }
-
-    /**
-     * @param {number|null} expiresAtMs
-     * @returns {boolean}
-     */
-    function hasTokenExpired(expiresAtMs) {
-        if (typeof expiresAtMs !== "number") {
-            return false;
-        }
-        return expiresAtMs - TOKEN_EXPIRY_SKEW_MS <= now();
-    }
-
     return Object.freeze({
         connect,
         disconnect,
@@ -212,13 +159,11 @@ export function createRealtimeSyncController(options) {
 
 /**
  * @param {string} baseUrl
- * @param {string} accessToken
  * @returns {string}
  */
-function composeStreamUrl(baseUrl, accessToken) {
+function composeStreamUrl(baseUrl) {
     const normalized = baseUrl.replace(/\/+$/u, "");
-    const separator = normalized.includes("?") ? "&" : "?";
-    return `${normalized}/notes/stream${separator}access_token=${encodeURIComponent(accessToken)}`;
+    return `${normalized}/notes/stream`;
 }
 
 /**
