@@ -33,6 +33,7 @@ import { syncStoreFromDom } from "../storeSync.js?build=2024-10-05T12:00:00Z";
 const htmlViewBubbleTimers = new WeakMap();
 const htmlViewFocusTargets = new WeakMap();
 const expandToggleAlignmentDisposers = new WeakMap();
+const htmlViewOverflowMonitors = new WeakMap();
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const HTML_VIEW_TOGGLE_HOVER_CLASS = "note-html-view--toggle-hover";
 
@@ -190,6 +191,7 @@ export function deleteHtmlView(card) {
         return;
     }
     cleanupExpandToggleAlignment(wrapper);
+    cleanupHtmlViewOverflowMonitor(wrapper);
     wrapper.remove();
 }
 
@@ -476,70 +478,184 @@ export function scheduleHtmlViewOverflowCheck(wrapper, content, toggle) {
         }
         return;
     }
+    const monitor = ensureHtmlViewOverflowMonitor(wrapper, content, toggle);
+    monitor.measureSoon();
+}
 
-    const card = /** @type {HTMLElement|null} */ (wrapper.closest(".markdown-block"));
+function ensureHtmlViewOverflowMonitor(wrapper, content, toggle) {
+    let monitor = htmlViewOverflowMonitors.get(wrapper);
+    if (!monitor) {
+        monitor = createHtmlViewOverflowMonitor(wrapper, content, toggle);
+        htmlViewOverflowMonitors.set(wrapper, monitor);
+    } else {
+        monitor.update(content, toggle);
+    }
+    return monitor;
+}
 
-    const applyMeasurements = () => {
-        const isExpanded = wrapper.classList.contains("note-html-view--expanded");
-        const overflowDelta = content.scrollHeight - wrapper.clientHeight;
-        const overflowing = isExpanded || overflowDelta > 0.5;
-        wrapper.classList.toggle("note-html-view--overflow", overflowing && !isExpanded);
+function cleanupHtmlViewOverflowMonitor(wrapper) {
+    const monitor = htmlViewOverflowMonitors.get(wrapper);
+    if (monitor) {
+        monitor.dispose();
+    }
+}
 
-        if (toggle instanceof HTMLElement) {
-            toggle.hidden = !overflowing;
-            toggle.style.display = overflowing ? "flex" : "none";
-            if (toggle.hidden) {
-                toggle.setAttribute("aria-expanded", "false");
-                toggle.setAttribute("aria-label", LABEL_EXPAND_NOTE);
-            } else if (isExpanded) {
-                toggle.setAttribute("aria-expanded", "true");
-                toggle.setAttribute("aria-label", LABEL_COLLAPSE_NOTE);
-            } else {
-                toggle.setAttribute("aria-expanded", "false");
-                toggle.setAttribute("aria-label", LABEL_EXPAND_NOTE);
-            }
+function createHtmlViewOverflowMonitor(wrapper, content, toggle) {
+    let currentContent = content;
+    let currentToggle = toggle instanceof HTMLElement ? toggle : null;
+    const cleanupCallbacks = [];
+    let disposed = false;
+    let pendingInitialMeasurements = true;
+
+    if (currentToggle) {
+        currentToggle.hidden = true;
+        currentToggle.style.display = "none";
+    }
+
+    const runMeasurements = () => {
+        if (disposed) {
+            return;
         }
+        applyHtmlViewOverflowMeasurements(wrapper, currentContent, currentToggle);
+    };
 
-        if (!overflowing && isExpanded) {
-            wrapper.classList.remove("note-html-view--expanded");
-            if (card instanceof HTMLElement) {
-                card.dataset.htmlViewExpanded = "false";
-            }
-            if (toggle instanceof HTMLElement) {
-                toggle.setAttribute("aria-expanded", "false");
-                toggle.setAttribute("aria-label", LABEL_EXPAND_NOTE);
-                toggle.style.display = "none";
-            }
+    const scheduleMeasurements = () => {
+        if (disposed) {
+            return;
         }
-
-        if (overflowing && card instanceof HTMLElement && card.dataset.htmlViewExpanded === "true") {
-            wrapper.classList.add("note-html-view--expanded");
-            if (toggle instanceof HTMLElement) {
-                toggle.setAttribute("aria-expanded", "true");
-                toggle.setAttribute("aria-label", LABEL_COLLAPSE_NOTE);
-                toggle.style.display = "flex";
-                toggle.hidden = false;
+        if (typeof requestAnimationFrame === "function") {
+            requestAnimationFrame(() => {
+                runMeasurements();
+                if (pendingInitialMeasurements) {
+                    requestAnimationFrame(() => {
+                        pendingInitialMeasurements = false;
+                        runMeasurements();
+                    });
+                }
+            });
+        } else {
+            runMeasurements();
+            if (pendingInitialMeasurements) {
+                pendingInitialMeasurements = false;
+                runMeasurements();
             }
-        }
-
-        if (card instanceof HTMLElement) {
-            queueExpandToggleAlignment(card);
         }
     };
 
+    const attachObservers = () => {
+        if (typeof ResizeObserver !== "undefined") {
+            const resizeObserver = new ResizeObserver(scheduleMeasurements);
+            resizeObserver.observe(wrapper);
+            if (currentContent instanceof HTMLElement) {
+                resizeObserver.observe(currentContent);
+            }
+            cleanupCallbacks.push(() => resizeObserver.disconnect());
+        }
+        if (typeof MutationObserver !== "undefined" && currentContent instanceof HTMLElement) {
+            const mutationObserver = new MutationObserver(scheduleMeasurements);
+            mutationObserver.observe(currentContent, { childList: true, subtree: true, characterData: true });
+            cleanupCallbacks.push(() => mutationObserver.disconnect());
+        }
+    };
+
+    attachObservers();
+    scheduleMeasurements();
+
+    return {
+        measureSoon: scheduleMeasurements,
+        update(nextContent, nextToggle) {
+            if (disposed) {
+                return;
+            }
+            let shouldReobserve = false;
+            if (nextContent instanceof HTMLElement && nextContent !== currentContent) {
+                currentContent = nextContent;
+                shouldReobserve = true;
+            }
+            if (nextToggle instanceof HTMLElement) {
+                currentToggle = nextToggle;
+            }
+            if (shouldReobserve) {
+                while (cleanupCallbacks.length > 0) {
+                    const cleanup = cleanupCallbacks.pop();
+                    if (typeof cleanup === "function") {
+                        cleanup();
+                    }
+                }
+                attachObservers();
+            }
+            pendingInitialMeasurements = true;
+            scheduleMeasurements();
+        },
+        dispose() {
+            if (disposed) {
+                return;
+            }
+            disposed = true;
+            while (cleanupCallbacks.length > 0) {
+                const cleanup = cleanupCallbacks.pop();
+                if (typeof cleanup === "function") {
+                    cleanup();
+                }
+            }
+            htmlViewOverflowMonitors.delete(wrapper);
+        }
+    };
+}
+
+function applyHtmlViewOverflowMeasurements(wrapper, content, toggle) {
+    if (!(wrapper instanceof HTMLElement) || !(content instanceof HTMLElement)) {
+        if (toggle instanceof HTMLElement) {
+            toggle.hidden = true;
+        }
+        return;
+    }
+    const card = /** @type {HTMLElement|null} */ (wrapper.closest(".markdown-block"));
+    const isExpanded = wrapper.classList.contains("note-html-view--expanded");
+    const overflowDelta = content.scrollHeight - wrapper.clientHeight;
+    const overflowing = isExpanded || overflowDelta > 0.5;
+    wrapper.classList.toggle("note-html-view--overflow", overflowing && !isExpanded);
+
     if (toggle instanceof HTMLElement) {
-        toggle.hidden = true;
-        toggle.style.display = "none";
+        toggle.hidden = !overflowing;
+        toggle.style.display = overflowing ? "flex" : "none";
+        if (toggle.hidden) {
+            toggle.setAttribute("aria-expanded", "false");
+            toggle.setAttribute("aria-label", LABEL_EXPAND_NOTE);
+        } else if (isExpanded) {
+            toggle.setAttribute("aria-expanded", "true");
+            toggle.setAttribute("aria-label", LABEL_COLLAPSE_NOTE);
+        } else {
+            toggle.setAttribute("aria-expanded", "false");
+            toggle.setAttribute("aria-label", LABEL_EXPAND_NOTE);
+        }
     }
 
-    if (wrapper.clientHeight > 0) {
-        applyMeasurements();
+    if (!overflowing && isExpanded) {
+        wrapper.classList.remove("note-html-view--expanded");
+        if (card instanceof HTMLElement) {
+            card.dataset.htmlViewExpanded = "false";
+        }
+        if (toggle instanceof HTMLElement) {
+            toggle.setAttribute("aria-expanded", "false");
+            toggle.setAttribute("aria-label", LABEL_EXPAND_NOTE);
+            toggle.style.display = "none";
+        }
     }
 
-    requestAnimationFrame(() => {
-        applyMeasurements();
-        requestAnimationFrame(applyMeasurements);
-    });
+    if (overflowing && card instanceof HTMLElement && card.dataset.htmlViewExpanded === "true") {
+        wrapper.classList.add("note-html-view--expanded");
+        if (toggle instanceof HTMLElement) {
+            toggle.setAttribute("aria-expanded", "true");
+            toggle.setAttribute("aria-label", LABEL_COLLAPSE_NOTE);
+            toggle.style.display = "flex";
+            toggle.hidden = false;
+        }
+    }
+
+    if (card instanceof HTMLElement) {
+        queueExpandToggleAlignment(card);
+    }
 }
 
 /**
