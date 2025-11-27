@@ -3,7 +3,6 @@
 import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
 
 /**
- * @typedef {{ accessToken: string, expiresIn: number }} BackendToken
  * @typedef {{ operation: "upsert"|"delete", note_id: string, client_edit_seq: number, client_device?: string, client_time_s?: number, created_at_s?: number, updated_at_s?: number, payload?: unknown }} SyncOperation
  */
 
@@ -12,62 +11,22 @@ import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
  * @param {{ baseUrl?: string, fetchImplementation?: typeof fetch }} options
  */
 export function createBackendClient(options = {}) {
-    const {
-        baseUrl = "",
-        fetchImplementation = typeof fetch === "function" ? fetch : null
-    } = options;
-
-    if (!fetchImplementation) {
-        throw new Error("Backend client requires a fetch implementation.");
-    }
-
-    const normalizedBase = normalizeBaseUrl(baseUrl);
+    const normalizedBase = normalizeBaseUrl(options.baseUrl ?? "");
+    const runtimeFetch = resolveFetchImplementation(options.fetchImplementation);
 
     return Object.freeze({
         /**
-         * Exchange a Google credential for a backend token.
-         * @param {{ credential: string }} params
-         * @returns {Promise<BackendToken>}
-         */
-        async exchangeGoogleCredential(params) {
-            const response = await fetchImplementation(
-                `${normalizedBase}/auth/google`,
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({ id_token: params.credential })
-                }
-            );
-            const payload = await parseJson(response);
-            if (!response.ok) {
-                throw new Error(payload?.error ?? "Failed to exchange credential.");
-            }
-            const accessToken = typeof payload?.access_token === "string" ? payload.access_token : null;
-            const expiresIn = Number.parseInt(payload?.expires_in ?? "0", 10);
-            if (!accessToken || Number.isNaN(expiresIn)) {
-                throw new Error("Backend returned an invalid token response.");
-            }
-            return { accessToken, expiresIn };
-        },
-
-        /**
          * Submit queued operations to the backend.
-         * @param {{ accessToken: string, operations: SyncOperation[] }} params
+         * @param {{ operations: SyncOperation[] }} params
          * @returns {Promise<{ results: Array<Record<string, unknown>> }>}
          */
         async syncOperations(params) {
-            const response = await fetchImplementation(
+            const response = await runtimeFetch(
                 `${normalizedBase}/notes/sync`,
-                {
+                buildFetchOptions({
                     method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": `Bearer ${params.accessToken}`
-                    },
                     body: JSON.stringify({ operations: params.operations })
-                }
+                })
             );
             const payload = await parseJson(response);
             if (!response.ok) {
@@ -78,18 +37,14 @@ export function createBackendClient(options = {}) {
 
         /**
          * Retrieve the canonical note snapshot for the active user.
-         * @param {{ accessToken: string }} params
          * @returns {Promise<{ notes: Array<Record<string, unknown>> }>}
          */
-        async fetchSnapshot(params) {
-            const response = await fetchImplementation(
+        async fetchSnapshot() {
+            const response = await runtimeFetch(
                 `${normalizedBase}/notes`,
-                {
-                    method: "GET",
-                    headers: {
-                        "Authorization": `Bearer ${params.accessToken}`
-                    }
-                }
+                buildFetchOptions({
+                    method: "GET"
+                })
             );
             const payload = await parseJson(response);
             if (!response.ok) {
@@ -98,6 +53,37 @@ export function createBackendClient(options = {}) {
             return payload;
         }
     });
+}
+
+function resolveFetchImplementation(customFetch) {
+    if (typeof customFetch === "function") {
+        return customFetch;
+    }
+    if (typeof globalThis !== "undefined" && typeof globalThis.apiFetch === "function") {
+        return globalThis.apiFetch.bind(globalThis);
+    }
+    if (typeof fetch === "function") {
+        return fetch.bind(globalThis);
+    }
+    throw new Error("Backend client requires a fetch implementation.");
+}
+
+/**
+ * @param {{ method?: string, headers?: Record<string, string>, body?: BodyInit | null }} init
+ * @returns {RequestInit}
+ */
+function buildFetchOptions(init = {}) {
+    const headers = { ...(init.headers ?? {}) };
+    const method = typeof init.method === "string" ? init.method.toUpperCase() : "GET";
+    if (method === "POST" || method === "PUT" || method === "PATCH") {
+        headers["Content-Type"] = headers["Content-Type"] ?? "application/json";
+    }
+    return {
+        ...init,
+        method,
+        headers,
+        credentials: "include"
+    };
 }
 
 /**

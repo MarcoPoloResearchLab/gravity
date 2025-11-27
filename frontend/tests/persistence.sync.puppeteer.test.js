@@ -8,8 +8,8 @@ import {
     dispatchSignIn,
     waitForSyncManagerUser,
     waitForPendingOperations,
-    extractSyncDebugState,
-    dispatchNoteCreate
+    dispatchNoteCreate,
+    attachBackendSessionCookie
 } from "./helpers/syncTestUtils.js";
 import { startTestBackend, waitForBackendNote } from "./helpers/backendHarness.js";
 import { connectSharedBrowser } from "./helpers/browserHarness.js";
@@ -24,7 +24,7 @@ const NOTE_MARKDOWN = "Backend persisted note";
 const SYNC_POLL_TIMEOUT_MS = 10000;
 
 test.describe("Backend persistence", () => {
-    /** @type {{ baseUrl: string, tokenFactory: (userId: string) => string, close: () => Promise<void> }|null} */
+    /** @type {{ baseUrl: string, tokenFactory: (userId: string) => string, createSessionToken: (userId: string) => string, cookieName: string, close: () => Promise<void> }|null} */
     let backendContext = null;
 
     test.before(async () => {
@@ -53,6 +53,7 @@ test.describe("Backend persistence", () => {
 
         try {
             await dispatchSignIn(pageA, credentialA, TEST_USER_ID);
+            await attachBackendSessionCookie(pageA, backendContext, TEST_USER_ID);
             await waitForSyncManagerUser(pageA, TEST_USER_ID);
             await waitForPendingOperations(pageA);
 
@@ -70,13 +71,10 @@ test.describe("Backend persistence", () => {
             });
             await waitForPendingOperations(pageA);
 
-            const debugState = await extractSyncDebugState(pageA);
-            const backendToken = debugState?.backendToken?.accessToken;
-            assert.ok(backendToken, "backend token should be available after sign-in");
-
             await waitForBackendNote({
                 backendUrl: backendContext.baseUrl,
-                token: backendToken,
+                sessionToken: backendContext.createSessionToken(TEST_USER_ID),
+                cookieName: backendContext.cookieName,
                 noteId: NOTE_IDENTIFIER
             });
 
@@ -88,6 +86,7 @@ test.describe("Backend persistence", () => {
             });
 
             await dispatchSignIn(pageB, credentialB, TEST_USER_ID);
+            await attachBackendSessionCookie(pageB, backendContext, TEST_USER_ID);
             await waitForSyncManagerUser(pageB, TEST_USER_ID);
             await waitForPendingOperations(pageB);
             await pageB.waitForSelector(".auth-avatar:not([hidden])");

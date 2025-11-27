@@ -4,7 +4,8 @@ import test from "node:test";
 import { appConfig } from "../js/core/config.js";
 import {
     EVENT_AUTH_SIGN_IN,
-    EVENT_AUTH_SIGN_OUT
+    EVENT_AUTH_SIGN_OUT,
+    EVENT_AUTH_CREDENTIAL_RECEIVED
 } from "../js/constants.js";
 import { createGoogleIdentityController, isGoogleIdentitySupportedOrigin } from "../js/core/auth.js";
 
@@ -42,10 +43,10 @@ test("createGoogleIdentityController initializes GSI and dispatches auth events"
     };
 
     const eventTarget = new EventTarget();
-    const signInEvents = [];
+    const credentialEvents = [];
     const signOutEvents = [];
-    eventTarget.addEventListener(EVENT_AUTH_SIGN_IN, (event) => {
-        signInEvents.push(event.detail);
+    eventTarget.addEventListener(EVENT_AUTH_CREDENTIAL_RECEIVED, (event) => {
+        credentialEvents.push(event.detail);
     });
     eventTarget.addEventListener(EVENT_AUTH_SIGN_OUT, (event) => {
         signOutEvents.push(event.detail);
@@ -66,13 +67,14 @@ test("createGoogleIdentityController initializes GSI and dispatches auth events"
     assert.equal(renderCalls.length, 1);
     assert.equal(renderCalls[0].target, buttonElement);
 
-    assert.equal(signInEvents.length, 0);
+    assert.equal(credentialEvents.length, 0);
 
     const credential = buildCredential(SAMPLE_USER);
     initializeOptions.callback({ credential });
 
-    assert.equal(signInEvents.length, 1);
-    assert.deepEqual(signInEvents[0].user, {
+    assert.equal(credentialEvents.length, 1);
+    assert.equal(credentialEvents[0].credential, credential);
+    assert.deepEqual(credentialEvents[0].user, {
         id: SAMPLE_USER.sub,
         email: SAMPLE_USER.email,
         name: SAMPLE_USER.name,

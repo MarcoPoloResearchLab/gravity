@@ -3,15 +3,17 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
+import { EVENT_AUTH_CREDENTIAL_RECEIVED } from "../js/constants.js";
 import { startTestBackend, waitForBackendNote } from "./helpers/backendHarness.js";
 import {
     prepareFrontendPage,
-    dispatchSignIn,
     waitForSyncManagerUser,
     waitForPendingOperations,
-    extractSyncDebugState
+    waitForTAuthSession,
+    composeTestCredential
 } from "./helpers/syncTestUtils.js";
 import { connectSharedBrowser } from "./helpers/browserHarness.js";
+import { installTAuthHarness } from "./helpers/tauthHarness.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
@@ -49,14 +51,43 @@ test.describe("UI sync integration", () => {
         const context = await browser.createBrowserContext();
 
         const userId = "ui-sync-user";
-        const credential = backendContext.tokenFactory(userId);
-
         const page = await prepareFrontendPage(context, PAGE_URL, {
             backendBaseUrl: backendContext.baseUrl,
-            llmProxyUrl: ""
+            llmProxyUrl: "",
+            authBaseUrl: backendContext.baseUrl,
+            beforeNavigate: async (targetPage) => {
+                await installTAuthHarness(targetPage, {
+                    baseUrl: backendContext.baseUrl,
+                    cookieName: backendContext.cookieName,
+                    mintSessionToken: backendContext.createSessionToken
+                });
+            }
         });
         try {
-            await dispatchSignIn(page, credential, userId);
+            await waitForTAuthSession(page);
+            await page.evaluate((eventName, detail) => {
+                const target = document.querySelector("body");
+                if (!target) {
+                    throw new Error("Application root missing");
+                }
+                target.dispatchEvent(new CustomEvent(eventName, {
+                    bubbles: true,
+                    detail
+                }));
+            }, EVENT_AUTH_CREDENTIAL_RECEIVED, {
+                credential: composeTestCredential({
+                    userId,
+                    email: `${userId}@example.com`,
+                    name: "UI Sync User",
+                    pictureUrl: "https://example.com/avatar.png"
+                }),
+                user: {
+                    id: userId,
+                    email: `${userId}@example.com`,
+                    name: "UI Sync User",
+                    pictureUrl: "https://example.com/avatar.png"
+                }
+            });
             await waitForSyncManagerUser(page, userId);
 
             const editorSelector = "#top-editor .markdown-editor";
@@ -93,13 +124,10 @@ test.describe("UI sync integration", () => {
             assert.ok(typeof createdNote.noteId === "string" && createdNote.noteId.length > 0, "note id should be set");
 
             await waitForPendingOperations(page);
-            const debugState = await extractSyncDebugState(page);
-            const backendToken = debugState?.backendToken?.accessToken;
-            assert.ok(backendToken, "expected backend token after sync");
-
             await waitForBackendNote({
                 backendUrl: backendContext.baseUrl,
-                token: backendToken,
+                sessionToken: backendContext.createSessionToken(userId),
+                cookieName: backendContext.cookieName,
                 noteId: createdNote.noteId
             });
         } finally {

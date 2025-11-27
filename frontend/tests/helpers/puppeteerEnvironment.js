@@ -107,6 +107,7 @@ export function createSandboxedLaunchOptions(sandbox, overrides) {
         "--allow-file-access-from-files",
         "--disable-crashpad",
         "--disable-features=Crashpad",
+        "--disable-features=SameSiteByDefaultCookies,CookiesWithoutSameSiteMustBeSecure",
         "--noerrdialogs",
         "--no-crash-upload",
         "--enable-crash-reporter=0",

@@ -77,7 +77,8 @@ EasyMDE produces markdown, marked renders it to HTML, and DOMPurify sanitises th
 - `createNoteRecord` validates note identifiers/markdown before writes so malformed payloads never hit storage.
 - `GravityStore.setUserScope(userId)` switches the storage namespace so each Google account receives an isolated notebook.
 - Runtime configuration loads from environment-specific JSON files under `data/`, selected according to the active hostname. Each profile now surfaces `authBaseUrl` so the frontend knows which TAuth origin to contact when requesting `/auth/nonce`, `/auth/google`, and `/auth/logout`.
-- Authentication flows through Google Identity Services with `appConfig.googleClientId`, replaying sessions on reload.
+- Authentication flows through Google Identity Services + TAuth: the browser loads `authBaseUrl/static/auth-client.js`, fetches a nonce from `/auth/nonce`, exchanges Google credentials at `/auth/google`, and refreshes the session via `/auth/refresh`. The frontend never sends Google tokens to the Gravity backend; every API request simply carries the `app_session` cookie minted by TAuth and validated locally via HS256.
+- The backend records a canonical user table (`user_identities`) so each `(provider, subject)` pair (for example `google:1234567890`) maps to a stable Gravity `user_id`. That allows multiple login providers to point at the same notebook without rewriting note rows.
 
 #### Frontend Dependencies
 
@@ -90,8 +91,8 @@ EasyMDE produces markdown, marked renders it to HTML, and DOMPurify sanitises th
 
 ### Backend (Go)
 
-- HTTP API (Gin): `/auth/google` (GSI credential exchange), `/notes` (snapshot), `/notes/sync` (ops queue).
-- Auth: verify Google ID tokens, then issue backend JWTs (HS256) with configurable TTL via Viper.
+- HTTP API (Gin): `/notes` (snapshot), `/notes/sync` (ops queue), `/notes/stream` (SSE).
+- Auth: accept the `app_session` cookie minted by TAuth (or a fallback `Authorization: Bearer <token>` header) and validate HS256 signatures using the shared TAuth signing secret + issuer. No Gravity-managed `/auth/google` endpoint remains.
 - Data: GORM + SQLite (CGO-free driver) with `notes` and append-only `note_changes` tables for idempotency and audit.
 - Conflict strategy: `(client_edit_seq, updated_at)` precedence; server `version` remains monotonic per note.
 - Layout: Cobra CLI under `cmd/`, domain packages in `internal/`, zap for logging, configuration via Viper.
@@ -103,9 +104,10 @@ EasyMDE produces markdown, marked renders it to HTML, and DOMPurify sanitises th
 
 #### Configuration
 
-- `GRAVITY_GOOGLE_CLIENT_ID` — OAuth client ID expected by Google Identity Services.
-- `GRAVITY_AUTH_SIGNING_SECRET` — HS256 secret that signs issued JWTs.
-- Optional overrides: `GRAVITY_HTTP_ADDRESS` (default `0.0.0.0:8080`), `GRAVITY_GOOGLE_JWKS_URL`, `GRAVITY_DATABASE_PATH` (default `gravity.db`), `GRAVITY_TOKEN_TTL_MINUTES` (default `30`), `GRAVITY_LOG_LEVEL` (default `info`).
+- `GRAVITY_TAUTH_SIGNING_SECRET` — HS256 secret shared with TAuth; used to validate session cookies (required).
+- `GRAVITY_TAUTH_ISSUER` — Optional override for the expected issuer embedded in the TAuth JWT (defaults to `mprlab-auth`).
+- `GRAVITY_TAUTH_COOKIE_NAME` — Optional override for the cookie carrying the session JWT (defaults to `app_session`).
+- Optional overrides: `GRAVITY_HTTP_ADDRESS` (default `0.0.0.0:8080`), `GRAVITY_DATABASE_PATH` (default `gravity.db`), `GRAVITY_LOG_LEVEL` (default `info`).
 
 #### Local Execution
 
@@ -116,11 +118,8 @@ go run ./cmd/gravity-api --http-address :8080
 
 #### API Overview
 
-- `POST /auth/google`
-  - Request body: `{ "id_token": "<GSI ID token>" }`
-  - Flow: verifies the Google token offline via JWKS and returns `{ "access_token": "<jwt>", "expires_in": 1800 }`.
 - `POST /notes/sync`
-  - Requires `Authorization: Bearer <jwt>` header (the token issued by `/auth/google`).
+  - Requires the `app_session` cookie (preferred) or an `Authorization: Bearer <jwt>` header containing the TAuth session token.
   - Request body: `{ "operations": [{ "note_id": "uuid", "operation": "upsert" | "delete", "client_edit_seq": 1, "client_device": "web", "client_time_s": 1700000000, "created_at_s": 1700000000, "updated_at_s": 1700000000, "payload": { … } }] }`
   - Response: `{ "results": [{ "note_id": "uuid", "accepted": true, "version": 1, "updated_at_s": 1700000000, "last_writer_edit_seq": 1, "is_deleted": false, "payload": { … } }] }` where rejected changes return the authoritative server copy for reconciliation.
 
@@ -129,7 +128,7 @@ Conflict resolution follows the documented `(client_edit_seq, updated_at)` prece
 ### Client Sync Semantics
 
 - Queue `upsert` / `delete` operations with `client_edit_seq`, `client_time_s`, `updated_at_s`, and payload metadata.
-- On sign-in: exchange the Google credential for a backend token, flush the queue, fetch the snapshot, and re-render.
+- On sign-in: TAuth issues the `app_session` cookie after verifying the Google credential. Browser requests automatically include this cookie, so the frontend no longer exchanges credentials with the Gravity backend.
 - Classification flows through the proxy client with timeouts; when disabled or failing, conservative local defaults win.
 
 #### Runtime Configuration Profiles
@@ -156,6 +155,13 @@ Profiles live under `frontend/data/runtime.config.<environment>.json` and are se
 
 When serving from an alternate hostname, add a new profile or override the URLs explicitly before bootstrapping the Alpine application.
 
+#### Authentication Contract
+
+- **Browser responsibilities:** Gravity’s frontend loads `authBaseUrl/static/auth-client.js`, asks `/auth/nonce` for a nonce, exchanges Google credentials at `/auth/google`, and retries requests via `/auth/refresh` when the backend returns `401`. All network calls simply include the `app_session` cookie; no Google tokens touch the Gravity API.
+- **Backend responsibilities:** the API validates `app_session` with the shared HS256 secret/issuer, stores no refresh tokens, and trusts the canonical `user_id` resolved by the `user_identities` table. A one-time migration strips the legacy `google:` prefix from existing note rows and backfills the identity mapping automatically.
+- **Logout propagation:** triggering **Sign out** in the UI invokes `/auth/logout`, revokes refresh tokens inside TAuth, and dispatches `gravity:auth-sign-out` so the browser returns to the anonymous notebook.
+- **Future providers:** because every `(provider, subject)` pair maps to the same Gravity user, we can add Apple/email sign-in later without rewriting stored notes.
+
 ### Testing & Tooling
 
 - The Node harness (`frontend/tests/run-tests.js`) orchestrates per-file timeouts, shared Chromium instances, and coloured output.
@@ -175,7 +181,7 @@ When serving from an alternate hostname, add a new profile or override the URLs 
 - `frontend/` — static site, Alpine composition root, browser tests, and npm tooling.
 - `backend/` — Go API, CLI entrypoints, and persistence layers.
 - `CHANGELOG.md`, `ISSUES.md`, `NOTES.md` — process journals and release history.
-- `docker-compose.yml` / `docker-compose.dev.yml` — local stack orchestration.
+- `docker-compose.yml` — local stack orchestration with `dev` and `docker` profiles.
 - `POLICY.md`, `AGENTS.md` — coding standards and confident programming policy.
 - `PLAN.md` — temporary per-issue scratchpad (ignored in commits).
 
@@ -186,10 +192,10 @@ When serving from an alternate hostname, add a new profile or override the URLs 
 
 ### Docker Workflow
 
-- `docker-compose.yml` provisions the Go API (`backend`) and a static web host (`frontend`) backed by [gHTTP](https://github.com/temirov/ghttp).
-- Fetch the latest images with `docker compose pull`, then start the stack using `docker compose up`. The UI serves from <http://localhost:8000> and the API from <http://localhost:8080>.
-- The backend container loads secrets from `backend/.env`; adjust the file to point at different credentials or storage paths.
-- Tail logs with `docker compose logs -f backend`, and stop the stack using `docker compose down` when finished.
+- `docker-compose.yml` provisions the static frontend host (gHTTP), Gravity backend, and TAuth. The `dev` profile builds the backend from local sources while `docker` pulls every image from GHCR.
+- Fetch the latest images with `docker compose pull`, then start the stack using `docker compose --profile dev up --build` (or `--profile docker up`). The UI serves from <http://localhost:8000>, the API from <http://localhost:8080>, and TAuth from <http://localhost:8082>.
+- Gravity uses `.env.gravity` and TAuth uses `.env.tauth`; update each file before starting the stack so credentials and storage paths line up with your environment.
+- Tail logs with `docker compose logs -f gravity-backend-dev` (or `gravity-backend-docker`) and stop the stack using `docker compose down` when finished.
 
 ## Evolution by Theme (GN-IDs)
 

@@ -12,7 +12,7 @@ import {
     dispatchSignIn,
     waitForSyncManagerUser,
     waitForPendingOperations,
-    extractSyncDebugState
+    attachBackendSessionCookie
 } from "./helpers/syncTestUtils.js";
 import { connectSharedBrowser } from "./helpers/browserHarness.js";
 
@@ -21,7 +21,7 @@ const PROJECT_ROOT = path.resolve(__dirname, "..");
 const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
 
 test.describe("Full stack integration", () => {
-    /** @type {{ baseUrl: string, tokenFactory: (userId: string) => string, close: () => Promise<void> } | null} */
+    /** @type {{ baseUrl: string, tokenFactory: (userId: string) => string, createSessionToken: (userId: string) => string, cookieName: string, close: () => Promise<void> } | null} */
     let backendContext = null;
     /** @type {Error | null} */
     let initializationError = null;
@@ -60,6 +60,7 @@ test.describe("Full stack integration", () => {
         });
         try {
             await dispatchSignIn(page, credential, userId);
+            await attachBackendSessionCookie(page, backendContext, userId);
             await waitForSyncManagerUser(page, userId);
 
             const noteId = "fullstack-sync-note";
@@ -71,13 +72,10 @@ test.describe("Full stack integration", () => {
             });
 
             await waitForPendingOperations(page);
-            const debugState = await extractSyncDebugState(page);
-            const backendToken = debugState?.backendToken?.accessToken;
-            assert.ok(backendToken, "expected backend token after sync");
-
             await waitForBackendNote({
                 backendUrl: backendContext.baseUrl,
-                token: backendToken,
+                sessionToken: backendContext.createSessionToken(userId),
+                cookieName: backendContext.cookieName,
                 noteId
             });
         } finally {

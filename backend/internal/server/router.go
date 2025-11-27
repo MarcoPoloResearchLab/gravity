@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -12,45 +11,39 @@ import (
 
 	"github.com/MarcoPoloResearchLab/gravity/backend/internal/auth"
 	"github.com/MarcoPoloResearchLab/gravity/backend/internal/notes"
-	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/sse"
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	"go.uber.org/zap"
 )
 
 const userIDContextKey = "gravity_user_id"
 
 var (
-	errMissingGoogleVerifier = errors.New("google verifier dependency required")
-	errMissingTokenManager   = errors.New("token manager dependency required")
-	errMissingNotesService   = errors.New("notes service dependency required")
-	errInvalidAuthorization  = errors.New("authorization header missing or invalid")
+	errMissingSessionValidator = errors.New("session validator dependency required")
+	errMissingNotesService     = errors.New("notes service dependency required")
+	errInvalidAuthorization    = errors.New("authorization token missing or invalid")
 )
 
-type GoogleVerifier interface {
-	Verify(ctx context.Context, token string) (auth.GoogleClaims, error)
+type SessionValidator interface {
+	ValidateToken(token string) (auth.SessionClaims, error)
 }
 
-type BackendTokenManager interface {
-	IssueBackendToken(ctx context.Context, claims auth.GoogleClaims) (string, int64, error)
-	ValidateToken(token string) (string, error)
+type IdentityResolver interface {
+	ResolveCanonicalUserID(claims auth.SessionClaims) (string, error)
 }
 
 type Dependencies struct {
-	GoogleVerifier GoogleVerifier
-	TokenManager   BackendTokenManager
-	NotesService   *notes.Service
-	Logger         *zap.Logger
-	Realtime       *RealtimeDispatcher
+	SessionValidator SessionValidator
+	SessionCookie    string
+	NotesService     *notes.Service
+	Logger           *zap.Logger
+	Realtime         *RealtimeDispatcher
+	UserIdentities   IdentityResolver
 }
 
 func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
-	if deps.GoogleVerifier == nil {
-		return nil, errMissingGoogleVerifier
-	}
-	if deps.TokenManager == nil {
-		return nil, errMissingTokenManager
+	if deps.SessionValidator == nil {
+		return nil, errMissingSessionValidator
 	}
 	if deps.NotesService == nil {
 		return nil, errMissingNotesService
@@ -68,22 +61,35 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 
 	router := gin.New()
 	router.Use(gin.Recovery())
-	router.Use(cors.New(cors.Config{
-		AllowOrigins: []string{"*"},
-		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodOptions},
-		AllowHeaders: []string{"Authorization", "Content-Type"},
-		MaxAge:       12 * time.Hour,
-	}))
+	router.Use(func(c *gin.Context) {
+		origin := strings.TrimSpace(c.GetHeader("Origin"))
+		if origin != "" {
+			c.Header("Access-Control-Allow-Origin", origin)
+			c.Header("Vary", "Origin")
+			c.Header("Access-Control-Allow-Credentials", "true")
+			c.Header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+			c.Header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Requested-With, X-Client")
+		}
+		if c.Request.Method == http.MethodOptions {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+		c.Next()
+	})
 
-	handler := &httpHandler{
-		verifier:     deps.GoogleVerifier,
-		tokens:       deps.TokenManager,
-		notesService: deps.NotesService,
-		logger:       logger,
-		realtime:     realtime,
+	sessionCookie := strings.TrimSpace(deps.SessionCookie)
+	if sessionCookie == "" {
+		sessionCookie = "app_session"
 	}
 
-	router.POST("/auth/google", handler.handleGoogleAuth)
+	handler := &httpHandler{
+		sessions:       deps.SessionValidator,
+		sessionCookie:  sessionCookie,
+		notesService:   deps.NotesService,
+		logger:         logger,
+		realtime:       realtime,
+		userIdentities: deps.UserIdentities,
+	}
 
 	protected := router.Group("/")
 	protected.Use(handler.authorizeRequest)
@@ -95,50 +101,12 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 }
 
 type httpHandler struct {
-	verifier     GoogleVerifier
-	tokens       BackendTokenManager
-	notesService *notes.Service
-	logger       *zap.Logger
-	realtime     *RealtimeDispatcher
-}
-
-type authRequestPayload struct {
-	IDToken string `json:"id_token"`
-}
-
-type authResponsePayload struct {
-	AccessToken string `json:"access_token"`
-	ExpiresIn   int64  `json:"expires_in"`
-	TokenType   string `json:"token_type"`
-}
-
-func (h *httpHandler) handleGoogleAuth(c *gin.Context) {
-	var request authRequestPayload
-	if err := c.ShouldBindJSON(&request); err != nil || strings.TrimSpace(request.IDToken) == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
-		return
-	}
-
-	claims, err := h.verifier.Verify(c.Request.Context(), request.IDToken)
-	if err != nil {
-		h.logger.Warn("google token verification failed", zap.Error(err))
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-		return
-	}
-
-	token, expiresIn, err := h.tokens.IssueBackendToken(c.Request.Context(), claims)
-	if err != nil {
-		h.logger.Error("failed to issue backend token", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "token_issue_failed"})
-		return
-	}
-
-	response := authResponsePayload{
-		AccessToken: token,
-		ExpiresIn:   expiresIn,
-		TokenType:   "Bearer",
-	}
-	c.JSON(http.StatusOK, response)
+	sessions       SessionValidator
+	sessionCookie  string
+	notesService   *notes.Service
+	logger         *zap.Logger
+	realtime       *RealtimeDispatcher
+	userIdentities IdentityResolver
 }
 
 type syncRequestPayload struct {
@@ -502,30 +470,61 @@ func encodePayload(raw string) json.RawMessage {
 }
 
 func (h *httpHandler) authorizeRequest(c *gin.Context) {
-	header := c.GetHeader("Authorization")
-	token := ""
-	if strings.HasPrefix(header, "Bearer ") {
-		token = strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
-	}
-	if token == "" {
-		token = strings.TrimSpace(c.Query("access_token"))
-	}
+	token := h.extractToken(c)
 	if token == "" {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": errInvalidAuthorization.Error()})
 		return
 	}
-	subject, err := h.tokens.ValidateToken(token)
+	claims, err := h.sessions.ValidateToken(token)
 	if err != nil {
-		if errors.Is(err, jwt.ErrTokenExpired) {
-			h.logger.Info("token validation failed", zap.Error(err))
+		if errors.Is(err, auth.ErrExpiredSessionToken) {
+			h.logger.Info("session token validation failed", zap.Error(err))
 		} else {
-			h.logger.Warn("token validation failed", zap.Error(err))
+			h.logger.Warn("session token validation failed", zap.Error(err))
 		}
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
-	c.Set(userIDContextKey, subject)
+	userID := strings.TrimSpace(claims.UserID)
+	if h.userIdentities != nil {
+		resolved, resolveErr := h.userIdentities.ResolveCanonicalUserID(claims)
+		if resolveErr != nil {
+			h.logger.Warn("user identity resolution failed", zap.Error(resolveErr))
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+		userID = resolved
+	}
+	if userID == "" {
+		h.logger.Warn("resolved user id empty")
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	c.Set(userIDContextKey, userID)
 	c.Next()
+}
+
+func (h *httpHandler) extractToken(c *gin.Context) string {
+	if c.Request != nil {
+		if cookie, err := c.Request.Cookie(h.sessionCookie); err == nil && cookie != nil {
+			token := strings.TrimSpace(cookie.Value)
+			if token != "" {
+				return token
+			}
+		}
+	}
+	header := c.GetHeader("Authorization")
+	if strings.HasPrefix(header, "Bearer ") {
+		token := strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
+		if token != "" {
+			return token
+		}
+	}
+	queryToken := strings.TrimSpace(c.Query("access_token"))
+	if queryToken != "" {
+		return queryToken
+	}
+	return ""
 }
 
 func parseOperation(value string) (notes.OperationType, error) {

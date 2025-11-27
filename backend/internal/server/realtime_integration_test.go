@@ -3,7 +3,6 @@ package server
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +13,7 @@ import (
 	"github.com/MarcoPoloResearchLab/gravity/backend/internal/auth"
 	"github.com/MarcoPoloResearchLab/gravity/backend/internal/notes"
 	githubsqlite "github.com/glebarez/sqlite"
+	"github.com/golang-jwt/jwt/v5"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -34,23 +34,22 @@ func TestRealtimeStreamEmitsNoteChangeEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to construct notes service: %v", err)
 	}
-	tokenIssuer, err := auth.NewTokenIssuer(auth.TokenIssuerConfig{
+	sessionValidator, err := auth.NewSessionValidator(auth.SessionValidatorConfig{
 		SigningSecret: []byte("test-signing-secret"),
-		Issuer:        "gravity-auth",
-		Audience:      "gravity-api",
-		TokenTTL:      time.Minute,
+		Issuer:        "mprlab-auth",
+		CookieName:    "app_session",
 	})
 	if err != nil {
-		t.Fatalf("failed to construct token issuer: %v", err)
+		t.Fatalf("failed to construct session validator: %v", err)
 	}
 
 	dispatcher := NewRealtimeDispatcher()
 	handler, err := NewHTTPHandler(Dependencies{
-		GoogleVerifier: stubVerifier{},
-		TokenManager:   tokenIssuer,
-		NotesService:   noteService,
-		Logger:         zap.NewExample(),
-		Realtime:       dispatcher,
+		SessionValidator: sessionValidator,
+		SessionCookie:    "app_session",
+		NotesService:     noteService,
+		Logger:           zap.NewExample(),
+		Realtime:         dispatcher,
 	})
 	if err != nil {
 		t.Fatalf("failed to construct http handler: %v", err)
@@ -59,12 +58,9 @@ func TestRealtimeStreamEmitsNoteChangeEvents(t *testing.T) {
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 
-	token, _, err := tokenIssuer.IssueBackendToken(context.Background(), auth.GoogleClaims{Subject: "user-123"})
-	if err != nil {
-		t.Fatalf("failed to issue backend token: %v", err)
-	}
+	sessionToken := mustMintSessionToken(t, "test-signing-secret", "mprlab-auth", "user-123", time.Now())
 
-	streamRequest, err := http.NewRequest(http.MethodGet, server.URL+"/notes/stream?access_token="+token, http.NoBody)
+	streamRequest, err := http.NewRequest(http.MethodGet, server.URL+"/notes/stream?access_token="+sessionToken, http.NoBody)
 	if err != nil {
 		t.Fatalf("failed to construct stream request: %v", err)
 	}
@@ -86,7 +82,7 @@ func TestRealtimeStreamEmitsNoteChangeEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to construct sync request: %v", err)
 	}
-	syncReq.Header.Set("Authorization", "Bearer "+token)
+	syncReq.AddCookie(&http.Cookie{Name: "app_session", Value: sessionToken})
 	syncReq.Header.Set("Content-Type", "application/json")
 	syncResp, err := http.DefaultClient.Do(syncReq)
 	if err != nil {
@@ -159,8 +155,21 @@ func TestRealtimeStreamEmitsNoteChangeEvents(t *testing.T) {
 	}
 }
 
-type stubVerifier struct{}
-
-func (stubVerifier) Verify(_ context.Context, _ string) (auth.GoogleClaims, error) {
-	return auth.GoogleClaims{Subject: "user-123"}, nil
+func mustMintSessionToken(t *testing.T, signingSecret, issuer, userID string, now time.Time) string {
+	t.Helper()
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, auth.SessionClaims{
+		UserID: userID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    issuer,
+			Subject:   userID,
+			IssuedAt:  jwt.NewNumericDate(now.Add(-time.Minute)),
+			NotBefore: jwt.NewNumericDate(now.Add(-time.Minute)),
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+		},
+	})
+	signed, err := token.SignedString([]byte(signingSecret))
+	if err != nil {
+		t.Fatalf("failed to sign session token: %v", err)
+	}
+	return signed
 }

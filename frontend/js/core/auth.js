@@ -3,7 +3,8 @@
 import {
     EVENT_AUTH_ERROR,
     EVENT_AUTH_SIGN_IN,
-    EVENT_AUTH_SIGN_OUT
+    EVENT_AUTH_SIGN_OUT,
+    EVENT_AUTH_CREDENTIAL_RECEIVED
 } from "../constants.js?build=2024-10-05T12:00:00Z";
 import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
 
@@ -30,7 +31,8 @@ export function createGoogleIdentityController(options) {
         buttonElement = null,
         eventTarget = typeof document !== "undefined" ? document : undefined,
         autoPrompt = true,
-        location = typeof window !== "undefined" ? window.location : undefined
+        location = typeof window !== "undefined" ? window.location : undefined,
+        nonceToken = null
     } = options || {};
 
     if (!isNonEmptyString(clientId)) {
@@ -82,7 +84,7 @@ export function createGoogleIdentityController(options) {
             const user = normalizeUser(payload);
             currentUser = user;
             settleCredentialWaiters(response.credential);
-            dispatch(EVENT_AUTH_SIGN_IN, {
+            dispatch(EVENT_AUTH_CREDENTIAL_RECEIVED, {
                 user,
                 credential: response.credential
             });
@@ -100,7 +102,8 @@ export function createGoogleIdentityController(options) {
         identity.initialize({
             client_id: clientId,
             callback: handleCredentialResponse,
-            auto_select: autoPrompt !== false
+            auto_select: autoPrompt !== false,
+            nonce: typeof nonceToken === "string" && nonceToken.length > 0 ? nonceToken : undefined
         });
     } catch (error) {
         logging.error(error);
