@@ -2,5 +2,5 @@
     "environment": "production",
     "backendBaseUrl": "https://gravity-api.mprlab.com",
     "llmProxyUrl": "https://llm-proxy.mprlab.com/v1/gravity/classify",
-    "authBaseUrl": "https://tauth.mprlab.com"
+    "authBaseUrl": "https://gravity-tauth.mprlab.com"
 }
