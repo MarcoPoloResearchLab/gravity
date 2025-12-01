@@ -17,7 +17,11 @@ import {
 import { placeCardRespectingPinned, findCardById } from "./layout.js?build=2024-10-05T12:00:00Z";
 import { updateActionButtons } from "./listControls.js?build=2024-10-05T12:00:00Z";
 import { syncStoreFromDom } from "../storeSync.js?build=2024-10-05T12:00:00Z";
-import { applyStoredExpandedHeight } from "./anchorState.js?build=2024-10-05T12:00:00Z";
+import {
+    applyStoredExpandedHeight,
+    rememberExpandedHeight,
+    releaseExpandedHeight
+} from "./anchorState.js?build=2024-10-05T12:00:00Z";
 import { annotateHtmlWithMarkdownPositions } from "./textMapping.js?build=2024-10-05T12:00:00Z";
 
 /**
@@ -168,11 +172,6 @@ export function createHtmlView(card, { markdownSource, badgesTarget }) {
     renderHtmlView(content, htmlViewMarkdown);
     annotateHtmlWithMarkdownPositions(card, content, markdownSource);
     applyStoredExpandedHeight(card, wrapper);
-    if (typeof requestAnimationFrame === "function") {
-        requestAnimationFrame(() => {
-            applyStoredExpandedHeight(card, wrapper);
-        });
-    }
     restoreHtmlViewFocus(card);
     registerExpandToggleAlignment(card, wrapper, expandToggle);
     if (badgesTarget instanceof HTMLElement) {
@@ -433,6 +432,11 @@ export function setHtmlViewExpanded(card, shouldExpand) {
         if (targetHeight > 0) {
             viewElement.style.minHeight = `${targetHeight}px`;
         }
+        const expandedRect = viewElement.getBoundingClientRect();
+        if (Number.isFinite(expandedRect.height) && expandedRect.height > 0) {
+            rememberExpandedHeight(card, expandedRect.height);
+            applyStoredExpandedHeight(card, viewElement);
+        }
     } else {
         viewElement.classList.remove("note-html-view--expanded");
         card.dataset.htmlViewExpanded = "false";
@@ -441,6 +445,8 @@ export function setHtmlViewExpanded(card, shouldExpand) {
             toggle.setAttribute("aria-label", LABEL_EXPAND_NOTE);
         }
         viewElement.style.minHeight = "";
+        releaseExpandedHeight(card);
+        applyStoredExpandedHeight(card, viewElement);
     }
     scheduleHtmlViewOverflowCheck(viewElement, content, toggle);
 

@@ -105,6 +105,9 @@ export function enableInPlaceEditing(card, notesContainer, options = {}) {
     const expandedContentHeight = wasHtmlViewExpanded && htmlViewWrapper instanceof HTMLElement
         ? htmlViewWrapper.getBoundingClientRect().height
         : null;
+    if (Number.isFinite(expandedContentHeight) && expandedContentHeight > 0) {
+        rememberExpandedHeight(card, expandedContentHeight);
+    }
     if (wasHtmlViewExpanded) {
         card.dataset.htmlViewExpanded = "true";
     }
@@ -273,10 +276,6 @@ export async function finalizeCard(card, notesContainer, options = {}) {
         ? card.dataset.initialValue
         : text;
     const attachmentsChanged = false; // handled by persistCardState
-    const editingRect = card.getBoundingClientRect();
-    if (Number.isFinite(editingRect?.height)) {
-        rememberExpandedHeight(card, normalizeHeight(editingRect.height));
-    }
 
     const exitEditingMode = () => {
         card.classList.remove("editing-in-place");

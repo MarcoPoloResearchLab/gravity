@@ -59,10 +59,15 @@ export function clearCardAnchor(card) {
  * @returns {void}
  */
 export function rememberExpandedHeight(card, height) {
-    if (!(card instanceof HTMLElement) || !Number.isFinite(height) || height === null) {
+    if (!(card instanceof HTMLElement)) {
         return;
     }
-    expandedHeightStore.set(card, height);
+    const normalized = Number.isFinite(height) ? Math.max(Math.round(height), 0) : 0;
+    if (normalized <= 0) {
+        expandedHeightStore.delete(card);
+        return;
+    }
+    expandedHeightStore.set(card, normalized);
     trackCard(card);
 }
 
@@ -94,21 +99,9 @@ export function applyStoredExpandedHeight(card, wrapper) {
         resetWrapperHeight(wrapper);
         return;
     }
-    const cardRect = card.getBoundingClientRect();
-    const wrapperRect = wrapper.getBoundingClientRect();
-    if (!Number.isFinite(cardRect.height) || !Number.isFinite(wrapperRect.height)) {
-        resetWrapperHeight(wrapper);
-        return;
-    }
-    const chromeHeight = Math.max(cardRect.height - wrapperRect.height, 0);
-    const targetWrapperHeight = Math.max(expandedHeight - chromeHeight, 0);
-    if (targetWrapperHeight <= 0) {
-        resetWrapperHeight(wrapper);
-        return;
-    }
-    wrapper.style.minHeight = `${targetWrapperHeight}px`;
-    wrapper.style.maxHeight = `${targetWrapperHeight}px`;
-    wrapper.style.height = `${targetWrapperHeight}px`;
+    wrapper.style.minHeight = `${expandedHeight}px`;
+    wrapper.style.maxHeight = `${expandedHeight}px`;
+    wrapper.style.height = `${expandedHeight}px`;
     wrapper.classList.add("note-html-view--persist-expanded");
 }
 
