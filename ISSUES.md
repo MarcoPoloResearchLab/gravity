@@ -38,7 +38,7 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
   * **Caret mapping on click:** From HTML click Range → source Markdown offset (use your md/HTML source map or node `data.position`), set caret to that offset before applying the anchor compensation.
 
 - let's prepare a carefull plan and a list of behaviors that need to be defined or changed bases on this new visual behaviour
-- [ ] [GN-125] Have an info button in the control panel for every note. The info button will show when the note was created, when was it last edited, how manu words and charachters in it
+- [ ] [GN-125] Have an info button in the control panel for every note. The info button will show when the note was created, when was it last edited, how many words and charachters are in it etc
 
 ## Improvements (200–299)
 
