@@ -79,9 +79,12 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 
 - [x] [PG-400] docker-compose.yml now exposes `dev` (local backend build) and `docker` (GHCR images) profiles, adds shared `.env` templates (backend, tauth, pinguin), and Makefile `up` target honors `COMPOSE_PROFILE`; docs updated to describe the new flow.
 - [x] [PG-401] Backend Docker publish workflow now waits for the `Backend Tests` workflow to finish successfully on push to `master` (via `workflow_run`) before building/pushing images; manual `workflow_dispatch` remains available for emergencies.
+- [x] [GN-402] Replace console.log with js/utils/logging.js in frontend production code (syncManager.js, store.js, storeSync.js) to comply with AGENTS.FRONTEND.md.
+  - Logging helper now drives all debug output across those modules, keeping console APIs unused in production code.
+- [ ] [GN-403] Inject zap.Logger into backend Service struct in internal/notes/service.go to align with AGENTS.GO.md and enable structured logging.
 
 ## Planning
 **Do not work on these, not ready**
 
 - [ ] [GN-55] The current llm-proxy URL is wrong -- there is no such path as https://llm-proxy.mprlab.com/v1/gravity/
-  classify. There is only https://llm-proxy.mprlab.com/, and we need to be sending a system prompt to it to get classification. I have copied llm-proxy codebase under the tools folder. Prepare a system prompt for classification of the notes and send it to llm-proxy service. 
+  classify. There is only https://llm-proxy.mprlab.com/, and we need to be sending a system prompt to it to get classification. I have copied llm-proxy codebase under the tools folder. Prepare a system prompt for classification of the notes and send it to llm-proxy service.
