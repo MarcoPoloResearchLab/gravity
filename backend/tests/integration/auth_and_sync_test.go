@@ -33,6 +33,7 @@ func TestAuthAndSyncFlow(t *testing.T) {
 	notesService, err := notes.NewService(notes.ServiceConfig{
 		Database:   db,
 		IDProvider: notes.NewUUIDProvider(),
+		Logger:     zap.NewNop(),
 	})
 	if err != nil {
 		t.Fatalf("failed to build notes service: %v", err)

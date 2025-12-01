@@ -30,6 +30,7 @@ func TestRealtimeStreamEmitsNoteChangeEvents(t *testing.T) {
 	noteService, err := notes.NewService(notes.ServiceConfig{
 		Database:   db,
 		IDProvider: notes.NewUUIDProvider(),
+		Logger:     zap.NewNop(),
 	})
 	if err != nil {
 		t.Fatalf("failed to construct notes service: %v", err)

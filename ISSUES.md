@@ -81,7 +81,8 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 - [x] [PG-401] Backend Docker publish workflow now waits for the `Backend Tests` workflow to finish successfully on push to `master` (via `workflow_run`) before building/pushing images; manual `workflow_dispatch` remains available for emergencies.
 - [x] [GN-402] Replace console.log with js/utils/logging.js in frontend production code (syncManager.js, store.js, storeSync.js) to comply with AGENTS.FRONTEND.md.
   - Logging helper now drives all debug output across those modules, keeping console APIs unused in production code.
-- [ ] [GN-403] Inject zap.Logger into backend Service struct in internal/notes/service.go to align with AGENTS.GO.md and enable structured logging.
+- [x] [GN-403] Inject zap.Logger into backend Service struct in internal/notes/service.go to align with AGENTS.GO.md and enable structured logging.
+  - notes.Service now receives a zap.Logger through ServiceConfig, defaults to a no-op logger, and emits structured error logs across ApplyChanges/ListNotes; HTTP/main wiring and integration tests now pass zap loggers explicitly.
 
 ## Planning
 **Do not work on these, not ready**

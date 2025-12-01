@@ -8,6 +8,7 @@ import (
 	"time"
 
 	sqlite "github.com/glebarez/sqlite"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
@@ -155,6 +156,7 @@ func newTestService(t *testing.T, ids []string) (*Service, *gorm.DB) {
 		Database:   db,
 		Clock:      clock,
 		IDProvider: generator,
+		Logger:     zap.NewNop(),
 	})
 	if err != nil {
 		t.Fatalf("failed to construct notes service: %v", err)
