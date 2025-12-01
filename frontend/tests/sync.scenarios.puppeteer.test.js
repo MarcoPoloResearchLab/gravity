@@ -76,8 +76,8 @@ test.describe("Synchronization scenarios", () => {
                     }
                 }
             } finally {
-                await offlineInterceptor.dispose();
                 await initialSession.close({ keepContext: true });
+                await offlineInterceptor.dispose();
             }
 
             const replaySession = await harness.createSession({
