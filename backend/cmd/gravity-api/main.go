@@ -119,6 +119,7 @@ func runServer(ctx context.Context) error {
 		Database:   db,
 		Clock:      time.Now,
 		IDProvider: notes.NewUUIDProvider(),
+		Logger:     logger,
 	})
 	if err != nil {
 		return err

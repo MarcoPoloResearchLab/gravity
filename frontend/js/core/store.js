@@ -1,6 +1,7 @@
 // @ts-check
 
 import { appConfig } from "./config.js?build=2024-10-05T12:00:00Z";
+import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
 import { ERROR_IMPORT_INVALID_PAYLOAD } from "../constants.js?build=2024-10-05T12:00:00Z";
 import { sanitizeAttachmentDictionary } from "./attachments.js?build=2024-10-05T12:00:00Z";
 
@@ -66,7 +67,7 @@ export const GravityStore = (() => {
             try {
                 const identifiers = deduped.map((record) => record.noteId);
                 const stack = typeof Error === "function" ? new Error().stack : null;
-                console.log("GravityStore.saveAllNotes", storageKey, identifiers, stack);
+                logging.info("GravityStore.saveAllNotes", storageKey, identifiers, stack);
             } catch {
                 // ignore console failures
             }
@@ -160,7 +161,7 @@ export const GravityStore = (() => {
 
         if (debugEnabled()) {
             try {
-                console.log("GravityStore.upsertNonEmpty", getActiveStorageKey(), sanitizedRecord.noteId);
+                logging.info("GravityStore.upsertNonEmpty", getActiveStorageKey(), sanitizedRecord.noteId);
             } catch {
                 // ignore console failures
             }

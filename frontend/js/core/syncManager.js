@@ -134,7 +134,7 @@ export function createSyncManager(options = {}) {
 
             if (debugEnabled()) {
                 try {
-                    console.log("syncManager.handleSignIn", params.userId);
+                    logging.info("syncManager.handleSignIn", params.userId);
                 } catch {
                     // ignore console failures
                 }
@@ -151,7 +151,7 @@ export function createSyncManager(options = {}) {
 
             if (debugEnabled()) {
                 try {
-                    console.log("syncManager.handleSignIn.state", JSON.stringify({
+                    logging.info("syncManager.handleSignIn.state", JSON.stringify({
                         queueLength: state.queue.length,
                         userId: state.userId
                     }));
@@ -304,7 +304,7 @@ export function createSyncManager(options = {}) {
         }
         if (debugEnabled()) {
             try {
-                console.log("syncManager.refreshSnapshot", JSON.stringify({
+                logging.info("syncManager.refreshSnapshot", JSON.stringify({
                     userId: state.userId,
                     queueLength: state.queue.length
                 }));
@@ -315,7 +315,7 @@ export function createSyncManager(options = {}) {
         if (state.queue.length > 0) {
             if (debugEnabled()) {
                 try {
-                    console.log("syncManager.refreshSnapshot.skipped", state.queue.length);
+                    logging.info("syncManager.refreshSnapshot.skipped", state.queue.length);
                 } catch {
                     // ignore console failures
                 }
@@ -327,7 +327,7 @@ export function createSyncManager(options = {}) {
             applySnapshot(snapshot?.notes ?? []);
             if (debugEnabled()) {
                 try {
-                    console.log("syncManager.refreshSnapshot.applied", JSON.stringify({
+                    logging.info("syncManager.refreshSnapshot.applied", JSON.stringify({
                         userId: state.userId,
                         recordCount: Array.isArray(snapshot?.notes) ? snapshot.notes.length : 0
                     }));
