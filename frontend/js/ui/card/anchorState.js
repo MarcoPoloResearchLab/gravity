@@ -91,15 +91,24 @@ export function applyStoredExpandedHeight(card, wrapper) {
     }
     const expandedHeight = getStoredExpandedHeight(card);
     if (expandedHeight === null || expandedHeight <= 0) {
-        wrapper.style.removeProperty("minHeight");
-        wrapper.style.removeProperty("maxHeight");
-        wrapper.style.removeProperty("height");
-        wrapper.classList.remove("note-html-view--persist-expanded");
+        resetWrapperHeight(wrapper);
         return;
     }
-    wrapper.style.minHeight = `${expandedHeight}px`;
-    wrapper.style.maxHeight = `${expandedHeight}px`;
-    wrapper.style.height = `${expandedHeight}px`;
+    const cardRect = card.getBoundingClientRect();
+    const wrapperRect = wrapper.getBoundingClientRect();
+    if (!Number.isFinite(cardRect.height) || !Number.isFinite(wrapperRect.height)) {
+        resetWrapperHeight(wrapper);
+        return;
+    }
+    const chromeHeight = Math.max(cardRect.height - wrapperRect.height, 0);
+    const targetWrapperHeight = Math.max(expandedHeight - chromeHeight, 0);
+    if (targetWrapperHeight <= 0) {
+        resetWrapperHeight(wrapper);
+        return;
+    }
+    wrapper.style.minHeight = `${targetWrapperHeight}px`;
+    wrapper.style.maxHeight = `${targetWrapperHeight}px`;
+    wrapper.style.height = `${targetWrapperHeight}px`;
     wrapper.classList.add("note-html-view--persist-expanded");
 }
 
@@ -115,10 +124,7 @@ export function releaseExpandedHeight(card) {
     expandedHeightStore.delete(card);
     const htmlView = card.querySelector(".note-html-view");
     if (htmlView instanceof HTMLElement) {
-        htmlView.style.removeProperty("minHeight");
-        htmlView.style.removeProperty("maxHeight");
-        htmlView.style.removeProperty("height");
-        htmlView.classList.remove("note-html-view--persist-expanded");
+        resetWrapperHeight(htmlView);
     }
 }
 
@@ -164,4 +170,11 @@ function handleViewportDrift() {
             trackedCards.delete(card);
         }
     });
+}
+
+function resetWrapperHeight(wrapper) {
+    wrapper.style.removeProperty("minHeight");
+    wrapper.style.removeProperty("maxHeight");
+    wrapper.style.removeProperty("height");
+    wrapper.classList.remove("note-html-view--persist-expanded");
 }

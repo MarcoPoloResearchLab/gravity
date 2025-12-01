@@ -165,9 +165,14 @@ export function createHtmlView(card, { markdownSource, badgesTarget }) {
     wrapper.append(content, expandToggle);
     attachExpandStripClickHandler(wrapper, expandToggle);
     insertHtmlViewWrapper(card, wrapper);
-    applyStoredExpandedHeight(card, wrapper);
     renderHtmlView(content, htmlViewMarkdown);
     annotateHtmlWithMarkdownPositions(card, content, markdownSource);
+    applyStoredExpandedHeight(card, wrapper);
+    if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => {
+            applyStoredExpandedHeight(card, wrapper);
+        });
+    }
     restoreHtmlViewFocus(card);
     registerExpandToggleAlignment(card, wrapper, expandToggle);
     if (badgesTarget instanceof HTMLElement) {
