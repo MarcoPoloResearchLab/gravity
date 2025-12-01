@@ -44,6 +44,14 @@ import {
     dispatchPinToggle
 } from "./events.js?build=2024-10-05T12:00:00Z";
 import { triggerClassificationForCard } from "./classification.js?build=2024-10-05T12:00:00Z";
+import {
+    storeCardAnchor,
+    getCardAnchor,
+    rememberExpandedHeight,
+    releaseExpandedHeight,
+    clearCardAnchor
+} from "./anchorState.js?build=2024-10-05T12:00:00Z";
+import { clearPlainTextMapping } from "./textMapping.js?build=2024-10-05T12:00:00Z";
 
 let currentEditingCard = /** @type {HTMLElement|null} */ (null);
 let mergeInProgress = false;
@@ -86,7 +94,7 @@ export function enableInPlaceEditing(card, notesContainer, options = {}) {
     } = options;
     const viewportAnchor = !bubbleSelfToTop ? captureViewportAnchor(card) : null;
     if (viewportAnchor) {
-        Reflect.set(card, "__editingViewportAnchor", viewportAnchor);
+        storeCardAnchor(card, viewportAnchor);
     }
     const centerCardOnEntry = !bubbleSelfToTop && shouldCenterCard(viewportAnchor);
 
@@ -136,6 +144,7 @@ export function enableInPlaceEditing(card, notesContainer, options = {}) {
     const initialValue = editorHost ? editorHost.getValue() : editor?.value ?? "";
     card.dataset.initialValue = initialValue;
 
+    releaseExpandedHeight(card);
     deleteHtmlView(card);
     card.classList.add("editing-in-place");
     createMarkdownView(editorHost);
@@ -181,7 +190,8 @@ export function enableInPlaceEditing(card, notesContainer, options = {}) {
         if (!bubbleSelfToTop) {
             maintainCardViewport(card, {
                 behavior: centerCardOnEntry ? "center" : "preserve",
-                anchor: viewportAnchor ?? null
+                anchor: viewportAnchor ?? null,
+                anchorCompensation: !centerCardOnEntry && Boolean(viewportAnchor)
             });
         }
     });
@@ -263,6 +273,10 @@ export async function finalizeCard(card, notesContainer, options = {}) {
         ? card.dataset.initialValue
         : text;
     const attachmentsChanged = false; // handled by persistCardState
+    const editingRect = card.getBoundingClientRect();
+    if (Number.isFinite(editingRect?.height)) {
+        rememberExpandedHeight(card, normalizeHeight(editingRect.height));
+    }
 
     const exitEditingMode = () => {
         card.classList.remove("editing-in-place");
@@ -275,7 +289,6 @@ export async function finalizeCard(card, notesContainer, options = {}) {
             editor.style.height = "";
             editor.style.minHeight = "";
         }
-        Reflect.deleteProperty(card, "__editingViewportAnchor");
     };
 
     if (trimmed.length === 0) {
@@ -283,6 +296,9 @@ export async function finalizeCard(card, notesContainer, options = {}) {
         collapseExpandedHtmlView(card);
         const id = card.getAttribute("data-note-id");
         clearPinnedNoteIfMatches(id);
+        clearCardAnchor(card);
+        releaseExpandedHeight(card);
+        clearPlainTextMapping(card);
         card.remove();
         disposeCardState(card);
         if (notesContainer instanceof HTMLElement) {
@@ -340,6 +356,9 @@ export function deleteCard(card, notesContainer) {
     if (noteId) {
         clearPinnedNoteIfMatches(noteId);
     }
+    clearCardAnchor(card);
+    releaseExpandedHeight(card);
+    clearPlainTextMapping(card);
     card.remove();
     enforcePinnedAnchor(notesContainer);
     syncStoreFromDom(notesContainer);

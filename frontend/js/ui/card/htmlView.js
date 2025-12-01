@@ -17,6 +17,8 @@ import {
 import { placeCardRespectingPinned, findCardById } from "./layout.js?build=2024-10-05T12:00:00Z";
 import { updateActionButtons } from "./listControls.js?build=2024-10-05T12:00:00Z";
 import { syncStoreFromDom } from "../storeSync.js?build=2024-10-05T12:00:00Z";
+import { applyStoredExpandedHeight } from "./anchorState.js?build=2024-10-05T12:00:00Z";
+import { annotateHtmlWithMarkdownPositions } from "./textMapping.js?build=2024-10-05T12:00:00Z";
 
 /**
  * HTML view lifecycle is intentionally atomic:
@@ -163,7 +165,9 @@ export function createHtmlView(card, { markdownSource, badgesTarget }) {
     wrapper.append(content, expandToggle);
     attachExpandStripClickHandler(wrapper, expandToggle);
     insertHtmlViewWrapper(card, wrapper);
+    applyStoredExpandedHeight(card, wrapper);
     renderHtmlView(content, htmlViewMarkdown);
+    annotateHtmlWithMarkdownPositions(card, content, markdownSource);
     restoreHtmlViewFocus(card);
     registerExpandToggleAlignment(card, wrapper, expandToggle);
     if (badgesTarget instanceof HTMLElement) {

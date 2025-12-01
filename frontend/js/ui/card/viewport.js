@@ -104,7 +104,8 @@ export function maintainCardViewport(card, options = {}) {
         behavior = "preserve",
         anchor = null,
         baselineTop = null,
-        attempts = VIEWPORT_STABILITY_ATTEMPTS
+        attempts = VIEWPORT_STABILITY_ATTEMPTS,
+        anchorCompensation = false
     } = options;
     const scroller = document.scrollingElement || document.documentElement || document.body;
     if (!(scroller instanceof HTMLElement)) {
@@ -123,7 +124,9 @@ export function maintainCardViewport(card, options = {}) {
         }
         const rect = card.getBoundingClientRect();
         let targetTop;
-        if (behavior === "center") {
+        if (anchorCompensation && anchor && Number.isFinite(anchor.top)) {
+            targetTop = anchor.top;
+        } else if (behavior === "center") {
             targetTop = computeCenteredCardTop(rect.height, viewportHeight);
         } else if (anchor && typeof anchor === "object") {
             const anchorViewportHeight = Number.isFinite(anchor.viewportHeight) ? anchor.viewportHeight : viewportHeight;
@@ -147,10 +150,13 @@ export function maintainCardViewport(card, options = {}) {
         } else {
             targetTop = rect.top;
         }
-        const margin = Math.max(viewportHeight * 0.05, VIEWPORT_ANCHOR_MARGIN_PX);
-        const minTop = margin * -1;
-        const maxTop = Math.max(viewportHeight - rect.height - margin, minTop);
-        const clampedTargetTop = clamp(targetTop, minTop, maxTop);
+        let clampedTargetTop = targetTop;
+        if (!anchorCompensation) {
+            const margin = Math.max(viewportHeight * 0.05, VIEWPORT_ANCHOR_MARGIN_PX);
+            const minTop = margin * -1;
+            const maxTop = Math.max(viewportHeight - rect.height - margin, minTop);
+            clampedTargetTop = clamp(targetTop, minTop, maxTop);
+        }
         const delta = rect.top - clampedTargetTop;
         if (Math.abs(delta) > 0.5) {
             const currentScroll = window.scrollY || window.pageYOffset || 0;
