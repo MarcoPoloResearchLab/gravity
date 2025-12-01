@@ -18,6 +18,7 @@ import {
 import { syncStoreFromDom } from "../storeSync.js?build=2024-10-05T12:00:00Z";
 import { updateActionButtons } from "./listControls.js?build=2024-10-05T12:00:00Z";
 import { maintainCardViewport, captureViewportAnchor } from "./viewport.js?build=2024-10-05T12:00:00Z";
+import { getCardAnchor } from "./anchorState.js?build=2024-10-05T12:00:00Z";
 
 const LINE_ENDING_NORMALIZE_PATTERN = /\r\n/g;
 const TRAILING_WHITESPACE_PATTERN = /[ \t]+$/;
@@ -133,12 +134,10 @@ export function persistCardState(card, notesContainer, markdownText, options = {
         return null;
     }
 
-    const storedViewportAnchor = bubbleToTop ? Reflect.get(card, "__editingViewportAnchor") : null;
+    const storedViewportAnchor = getCardAnchor(card);
     const viewportAnchor = bubbleToTop && card.classList.contains("editing-in-place")
-        ? (storedViewportAnchor && typeof storedViewportAnchor === "object"
-            ? storedViewportAnchor
-            : captureViewportAnchor(card))
-        : null;
+        ? storedViewportAnchor ?? captureViewportAnchor(card)
+        : storedViewportAnchor;
 
     const timestamp = nowIso();
 
@@ -170,7 +169,8 @@ export function persistCardState(card, notesContainer, markdownText, options = {
             if (viewportAnchor) {
                 maintainCardViewport(card, {
                     behavior: "preserve",
-                    anchor: viewportAnchor
+                    anchor: viewportAnchor,
+                    anchorCompensation: true
                 });
             }
         } else {
@@ -179,6 +179,13 @@ export function persistCardState(card, notesContainer, markdownText, options = {
                 markdownSource: htmlViewSource,
                 badgesTarget: badgesElement
             });
+            if (viewportAnchor) {
+                maintainCardViewport(card, {
+                    behavior: "preserve",
+                    anchor: viewportAnchor,
+                    anchorCompensation: true
+                });
+            }
             syncStoreFromDom(notesContainer, { [noteId]: record });
             updateActionButtons(notesContainer);
         }
