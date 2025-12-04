@@ -61,21 +61,7 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 
 	router := gin.New()
 	router.Use(gin.Recovery())
-	router.Use(func(c *gin.Context) {
-		origin := strings.TrimSpace(c.GetHeader("Origin"))
-		if origin != "" {
-			c.Header("Access-Control-Allow-Origin", origin)
-			c.Header("Vary", "Origin")
-			c.Header("Access-Control-Allow-Credentials", "true")
-			c.Header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
-			c.Header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Requested-With, X-Client")
-		}
-		if c.Request.Method == http.MethodOptions {
-			c.AbortWithStatus(http.StatusNoContent)
-			return
-		}
-		c.Next()
-	})
+	router.Use(corsMiddleware())
 
 	sessionCookie := strings.TrimSpace(deps.SessionCookie)
 	if sessionCookie == "" {
@@ -98,6 +84,27 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 	protected.GET("/notes/stream", handler.handleNotesStream)
 
 	return router, nil
+}
+
+func corsMiddleware() gin.HandlerFunc {
+	const allowMethods = "GET,POST,OPTIONS"
+	const allowCredentials = "true"
+	const allowHeaders = "Authorization, Content-Type, X-Requested-With, X-Client, X-TAuth-Tenant"
+	return func(c *gin.Context) {
+		origin := strings.TrimSpace(c.GetHeader("Origin"))
+		if origin != "" {
+			c.Header("Access-Control-Allow-Origin", origin)
+			c.Header("Vary", "Origin")
+			c.Header("Access-Control-Allow-Credentials", allowCredentials)
+			c.Header("Access-Control-Allow-Methods", allowMethods)
+			c.Header("Access-Control-Allow-Headers", allowHeaders)
+		}
+		if c.Request.Method == http.MethodOptions {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+		c.Next()
+	}
 }
 
 type httpHandler struct {

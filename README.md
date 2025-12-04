@@ -81,6 +81,7 @@ Runtime configuration files under `frontend/data/` now include `authBaseUrl`, so
 
 - Gravity no longer exchanges Google credentials itself. The browser loads `https://<tauth-origin>/static/auth-client.js`, fetches a nonce from `/auth/nonce`, and lets TAuth exchange the Google credential at `/auth/google`.
 - TAuth mints two cookies: `app_session` (short-lived HS256 JWT) and `app_refresh` (long-lived refresh token). Every request from the UI includes `app_session` automatically, so the Gravity backend simply validates the JWT using `GRAVITY_TAUTH_SIGNING_SECRET` / `GRAVITY_TAUTH_ISSUER`. No bearer tokens or local storage is used.
+- To keep the multi-tenant TAuth flow working, the backend’s CORS preflight now whitelists the `X-TAuth-Tenant` header (in addition to `Authorization`, `Content-Type`, etc.), so browsers can send the tenant hint while relying on cookie authentication.
 - When a request returns `401`, the browser calls `/auth/refresh` on the TAuth origin; a fresh `app_session` cookie is minted and the original request is retried.
 - Signing out in the UI calls `/auth/logout`, revokes the refresh token, clears both cookies, and returns Gravity to the anonymous notebook.
 - The backend maintains its own canonical user table (`user_identities`) so every identity provider subject (e.g., `google:1234567890`) maps to the same Gravity user id. That gives us flexibility to add Apple/email logins later without touching the notes schema.
