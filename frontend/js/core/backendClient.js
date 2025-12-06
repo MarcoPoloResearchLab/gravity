@@ -1,5 +1,6 @@
 // @ts-check
 
+import { appConfig } from "./config.js?build=2024-10-05T12:00:00Z";
 import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
 
 /**
@@ -8,10 +9,11 @@ import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
 
 /**
  * Create a client for interacting with the Gravity backend service.
- * @param {{ baseUrl?: string, fetchImplementation?: typeof fetch }} options
+ * @param {{ baseUrl?: string, authBaseUrl?: string, fetchImplementation?: typeof fetch }} options
  */
 export function createBackendClient(options = {}) {
     const normalizedBase = normalizeBaseUrl(options.baseUrl ?? "");
+    const authBaseUrl = normalizeBaseUrl(options.authBaseUrl ?? appConfig.authBaseUrl ?? "");
     const runtimeFetch = resolveFetchImplementation(options.fetchImplementation);
 
     return Object.freeze({
@@ -21,13 +23,13 @@ export function createBackendClient(options = {}) {
          * @returns {Promise<{ results: Array<Record<string, unknown>> }>}
          */
         async syncOperations(params) {
-            const response = await runtimeFetch(
+            const response = await requestWithRefresh(() => runtimeFetch(
                 `${normalizedBase}/notes/sync`,
                 buildFetchOptions({
                     method: "POST",
                     body: JSON.stringify({ operations: params.operations })
                 })
-            );
+            ), authBaseUrl, runtimeFetch);
             const payload = await parseJson(response);
             if (!response.ok) {
                 throw new Error(payload?.error ?? "Failed to sync operations.");
@@ -40,12 +42,12 @@ export function createBackendClient(options = {}) {
          * @returns {Promise<{ notes: Array<Record<string, unknown>> }>}
          */
         async fetchSnapshot() {
-            const response = await runtimeFetch(
+            const response = await requestWithRefresh(() => runtimeFetch(
                 `${normalizedBase}/notes`,
                 buildFetchOptions({
                     method: "GET"
                 })
-            );
+            ), authBaseUrl, runtimeFetch);
             const payload = await parseJson(response);
             if (!response.ok) {
                 throw new Error(payload?.error ?? "Failed to load snapshot.");
@@ -122,4 +124,45 @@ function normalizeBaseUrl(value) {
     }
     const trimmed = value.trim().replace(/\/+$/u, "");
     return trimmed.length === 0 ? "" : trimmed;
+}
+
+/**
+ * @param {() => Promise<Response>} executor
+ * @param {string} authBaseUrl
+ * @param {(typeof fetch)} runtimeFetch
+ * @returns {Promise<Response>}
+ */
+async function requestWithRefresh(executor, authBaseUrl, runtimeFetch) {
+    const initialResponse = await executor();
+    if (initialResponse.status !== 401 || !authBaseUrl) {
+        return initialResponse;
+    }
+    const refreshed = await refreshSession(authBaseUrl, runtimeFetch);
+    if (!refreshed) {
+        return initialResponse;
+    }
+    return executor();
+}
+
+/**
+ * @param {string} authBaseUrl
+ * @param {(typeof fetch)} runtimeFetch
+ * @returns {Promise<boolean>}
+ */
+async function refreshSession(authBaseUrl, runtimeFetch) {
+    try {
+        const response = await runtimeFetch(
+            `${authBaseUrl}/auth/refresh`,
+            buildFetchOptions({
+                method: "POST",
+                headers: {
+                    "X-Requested-With": "XMLHttpRequest"
+                }
+            })
+        );
+        return response.ok;
+    } catch (error) {
+        logging.warn(error);
+        return false;
+    }
 }

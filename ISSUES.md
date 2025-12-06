@@ -48,8 +48,8 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 
 ## BugFixes (300–399)
 
-- [ ] [GN-311] Synchronization doesnt work properly __ ihave added an addition to a note from one browser but when I opened the note later on on a mobile, it was not there.
-Check the logs at @gravity.log and gravity-filtered.log and try to pinpoint the root cause
+- [x] [GN-311] Synchronization doesnt work properly __ ihave added an addition to a note from one browser but when I opened the note later on on a mobile, it was not there.
+Check the logs at @gravity.log and gravity-filtered.log and try to pinpoint the root cause (Resolved by retrying backend sync calls after refreshing expired TAuth sessions; added backend client regression coverage.)
 
 ## Maintenance (405–499)
 
