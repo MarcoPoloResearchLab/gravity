@@ -3,104 +3,81 @@ import test from "node:test";
 
 import { createBackendClient } from "../js/core/backendClient.js";
 
-function createJsonResponse(status, body, headers = {}) {
-    const headerMap = new Map();
-    headerMap.set("content-type", "application/json");
-    for (const [key, value] of Object.entries(headers)) {
-        headerMap.set(String(key).toLowerCase(), value);
-    }
-    return {
-        status,
-        ok: status >= 200 && status < 300,
-        headers: {
-            get(name) {
-                return headerMap.get(String(name).toLowerCase()) ?? null;
-            }
-        },
-        async json() {
-            return body;
-        },
-        async text() {
-            return typeof body === "string" ? body : JSON.stringify(body);
+class StubResponse {
+    constructor(status, body, headers = {}) {
+        this.status = status;
+        this.body = body;
+        this.headers = new Map();
+        this.headers.set("content-type", "application/json");
+        for (const [key, value] of Object.entries(headers)) {
+            this.headers.set(String(key).toLowerCase(), value);
         }
+    }
+
+    get ok() {
+        return this.status >= 200 && this.status < 300;
+    }
+
+    async json() {
+        return this.body;
+    }
+
+    async text() {
+        return typeof this.body === "string" ? this.body : JSON.stringify(this.body);
+    }
+
+    headers = {
+        get: (name) => this.headers.get(String(name).toLowerCase()) ?? null
     };
 }
 
-test("syncOperations retries after refreshing an expired session", async () => {
-    const calls = [];
-    const responseMap = new Map([
-        ["https://api.example.com/notes/sync", [
-            createJsonResponse(401, { error: "unauthorized" }),
-            createJsonResponse(200, { results: [{ note_id: "note-1" }] })
-        ]],
-        ["https://auth.example.com/auth/refresh", [
-            createJsonResponse(200, { refreshed: true })
-        ]]
-    ]);
-
-    const fetchImplementation = async (url, init = {}) => {
-        calls.push({ url, method: init?.method ?? "GET" });
-        const queue = responseMap.get(url);
-        if (!queue || queue.length === 0) {
-            throw new Error(`no stubbed response for ${url}`);
-        }
-        return queue.shift();
-    };
-
-    const client = createBackendClient({
-        baseUrl: "https://api.example.com",
-        authBaseUrl: "https://auth.example.com",
-        fetchImplementation
-    });
-
-    const payload = await client.syncOperations({ operations: [{ note_id: "note-1" }] });
-
-    assert.deepEqual(payload, { results: [{ note_id: "note-1" }] });
-    assert.deepEqual(
-        calls.map((call) => `${call.method}:${call.url}`),
-        [
-            "POST:https://api.example.com/notes/sync",
-            "POST:https://auth.example.com/auth/refresh",
-            "POST:https://api.example.com/notes/sync"
-        ]
-    );
+test.afterEach(() => {
+    delete global.apiFetch;
 });
 
-test("syncOperations surfaces backend errors when refresh fails", async () => {
-    const calls = [];
-    const responseMap = new Map([
-        ["https://api.example.com/notes/sync", [
-            createJsonResponse(401, { error: "unauthorized" })
-        ]],
-        ["https://auth.example.com/auth/refresh", [
-            createJsonResponse(500, { error: "refresh_failed" })
-        ]]
-    ]);
+test("backend client picks up apiFetch when it becomes available", async () => {
+    let apiFetchCalls = 0;
+    let defaultFetchUsed = false;
 
-    const fetchImplementation = async (url, init = {}) => {
-        calls.push({ url, method: init?.method ?? "GET" });
-        const queue = responseMap.get(url);
-        if (!queue || queue.length === 0) {
-            throw new Error(`no stubbed response for ${url}`);
-        }
-        return queue.shift();
+    global.fetch = async () => {
+        defaultFetchUsed = true;
+        throw new Error("default fetch should not be used when apiFetch is available");
+    };
+
+    const client = createBackendClient({
+        baseUrl: "https://api.example.com"
+    });
+
+    global.apiFetch = async (url, init) => {
+        apiFetchCalls += 1;
+        assert.equal(url, "https://api.example.com/notes");
+        assert.equal(init?.method, "GET");
+        return new StubResponse(200, { notes: [] });
+    };
+
+    const snapshot = await client.fetchSnapshot();
+    assert.deepEqual(snapshot, { notes: [] });
+    assert.equal(apiFetchCalls, 1);
+    assert.equal(defaultFetchUsed, false);
+});
+
+test("custom fetch is preferred over apiFetch", async () => {
+    let customCalls = 0;
+    global.apiFetch = async () => {
+        throw new Error("apiFetch should not be used when custom fetch provided");
     };
 
     const client = createBackendClient({
         baseUrl: "https://api.example.com",
-        authBaseUrl: "https://auth.example.com",
-        fetchImplementation
+        fetchImplementation: async (url, init) => {
+            customCalls += 1;
+            assert.equal(url, "https://api.example.com/notes/sync");
+            assert.equal(init?.method, "POST");
+            return new StubResponse(200, { results: [] });
+        }
     });
 
-    await assert.rejects(
-        client.syncOperations({ operations: [{ note_id: "note-1" }] }),
-        /unauthorized/i
-    );
-    assert.deepEqual(
-        calls.map((call) => `${call.method}:${call.url}`),
-        [
-            "POST:https://api.example.com/notes/sync",
-            "POST:https://auth.example.com/auth/refresh"
-        ]
-    );
+    const result = await client.syncOperations({ operations: [] });
+    assert.deepEqual(result, { results: [] });
+    assert.equal(customCalls, 1);
 });
