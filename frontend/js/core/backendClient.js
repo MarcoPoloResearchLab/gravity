@@ -12,7 +12,7 @@ import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
  */
 export function createBackendClient(options = {}) {
     const normalizedBase = normalizeBaseUrl(options.baseUrl ?? "");
-    const runtimeFetch = resolveFetchImplementation(options.fetchImplementation);
+    const resolveFetch = createFetchResolver(options.fetchImplementation);
 
     return Object.freeze({
         /**
@@ -21,7 +21,7 @@ export function createBackendClient(options = {}) {
          * @returns {Promise<{ results: Array<Record<string, unknown>> }>}
          */
         async syncOperations(params) {
-            const response = await runtimeFetch(
+            const response = await resolveFetch()(
                 `${normalizedBase}/notes/sync`,
                 buildFetchOptions({
                     method: "POST",
@@ -40,7 +40,7 @@ export function createBackendClient(options = {}) {
          * @returns {Promise<{ notes: Array<Record<string, unknown>> }>}
          */
         async fetchSnapshot() {
-            const response = await runtimeFetch(
+            const response = await resolveFetch()(
                 `${normalizedBase}/notes`,
                 buildFetchOptions({
                     method: "GET"
@@ -55,17 +55,19 @@ export function createBackendClient(options = {}) {
     });
 }
 
-function resolveFetchImplementation(customFetch) {
-    if (typeof customFetch === "function") {
-        return customFetch;
-    }
-    if (typeof globalThis !== "undefined" && typeof globalThis.apiFetch === "function") {
-        return globalThis.apiFetch.bind(globalThis);
-    }
-    if (typeof fetch === "function") {
-        return fetch.bind(globalThis);
-    }
-    throw new Error("Backend client requires a fetch implementation.");
+function createFetchResolver(customFetch) {
+    return () => {
+        if (typeof customFetch === "function") {
+            return customFetch;
+        }
+        if (typeof globalThis !== "undefined" && typeof globalThis.apiFetch === "function") {
+            return globalThis.apiFetch.bind(globalThis);
+        }
+        if (typeof fetch === "function") {
+            return fetch.bind(globalThis);
+        }
+        throw new Error("Backend client requires a fetch implementation.");
+    };
 }
 
 /**
