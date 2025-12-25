@@ -315,6 +315,7 @@ export async function waitForAppHydration(page, options = {}) {
         { timeout }
     );
     await flushAlpineQueues(page);
+    await page.evaluate(() => (document.fonts ? document.fonts.ready : Promise.resolve()));
 }
 
 /**

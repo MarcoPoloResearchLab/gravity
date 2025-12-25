@@ -590,6 +590,14 @@ async function ensureHtmlViewRecords(page, records) {
     }
 
     await page.waitForSelector(`[data-note-id="${LONG_NOTE_ID}"] .note-html-view`);
+    await page.evaluate(() => (document.fonts ? document.fonts.ready : Promise.resolve()));
+    await page.waitForFunction((noteId) => {
+        const htmlView = document.querySelector(`[data-note-id="${noteId}"] .note-html-view`);
+        if (!(htmlView instanceof HTMLElement)) {
+            return false;
+        }
+        return htmlView.scrollHeight > htmlView.clientHeight;
+    }, {}, LONG_NOTE_ID);
     await page.evaluate(() => {
         window.scrollTo({ top: 0, behavior: "instant" });
     });

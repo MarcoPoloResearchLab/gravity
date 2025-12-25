@@ -324,6 +324,9 @@ export function createSyncManager(options = {}) {
         }
         try {
             const snapshot = await backendClient.fetchSnapshot();
+            if (state.queue.length > 0) {
+                return false;
+            }
             applySnapshot(snapshot?.notes ?? []);
             if (debugEnabled()) {
                 try {

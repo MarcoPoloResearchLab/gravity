@@ -53,7 +53,7 @@ test("resolveAuthBaseUrl respects injected override", () => {
 
 test("resolveAuthBaseUrl uses environment defaults", () => {
     setRuntimeConfig({ environment: "production" });
-    assert.equal(resolveAuthBaseUrl(), "https://gravity-tauth.mprlab.com");
+    assert.equal(resolveAuthBaseUrl(), "https://tauth.mprlab.com");
 });
 
 test("resolveEnvironmentName normalizes injected value", () => {
