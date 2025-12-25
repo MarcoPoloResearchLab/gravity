@@ -8,7 +8,7 @@ const DEFAULT_ENVIRONMENT_CONFIG = Object.freeze({
     production: Object.freeze({
         backendBaseUrl: "https://gravity-api.mprlab.com",
         llmProxyUrl: "https://llm-proxy.mprlab.com/v1/gravity/classify",
-        authBaseUrl: "https://gravity-tauth.mprlab.com"
+        authBaseUrl: "https://tauth.mprlab.com"
     }),
     development: Object.freeze({
         backendBaseUrl: "http://localhost:8080",
