@@ -61,9 +61,9 @@ export function createTAuthSession(options = {}) {
                 await win.logout();
                 return;
             }
-            const endpoints = resolveAuthEndpoints(win, baseUrl);
+            const logoutUrl = resolveLogoutEndpoint(win, baseUrl);
             try {
-                await state.fetch(endpoints.logoutUrl, {
+                await state.fetch(logoutUrl, {
                     method: "POST",
                     headers: DEFAULT_HEADERS,
                     credentials: "include"
@@ -74,51 +74,29 @@ export function createTAuthSession(options = {}) {
         },
 
         async requestNonce() {
-            await ensureInitialized(false);
-            const endpoints = resolveAuthEndpoints(win, baseUrl);
-            const response = await state.fetch(endpoints.nonceUrl, {
-                method: "POST",
-                headers: DEFAULT_HEADERS,
-                credentials: "include"
-            });
-            if (!response.ok) {
-                throw new Error("tauth.nonce_failed");
+            const initialized = await ensureInitialized(false);
+            if (!initialized || !win || typeof win.requestNonce !== "function") {
+                throw new Error("tauth.nonce_unavailable");
             }
-            const payload = await response.json();
-            if (!payload || typeof payload.nonce !== "string" || payload.nonce.length === 0) {
-                throw new Error("tauth.nonce_invalid");
-            }
-            return payload.nonce;
+            return win.requestNonce();
         },
 
         async exchangeGoogleCredential({ credential, nonceToken }) {
-            if (!credential) {
-                throw new Error("tauth.missing_credential");
-            }
-            await ensureInitialized(false);
-            const endpoints = resolveAuthEndpoints(win, baseUrl);
-            const body = JSON.stringify({ google_id_token: credential, nonce_token: nonceToken ?? null });
-            const response = await state.fetch(endpoints.googleUrl, {
-                method: "POST",
-                headers: DEFAULT_HEADERS,
-                credentials: "include",
-                body
-            });
-            if (!response.ok) {
-                const payload = await safeJson(response);
-                const reason = payload?.error ?? "tauth.exchange_failed";
+            const initialized = await ensureInitialized(false);
+            if (!initialized || !win || typeof win.exchangeGoogleCredential !== "function") {
+                const reason = "tauth.exchange_unavailable";
                 dispatch(events, EVENT_AUTH_ERROR, { reason });
                 throw new Error(reason);
             }
-            const refreshed = await ensureInitialized(true);
-            if (!refreshed) {
-                const fallbackProfile = await safeJson(response);
-                const normalizedProfile = normalizeProfile(fallbackProfile);
-                if (normalizedProfile) {
-                    dispatch(events, EVENT_AUTH_SIGN_IN, {
-                        user: normalizedProfile
-                    });
+            try {
+                await win.exchangeGoogleCredential({ credential, nonceToken });
+            } catch (error) {
+                const reason = error instanceof Error ? error.message : "tauth.exchange_failed";
+                dispatch(events, EVENT_AUTH_ERROR, { reason });
+                if (error instanceof Error) {
+                    throw error;
                 }
+                throw new Error(reason);
             }
         }
     });
@@ -192,29 +170,23 @@ function normalizeTenantId(value) {
 }
 
 /**
- * Resolve TAuth endpoints from the auth-client when available.
+ * Resolve the logout endpoint from the auth-client when available.
  * @param {typeof window|null} windowRef
  * @param {string} baseUrl
- * @returns {{ nonceUrl: string, googleUrl: string, logoutUrl: string }}
+ * @returns {string}
  */
-function resolveAuthEndpoints(windowRef, baseUrl) {
+function resolveLogoutEndpoint(windowRef, baseUrl) {
     const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
-    const fallback = {
-        nonceUrl: `${normalizedBaseUrl}/auth/nonce`,
-        googleUrl: `${normalizedBaseUrl}/auth/google`,
-        logoutUrl: `${normalizedBaseUrl}/auth/logout`
-    };
+    const fallback = `${normalizedBaseUrl}/auth/logout`;
     if (!windowRef || typeof windowRef.getAuthEndpoints !== "function") {
         return fallback;
     }
     try {
         const endpoints = windowRef.getAuthEndpoints();
-        const nonceUrl = normalizeEndpoint(endpoints?.nonceUrl) || fallback.nonceUrl;
-        const googleUrl = normalizeEndpoint(endpoints?.googleUrl) || fallback.googleUrl;
-        const logoutUrl = normalizeEndpoint(endpoints?.logoutUrl) || fallback.logoutUrl;
-        return { nonceUrl, googleUrl, logoutUrl };
+        const logoutUrl = normalizeEndpoint(endpoints?.logoutUrl) || fallback;
+        return logoutUrl;
     } catch (error) {
-        logging.warn("Failed to resolve TAuth endpoints from auth-client", error);
+        logging.warn("Failed to resolve TAuth logout endpoint from auth-client", error);
         return fallback;
     }
 }
@@ -270,14 +242,6 @@ function dispatch(target, type, detail) {
         target.dispatchEvent(new CustomEvent(type, { detail }));
     } catch (error) {
         logging.error(error);
-    }
-}
-
-async function safeJson(response) {
-    try {
-        return await response.json();
-    } catch {
-        return null;
     }
 }
 
