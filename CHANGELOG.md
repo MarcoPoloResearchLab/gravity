@@ -15,6 +15,7 @@ and are grouped by the date the work landed on `master`.
 ### Changed
 - Full-screen toggle now lives inside the avatar menu with updated exit icon strokes and a text label (GN-207).
 - Auth header now shows only the signed-in display name to avoid exposing email addresses (GN-208).
+- TAuth session now delegates nonce issuance and credential exchange to auth-client helpers instead of local fetches (GN-423).
 
 ### Fixed
 - Html view interactions now reserve the chevron toggle for expansion while single clicks anywhere else enter inline edit mode (GN-109).

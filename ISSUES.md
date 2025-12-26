@@ -53,6 +53,8 @@ Check the logs at @gravity.log and gravity-filtered.log and try to pinpoint the 
 
 ## Maintenance (405–499)
 
+- [x] [GN-423] Delegate nonce issuance and Google credential exchange to the TAuth auth-client helpers so Gravity no longer hand-rolls `/auth/nonce` + `/auth/google` fetches. (Resolved by delegating to auth-client helpers and updating tests/harness.)
+
 ## Planning
 **Do not work on these, not ready**
 
