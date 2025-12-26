@@ -65,7 +65,7 @@ export async function installTAuthHarness(page, options) {
                 contentType: "application/json",
                 headers: {
                     ...corsHeaders,
-                    "Access-Control-Allow-Headers": "content-type,x-requested-with,x-client",
+                    "Access-Control-Allow-Headers": "content-type,x-requested-with,x-client,x-tauth-tenant",
                     "Access-Control-Allow-Methods": "GET,POST,OPTIONS"
                 },
                 body: ""
@@ -389,6 +389,71 @@ function buildAuthClientStub(profile) {
                 if (typeof harness.options.onUnauthenticated === "function") {
                     harness.options.onUnauthenticated();
                 }
+            };
+            window.getAuthEndpoints = function getAuthEndpoints() {
+                const baseUrl = typeof harness.options?.baseUrl === "string"
+                    ? harness.options.baseUrl.replace(/\\/+$/u, "")
+                    : "";
+                const withBase = (path) => (baseUrl ? baseUrl + path : path);
+                return {
+                    baseUrl,
+                    meUrl: withBase("/me"),
+                    nonceUrl: withBase("/auth/nonce"),
+                    googleUrl: withBase("/auth/google"),
+                    refreshUrl: withBase("/auth/refresh"),
+                    logoutUrl: withBase("/auth/logout")
+                };
+            };
+            window.requestNonce = async function requestNonce() {
+                const baseUrl = typeof harness.options?.baseUrl === "string"
+                    ? harness.options.baseUrl.replace(/\\/+$/u, "")
+                    : "";
+                if (!baseUrl) {
+                    throw new Error("tauth.missing_base_url");
+                }
+                const response = await fetch(baseUrl + "/auth/nonce", {
+                    method: "POST",
+                    credentials: "include",
+                    headers: { "X-Requested-With": "XMLHttpRequest" }
+                });
+                if (!response.ok) {
+                    throw new Error("tauth.nonce_failed");
+                }
+                const payload = await response.json();
+                if (!payload || typeof payload.nonce !== "string" || !payload.nonce.trim()) {
+                    throw new Error("tauth.nonce_invalid");
+                }
+                return payload.nonce;
+            };
+            window.exchangeGoogleCredential = async function exchangeGoogleCredential(payload) {
+                const baseUrl = typeof harness.options?.baseUrl === "string"
+                    ? harness.options.baseUrl.replace(/\\/+$/u, "")
+                    : "";
+                if (!baseUrl) {
+                    throw new Error("tauth.missing_base_url");
+                }
+                const credential = typeof payload?.credential === "string" ? payload.credential.trim() : "";
+                const nonceToken = typeof payload?.nonceToken === "string" ? payload.nonceToken.trim() : "";
+                if (!credential) {
+                    throw new Error("tauth.missing_credential");
+                }
+                if (!nonceToken) {
+                    throw new Error("tauth.missing_nonce_token");
+                }
+                const response = await fetch(baseUrl + "/auth/google", {
+                    method: "POST",
+                    credentials: "include",
+                    headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+                    body: JSON.stringify({ google_id_token: credential, nonce_token: nonceToken })
+                });
+                const responsePayload = await response.json();
+                if (!response.ok) {
+                    const errorCode = responsePayload && typeof responsePayload.error === "string"
+                        ? responsePayload.error
+                        : "tauth.exchange_failed";
+                    throw new Error(errorCode);
+                }
+                return responsePayload;
             };
             window.logout = async function logout() {
                 const baseUrl = typeof harness.options?.baseUrl === "string"

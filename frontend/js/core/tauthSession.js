@@ -19,6 +19,7 @@ const DEFAULT_HEADERS = Object.freeze({
  *   baseUrl?: string,
  *   eventTarget?: EventTarget|null,
  *   fetchImplementation?: typeof fetch,
+ *   tenantId?: string,
  *   windowRef?: typeof window
  * }} [options]
  */
@@ -27,6 +28,7 @@ export function createTAuthSession(options = {}) {
     const baseUrl = normalizeBaseUrl(options.baseUrl ?? appConfig.authBaseUrl);
     const fetchImplementation = resolveFetchImplementation(options.fetchImplementation, win);
     const events = options.eventTarget ?? (typeof document !== "undefined" ? document : null);
+    const tenantId = normalizeTenantId(options.tenantId);
 
     if (!fetchImplementation) {
         throw new Error("TAuth session requires a fetch implementation.");
@@ -37,7 +39,7 @@ export function createTAuthSession(options = {}) {
         initializing: null,
         baseUrl,
         fetch: fetchImplementation,
-        initOptions: /** @type {{ baseUrl: string, onAuthenticated(profile: unknown): void, onUnauthenticated(): void }|null} */ (null)
+        initOptions: /** @type {{ baseUrl: string, tenantId?: string, onAuthenticated(profile: unknown): void, onUnauthenticated(): void }|null} */ (null)
     };
 
     const handleAuthenticated = (profile) => {
@@ -59,8 +61,9 @@ export function createTAuthSession(options = {}) {
                 await win.logout();
                 return;
             }
+            const logoutUrl = resolveLogoutEndpoint(win, baseUrl);
             try {
-                await state.fetch(`${baseUrl}/auth/logout`, {
+                await state.fetch(logoutUrl, {
                     method: "POST",
                     headers: DEFAULT_HEADERS,
                     credentials: "include"
@@ -71,47 +74,29 @@ export function createTAuthSession(options = {}) {
         },
 
         async requestNonce() {
-            const response = await state.fetch(`${baseUrl}/auth/nonce`, {
-                method: "POST",
-                headers: DEFAULT_HEADERS,
-                credentials: "include"
-            });
-            if (!response.ok) {
-                throw new Error("tauth.nonce_failed");
+            const initialized = await ensureInitialized(false);
+            if (!initialized || !win || typeof win.requestNonce !== "function") {
+                throw new Error("tauth.nonce_unavailable");
             }
-            const payload = await response.json();
-            if (!payload || typeof payload.nonce !== "string" || payload.nonce.length === 0) {
-                throw new Error("tauth.nonce_invalid");
-            }
-            return payload.nonce;
+            return win.requestNonce();
         },
 
         async exchangeGoogleCredential({ credential, nonceToken }) {
-            if (!credential) {
-                throw new Error("tauth.missing_credential");
-            }
-            const body = JSON.stringify({ google_id_token: credential, nonce_token: nonceToken ?? null });
-            const response = await state.fetch(`${baseUrl}/auth/google`, {
-                method: "POST",
-                headers: DEFAULT_HEADERS,
-                credentials: "include",
-                body
-            });
-            if (!response.ok) {
-                const payload = await safeJson(response);
-                const reason = payload?.error ?? "tauth.exchange_failed";
+            const initialized = await ensureInitialized(false);
+            if (!initialized || !win || typeof win.exchangeGoogleCredential !== "function") {
+                const reason = "tauth.exchange_unavailable";
                 dispatch(events, EVENT_AUTH_ERROR, { reason });
                 throw new Error(reason);
             }
-            const refreshed = await ensureInitialized(true);
-            if (!refreshed) {
-                const fallbackProfile = await safeJson(response);
-                const normalizedProfile = normalizeProfile(fallbackProfile);
-                if (normalizedProfile) {
-                    dispatch(events, EVENT_AUTH_SIGN_IN, {
-                        user: normalizedProfile
-                    });
+            try {
+                await win.exchangeGoogleCredential({ credential, nonceToken });
+            } catch (error) {
+                const reason = error instanceof Error ? error.message : "tauth.exchange_failed";
+                dispatch(events, EVENT_AUTH_ERROR, { reason });
+                if (error instanceof Error) {
+                    throw error;
                 }
+                throw new Error(reason);
             }
         }
     });
@@ -134,6 +119,7 @@ export function createTAuthSession(options = {}) {
             if (!state.initOptions) {
                 state.initOptions = {
                     baseUrl,
+                    ...(tenantId ? { tenantId } : {}),
                     onAuthenticated: handleAuthenticated,
                     onUnauthenticated: handleUnauthenticated
                 };
@@ -165,6 +151,63 @@ function normalizeBaseUrl(value) {
         return "";
     }
     return trimmed.replace(/\/+$/u, "");
+}
+
+/**
+ * Normalize a tenant identifier.
+ * @param {unknown} value
+ * @returns {string}
+ */
+function normalizeTenantId(value) {
+    if (typeof value !== "string") {
+        return "";
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return "";
+    }
+    return trimmed;
+}
+
+/**
+ * Resolve the logout endpoint from the auth-client when available.
+ * @param {typeof window|null} windowRef
+ * @param {string} baseUrl
+ * @returns {string}
+ */
+function resolveLogoutEndpoint(windowRef, baseUrl) {
+    const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+    const fallback = `${normalizedBaseUrl}/auth/logout`;
+    if (!windowRef || typeof windowRef.getAuthEndpoints !== "function") {
+        return fallback;
+    }
+    try {
+        const endpoints = windowRef.getAuthEndpoints();
+        const logoutUrl = normalizeEndpoint(endpoints?.logoutUrl) || fallback;
+        return logoutUrl;
+    } catch (error) {
+        logging.warn("Failed to resolve TAuth logout endpoint from auth-client", error);
+        return fallback;
+    }
+}
+
+/**
+ * Normalize endpoint URLs while preserving intentional blanks.
+ * @param {unknown} value
+ * @returns {string}
+ */
+function normalizeEndpoint(value) {
+    if (value === undefined || value === null) {
+        return "";
+    }
+    if (typeof value !== "string") {
+        return "";
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return "";
+    }
+    return trimmed;
 }
 
 function resolveFetchImplementation(customFetch, windowRef) {
@@ -199,14 +242,6 @@ function dispatch(target, type, detail) {
         target.dispatchEvent(new CustomEvent(type, { detail }));
     } catch (error) {
         logging.error(error);
-    }
-}
-
-async function safeJson(response) {
-    try {
-        return await response.json();
-    } catch {
-        return null;
     }
 }
 
