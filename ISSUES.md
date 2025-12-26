@@ -62,3 +62,4 @@ Check the logs at @gravity.log and gravity-filtered.log and try to pinpoint the 
 ## BugFixes (300–399)
 
 - [ ] [GN-421] Gravity production runtime config still points authBaseUrl at the old TAuth host, causing nonce/auth client failures after the deployment. Update production defaults/runtime config and align tests.
+- [x] [GN-422] Align Gravity's TAuth session flow with auth-client endpoint mapping to avoid CORS/404s after client updates. (Resolved by using the auth-client endpoint map and updating tests.)

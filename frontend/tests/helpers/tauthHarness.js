@@ -65,7 +65,7 @@ export async function installTAuthHarness(page, options) {
                 contentType: "application/json",
                 headers: {
                     ...corsHeaders,
-                    "Access-Control-Allow-Headers": "content-type,x-requested-with,x-client",
+                    "Access-Control-Allow-Headers": "content-type,x-requested-with,x-client,x-tauth-tenant",
                     "Access-Control-Allow-Methods": "GET,POST,OPTIONS"
                 },
                 body: ""
@@ -389,6 +389,20 @@ function buildAuthClientStub(profile) {
                 if (typeof harness.options.onUnauthenticated === "function") {
                     harness.options.onUnauthenticated();
                 }
+            };
+            window.getAuthEndpoints = function getAuthEndpoints() {
+                const baseUrl = typeof harness.options?.baseUrl === "string"
+                    ? harness.options.baseUrl.replace(/\\/+$/u, "")
+                    : "";
+                const withBase = (path) => (baseUrl ? baseUrl + path : path);
+                return {
+                    baseUrl,
+                    meUrl: withBase("/me"),
+                    nonceUrl: withBase("/auth/nonce"),
+                    googleUrl: withBase("/auth/google"),
+                    refreshUrl: withBase("/auth/refresh"),
+                    logoutUrl: withBase("/auth/logout")
+                };
             };
             window.logout = async function logout() {
                 const baseUrl = typeof harness.options?.baseUrl === "string"

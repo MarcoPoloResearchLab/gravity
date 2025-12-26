@@ -19,6 +19,7 @@ const DEFAULT_HEADERS = Object.freeze({
  *   baseUrl?: string,
  *   eventTarget?: EventTarget|null,
  *   fetchImplementation?: typeof fetch,
+ *   tenantId?: string,
  *   windowRef?: typeof window
  * }} [options]
  */
@@ -27,6 +28,7 @@ export function createTAuthSession(options = {}) {
     const baseUrl = normalizeBaseUrl(options.baseUrl ?? appConfig.authBaseUrl);
     const fetchImplementation = resolveFetchImplementation(options.fetchImplementation, win);
     const events = options.eventTarget ?? (typeof document !== "undefined" ? document : null);
+    const tenantId = normalizeTenantId(options.tenantId);
 
     if (!fetchImplementation) {
         throw new Error("TAuth session requires a fetch implementation.");
@@ -37,7 +39,7 @@ export function createTAuthSession(options = {}) {
         initializing: null,
         baseUrl,
         fetch: fetchImplementation,
-        initOptions: /** @type {{ baseUrl: string, onAuthenticated(profile: unknown): void, onUnauthenticated(): void }|null} */ (null)
+        initOptions: /** @type {{ baseUrl: string, tenantId?: string, onAuthenticated(profile: unknown): void, onUnauthenticated(): void }|null} */ (null)
     };
 
     const handleAuthenticated = (profile) => {
@@ -59,8 +61,9 @@ export function createTAuthSession(options = {}) {
                 await win.logout();
                 return;
             }
+            const endpoints = resolveAuthEndpoints(win, baseUrl);
             try {
-                await state.fetch(`${baseUrl}/auth/logout`, {
+                await state.fetch(endpoints.logoutUrl, {
                     method: "POST",
                     headers: DEFAULT_HEADERS,
                     credentials: "include"
@@ -71,7 +74,9 @@ export function createTAuthSession(options = {}) {
         },
 
         async requestNonce() {
-            const response = await state.fetch(`${baseUrl}/auth/nonce`, {
+            await ensureInitialized(false);
+            const endpoints = resolveAuthEndpoints(win, baseUrl);
+            const response = await state.fetch(endpoints.nonceUrl, {
                 method: "POST",
                 headers: DEFAULT_HEADERS,
                 credentials: "include"
@@ -90,8 +95,10 @@ export function createTAuthSession(options = {}) {
             if (!credential) {
                 throw new Error("tauth.missing_credential");
             }
+            await ensureInitialized(false);
+            const endpoints = resolveAuthEndpoints(win, baseUrl);
             const body = JSON.stringify({ google_id_token: credential, nonce_token: nonceToken ?? null });
-            const response = await state.fetch(`${baseUrl}/auth/google`, {
+            const response = await state.fetch(endpoints.googleUrl, {
                 method: "POST",
                 headers: DEFAULT_HEADERS,
                 credentials: "include",
@@ -134,6 +141,7 @@ export function createTAuthSession(options = {}) {
             if (!state.initOptions) {
                 state.initOptions = {
                     baseUrl,
+                    ...(tenantId ? { tenantId } : {}),
                     onAuthenticated: handleAuthenticated,
                     onUnauthenticated: handleUnauthenticated
                 };
@@ -165,6 +173,69 @@ function normalizeBaseUrl(value) {
         return "";
     }
     return trimmed.replace(/\/+$/u, "");
+}
+
+/**
+ * Normalize a tenant identifier.
+ * @param {unknown} value
+ * @returns {string}
+ */
+function normalizeTenantId(value) {
+    if (typeof value !== "string") {
+        return "";
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return "";
+    }
+    return trimmed;
+}
+
+/**
+ * Resolve TAuth endpoints from the auth-client when available.
+ * @param {typeof window|null} windowRef
+ * @param {string} baseUrl
+ * @returns {{ nonceUrl: string, googleUrl: string, logoutUrl: string }}
+ */
+function resolveAuthEndpoints(windowRef, baseUrl) {
+    const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+    const fallback = {
+        nonceUrl: `${normalizedBaseUrl}/auth/nonce`,
+        googleUrl: `${normalizedBaseUrl}/auth/google`,
+        logoutUrl: `${normalizedBaseUrl}/auth/logout`
+    };
+    if (!windowRef || typeof windowRef.getAuthEndpoints !== "function") {
+        return fallback;
+    }
+    try {
+        const endpoints = windowRef.getAuthEndpoints();
+        const nonceUrl = normalizeEndpoint(endpoints?.nonceUrl) || fallback.nonceUrl;
+        const googleUrl = normalizeEndpoint(endpoints?.googleUrl) || fallback.googleUrl;
+        const logoutUrl = normalizeEndpoint(endpoints?.logoutUrl) || fallback.logoutUrl;
+        return { nonceUrl, googleUrl, logoutUrl };
+    } catch (error) {
+        logging.warn("Failed to resolve TAuth endpoints from auth-client", error);
+        return fallback;
+    }
+}
+
+/**
+ * Normalize endpoint URLs while preserving intentional blanks.
+ * @param {unknown} value
+ * @returns {string}
+ */
+function normalizeEndpoint(value) {
+    if (value === undefined || value === null) {
+        return "";
+    }
+    if (typeof value !== "string") {
+        return "";
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return "";
+    }
+    return trimmed;
 }
 
 function resolveFetchImplementation(customFetch, windowRef) {
