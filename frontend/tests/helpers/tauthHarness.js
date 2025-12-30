@@ -9,7 +9,7 @@ const DEFAULT_SESSION_COOKIE = "app_session";
 const DEFAULT_REFRESH_COOKIE = "app_refresh";
 
 /**
- * Install a stub TAuth service for Puppeteer tests by intercepting the auth-client
+ * Install a stub TAuth service for Puppeteer tests by intercepting the tauth.js
  * script load plus `/auth/*` HTTP requests.
  * @param {import("puppeteer").Page} page
  * @param {{
@@ -72,7 +72,7 @@ export async function installTAuthHarness(page, options) {
             }).catch(() => {});
             return true;
         }
-        if (method === "GET" && path === "/static/auth-client.js") {
+        if (method === "GET" && path === "/tauth.js") {
             const scriptBody = buildAuthClientStub(state.profile);
             request.respond({
                 status: 200,
