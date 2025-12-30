@@ -293,15 +293,15 @@ export function lockEditingSurfaceHeight(card, measurements) {
         card.style.maxHeight = "";
         card.style.height = `${targetCardHeight}px`;
         if (codeMirrorScroll instanceof HTMLElement) {
-            codeMirrorScroll.style.minHeight = `${contentHeight}px`;
+            codeMirrorScroll.style.setProperty("min-height", `${contentHeight}px`, "important");
             codeMirrorScroll.style.maxHeight = "";
-            codeMirrorScroll.style.height = `${contentHeight}px`;
+            codeMirrorScroll.style.setProperty("height", `${contentHeight}px`, "important");
             codeMirrorScroll.style.overflowY = "";
         }
         if (codeMirror instanceof HTMLElement) {
-            codeMirror.style.minHeight = `${contentHeight}px`;
+            codeMirror.style.setProperty("min-height", `${contentHeight}px`, "important");
             codeMirror.style.maxHeight = "";
-            codeMirror.style.height = `${contentHeight}px`;
+            codeMirror.style.setProperty("height", `${contentHeight}px`, "important");
         }
         if (textarea instanceof HTMLElement) {
             textarea.style.minHeight = `${contentHeight}px`;
@@ -353,16 +353,16 @@ export function releaseEditingSurfaceHeight(card) {
     card.style.height = "";
     const codeMirrorScroll = card.querySelector(".CodeMirror-scroll");
     if (codeMirrorScroll instanceof HTMLElement) {
-        codeMirrorScroll.style.minHeight = "";
+        codeMirrorScroll.style.removeProperty("min-height");
         codeMirrorScroll.style.maxHeight = "";
-        codeMirrorScroll.style.height = "";
+        codeMirrorScroll.style.removeProperty("height");
         codeMirrorScroll.style.overflowY = "";
     }
     const codeMirror = card.querySelector(".CodeMirror");
     if (codeMirror instanceof HTMLElement) {
-        codeMirror.style.minHeight = "";
+        codeMirror.style.removeProperty("min-height");
         codeMirror.style.maxHeight = "";
-        codeMirror.style.height = "";
+        codeMirror.style.removeProperty("height");
     }
     const textarea = card.querySelector(".markdown-editor");
     if (textarea instanceof HTMLElement) {

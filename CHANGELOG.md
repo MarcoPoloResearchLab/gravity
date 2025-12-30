@@ -18,6 +18,8 @@ and are grouped by the date the work landed on `master`.
 - TAuth session now delegates nonce issuance and credential exchange to auth-client helpers instead of local fetches (GN-423).
 
 ### Fixed
+- Updated the TAuth helper loader and harness to use `/tauth.js`, keeping Gravity aligned with current TAuth builds (GN-424).
+- Expanded edit-height locks now override CodeMirror auto sizing so expanded cards keep their height in edit mode (GN-425).
 - Html view interactions now reserve the chevron toggle for expansion while single clicks anywhere else enter inline edit mode (GN-109).
 - Inline editor now wraps selected text with matching backtick fences and escalates when the selection already contains backticks, covering GN-106 with new regression tests.
 - Markdown editors re-enable browser grammar hints by wiring spellcheck/autocorrect attributes into EasyMDE inputs, verified by new integration coverage (GN-108).

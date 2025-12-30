@@ -6,7 +6,7 @@ import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
 const SCRIPT_ELEMENT_ID = "gravity-tauth-client-script";
 
 /**
- * Ensure the TAuth auth-client script is loaded. Returns when the script
+ * Ensure the TAuth tauth.js helper is loaded. Returns when the script
  * has been appended (or already present).
  * @param {{ documentRef?: Document|null, baseUrl?: string|null }} [options]
  * @returns {Promise<void>}
@@ -32,12 +32,12 @@ export async function ensureTAuthClientLoaded(options = {}) {
     script.id = SCRIPT_ELEMENT_ID;
     script.defer = true;
     script.crossOrigin = "anonymous";
-    script.src = `${authBaseUrl.replace(/\/+$/u, "")}/static/auth-client.js`;
+    script.src = `${authBaseUrl.replace(/\/+$/u, "")}/tauth.js`;
 
     await new Promise((resolve, reject) => {
         script.addEventListener("load", () => resolve(undefined), { once: true });
         script.addEventListener("error", (event) => {
-            logging.error("Failed to load TAuth auth-client.js", event);
+            logging.error("Failed to load TAuth tauth.js", event);
             doc.getElementById(SCRIPT_ELEMENT_ID)?.remove();
             reject(new Error("tauth-client-load-failed"));
         }, { once: true });

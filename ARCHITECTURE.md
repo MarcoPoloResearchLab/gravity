@@ -77,7 +77,7 @@ EasyMDE produces markdown, marked renders it to HTML, and DOMPurify sanitises th
 - `createNoteRecord` validates note identifiers/markdown before writes so malformed payloads never hit storage.
 - `GravityStore.setUserScope(userId)` switches the storage namespace so each Google account receives an isolated notebook.
 - Runtime configuration loads from environment-specific JSON files under `data/`, selected according to the active hostname. Each profile now surfaces `authBaseUrl` so the frontend knows which TAuth origin to contact when requesting `/auth/nonce`, `/auth/google`, and `/auth/logout`.
-- Authentication flows through Google Identity Services + TAuth: the browser loads `authBaseUrl/static/auth-client.js`, fetches a nonce from `/auth/nonce`, exchanges Google credentials at `/auth/google`, and refreshes the session via `/auth/refresh`. The frontend never sends Google tokens to the Gravity backend; every API request simply carries the `app_session` cookie minted by TAuth and validated locally via HS256.
+- Authentication flows through Google Identity Services + TAuth: the browser loads `authBaseUrl/tauth.js`, fetches a nonce from `/auth/nonce`, exchanges Google credentials at `/auth/google`, and refreshes the session via `/auth/refresh`. The frontend never sends Google tokens to the Gravity backend; every API request simply carries the `app_session` cookie minted by TAuth and validated locally via HS256.
 - The backend records a canonical user table (`user_identities`) so each `(provider, subject)` pair (for example `google:1234567890`) maps to a stable Gravity `user_id`. That allows multiple login providers to point at the same notebook without rewriting note rows.
 
 #### Frontend Dependencies
@@ -157,7 +157,7 @@ When serving from an alternate hostname, add a new profile or override the URLs 
 
 #### Authentication Contract
 
-- **Browser responsibilities:** Gravity’s frontend loads `authBaseUrl/static/auth-client.js`, asks `/auth/nonce` for a nonce, exchanges Google credentials at `/auth/google`, and retries requests via `/auth/refresh` when the backend returns `401`. All network calls simply include the `app_session` cookie; no Google tokens touch the Gravity API.
+- **Browser responsibilities:** Gravity’s frontend loads `authBaseUrl/tauth.js`, asks `/auth/nonce` for a nonce, exchanges Google credentials at `/auth/google`, and retries requests via `/auth/refresh` when the backend returns `401`. All network calls simply include the `app_session` cookie; no Google tokens touch the Gravity API.
 - **Backend responsibilities:** the API validates `app_session` with the shared HS256 secret/issuer, stores no refresh tokens, and trusts the canonical `user_id` resolved by the `user_identities` table. A one-time migration strips the legacy `google:` prefix from existing note rows and backfills the identity mapping automatically.
 - **Logout propagation:** triggering **Sign out** in the UI invokes `/auth/logout`, revokes refresh tokens inside TAuth, and dispatches `gravity:auth-sign-out` so the browser returns to the anonymous notebook.
 - **Future providers:** because every `(provider, subject)` pair maps to the same Gravity user, we can add Apple/email sign-in later without rewriting stored notes.
