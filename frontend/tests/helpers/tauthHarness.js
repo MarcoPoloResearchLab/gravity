@@ -65,7 +65,7 @@ export async function installTAuthHarness(page, options) {
                 contentType: "application/json",
                 headers: {
                     ...corsHeaders,
-                    "Access-Control-Allow-Headers": "content-type,x-requested-with,x-client,x-tauth-tenant",
+                    "Access-Control-Allow-Headers": "content-type,x-requested-with,x-tauth-tenant",
                     "Access-Control-Allow-Methods": "GET,POST,OPTIONS"
                 },
                 body: ""
@@ -340,6 +340,14 @@ function buildAuthClientStub(profile) {
             if (!window.__tauthHarnessEvents) {
                 window.__tauthHarnessEvents = { initCount: 0, authenticatedCount: 0 };
             }
+            const TENANT_HEADER_NAME = "X-TAuth-Tenant";
+            const normalizeTenantId = (value) => {
+                if (typeof value !== "string") {
+                    return "";
+                }
+                const trimmed = value.trim();
+                return trimmed.length > 0 ? trimmed : "";
+            };
             const harness = {
                 profile: ${serializedProfile},
                 options: null,
@@ -357,6 +365,15 @@ function buildAuthClientStub(profile) {
                     }
                 }
             };
+            const resolveTenantId = () => normalizeTenantId(harness.options?.tenantId);
+            const withTenantHeader = (headers) => {
+                const mergedHeaders = Object.assign({}, headers || {});
+                const tenantId = resolveTenantId();
+                if (tenantId) {
+                    mergedHeaders[TENANT_HEADER_NAME] = tenantId;
+                }
+                return mergedHeaders;
+            };
             window.__tauthHarness = harness;
             window.initAuthClient = async function initAuthClient(options) {
                 window.__tauthHarnessEvents.initCount += 1;
@@ -369,14 +386,14 @@ function buildAuthClientStub(profile) {
                     return;
                 }
                 if (!baseUrl) {
-                    harness.emitUnauthenticated("missing-base-url");
+                    harness.emitUnauthenticated("tauth.missing_base_url");
                     return;
                 }
                 try {
                     const response = await fetch(baseUrl + "/me", {
                         method: "GET",
                         credentials: "include",
-                        headers: { "X-Client": "gravity-tests" }
+                        headers: withTenantHeader()
                     });
                     if (response.ok) {
                         const profile = await response.json();
@@ -414,7 +431,7 @@ function buildAuthClientStub(profile) {
                 const response = await fetch(baseUrl + "/auth/nonce", {
                     method: "POST",
                     credentials: "include",
-                    headers: { "X-Requested-With": "XMLHttpRequest" }
+                    headers: withTenantHeader({ "X-Requested-With": "XMLHttpRequest" })
                 });
                 if (!response.ok) {
                     throw new Error("tauth.nonce_failed");
@@ -443,7 +460,7 @@ function buildAuthClientStub(profile) {
                 const response = await fetch(baseUrl + "/auth/google", {
                     method: "POST",
                     credentials: "include",
-                    headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+                    headers: withTenantHeader({ "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" }),
                     body: JSON.stringify({ google_id_token: credential, nonce_token: nonceToken })
                 });
                 const responsePayload = await response.json();
@@ -464,7 +481,7 @@ function buildAuthClientStub(profile) {
                         await fetch(baseUrl + "/auth/logout", {
                             method: "POST",
                             credentials: "include",
-                            headers: { "X-Requested-With": "XMLHttpRequest" }
+                            headers: withTenantHeader({ "X-Requested-With": "XMLHttpRequest" })
                         });
                     } catch (error) {
                         console.warn("tauth harness logout failed", error);
@@ -485,7 +502,7 @@ function buildAuthClientStub(profile) {
                     const refreshResponse = await fetch(baseUrl + "/auth/refresh", {
                         method: "POST",
                         credentials: "include",
-                        headers: { "X-Requested-With": "XMLHttpRequest" }
+                        headers: withTenantHeader({ "X-Requested-With": "XMLHttpRequest" })
                     });
                     if (!refreshResponse.ok) {
                         if (typeof harness.options?.onUnauthenticated === "function") {

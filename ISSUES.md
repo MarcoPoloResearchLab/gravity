@@ -52,6 +52,7 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 Check the logs at @gravity.log and gravity-filtered.log and try to pinpoint the root cause (Resolved by retrying backend sync calls after refreshing expired TAuth sessions; added backend client regression coverage.)
 - [x] [GN-424] Gravity still loads the legacy TAuth helper at `/static/auth-client.js`, which no longer exists. Update the frontend loader, harness, and docs to use `/tauth.js` so auth can initialize against current TAuth builds. (Resolved by switching loader/harness/docs to `/tauth.js`.)
 - [x] [GN-425] Expanded inline editing height locks were ignored because CodeMirror auto sizing with `!important` overrode the inline edit lock. Override the height lock with inline `!important` styles so expanded cards keep their height in edit mode.
+- [x] [GN-426] Gravity now forwards `authTenantId` into the tauth.js loader and TAuth session bridge while dropping the crossOrigin attribute so auth can load in stricter CORS setups.
 
 ## Maintenance (405–499)
 

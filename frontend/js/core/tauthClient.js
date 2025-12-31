@@ -8,7 +8,7 @@ const SCRIPT_ELEMENT_ID = "gravity-tauth-client-script";
 /**
  * Ensure the TAuth tauth.js helper is loaded. Returns when the script
  * has been appended (or already present).
- * @param {{ documentRef?: Document|null, baseUrl?: string|null }} [options]
+ * @param {{ documentRef?: Document|null, baseUrl?: string|null, tenantId?: string|null }} [options]
  * @returns {Promise<void>}
  */
 export async function ensureTAuthClientLoaded(options = {}) {
@@ -23,6 +23,7 @@ export async function ensureTAuthClientLoaded(options = {}) {
         return;
     }
     const authBaseUrl = normalizeUrl(options.baseUrl ?? appConfig.authBaseUrl);
+    const tenantId = normalizeTenantId(options.tenantId ?? appConfig.authTenantId);
     if (!authBaseUrl) {
         logging.warn("TAuth authBaseUrl missing; skipping auth-client injection.");
         return;
@@ -31,8 +32,10 @@ export async function ensureTAuthClientLoaded(options = {}) {
     const script = doc.createElement("script");
     script.id = SCRIPT_ELEMENT_ID;
     script.defer = true;
-    script.crossOrigin = "anonymous";
     script.src = `${authBaseUrl.replace(/\/+$/u, "")}/tauth.js`;
+    if (tenantId) {
+        script.setAttribute("data-tenant-id", tenantId);
+    }
 
     await new Promise((resolve, reject) => {
         script.addEventListener("load", () => resolve(undefined), { once: true });
@@ -61,4 +64,23 @@ function normalizeUrl(value) {
         return "";
     }
     return trimmed.replace(/\/+$/u, "");
+}
+
+/**
+ * Normalize a tenant identifier while preserving intentional blanks.
+ * @param {unknown} value
+ * @returns {string}
+ */
+function normalizeTenantId(value) {
+    if (value === undefined || value === null) {
+        return "";
+    }
+    if (typeof value !== "string") {
+        return "";
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return "";
+    }
+    return trimmed;
 }

@@ -3,17 +3,20 @@
 const DEFAULT_BACKEND_BASE_URL = "http://localhost:8080";
 const DEFAULT_LLM_PROXY_URL = "https://llm-proxy.mprlab.com/v1/gravity/classify";
 const DEFAULT_AUTH_BASE_URL = "http://localhost:8082";
+const DEFAULT_AUTH_TENANT_ID = "";
 
 const DEFAULT_ENVIRONMENT_CONFIG = Object.freeze({
     production: Object.freeze({
         backendBaseUrl: "https://gravity-api.mprlab.com",
         llmProxyUrl: "https://llm-proxy.mprlab.com/v1/gravity/classify",
-        authBaseUrl: "https://tauth.mprlab.com"
+        authBaseUrl: "https://tauth.mprlab.com",
+        authTenantId: "gravity"
     }),
     development: Object.freeze({
         backendBaseUrl: "http://localhost:8080",
         llmProxyUrl: "http://computercat:8081/v1/gravity/classify",
-        authBaseUrl: "http://localhost:8082"
+        authBaseUrl: "http://localhost:8082",
+        authTenantId: DEFAULT_AUTH_TENANT_ID
     })
 });
 
@@ -23,11 +26,11 @@ const RUNTIME_CONFIG_STATE_KEY = Symbol.for("gravity.core.config.runtimeState");
  * Resolve the shared runtime configuration backing store. Using a shared symbol keeps
  * the browser modules (loaded with build fingerprints) and the Node test modules in
  * sync even though their specifiers differ.
- * @returns {{ config: { environment: ("production" | "development" | null), backendBaseUrl: string, llmProxyUrl: string, authBaseUrl: string } | null }}
+ * @returns {{ config: { environment: ("production" | "development" | null), backendBaseUrl: string, llmProxyUrl: string, authBaseUrl: string, authTenantId: string } | null }}
  */
 function resolveRuntimeConfigState() {
     const globalScope = typeof globalThis === "object" && globalThis !== null ? globalThis : {};
-    const existing = /** @type {{ config: { environment: ("production" | "development" | null), backendBaseUrl: string, llmProxyUrl: string, authBaseUrl: string } | null } | undefined} */
+    const existing = /** @type {{ config: { environment: ("production" | "development" | null), backendBaseUrl: string, llmProxyUrl: string, authBaseUrl: string, authTenantId: string } | null } | undefined} */
         (globalScope[RUNTIME_CONFIG_STATE_KEY]);
     if (existing && typeof existing === "object" && Object.prototype.hasOwnProperty.call(existing, "config")) {
         return existing;
@@ -71,6 +74,10 @@ const staticConfig = {
     authBaseUrl: {
         enumerable: true,
         get: () => resolveAuthBaseUrl()
+    },
+    authTenantId: {
+        enumerable: true,
+        get: () => resolveAuthTenantId()
     }
 };
 
@@ -82,7 +89,7 @@ export const appConfig = (() => {
 
 /**
  * Inject the runtime configuration that downstream modules will consume.
- * @param {{ environment?: string|null, backendBaseUrl?: string|null, llmProxyUrl?: string|null, authBaseUrl?: string|null }} [config]
+ * @param {{ environment?: string|null, backendBaseUrl?: string|null, llmProxyUrl?: string|null, authBaseUrl?: string|null, authTenantId?: string|null }} [config]
  * @returns {void}
  */
 export function setRuntimeConfig(config = {}) {
@@ -92,12 +99,14 @@ export function setRuntimeConfig(config = {}) {
     const backendBaseUrl = normalizeUrl(config.backendBaseUrl ?? environmentDefaults?.backendBaseUrl ?? DEFAULT_BACKEND_BASE_URL);
     const llmProxyUrl = normalizeUrl(config.llmProxyUrl ?? environmentDefaults?.llmProxyUrl ?? DEFAULT_LLM_PROXY_URL);
     const authBaseUrl = normalizeUrl(config.authBaseUrl ?? environmentDefaults?.authBaseUrl ?? DEFAULT_AUTH_BASE_URL);
+    const authTenantId = normalizeTenantId(config.authTenantId ?? environmentDefaults?.authTenantId ?? DEFAULT_AUTH_TENANT_ID);
 
     runtimeConfigState.config = Object.freeze({
         environment: normalizedEnvironment,
         backendBaseUrl,
         llmProxyUrl,
-        authBaseUrl
+        authBaseUrl,
+        authTenantId
     });
 }
 
@@ -140,6 +149,17 @@ export function resolveAuthBaseUrl() {
         return runtimeConfigState.config.authBaseUrl;
     }
     return DEFAULT_AUTH_BASE_URL;
+}
+
+/**
+ * Resolve the TAuth tenant identifier from the injected config or defaults.
+ * @returns {string}
+ */
+export function resolveAuthTenantId() {
+    if (runtimeConfigState.config?.authTenantId !== undefined) {
+        return runtimeConfigState.config.authTenantId;
+    }
+    return DEFAULT_AUTH_TENANT_ID;
 }
 
 /**
@@ -186,6 +206,25 @@ function normalizeUrl(value) {
         return "";
     }
     return trimmed.replace(/\/+$/u, "");
+}
+
+/**
+ * Normalize tenant identifiers while preserving intentional blanks.
+ * @param {unknown} value
+ * @returns {string}
+ */
+function normalizeTenantId(value) {
+    if (value === undefined || value === null) {
+        return "";
+    }
+    if (typeof value !== "string") {
+        return "";
+    }
+    const trimmed = value.trim();
+    if (trimmed.length === 0) {
+        return "";
+    }
+    return trimmed;
 }
 
 /**

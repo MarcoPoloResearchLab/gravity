@@ -88,7 +88,7 @@ const MIME_TYPES = new Map([
  * Prepare a new browser page configured for backend synchronization tests.
  * @param {import('puppeteer').Browser | import('puppeteer').BrowserContext} browser
  * @param {string} pageUrl
- * @param {{ backendBaseUrl: string, llmProxyUrl?: string, authBaseUrl?: string, preserveLocalStorage?: boolean }} options
+ * @param {{ backendBaseUrl: string, llmProxyUrl?: string, authBaseUrl?: string, authTenantId?: string, preserveLocalStorage?: boolean }} options
  * @returns {Promise<import('puppeteer').Page>}
  */
 export async function prepareFrontendPage(browser, pageUrl, options) {
@@ -96,6 +96,7 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
         backendBaseUrl,
         llmProxyUrl = "",
         authBaseUrl = "",
+        authTenantId = "",
         beforeNavigate,
         preserveLocalStorage = false
     } = options;
@@ -135,7 +136,8 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
         development: {
             backendBaseUrl,
             llmProxyUrl,
-            authBaseUrl
+            authBaseUrl,
+            authTenantId
         }
     });
     await page.evaluateOnNewDocument((config) => {
@@ -152,7 +154,8 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
                     environment: config.environment ?? "development",
                     backendBaseUrl: config.backendBaseUrl,
                     llmProxyUrl: config.llmProxyUrl,
-                    authBaseUrl: config.authBaseUrl
+                    authBaseUrl: config.authBaseUrl,
+                    authTenantId: config.authTenantId
                 };
                 return new Response(JSON.stringify(payload), {
                     status: 200,
@@ -165,7 +168,8 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
         environment: "development",
         backendBaseUrl,
         llmProxyUrl,
-        authBaseUrl
+        authBaseUrl,
+        authTenantId
     });
     await page.evaluateOnNewDocument((storageKey, shouldPreserve) => {
         const initialized = window.sessionStorage.getItem("__gravityTestInitialized") === "true";
