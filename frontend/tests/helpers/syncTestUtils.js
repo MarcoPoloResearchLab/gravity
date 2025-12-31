@@ -27,6 +27,8 @@ const PROJECT_ROOT = path.resolve(TESTS_DIR, "..", "..");
 const DEFAULT_PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
 const DEFAULT_JWT_ISSUER = "https://accounts.google.com";
 const DEFAULT_JWT_AUDIENCE = appConfig.googleClientId;
+const EMPTY_STRING = "";
+const DEFAULT_AUTH_BASE_URL = "http://localhost:8082";
 const STATIC_SERVER_HOST = "127.0.0.1";
 const CDN_FIXTURES_ROOT = path.resolve(TESTS_DIR, "..", "fixtures", "cdn");
 const CDN_MIRRORS = [
@@ -94,9 +96,9 @@ const MIME_TYPES = new Map([
 export async function prepareFrontendPage(browser, pageUrl, options) {
     const {
         backendBaseUrl,
-        llmProxyUrl = "",
-        authBaseUrl = "",
-        authTenantId = "",
+        llmProxyUrl = EMPTY_STRING,
+        authBaseUrl = DEFAULT_AUTH_BASE_URL,
+        authTenantId = EMPTY_STRING,
         beforeNavigate,
         preserveLocalStorage = false
     } = options;
@@ -246,8 +248,8 @@ export async function initializePuppeteerTest(pageUrl = DEFAULT_PAGE_URL, setupO
     const baseRuntimeOverrides = {
         development: {
             backendBaseUrl: backend.baseUrl,
-            llmProxyUrl: "",
-            authBaseUrl: ""
+            llmProxyUrl: EMPTY_STRING,
+            authBaseUrl: DEFAULT_AUTH_BASE_URL
         }
     };
     const mergedRuntimeOverrides = mergeRuntimeOverrides(baseRuntimeOverrides, setupOptions.runtimeConfig);

@@ -4,8 +4,12 @@ import test from "node:test";
 import { createClassifierClient, ClassifierClient } from "../js/core/classifier.js";
 import { clearRuntimeConfigForTesting, setRuntimeConfig } from "../js/core/config.js";
 
+const ENVIRONMENT_DEVELOPMENT = "development";
+const EMPTY_STRING = "";
+
 test.beforeEach(() => {
     clearRuntimeConfigForTesting();
+    setRuntimeConfig({ environment: ENVIRONMENT_DEVELOPMENT });
 });
 
 test("createClassifierClient uses injected fetch for classification", async () => {
@@ -47,7 +51,7 @@ test("createClassifierClient uses injected fetch for classification", async () =
 });
 
 test("ClassifierClient falls back when endpoint disabled", async () => {
-    setRuntimeConfig({ llmProxyUrl: "" });
+    setRuntimeConfig({ environment: ENVIRONMENT_DEVELOPMENT, llmProxyUrl: EMPTY_STRING });
     const result = await ClassifierClient.classifyOrFallback("Any", "Text");
     assert.equal(result.category, "Journal");
     assert.equal(result.status, "idea");

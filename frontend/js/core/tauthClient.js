@@ -2,6 +2,7 @@
 
 import { appConfig } from "./config.js?build=2024-10-05T12:00:00Z";
 import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
+import { encodeUrlBlanks } from "../utils/url.js?build=2024-10-05T12:00:00Z";
 
 const SCRIPT_ELEMENT_ID = "gravity-tauth-client-script";
 
@@ -51,7 +52,7 @@ export async function ensureTAuthClientLoaded(options = {}) {
 }
 
 /**
- * Normalize a URL string (trim and drop trailing slashes).
+ * Normalize a URL string (trim, percent-encode blanks, and drop trailing slashes).
  * @param {unknown} value
  * @returns {string}
  */
@@ -63,7 +64,8 @@ function normalizeUrl(value) {
     if (!trimmed) {
         return "";
     }
-    return trimmed.replace(/\/+$/u, "");
+    const encoded = encodeUrlBlanks(trimmed);
+    return encoded.replace(/\/+$/u, "");
 }
 
 /**

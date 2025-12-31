@@ -31,7 +31,8 @@ const ERROR_MESSAGES = Object.freeze({
     UNKNOWN_FETCH_FAILURE: "Unknown error during runtime config fetch",
     TIMEOUT_FETCH_FAILURE: "Timed out while fetching runtime configuration",
     FINAL_FETCH_FAILURE: "Failed to fetch runtime configuration",
-    HTTP_FAILURE_PREFIX: "Failed to load runtime config: HTTP"
+    HTTP_FAILURE_PREFIX: "Failed to load runtime config: HTTP",
+    ENVIRONMENT_DETECTION_FAILURE: "Failed to detect runtime environment"
 });
 
 const ABORT_ERROR_NAME = "AbortError";
@@ -124,11 +125,14 @@ async function fetchRuntimeConfig(fetchImplementation, resource) {
  * @returns {"production" | "development"}
  */
 function detectEnvironment(runtimeLocation) {
-    if (!runtimeLocation) {
-        return ENVIRONMENT_LABELS.DEVELOPMENT;
+    if (!runtimeLocation || typeof runtimeLocation.hostname !== "string") {
+        throw new Error(ERROR_MESSAGES.ENVIRONMENT_DETECTION_FAILURE);
     }
-    const hostname = typeof runtimeLocation.hostname === "string" ? runtimeLocation.hostname.toLowerCase() : "";
-    if (!hostname || LOOPBACK_HOSTNAMES.includes(hostname)) {
+    const hostname = runtimeLocation.hostname.toLowerCase();
+    if (!hostname) {
+        throw new Error(ERROR_MESSAGES.ENVIRONMENT_DETECTION_FAILURE);
+    }
+    if (LOOPBACK_HOSTNAMES.includes(hostname)) {
         return ENVIRONMENT_LABELS.DEVELOPMENT;
     }
     if (DEVELOPMENT_TLDS.some((suffix) => hostname.endsWith(suffix))) {
@@ -137,7 +141,7 @@ function detectEnvironment(runtimeLocation) {
     if (PRODUCTION_TLDS.some((suffix) => hostname.endsWith(suffix))) {
         return ENVIRONMENT_LABELS.PRODUCTION;
     }
-    return ENVIRONMENT_LABELS.DEVELOPMENT;
+    throw new Error(ERROR_MESSAGES.ENVIRONMENT_DETECTION_FAILURE);
 }
 
 /**
@@ -148,11 +152,15 @@ function detectEnvironment(runtimeLocation) {
 export async function initializeRuntimeConfig(options = {}) {
     const { fetchImplementation = typeof fetch === "function" ? fetch : null, location = typeof window !== "undefined" ? window.location : undefined } = options;
     if (!fetchImplementation) {
-        setRuntimeConfig({});
+        const environment = detectEnvironment(location);
+        setRuntimeConfig({ environment });
         return;
     }
     const environment = detectEnvironment(location);
-    const targetPath = RUNTIME_CONFIG_PATHS[environment] ?? RUNTIME_CONFIG_PATHS[ENVIRONMENT_LABELS.DEVELOPMENT];
+    const targetPath = RUNTIME_CONFIG_PATHS[environment];
+    if (!targetPath) {
+        throw new Error(ERROR_MESSAGES.ENVIRONMENT_DETECTION_FAILURE);
+    }
     try {
         const response = await fetchRuntimeConfig(fetchImplementation, targetPath);
         if (!response.ok) {

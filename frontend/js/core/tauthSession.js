@@ -2,6 +2,7 @@
 
 import { appConfig } from "./config.js?build=2024-10-05T12:00:00Z";
 import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
+import { encodeUrlBlanks } from "../utils/url.js?build=2024-10-05T12:00:00Z";
 import {
     EVENT_AUTH_SIGN_IN,
     EVENT_AUTH_SIGN_OUT,
@@ -150,7 +151,8 @@ function normalizeBaseUrl(value) {
     if (!trimmed) {
         return "";
     }
-    return trimmed.replace(/\/+$/u, "");
+    const encoded = encodeUrlBlanks(trimmed);
+    return encoded.replace(/\/+$/u, "");
 }
 
 /**
@@ -192,7 +194,7 @@ function resolveLogoutEndpoint(windowRef, baseUrl) {
 }
 
 /**
- * Normalize endpoint URLs while preserving intentional blanks.
+ * Normalize endpoint URLs while ensuring blanks are percent-encoded.
  * @param {unknown} value
  * @returns {string}
  */
@@ -207,7 +209,7 @@ function normalizeEndpoint(value) {
     if (!trimmed) {
         return "";
     }
-    return trimmed;
+    return encodeUrlBlanks(trimmed);
 }
 
 function resolveFetchImplementation(customFetch, windowRef) {

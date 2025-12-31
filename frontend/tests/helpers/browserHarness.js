@@ -13,10 +13,13 @@ import { readRuntimeContext } from "./runtimeContext.js";
 
 let sharedLaunchContext = null;
 const CONFIG_ROUTE_PATTERN = /\/data\/runtime\.config\.(development|production)\.json$/u;
+const EMPTY_STRING = "";
+const DEFAULT_BACKEND_BASE_URL = "http://localhost:8080";
+const DEFAULT_AUTH_BASE_URL = "http://localhost:8082";
 const DEFAULT_TEST_RUNTIME_CONFIG = Object.freeze({
-    backendBaseUrl: "",
-    llmProxyUrl: "",
-    authBaseUrl: ""
+    backendBaseUrl: DEFAULT_BACKEND_BASE_URL,
+    llmProxyUrl: EMPTY_STRING,
+    authBaseUrl: DEFAULT_AUTH_BASE_URL
 });
 const RUNTIME_CONFIG_SYMBOL = Symbol("gravityRuntimeConfigOverrides");
 const RUNTIME_CONFIG_HANDLER_SYMBOL = Symbol("gravityRuntimeConfigHandler");
@@ -277,11 +280,11 @@ function resolveRuntimeConfigOverrides(overrides, environment) {
  */
 function normalizeTestUrl(value, allowBlank = false) {
     if (typeof value !== "string") {
-        return allowBlank ? "" : DEFAULT_TEST_RUNTIME_CONFIG.backendBaseUrl;
+        return allowBlank ? EMPTY_STRING : DEFAULT_TEST_RUNTIME_CONFIG.backendBaseUrl;
     }
     const trimmed = value.trim();
     if (trimmed.length === 0) {
-        return allowBlank ? "" : DEFAULT_TEST_RUNTIME_CONFIG.backendBaseUrl;
+        return allowBlank ? EMPTY_STRING : DEFAULT_TEST_RUNTIME_CONFIG.backendBaseUrl;
     }
     return trimmed.replace(/\/+$/u, "");
 }
