@@ -4,6 +4,7 @@ import test from "node:test";
 import {
     clearRuntimeConfigForTesting,
     resolveAuthBaseUrl,
+    resolveAuthTenantId,
     resolveBackendBaseUrl,
     resolveEnvironmentName,
     resolveLlmProxyUrl,
@@ -54,6 +55,20 @@ test("resolveAuthBaseUrl respects injected override", () => {
 test("resolveAuthBaseUrl uses environment defaults", () => {
     setRuntimeConfig({ environment: "production" });
     assert.equal(resolveAuthBaseUrl(), "https://tauth.mprlab.com");
+});
+
+test("resolveAuthTenantId falls back to default when no config injected", () => {
+    assert.equal(resolveAuthTenantId(), "");
+});
+
+test("resolveAuthTenantId trims injected values", () => {
+    setRuntimeConfig({ authTenantId: " gravity " });
+    assert.equal(resolveAuthTenantId(), "gravity");
+});
+
+test("resolveAuthTenantId uses environment defaults", () => {
+    setRuntimeConfig({ environment: "production" });
+    assert.equal(resolveAuthTenantId(), "gravity");
 });
 
 test("resolveEnvironmentName normalizes injected value", () => {

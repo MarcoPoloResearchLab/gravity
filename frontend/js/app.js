@@ -97,7 +97,10 @@ bootstrapApplication().catch((error) => {
 
 async function bootstrapApplication() {
     await initializeRuntimeConfig();
-    await ensureTAuthClientLoaded().catch((error) => {
+    await ensureTAuthClientLoaded({
+        baseUrl: appConfig.authBaseUrl,
+        tenantId: appConfig.authTenantId
+    }).catch((error) => {
         logging.error("TAuth client failed to load", error);
     });
     initializeAnalytics();
@@ -297,6 +300,7 @@ function gravityApp() {
             this.tauthSession = createTAuthSession({
                 baseUrl: appConfig.authBaseUrl,
                 eventTarget: this.$el ?? document,
+                tenantId: appConfig.authTenantId,
                 windowRef: typeof window !== "undefined" ? window : undefined
             });
             this.tauthReadyPromise = this.tauthSession.initialize().catch((error) => {

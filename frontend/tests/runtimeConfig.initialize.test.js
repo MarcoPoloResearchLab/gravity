@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
     clearRuntimeConfigForTesting,
+    resolveAuthTenantId,
     resolveBackendBaseUrl,
     resolveEnvironmentName,
     resolveLlmProxyUrl
@@ -40,6 +41,8 @@ const REMOTE_ENDPOINTS = Object.freeze({
     BACKEND: "https://api.example.com/v1",
     LLM_PROXY: "https://llm.example.com/v1/classify"
 });
+
+const REMOTE_AUTH_TENANT_ID = "gravity";
 
 const DEFAULT_ENDPOINTS = Object.freeze({
     BACKEND: "http://localhost:8080",
@@ -81,7 +84,8 @@ test.describe("initializeRuntimeConfig", () => {
                 async json() {
                     return {
                         backendBaseUrl: REMOTE_ENDPOINTS.BACKEND,
-                        llmProxyUrl: REMOTE_ENDPOINTS.LLM_PROXY
+                        llmProxyUrl: REMOTE_ENDPOINTS.LLM_PROXY,
+                        authTenantId: REMOTE_AUTH_TENANT_ID
                     };
                 }
             };
@@ -104,6 +108,7 @@ test.describe("initializeRuntimeConfig", () => {
         assert.equal(resolveEnvironmentName(), ENVIRONMENT_LABELS.PRODUCTION);
         assert.equal(resolveBackendBaseUrl(), REMOTE_ENDPOINTS.BACKEND);
         assert.equal(resolveLlmProxyUrl(), REMOTE_ENDPOINTS.LLM_PROXY);
+        assert.equal(resolveAuthTenantId(), REMOTE_AUTH_TENANT_ID);
         assert.equal(errorNotifications.length, 0);
     });
 
@@ -164,6 +169,7 @@ test.describe("initializeRuntimeConfig", () => {
         assert.equal(resolveEnvironmentName(), ENVIRONMENT_LABELS.DEVELOPMENT);
         assert.equal(resolveBackendBaseUrl(), DEFAULT_ENDPOINTS.BACKEND);
         assert.equal(resolveLlmProxyUrl(), DEFAULT_ENDPOINTS.DEVELOPMENT_LLM_PROXY);
+        assert.equal(resolveAuthTenantId(), "");
     });
 
     test(TEST_LABELS.HANDLES_ABORT_FAILURE, async () => {
