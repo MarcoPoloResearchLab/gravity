@@ -76,7 +76,10 @@ func TestAuthAndSyncFlow(t *testing.T) {
 				"client_time_s":   1700000000,
 				"created_at_s":    1700000000,
 				"updated_at_s":    1700000000,
-				"payload":         map[string]any{"content": "hello"},
+				"payload": map[string]any{
+					"noteId":       "note-1",
+					"markdownText": "hello",
+				},
 			},
 		},
 	}
@@ -137,8 +140,8 @@ func TestAuthAndSyncFlow(t *testing.T) {
 	if snapshotPayload.Notes[0].IsDeleted {
 		t.Fatalf("unexpected deleted flag in snapshot")
 	}
-	if snapshotPayload.Notes[0].Payload["content"] != "hello" {
-		t.Fatalf("unexpected payload content: %#v", snapshotPayload.Notes[0].Payload)
+	if snapshotPayload.Notes[0].Payload["markdownText"] != "hello" {
+		t.Fatalf("unexpected payload markdown: %#v", snapshotPayload.Notes[0].Payload)
 	}
 
 	staleRequest := map[string]any{
@@ -150,7 +153,10 @@ func TestAuthAndSyncFlow(t *testing.T) {
 				"client_device":   "web",
 				"client_time_s":   1700000001,
 				"updated_at_s":    1700000001,
-				"payload":         map[string]any{"content": "stale"},
+				"payload": map[string]any{
+					"noteId":       "note-1",
+					"markdownText": "stale",
+				},
 			},
 		},
 	}

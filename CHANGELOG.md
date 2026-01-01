@@ -21,6 +21,7 @@ and are grouped by the date the work landed on `master`.
 - Updated the TAuth helper loader and harness to use `/tauth.js`, keeping Gravity aligned with current TAuth builds (GN-424).
 - Expanded edit-height locks now override CodeMirror auto sizing so expanded cards keep their height in edit mode (GN-425).
 - TAuth runtime config now forwards `authTenantId` into the loader/session bridge and drops the crossOrigin attribute so tauth.js loads cleanly in stricter CORS setups (GN-426).
+- Hardened sync payload validation to require noteId + markdownText, enforce note id matching, and rollback on audit/id failures (GN-427).
 - Html view interactions now reserve the chevron toggle for expansion while single clicks anywhere else enter inline edit mode (GN-109).
 - Inline editor now wraps selected text with matching backtick fences and escalates when the selection already contains backticks, covering GN-106 with new regression tests.
 - Markdown editors re-enable browser grammar hints by wiring spellcheck/autocorrect attributes into EasyMDE inputs, verified by new integration coverage (GN-108).
