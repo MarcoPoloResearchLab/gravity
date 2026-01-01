@@ -6,9 +6,11 @@ import { createSyncMetadataStore } from "./syncMetadataStore.js?build=2026-01-01
 import { createSyncQueue } from "./syncQueue.js?build=2026-01-01T21:20:40Z";
 import { appConfig } from "./config.js?build=2026-01-01T21:20:40Z";
 import { logging } from "../utils/logging.js?build=2026-01-01T21:20:40Z";
-import { EVENT_SYNC_SNAPSHOT_APPLIED } from "../constants.js?build=2026-01-01T21:20:40Z";
+import { EVENT_NOTIFICATION_REQUEST, EVENT_SYNC_SNAPSHOT_APPLIED, MESSAGE_SYNC_CONFLICT } from "../constants.js?build=2026-01-01T21:20:40Z";
 
 const debugEnabled = () => typeof globalThis !== "undefined" && globalThis.__debugSyncScenarios === true;
+const SYNC_OPERATION_STATUS_PENDING = "pending";
+const SYNC_OPERATION_STATUS_CONFLICT = "conflict";
 
 /**
  * @typedef {import("./syncMetadataStore.js").NoteMetadata} NoteMetadata
@@ -67,6 +69,7 @@ export function createSyncManager(options = {}) {
             }
 
             const noteId = record.noteId;
+            clearConflictsForNote(noteId);
             const metadata = ensureMetadata(noteId);
             const nextEditSeq = metadata.clientEditSeq + 1;
 
@@ -99,6 +102,7 @@ export function createSyncManager(options = {}) {
             if (!state.userId || !noteId) {
                 return;
             }
+            clearConflictsForNote(noteId);
             const metadata = ensureMetadata(noteId);
             const nextEditSeq = metadata.clientEditSeq + 1;
             metadata.clientEditSeq = nextEditSeq;
@@ -204,12 +208,13 @@ export function createSyncManager(options = {}) {
 
         /**
          * Expose internal state for diagnostics and testing.
-         * @returns {{ activeUserId: string|null, pendingOperations: PendingOperation[] }}
+         * @returns {{ activeUserId: string|null, pendingOperations: PendingOperation[], conflictOperations: PendingOperation[] }}
          */
         getDebugState() {
             return {
                 activeUserId: state.userId,
-                pendingOperations: state.queue.map((operation) => ({ ...operation }))
+                pendingOperations: state.queue.filter(isPendingOperation).map((operation) => ({ ...operation })),
+                conflictOperations: state.queue.filter(isConflictOperation).map((operation) => ({ ...operation }))
             };
         }
     });
@@ -230,6 +235,42 @@ export function createSyncManager(options = {}) {
             metadataStore.save(state.userId, state.metadata);
             queueStore.save(state.userId, state.queue);
         }
+    }
+
+    function clearConflictsForNote(noteId) {
+        if (!noteId) {
+            return;
+        }
+        const nextQueue = state.queue.filter((operation) => !(isConflictOperation(operation) && operation.noteId === noteId));
+        if (nextQueue.length !== state.queue.length) {
+            state.queue = nextQueue;
+        }
+    }
+
+    function collectConflictNoteIds() {
+        const conflictNotes = new Set();
+        for (const operation of state.queue) {
+            if (isConflictOperation(operation)) {
+                conflictNotes.add(operation.noteId);
+            }
+        }
+        return conflictNotes;
+    }
+
+    function getPendingOperations() {
+        return state.queue.filter(isPendingOperation);
+    }
+
+    function getConflictOperations() {
+        return state.queue.filter(isConflictOperation);
+    }
+
+    function countPendingOperations(queue) {
+        return queue.filter(isPendingOperation).length;
+    }
+
+    function countConflictOperations(queue) {
+        return queue.filter(isConflictOperation).length;
     }
 
     function seedInitialOperations() {
@@ -272,24 +313,21 @@ export function createSyncManager(options = {}) {
         if (state.flushing) {
             return false;
         }
-        if (state.queue.length === 0) {
-            return true;
-        }
         state.flushing = true;
         try {
-            const pendingOperations = state.queue.slice();
-            const operations = pendingOperations.map(convertToSyncOperation);
-            if (operations.length === 0) {
-                return true;
+            const pendingOperations = getPendingOperations();
+            const conflictOperations = getConflictOperations();
+            if (pendingOperations.length === 0) {
+                return conflictOperations.length === 0;
             }
+            const operations = pendingOperations.map(convertToSyncOperation);
             const response = await backendClient.syncOperations({
                 operations
             });
-            applySyncResults(response?.results ?? [], operations);
-            const sentOperationIds = new Set(pendingOperations.map((operation) => operation.operationId));
-            state.queue = state.queue.filter((operation) => !sentOperationIds.has(operation.operationId));
+            const syncOutcome = applySyncResults(response?.results ?? [], pendingOperations);
+            state.queue = reconcileQueue(state.queue, syncOutcome);
             persistState();
-            return state.queue.length === 0;
+            return countPendingOperations(state.queue) === 0 && countConflictOperations(state.queue) === 0;
         } catch (error) {
             logging.error(error);
             return false;
@@ -302,20 +340,23 @@ export function createSyncManager(options = {}) {
         if (!state.userId) {
             return false;
         }
+        const pendingOperations = getPendingOperations();
+        const conflictOperations = getConflictOperations();
         if (debugEnabled()) {
             try {
                 logging.info("syncManager.refreshSnapshot", JSON.stringify({
                     userId: state.userId,
-                    queueLength: state.queue.length
+                    pendingCount: pendingOperations.length,
+                    conflictCount: conflictOperations.length
                 }));
             } catch {
                 // ignore console failures
             }
         }
-        if (state.queue.length > 0) {
+        if (pendingOperations.length > 0) {
             if (debugEnabled()) {
                 try {
-                    logging.info("syncManager.refreshSnapshot.skipped", state.queue.length);
+                    logging.info("syncManager.refreshSnapshot.skipped", pendingOperations.length);
                 } catch {
                     // ignore console failures
                 }
@@ -324,10 +365,10 @@ export function createSyncManager(options = {}) {
         }
         try {
             const snapshot = await backendClient.fetchSnapshot();
-            if (state.queue.length > 0) {
+            if (getPendingOperations().length > 0) {
                 return false;
             }
-            applySnapshot(snapshot?.notes ?? []);
+            applySnapshot(snapshot?.notes ?? [], collectConflictNoteIds());
             if (debugEnabled()) {
                 try {
                     logging.info("syncManager.refreshSnapshot.applied", JSON.stringify({
@@ -348,19 +389,29 @@ export function createSyncManager(options = {}) {
 
     /**
      * @param {Array<Record<string, any>>} results
-     * @param {Array<Record<string, any>>} requestedOperations
-     * @returns {void}
+     * @param {PendingOperation[]} pendingOperations
+     * @returns {{ acceptedOperationIds: Set<string>, conflictOperationUpdates: Array<{ operationId: string, noteId: string, conflict: import("./syncQueue.js").ConflictInfo }>, resolvedNoteIds: Set<string> }}
      */
-    function applySyncResults(results, requestedOperations) {
+    function applySyncResults(results, pendingOperations) {
+        const syncOutcome = {
+            acceptedOperationIds: new Set(),
+            conflictOperationUpdates: [],
+            resolvedNoteIds: new Set()
+        };
         if (!Array.isArray(results) || results.length === 0) {
-            return;
+            return syncOutcome;
         }
         const existingNotes = GravityStore.loadAllNotes();
         const notesById = new Map(existingNotes.map((record) => [record.noteId, record]));
         let hasChanges = false;
 
-        for (const result of results) {
-            const noteId = typeof result?.note_id === "string" ? result.note_id : null;
+        for (let resultIndex = 0; resultIndex < results.length; resultIndex += 1) {
+            const result = results[resultIndex];
+            const operation = pendingOperations[resultIndex];
+            if (!operation) {
+                continue;
+            }
+            const noteId = resolveNoteId(result, operation.noteId);
             if (!noteId) {
                 continue;
             }
@@ -372,6 +423,17 @@ export function createSyncManager(options = {}) {
             if (metadata.clientEditSeq < serverEditSeq) {
                 metadata.clientEditSeq = serverEditSeq;
             }
+            const accepted = result?.accepted === true;
+            if (!accepted) {
+                syncOutcome.conflictOperationUpdates.push({
+                    operationId: operation.operationId,
+                    noteId,
+                    conflict: buildConflictInfo(result)
+                });
+                continue;
+            }
+            syncOutcome.acceptedOperationIds.add(operation.operationId);
+            syncOutcome.resolvedNoteIds.add(noteId);
             const isDeleted = result?.is_deleted === true;
             if (isDeleted) {
                 const existing = GravityStore.getById(noteId);
@@ -397,17 +459,24 @@ export function createSyncManager(options = {}) {
         if (hasChanges) {
             dispatchSnapshotEvent(noteArray, "sync-results");
         }
+        if (syncOutcome.conflictOperationUpdates.length > 0) {
+            dispatchConflictNotification(syncOutcome.conflictOperationUpdates.length);
+        }
+        return syncOutcome;
     }
 
     /**
      * @param {Array<Record<string, any>>} snapshotNotes
+     * @param {Set<string>} conflictNoteIds
      * @returns {void}
      */
-    function applySnapshot(snapshotNotes) {
+    function applySnapshot(snapshotNotes, conflictNoteIds) {
         if (!Array.isArray(snapshotNotes)) {
             return;
         }
-        const nextRecords = [];
+        const conflictNotes = conflictNoteIds instanceof Set ? conflictNoteIds : new Set();
+        const existingNotes = GravityStore.loadAllNotes();
+        const notesById = new Map(existingNotes.map((record) => [record.noteId, record]));
         for (const entry of snapshotNotes) {
             const noteId = typeof entry?.note_id === "string" ? entry.note_id : null;
             if (!noteId) {
@@ -421,16 +490,21 @@ export function createSyncManager(options = {}) {
             if (metadata.clientEditSeq < serverEditSeq) {
                 metadata.clientEditSeq = serverEditSeq;
             }
+            if (conflictNotes.has(noteId)) {
+                continue;
+            }
             if (entry?.is_deleted === true) {
                 delete state.metadata[noteId];
+                notesById.delete(noteId);
                 continue;
             }
             const payload = normalizeSnapshotPayload(entry?.payload);
             if (!payload) {
                 continue;
             }
-            nextRecords.push(payload);
+            notesById.set(noteId, payload);
         }
+        const nextRecords = Array.from(notesById.values());
         GravityStore.saveAllNotes(nextRecords);
         dispatchSnapshotEvent(nextRecords, "snapshot");
     }
@@ -456,6 +530,56 @@ export function createSyncManager(options = {}) {
             noteId,
             markdownText
         };
+    }
+
+    function buildConflictInfo(result) {
+        const serverEditSeq = typeof result?.last_writer_edit_seq === "number" ? result.last_writer_edit_seq : 0;
+        const serverVersion = typeof result?.version === "number" ? result.version : 0;
+        const serverUpdatedAtSeconds = typeof result?.updated_at_s === "number" ? result.updated_at_s : 0;
+        const serverPayload = result?.payload ?? null;
+        const rejectedAtSeconds = Math.floor(clock().getTime() / 1000);
+        return {
+            serverEditSeq,
+            serverVersion,
+            serverUpdatedAtSeconds,
+            serverPayload,
+            rejectedAtSeconds
+        };
+    }
+
+    function resolveNoteId(result, fallbackNoteId) {
+        const candidate = typeof result?.note_id === "string" ? result.note_id : "";
+        if (candidate.length > 0) {
+            return candidate;
+        }
+        return fallbackNoteId;
+    }
+
+    function reconcileQueue(existingQueue, syncOutcome) {
+        const conflictUpdatesByOperationId = new Map();
+        for (const update of syncOutcome.conflictOperationUpdates) {
+            conflictUpdatesByOperationId.set(update.operationId, update);
+        }
+        const nextQueue = [];
+        for (const operation of existingQueue) {
+            if (syncOutcome.acceptedOperationIds.has(operation.operationId)) {
+                continue;
+            }
+            if (syncOutcome.resolvedNoteIds.has(operation.noteId) && isConflictOperation(operation)) {
+                continue;
+            }
+            const conflictUpdate = conflictUpdatesByOperationId.get(operation.operationId);
+            if (conflictUpdate) {
+                nextQueue.push({
+                    ...operation,
+                    status: SYNC_OPERATION_STATUS_CONFLICT,
+                    conflict: conflictUpdate.conflict
+                });
+                continue;
+            }
+            nextQueue.push(operation);
+        }
+        return nextQueue;
     }
 
     /**
@@ -500,6 +624,32 @@ export function createSyncManager(options = {}) {
         }
     }
 
+    function dispatchConflictNotification(conflictCount) {
+        if (!syncEventTarget) {
+            return;
+        }
+        const detail = {
+            message: MESSAGE_SYNC_CONFLICT,
+            conflictCount
+        };
+        try {
+            const event = new CustomEvent(EVENT_NOTIFICATION_REQUEST, {
+                bubbles: true,
+                detail
+            });
+            syncEventTarget.dispatchEvent(event);
+        } catch (error) {
+            logging.error(error);
+            try {
+                const fallbackEvent = new Event(EVENT_NOTIFICATION_REQUEST);
+                /** @type {any} */ (fallbackEvent).detail = detail;
+                syncEventTarget.dispatchEvent(fallbackEvent);
+            } catch (fallbackError) {
+                logging.error(fallbackError);
+            }
+        }
+    }
+
 }
 
 /**
@@ -515,8 +665,25 @@ function buildPendingOperation(options) {
         clientEditSeq: options.clientEditSeq,
         updatedAtSeconds: options.updatedAtSeconds,
         createdAtSeconds: options.createdAtSeconds,
-        clientTimeSeconds: options.clientTimeSeconds
+        clientTimeSeconds: options.clientTimeSeconds,
+        status: SYNC_OPERATION_STATUS_PENDING
     };
+}
+
+/**
+ * @param {PendingOperation} operation
+ * @returns {boolean}
+ */
+function isConflictOperation(operation) {
+    return operation?.status === SYNC_OPERATION_STATUS_CONFLICT;
+}
+
+/**
+ * @param {PendingOperation} operation
+ * @returns {boolean}
+ */
+function isPendingOperation(operation) {
+    return operation?.status !== SYNC_OPERATION_STATUS_CONFLICT;
 }
 
 /**

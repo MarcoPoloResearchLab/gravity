@@ -1,6 +1,7 @@
 package notes
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -16,7 +17,11 @@ const (
 	OperationTypeDelete OperationType = "delete"
 )
 
-const maxIdentifierLength = 190
+const (
+	maxIdentifierLength    = 190
+	payloadNoteIDKey       = "noteId"
+	payloadMarkdownTextKey = "markdownText"
+)
 
 var (
 	// ErrInvalidNoteID indicates that a note identifier is empty or exceeds storage bounds.
@@ -168,6 +173,22 @@ func NewChangeEnvelope(cfg ChangeEnvelopeConfig) (ChangeEnvelope, error) {
 	}
 
 	trimmedDevice := strings.TrimSpace(cfg.ClientDevice)
+	payloadTrimmed := strings.TrimSpace(cfg.PayloadJSON)
+	switch cfg.Operation {
+	case OperationTypeUpsert:
+		if payloadTrimmed == "" {
+			return ChangeEnvelope{}, fmt.Errorf("%w: empty payload", ErrInvalidChange)
+		}
+		if err := validatePayloadJSON(payloadTrimmed, cfg.NoteID); err != nil {
+			return ChangeEnvelope{}, err
+		}
+	case OperationTypeDelete:
+		if payloadTrimmed != "" {
+			if err := validatePayloadJSON(payloadTrimmed, cfg.NoteID); err != nil {
+				return ChangeEnvelope{}, err
+			}
+		}
+	}
 
 	return ChangeEnvelope{
 		userID:          cfg.UserID,
@@ -178,7 +199,7 @@ func NewChangeEnvelope(cfg ChangeEnvelopeConfig) (ChangeEnvelope, error) {
 		clientEditSeq:   cfg.ClientEditSeq,
 		clientDevice:    trimmedDevice,
 		operation:       cfg.Operation,
-		payloadJSON:     cfg.PayloadJSON,
+		payloadJSON:     payloadTrimmed,
 		isDeleted:       cfg.IsDeleted,
 	}, nil
 }
@@ -238,4 +259,28 @@ type ConflictOutcome struct {
 	Accepted    bool
 	UpdatedNote *Note
 	AuditRecord *NoteChange
+}
+
+type notePayloadFields struct {
+	NoteID       string `json:"noteId"`
+	MarkdownText string `json:"markdownText"`
+}
+
+func validatePayloadJSON(payloadJSON string, expectedNoteID NoteID) error {
+	var parsedPayload notePayloadFields
+	if err := json.Unmarshal([]byte(payloadJSON), &parsedPayload); err != nil {
+		return fmt.Errorf("%w: invalid payload json", ErrInvalidChange)
+	}
+	payloadNoteID := strings.TrimSpace(parsedPayload.NoteID)
+	if payloadNoteID == "" {
+		return fmt.Errorf("%w: missing %s", ErrInvalidChange, payloadNoteIDKey)
+	}
+	if payloadNoteID != expectedNoteID.String() {
+		return fmt.Errorf("%w: payload note id mismatch", ErrInvalidChange)
+	}
+	payloadMarkdownText := strings.TrimSpace(parsedPayload.MarkdownText)
+	if payloadMarkdownText == "" {
+		return fmt.Errorf("%w: missing %s", ErrInvalidChange, payloadMarkdownTextKey)
+	}
+	return nil
 }

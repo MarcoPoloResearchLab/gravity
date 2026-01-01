@@ -19,7 +19,7 @@ func TestResolveChangeAcceptsHigherEditSequence(t *testing.T) {
 		Version:           2,
 		LastWriterEditSeq: 4,
 		IsDeleted:         false,
-		PayloadJSON:       `{"content":"stored"}`,
+		PayloadJSON:       `{"noteId":"note-1","markdownText":"stored"}`,
 		LastWriterDevice:  "phone",
 		CreatedAtSeconds:  1699990000,
 	}
@@ -32,7 +32,7 @@ func TestResolveChangeAcceptsHigherEditSequence(t *testing.T) {
 		ClientTimestamp: mustTimestamp(t, 1700000500),
 		CreatedAt:       mustTimestamp(t, 1700000400),
 		UpdatedAt:       mustTimestamp(t, 1700000500),
-		PayloadJSON:     `{"content":"incoming"}`,
+		PayloadJSON:     `{"noteId":"note-1","markdownText":"incoming"}`,
 	})
 
 	outcome, err := resolveChange(existing, change, time.Unix(1700000600, 0).UTC())
@@ -74,7 +74,7 @@ func TestResolveChangeRejectsLowerEditSequence(t *testing.T) {
 		UpdatedAtSeconds:  1700000000,
 		Version:           6,
 		LastWriterEditSeq: 10,
-		PayloadJSON:       `{"content":"stored"}`,
+		PayloadJSON:       `{"noteId":"note-1","markdownText":"stored"}`,
 	}
 	change := mustEnvelope(t, ChangeEnvelopeConfig{
 		UserID:          userID,
@@ -85,7 +85,7 @@ func TestResolveChangeRejectsLowerEditSequence(t *testing.T) {
 		ClientTimestamp: mustTimestamp(t, 1700000001),
 		CreatedAt:       mustTimestamp(t, 1699999000),
 		UpdatedAt:       mustTimestamp(t, 1700000001),
-		PayloadJSON:     `{"content":"incoming"}`,
+		PayloadJSON:     `{"noteId":"note-1","markdownText":"incoming"}`,
 	})
 
 	outcome, err := resolveChange(existing, change, time.Unix(1700000600, 0).UTC())
@@ -112,7 +112,7 @@ func TestResolveChangeBreaksTieByUpdatedAt(t *testing.T) {
 		UpdatedAtSeconds:  1700000000,
 		Version:           4,
 		LastWriterEditSeq: 7,
-		PayloadJSON:       `{"content":"stored"}`,
+		PayloadJSON:       `{"noteId":"note-1","markdownText":"stored"}`,
 	}
 
 	tests := []struct {
@@ -189,6 +189,7 @@ func TestNewChangeEnvelopeInvalidCases(t *testing.T) {
 		ClientTimestamp: mustTimestamp(t, 1700000000),
 		CreatedAt:       mustTimestamp(t, 1700000000),
 		UpdatedAt:       mustTimestamp(t, 1700000000),
+		PayloadJSON:     `{"noteId":"note-1","markdownText":"body"}`,
 	}
 
 	testCases := []struct {
@@ -217,6 +218,43 @@ func TestNewChangeEnvelopeInvalidCases(t *testing.T) {
 			name: "negative-edit-seq",
 			mutate: func(cfg *ChangeEnvelopeConfig) {
 				cfg.ClientEditSeq = -1
+			},
+		},
+		{
+			name: "empty-payload",
+			mutate: func(cfg *ChangeEnvelopeConfig) {
+				cfg.PayloadJSON = ""
+			},
+		},
+		{
+			name: "invalid-payload-json",
+			mutate: func(cfg *ChangeEnvelopeConfig) {
+				cfg.PayloadJSON = "not-json"
+			},
+		},
+		{
+			name: "payload-missing-note-id",
+			mutate: func(cfg *ChangeEnvelopeConfig) {
+				cfg.PayloadJSON = `{"markdownText":"body"}`
+			},
+		},
+		{
+			name: "payload-missing-markdown",
+			mutate: func(cfg *ChangeEnvelopeConfig) {
+				cfg.PayloadJSON = `{"noteId":"note-1"}`
+			},
+		},
+		{
+			name: "payload-note-id-mismatch",
+			mutate: func(cfg *ChangeEnvelopeConfig) {
+				cfg.PayloadJSON = `{"noteId":"note-2","markdownText":"body"}`
+			},
+		},
+		{
+			name: "delete-invalid-payload",
+			mutate: func(cfg *ChangeEnvelopeConfig) {
+				cfg.Operation = OperationTypeDelete
+				cfg.PayloadJSON = "invalid"
 			},
 		},
 	}
@@ -268,6 +306,24 @@ func TestApplyChangesWrapsMissingDatabase(t *testing.T) {
 	}
 	if !errors.Is(err, errMissingDatabase) {
 		t.Fatalf("expected underlying missing database error, got %v", err)
+	}
+}
+
+func TestApplyChangesWrapsMissingIDProvider(t *testing.T) {
+	service := &Service{db: &gorm.DB{}}
+	_, err := service.ApplyChanges(context.Background(), mustUserID(t, "user-1"), nil)
+	if err == nil {
+		t.Fatal("expected error from missing id provider")
+	}
+	var serviceErr *ServiceError
+	if !errors.As(err, &serviceErr) {
+		t.Fatalf("expected ServiceError, got %T", err)
+	}
+	if serviceErr.Code() != "notes.apply_changes.missing_id_provider" {
+		t.Fatalf("unexpected service error code: %s", serviceErr.Code())
+	}
+	if !errors.Is(err, errMissingIDProvider) {
+		t.Fatalf("expected underlying missing id provider error, got %v", err)
 	}
 }
 

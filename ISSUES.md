@@ -44,6 +44,7 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 ## Improvements (200–299)
 
 - [ ] [GN-200] CORS preflight rejects `X-TAuth-Tenant`, the header our frontend now sends when talking to TAuth. The backend’s middleware under `internal/server/router.go` only whitelists `Authorization, Content-Type, X-Requested-With, X-Client`, so every request that includes the tenant header fails at the OPTIONS stage and the browser never reaches `/notes`/`/me`. Update the middleware (and accompanying tests) to keep using gin-contrib/cors or broaden the allowed header list to include `X-TAuth-Tenant`. Ensure OPTIONS handlers continue to return `204` with credentials enabled so cookie auth keeps working.
+- [x] [GN-429] Conflict-aware LWW sync: retain rejected operations, surface conflicts, and avoid overwriting local edits when the server is ahead. (Resolved by tracking conflict operations, preserving local edits on rejected sync results, and skipping snapshot overwrites for conflicts.)
 
 
 ## BugFixes (300–399)
@@ -53,6 +54,7 @@ Check the logs at @gravity.log and gravity-filtered.log and try to pinpoint the 
 - [x] [GN-424] Gravity still loads the legacy TAuth helper at `/static/auth-client.js`, which no longer exists. Update the frontend loader, harness, and docs to use `/tauth.js` so auth can initialize against current TAuth builds. (Resolved by switching loader/harness/docs to `/tauth.js`.)
 - [x] [GN-425] Expanded inline editing height locks were ignored because CodeMirror auto sizing with `!important` overrode the inline edit lock. Override the height lock with inline `!important` styles so expanded cards keep their height in edit mode.
 - [x] [GN-426] Gravity now forwards `authTenantId` into the tauth.js loader and TAuth session bridge while dropping the crossOrigin attribute so auth can load in stricter CORS setups. (Resolved by wiring authTenantId through runtime config, loader/session init, and harness CORS headers.)
+- [x] [GN-427] Harden sync payload validation to require noteId/markdownText, enforce note id matching, and rollback on audit/id failures. (Resolved by validating ChangeEnvelope payloads, rejecting invalid sync operations, and adding rollback/normalization coverage.)
 
 ## Maintenance (405–499)
 
@@ -64,6 +66,7 @@ Check the logs at @gravity.log and gravity-filtered.log and try to pinpoint the 
 
 - [ ] [GN-55] The current llm-proxy URL is wrong -- there is no such path as https://llm-proxy.mprlab.com/v1/gravity/
   classify. There is only https://llm-proxy.mprlab.com/, and we need to be sending a system prompt to it to get classification. I have copied llm-proxy codebase under the tools folder. Prepare a system prompt for classification of the notes and send it to llm-proxy service.
+- [ ] [GN-428] Evaluate CRDT/OT sync for multi-device edits; define merge strategy, payload schema, and migration plan.
 
 ## BugFixes (300–399)
 
