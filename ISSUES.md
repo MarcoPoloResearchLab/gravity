@@ -9,7 +9,7 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 
 ## Features (126–199)
 
-- [ ] [GN-120] Search in a note: have a shortcut and render a search filed in the right top corner of the text editing area.
+- [ ] [GN-120] (P1) Search in a note: have a shortcut and render a search filed in the right top corner of the text editing area.
   Check with MDE if built in tools can be leveraged
 - [ ] [GN-121] (P1) Search across notes.
   Use Cntr + Space to display a search dialog. The search works as a gravity point that pushes the irrelevant notes down and raises the relevant notes up. The search dialog is situated in the footer. The gravity point disappears when the search dialog is closed
