@@ -15,8 +15,23 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
   Use Cntr + Space to display a search dialog. The search works as a gravity point that pushes the irrelevant notes down and raises the relevant notes up. The search dialog is situated in the footer. The gravity point disappears when the search dialog is closed
 - [ ] [GN-122] (P0) Add settings section under the user's avatar when a user is logged.
   in. There is a dropdown there, add settings before log out. Include such things as font size, and gravity control (whether to gravitate the card to the top on change, on clipboard copy)
-- [ ] [GN-123] (P2) add a section to setting to delete all notes.
-  show a modal pop up with confirmation that asks to type DELETE before actually deleting all notes.
+- [ ] [GN-123] (P2) Add settings option to delete all notes with typed DELETE confirmation.
+  ### Summary
+  - Add a destructive "Delete all notes" action in Settings guarded by a confirmation modal that requires typing `DELETE` before enabling the action.
+  - Keep the flow aligned with Gravity's inline, no-jump UX while using the existing storage/sync pipeline.
+  
+  ### Analysis
+  - The frontend is Alpine-driven with semantic components; the modal should be an explicit, event-opened component (no auto-open), consistent with `$dispatch`/`$listen` usage.
+  - User-facing strings belong in `frontend/js/constants.js`, so modal copy and button labels should be constants for consistency.
+  - Deletion should route through `GravityStore` and the existing note event flow (e.g., `gravity:note-delete`) or a single clear-all event so UI, local storage, and backend sync stay consistent.
+  - Focus management matters: trap focus while open and restore focus to the settings trigger on close to preserve keyboard UX.
+  
+  ### Deliverables
+  - Settings section exposes a "Delete all notes" action; Acceptance: action is visible in Settings/Avatar menu and does not navigate away.
+  - Confirmation modal includes warning text, input, Cancel, and Delete buttons; Acceptance: Delete stays disabled until input exactly matches `DELETE` (case-sensitive, trimmed), and Escape/Cancel closes without changes.
+  - Confirming deletion clears the notebook via the standard persistence path; Acceptance: the grid is empty, local storage is cleared for the active user scope, and signed-in sessions propagate deletes to the backend sync layer.
+  - User feedback on success; Acceptance: a toast/notification is emitted via the existing notification pipeline (e.g., `gravity:notify`).
+  - Browser E2E coverage in `frontend/tests/`; Acceptance: tests cover mismatch/cancel (no deletion) and confirmed deletion (all notes removed).
 - [x] [GN-124] The moving behaviour:.
   # Active Card Behavior (Minimal Spec)
   1. **Anchor invariant**
