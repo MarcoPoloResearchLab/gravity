@@ -15,7 +15,7 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
   Use Cntr + Space to display a search dialog. The search works as a gravity point that pushes the irrelevant notes down and raises the relevant notes up. The search dialog is situated in the footer. The gravity point disappears when the search dialog is closed
 - [ ] [GN-122] (P0) Add settings section under the user's avatar when a user is logged.
   in. There is a dropdown there, add settings before log out. Include such things as font size, and gravity control (whether to gravitate the card to the top on change, on clipboard copy)
-- [ ] [GN-123] add a section to setting to delete all notes.
+- [ ] [GN-123] (P2) add a section to setting to delete all notes.
   show a modal pop up with confirmation that asks to type DELETE before actually deleting all notes.
 - [x] [GN-124] The moving behaviour:.
   # Active Card Behavior (Minimal Spec)
