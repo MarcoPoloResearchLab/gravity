@@ -40,8 +40,25 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
   * **Caret mapping on click:** From HTML click Range → source Markdown offset (use your md/HTML source map or node `data.position`), set caret to that offset before applying the anchor compensation.
   - Anchors + AST metadata implemented: cards capture viewport positions (pinned or not), keep their edit height in HTML view until the user scrolls away, and HTML nodes now expose `data-md-start`/`data-md-end` from the markdown mapping so caret placement and reordering never cause visible jumps.
   - let's prepare a carefull plan and a list of behaviors that need to be defined or changed bases on this new visual behaviour
-- [ ] [GN-125] (P0) Have an info button in the control panel for every note.
-  The info button will show when the note was created, when was it last edited, how many words and charachters are in it etc
+- [ ] [GN-125] (P0) Add per-note info button in control panel with metadata panel.
+  ### Summary
+  Add an info button to each note’s control panel that reveals key metadata (created time, last edited time, word count, character count) without disrupting the inline editing flow or grid stability.
+  
+  ### Analysis
+  Gravity Notes uses inline Markdown editing with a stable HTML view and Alpine-driven UI. The note controls live alongside other per-card actions (pin/copy/merge/delete), so the info button should be implemented as a first-class control with a lightweight panel or tooltip that does not trigger layout jumps. Metadata should be derived from the existing note record (timestamps) and the current markdown content (counts). User-facing strings should be defined in `frontend/js/constants.js`, and the UI should follow the semantic component and event patterns described in `ARCHITECTURE.md` and `AGENTS.FRONTEND.md`. The feature should avoid new global state and remain localized to the card component.
+  
+  ### Deliverables
+  - Add an info control to each note’s control panel that is visible in view mode and non-destructive during edit mode.
+  - Display created timestamp, last edited timestamp, word count, and character count for the note based on current markdown content.
+  - Ensure the info panel does not introduce scrollbars, reflow, or layout jumps; it should be inline or overlay without shifting the grid.
+  - Localize all user-facing strings in `frontend/js/constants.js` and keep Alpine template logic declarative.
+  - Add/update black-box UI tests (Playwright) that open the info panel and assert the displayed metadata for a sample note.
+  - Acceptance criteria:
+    - Info button appears on every note card control panel.
+    - Clicking the button reveals the four metadata fields with correct values.
+    - The grid remains visually stable; no unexpected reflow or scrollbars appear.
+    - Existing editing behavior (inline edit, blur save, no-jump UX) is unchanged.
+    - Tests pass via the standard `make test` workflow.
 
 
 ## Improvements (202–299)
