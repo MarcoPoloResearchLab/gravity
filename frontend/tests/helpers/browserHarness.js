@@ -1,8 +1,12 @@
 // @ts-check
 
-import { pathToFileURL } from "node:url";
+import { Buffer } from "node:buffer";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { APP_BUILD_ID } from "../../js/constants.js";
+import { DEVELOPMENT_ENVIRONMENT_CONFIG } from "../../js/core/environmentConfig.js?build=2024-10-05T12:00:00Z";
 
 import {
     ensurePuppeteerSandbox,
@@ -12,20 +16,114 @@ import {
 import { readRuntimeContext } from "./runtimeContext.js";
 
 let sharedLaunchContext = null;
+const CURRENT_FILE = fileURLToPath(import.meta.url);
+const HELPERS_ROOT = path.dirname(CURRENT_FILE);
+const TESTS_ROOT = path.resolve(HELPERS_ROOT, "..");
+const CDN_FIXTURES_ROOT = path.resolve(TESTS_ROOT, "fixtures", "cdn");
 const CONFIG_ROUTE_PATTERN = /\/data\/runtime\.config\.(development|production)\.json$/u;
 const EMPTY_STRING = "";
-const DEFAULT_BACKEND_BASE_URL = "http://localhost:8080";
-const DEFAULT_AUTH_BASE_URL = "http://localhost:8082";
-const DEFAULT_TEST_RUNTIME_CONFIG = Object.freeze({
-    backendBaseUrl: DEFAULT_BACKEND_BASE_URL,
-    llmProxyUrl: EMPTY_STRING,
-    authBaseUrl: DEFAULT_AUTH_BASE_URL
+const CDN_RESPONSE_HEADERS = Object.freeze({ "Access-Control-Allow-Origin": "*" });
+const CDN_LOG_PREFIX = "[cdn mirror] missing";
+const GOOGLE_GSI_STUB = "window.google=window.google||{accounts:{id:{initialize(){},prompt(){},renderButton(){}}}};";
+const AVATAR_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=";
+const AVATAR_PNG_BYTES = Buffer.from(AVATAR_PNG_BASE64, "base64");
+const CDN_MIRRORS = Object.freeze([
+    {
+        pattern: /^https:\/\/cdn\.jsdelivr\.net\/npm\/alpinejs@3\.13\.5\/dist\/module\.esm\.js$/u,
+        filePath: path.join(CDN_FIXTURES_ROOT, "jsdelivr", "npm", "alpinejs@3.13.5", "dist", "module.esm.js"),
+        contentType: "application/javascript"
+    },
+    {
+        pattern: /^https:\/\/cdn\.jsdelivr\.net\/npm\/marked@12\.0\.2\/marked\.min\.js$/u,
+        filePath: path.join(CDN_FIXTURES_ROOT, "jsdelivr", "npm", "marked@12.0.2", "marked.min.js"),
+        contentType: "application/javascript"
+    },
+    {
+        pattern: /^https:\/\/cdn\.jsdelivr\.net\/npm\/dompurify@3\.1\.7\/dist\/purify\.min\.js$/u,
+        filePath: path.join(CDN_FIXTURES_ROOT, "jsdelivr", "npm", "dompurify@3.1.7", "dist", "purify.min.js"),
+        contentType: "application/javascript"
+    },
+    {
+        pattern: /^https:\/\/cdn\.jsdelivr\.net\/npm\/easymde@2\.19\.0\/dist\/easymde\.min\.js$/u,
+        filePath: path.join(CDN_FIXTURES_ROOT, "jsdelivr", "npm", "easymde@2.19.0", "dist", "easymde.min.js"),
+        contentType: "application/javascript"
+    },
+    {
+        pattern: /^https:\/\/cdn\.jsdelivr\.net\/npm\/easymde@2\.19\.0\/dist\/easymde\.min\.css$/u,
+        filePath: path.join(CDN_FIXTURES_ROOT, "jsdelivr", "npm", "easymde@2.19.0", "dist", "easymde.min.css"),
+        contentType: "text/css"
+    }
+]);
+const CDN_STUBS = Object.freeze([
+    {
+        pattern: /^https:\/\/accounts\.google\.com\/gsi\/client$/u,
+        contentType: "application/javascript",
+        body: GOOGLE_GSI_STUB
+    },
+    {
+        pattern: /^https:\/\/loopaware\.mprlab\.com\/widget\.js(?:\?.*)?$/u,
+        contentType: "application/javascript",
+        body: EMPTY_STRING
+    },
+    {
+        pattern: /^https:\/\/example\.com\/avatar\.png$/u,
+        contentType: "image/png",
+        body: AVATAR_PNG_BYTES
+    }
+]);
+const RUNTIME_CONFIG_KEYS = Object.freeze({
+    ENVIRONMENT: "environment",
+    BACKEND_BASE_URL: "backendBaseUrl",
+    LLM_PROXY_URL: "llmProxyUrl",
+    AUTH_BASE_URL: "authBaseUrl",
+    AUTH_TENANT_ID: "authTenantId"
 });
+const TEST_RUNTIME_CONFIG = Object.freeze({
+    backendBaseUrl: DEVELOPMENT_ENVIRONMENT_CONFIG.backendBaseUrl,
+    llmProxyUrl: EMPTY_STRING,
+    authBaseUrl: DEVELOPMENT_ENVIRONMENT_CONFIG.authBaseUrl,
+    authTenantId: DEVELOPMENT_ENVIRONMENT_CONFIG.authTenantId
+});
+const CDN_INTERCEPTOR_SYMBOL = Symbol("gravityCdnInterceptor");
 const RUNTIME_CONFIG_SYMBOL = Symbol("gravityRuntimeConfigOverrides");
 const RUNTIME_CONFIG_HANDLER_SYMBOL = Symbol("gravityRuntimeConfigHandler");
 const REQUEST_HANDLERS_SYMBOL = Symbol("gravityRequestHandlers");
 const REQUEST_INTERCEPTION_READY_SYMBOL = Symbol("gravityRequestInterceptionReady");
 const REQUEST_HANDLER_REGISTRY_SYMBOL = Symbol("gravityRequestHandlerRegistry");
+const TAUTH_STUB_NONCE = "tauth-stub-nonce";
+const TAUTH_SCRIPT_PATTERN = /\/tauth\.js$/u;
+const TAUTH_STUB_KEYS = Object.freeze({
+    OPTIONS: "__tauthStubOptions",
+    INIT: "initAuthClient",
+    REQUEST_NONCE: "requestNonce",
+    EXCHANGE_CREDENTIAL: "exchangeGoogleCredential",
+    LOGOUT: "logout",
+    ON_AUTHENTICATED: "onAuthenticated",
+    ON_UNAUTHENTICATED: "onUnauthenticated"
+});
+const TAUTH_STUB_SCRIPT = [
+    "(() => {",
+    `  const OPTIONS_KEY = "${TAUTH_STUB_KEYS.OPTIONS}";`,
+    `  const NONCE = "${TAUTH_STUB_NONCE}";`,
+    "  const win = window;",
+    "  win.initAuthClient = async (options) => {",
+    "    win[OPTIONS_KEY] = options ?? null;",
+    "    const handler = options && typeof options.onUnauthenticated === \"function\" ? options.onUnauthenticated : null;",
+    "    if (handler) {",
+    "      handler();",
+    "    }",
+    "  };",
+    "  win.requestNonce = async () => NONCE;",
+    "  win.exchangeGoogleCredential = async () => {};",
+    "  win.logout = async () => {",
+    "    const options = win[OPTIONS_KEY];",
+    "    const handler = options && typeof options.onUnauthenticated === \"function\" ? options.onUnauthenticated : null;",
+    "    if (handler) {",
+    "      handler();",
+    "    }",
+    "  };",
+    "})();"
+].join("\n");
 
 /**
  * Launch the shared Puppeteer browser for the entire test run.
@@ -88,7 +186,24 @@ export async function createSharedPage(runtimeConfigOverrides = {}) {
     const browser = await connectSharedBrowser();
     const context = await browser.createBrowserContext();
     const page = await context.newPage();
+    if (process.env.GRAVITY_TEST_STREAM_LOGS === "1") {
+        page.on("console", (message) => {
+            const type = message.type?.().toUpperCase?.() ?? "LOG";
+            // eslint-disable-next-line no-console
+            console.log(`[page ${type}] ${message.text?.() ?? message}`);
+        });
+        page.on("pageerror", (error) => {
+            // eslint-disable-next-line no-console
+            console.error(`[page error] ${error?.message ?? error}`);
+        });
+        page.on("requestfailed", (request) => {
+            // eslint-disable-next-line no-console
+            console.error(`[request failed] ${request.url?.() ?? "unknown"}: ${request.failure?.()?.errorText ?? "unknown"}`);
+        });
+    }
+    await installCdnMirrors(page);
     await attachImportAppModule(page);
+    await injectTAuthStub(page);
     await injectRuntimeConfig(page, runtimeConfigOverrides);
     const teardown = async () => {
         await page.close().catch(() => {});
@@ -96,6 +211,102 @@ export async function createSharedPage(runtimeConfigOverrides = {}) {
         browser.disconnect();
     };
     return { browser, context, page, teardown };
+}
+
+/**
+ * Install deterministic CDN mirrors and external stubs for test pages.
+ * @param {import("puppeteer").Page} page
+ * @returns {Promise<void>}
+ */
+export async function installCdnMirrors(page) {
+    if (page[CDN_INTERCEPTOR_SYMBOL]) {
+        return;
+    }
+    const controller = await createRequestInterceptorController(page);
+    page[CDN_INTERCEPTOR_SYMBOL] = controller;
+    controller.add((request) => {
+        const url = request.url();
+        const mirror = CDN_MIRRORS.find((entry) => entry.pattern.test(url));
+        if (mirror) {
+            fs.readFile(mirror.filePath)
+                .then((body) => request.respond({
+                    status: 200,
+                    contentType: mirror.contentType,
+                    body,
+                    headers: CDN_RESPONSE_HEADERS
+                }).catch(() => {}))
+                .catch((error) => {
+                    if (process.env.GRAVITY_TEST_STREAM_LOGS === "1") {
+                        // eslint-disable-next-line no-console
+                        console.error(`${CDN_LOG_PREFIX} ${mirror.filePath}: ${error?.message ?? error}`);
+                    }
+                    request.respond({
+                        status: 404,
+                        contentType: mirror.contentType,
+                        body: EMPTY_STRING,
+                        headers: CDN_RESPONSE_HEADERS
+                    }).catch(() => {});
+                });
+            return true;
+        }
+        const stub = CDN_STUBS.find((entry) => entry.pattern.test(url));
+        if (stub) {
+            request.respond({
+                status: 200,
+                contentType: stub.contentType,
+                body: stub.body,
+                headers: CDN_RESPONSE_HEADERS
+            }).catch(() => {});
+            return true;
+        }
+        return false;
+    });
+    page.once("close", () => {
+        controller.dispose();
+        delete page[CDN_INTERCEPTOR_SYMBOL];
+    });
+}
+
+/**
+ * Install a minimal TAuth client stub so app initialization can proceed in tests.
+ * @param {import("puppeteer").Page} page
+ * @returns {Promise<void>}
+ */
+export async function injectTAuthStub(page) {
+    await page.evaluateOnNewDocument((stubConfig) => {
+        const windowRef = /** @type {any} */ (window);
+        if (typeof windowRef[stubConfig.INIT] !== "function") {
+            windowRef[stubConfig.INIT] = async (options) => {
+                windowRef[stubConfig.OPTIONS] = options ?? null;
+                const handler = options && typeof options[stubConfig.ON_UNAUTHENTICATED] === "function"
+                    ? options[stubConfig.ON_UNAUTHENTICATED]
+                    : null;
+                if (handler) {
+                    handler();
+                }
+            };
+        }
+        if (typeof windowRef[stubConfig.REQUEST_NONCE] !== "function") {
+            windowRef[stubConfig.REQUEST_NONCE] = async () => stubConfig.NONCE;
+        }
+        if (typeof windowRef[stubConfig.EXCHANGE_CREDENTIAL] !== "function") {
+            windowRef[stubConfig.EXCHANGE_CREDENTIAL] = async () => {};
+        }
+        if (typeof windowRef[stubConfig.LOGOUT] !== "function") {
+            windowRef[stubConfig.LOGOUT] = async () => {
+                const options = windowRef[stubConfig.OPTIONS];
+                const handler = options && typeof options[stubConfig.ON_UNAUTHENTICATED] === "function"
+                    ? options[stubConfig.ON_UNAUTHENTICATED]
+                    : null;
+                if (handler) {
+                    handler();
+                }
+            };
+        }
+    }, {
+        ...TAUTH_STUB_KEYS,
+        NONCE: TAUTH_STUB_NONCE
+    });
 }
 
 /**
@@ -110,8 +321,56 @@ export async function injectRuntimeConfig(page, overrides = {}) {
         return;
     }
     page[RUNTIME_CONFIG_HANDLER_SYMBOL] = true;
+    const overridesByEnvironment = {
+        development: resolveRuntimeConfigOverrides(page[RUNTIME_CONFIG_SYMBOL], "development"),
+        production: resolveRuntimeConfigOverrides(page[RUNTIME_CONFIG_SYMBOL], "production")
+    };
+    await page.evaluateOnNewDocument((config) => {
+        const configPattern = /\/data\/runtime\.config\.(development|production)\.json$/u;
+        const originalFetch = window.fetch;
+        window.fetch = async (input, init = {}) => {
+            const requestUrl = typeof input === "string"
+                ? input
+                : typeof input?.url === "string"
+                    ? input.url
+                    : "";
+            if (typeof requestUrl === "string" && configPattern.test(requestUrl)) {
+                const match = requestUrl.match(configPattern);
+                const environment = match && match[1] ? match[1] : "development";
+                const payload = environment === "production" ? config.production : config.development;
+                return new Response(JSON.stringify(payload), {
+                    status: 200,
+                    headers: { "Content-Type": "application/json" }
+                });
+            }
+            return originalFetch.call(window, input, init);
+        };
+    }, {
+        development: {
+            [RUNTIME_CONFIG_KEYS.ENVIRONMENT]: "development",
+            [RUNTIME_CONFIG_KEYS.BACKEND_BASE_URL]: overridesByEnvironment.development.backendBaseUrl,
+            [RUNTIME_CONFIG_KEYS.LLM_PROXY_URL]: overridesByEnvironment.development.llmProxyUrl,
+            [RUNTIME_CONFIG_KEYS.AUTH_BASE_URL]: overridesByEnvironment.development.authBaseUrl,
+            [RUNTIME_CONFIG_KEYS.AUTH_TENANT_ID]: overridesByEnvironment.development.authTenantId
+        },
+        production: {
+            [RUNTIME_CONFIG_KEYS.ENVIRONMENT]: "production",
+            [RUNTIME_CONFIG_KEYS.BACKEND_BASE_URL]: overridesByEnvironment.production.backendBaseUrl,
+            [RUNTIME_CONFIG_KEYS.LLM_PROXY_URL]: overridesByEnvironment.production.llmProxyUrl,
+            [RUNTIME_CONFIG_KEYS.AUTH_BASE_URL]: overridesByEnvironment.production.authBaseUrl,
+            [RUNTIME_CONFIG_KEYS.AUTH_TENANT_ID]: overridesByEnvironment.production.authTenantId
+        }
+    });
     await registerRequestInterceptor(page, (request) => {
         const url = request.url();
+        if (TAUTH_SCRIPT_PATTERN.test(url)) {
+            request.respond({
+                status: 200,
+                contentType: "application/javascript",
+                body: TAUTH_STUB_SCRIPT
+            }).catch(() => {});
+            return true;
+        }
         if (!CONFIG_ROUTE_PATTERN.test(url)) {
             return false;
         }
@@ -119,10 +378,11 @@ export async function injectRuntimeConfig(page, overrides = {}) {
         const environment = match && match[1] ? match[1] : "development";
         const resolvedOverrides = resolveRuntimeConfigOverrides(page[RUNTIME_CONFIG_SYMBOL], environment);
         const body = JSON.stringify({
-            environment,
-            backendBaseUrl: resolvedOverrides.backendBaseUrl,
-            llmProxyUrl: resolvedOverrides.llmProxyUrl,
-            authBaseUrl: resolvedOverrides.authBaseUrl
+            [RUNTIME_CONFIG_KEYS.ENVIRONMENT]: environment,
+            [RUNTIME_CONFIG_KEYS.BACKEND_BASE_URL]: resolvedOverrides.backendBaseUrl,
+            [RUNTIME_CONFIG_KEYS.LLM_PROXY_URL]: resolvedOverrides.llmProxyUrl,
+            [RUNTIME_CONFIG_KEYS.AUTH_BASE_URL]: resolvedOverrides.authBaseUrl,
+            [RUNTIME_CONFIG_KEYS.AUTH_TENANT_ID]: resolvedOverrides.authTenantId
         });
         request.respond({ status: 200, contentType: "application/json", body }).catch(() => {});
         return true;
@@ -262,15 +522,19 @@ function isThenable(value) {
  */
 function resolveRuntimeConfigOverrides(overrides, environment) {
     if (!overrides || typeof overrides !== "object") {
-        return { ...DEFAULT_TEST_RUNTIME_CONFIG };
+        return { ...TEST_RUNTIME_CONFIG };
     }
     const scoped = typeof overrides[environment] === "object" && overrides[environment] !== null
         ? overrides[environment]
         : null;
-    const backendBaseUrl = normalizeTestUrl(scoped?.backendBaseUrl ?? overrides.backendBaseUrl ?? DEFAULT_TEST_RUNTIME_CONFIG.backendBaseUrl);
-    const llmProxyUrl = normalizeTestUrl(scoped?.llmProxyUrl ?? overrides.llmProxyUrl ?? DEFAULT_TEST_RUNTIME_CONFIG.llmProxyUrl, true);
-    const authBaseUrl = normalizeTestUrl(scoped?.authBaseUrl ?? overrides.authBaseUrl ?? DEFAULT_TEST_RUNTIME_CONFIG.authBaseUrl, true);
-    return { backendBaseUrl, llmProxyUrl, authBaseUrl };
+    const backendBaseUrl = normalizeTestUrl(scoped?.backendBaseUrl ?? overrides.backendBaseUrl ?? TEST_RUNTIME_CONFIG.backendBaseUrl);
+    const llmProxyUrl = normalizeTestUrl(scoped?.llmProxyUrl ?? overrides.llmProxyUrl ?? TEST_RUNTIME_CONFIG.llmProxyUrl, true);
+    const authBaseUrl = normalizeTestUrl(scoped?.authBaseUrl ?? overrides.authBaseUrl ?? TEST_RUNTIME_CONFIG.authBaseUrl, true);
+    const authTenantIdCandidate = scoped?.authTenantId ?? overrides.authTenantId ?? TEST_RUNTIME_CONFIG.authTenantId;
+    const authTenantId = typeof authTenantIdCandidate === "string"
+        ? authTenantIdCandidate
+        : TEST_RUNTIME_CONFIG.authTenantId;
+    return { backendBaseUrl, llmProxyUrl, authBaseUrl, authTenantId };
 }
 
 /**
@@ -280,11 +544,11 @@ function resolveRuntimeConfigOverrides(overrides, environment) {
  */
 function normalizeTestUrl(value, allowBlank = false) {
     if (typeof value !== "string") {
-        return allowBlank ? EMPTY_STRING : DEFAULT_TEST_RUNTIME_CONFIG.backendBaseUrl;
+        return allowBlank ? EMPTY_STRING : TEST_RUNTIME_CONFIG.backendBaseUrl;
     }
     const trimmed = value.trim();
     if (trimmed.length === 0) {
-        return allowBlank ? EMPTY_STRING : DEFAULT_TEST_RUNTIME_CONFIG.backendBaseUrl;
+        return allowBlank ? EMPTY_STRING : TEST_RUNTIME_CONFIG.backendBaseUrl;
     }
     return trimmed.replace(/\/+$/u, "");
 }

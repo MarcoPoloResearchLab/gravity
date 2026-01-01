@@ -1,11 +1,25 @@
 // @ts-check
 
 import { setRuntimeConfig } from "./config.js?build=2024-10-05T12:00:00Z";
+import { ENVIRONMENT_DEVELOPMENT, ENVIRONMENT_PRODUCTION } from "./environmentConfig.js?build=2024-10-05T12:00:00Z";
 
 const ENVIRONMENT_LABELS = Object.freeze({
-    PRODUCTION: "production",
-    DEVELOPMENT: "development"
+    PRODUCTION: ENVIRONMENT_PRODUCTION,
+    DEVELOPMENT: ENVIRONMENT_DEVELOPMENT
 });
+
+const RUNTIME_CONFIG_KEYS = Object.freeze({
+    ENVIRONMENT: "environment",
+    BACKEND_BASE_URL: "backendBaseUrl",
+    LLM_PROXY_URL: "llmProxyUrl",
+    AUTH_BASE_URL: "authBaseUrl",
+    AUTH_TENANT_ID: "authTenantId"
+});
+
+const TYPE_FUNCTION = "function";
+const TYPE_OBJECT = "object";
+const TYPE_STRING = "string";
+const TYPE_UNDEFINED = "undefined";
 
 const LOOPBACK_HOSTNAMES = Object.freeze(["localhost", "127.0.0.1", "[::1]"]);
 
@@ -32,7 +46,10 @@ const ERROR_MESSAGES = Object.freeze({
     TIMEOUT_FETCH_FAILURE: "Timed out while fetching runtime configuration",
     FINAL_FETCH_FAILURE: "Failed to fetch runtime configuration",
     HTTP_FAILURE_PREFIX: "Failed to load runtime config: HTTP",
-    ENVIRONMENT_DETECTION_FAILURE: "Failed to detect runtime environment"
+    INVALID_PAYLOAD: "Invalid runtime config payload",
+    ENVIRONMENT_MISMATCH: "Runtime config environment mismatch",
+    MISSING_FETCH: "Runtime config fetch unavailable",
+    MISSING_ABORT_CONTROLLER: "Runtime config requires AbortController"
 });
 
 const ABORT_ERROR_NAME = "AbortError";
@@ -44,8 +61,7 @@ const ABORT_ERROR_NAME = "AbortError";
  */
 function waitFor(durationMs) {
     return new Promise((resolve) => {
-        const safeDuration = Number.isFinite(durationMs) && durationMs > 0 ? durationMs : 0;
-        setTimeout(resolve, safeDuration);
+        setTimeout(resolve, durationMs);
     });
 }
 
@@ -58,15 +74,14 @@ function waitFor(durationMs) {
  * @returns {Promise<Response>}
  */
 async function fetchWithTimeout(fetchImplementation, resource, init, timeoutMs) {
-    if (typeof AbortController !== "function") {
-        return fetchImplementation(resource, init);
+    if (typeof AbortController !== TYPE_FUNCTION) {
+        throw new Error(ERROR_MESSAGES.MISSING_ABORT_CONTROLLER);
     }
 
     const controller = new AbortController();
-    const timeoutDuration = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 0;
     const timeoutReference = setTimeout(() => {
         controller.abort();
-    }, timeoutDuration);
+    }, timeoutMs);
 
     try {
         const response = await fetchImplementation(resource, {
@@ -120,17 +135,77 @@ async function fetchRuntimeConfig(fetchImplementation, resource) {
 }
 
 /**
+ * Validate and project the runtime config payload into known keys.
+ * @param {unknown} payload
+ * @param {"production" | "development"} environment
+ * @returns {{ backendBaseUrl?: string, llmProxyUrl?: string, authBaseUrl?: string, authTenantId?: string }}
+ */
+function parseRuntimeConfigPayload(payload, environment) {
+    if (!payload || typeof payload !== TYPE_OBJECT || Array.isArray(payload)) {
+        throw new Error(ERROR_MESSAGES.INVALID_PAYLOAD);
+    }
+    const payloadKeys = Object.keys(payload);
+    const allowedKeys = new Set(Object.values(RUNTIME_CONFIG_KEYS));
+    for (const key of payloadKeys) {
+        if (!allowedKeys.has(key)) {
+            throw new Error(ERROR_MESSAGES.INVALID_PAYLOAD);
+        }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(payload, RUNTIME_CONFIG_KEYS.ENVIRONMENT)) {
+        const payloadEnvironment = /** @type {Record<string, unknown>} */ (payload)[RUNTIME_CONFIG_KEYS.ENVIRONMENT];
+        if (typeof payloadEnvironment !== TYPE_STRING) {
+            throw new Error(ERROR_MESSAGES.INVALID_PAYLOAD);
+        }
+        if (payloadEnvironment !== environment) {
+            throw new Error(ERROR_MESSAGES.ENVIRONMENT_MISMATCH);
+        }
+    }
+
+    const overrides = {};
+    if (Object.prototype.hasOwnProperty.call(payload, RUNTIME_CONFIG_KEYS.BACKEND_BASE_URL)) {
+        const backendBaseUrl = /** @type {Record<string, unknown>} */ (payload)[RUNTIME_CONFIG_KEYS.BACKEND_BASE_URL];
+        if (typeof backendBaseUrl !== TYPE_STRING) {
+            throw new Error(ERROR_MESSAGES.INVALID_PAYLOAD);
+        }
+        overrides.backendBaseUrl = backendBaseUrl;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, RUNTIME_CONFIG_KEYS.LLM_PROXY_URL)) {
+        const llmProxyUrl = /** @type {Record<string, unknown>} */ (payload)[RUNTIME_CONFIG_KEYS.LLM_PROXY_URL];
+        if (typeof llmProxyUrl !== TYPE_STRING) {
+            throw new Error(ERROR_MESSAGES.INVALID_PAYLOAD);
+        }
+        overrides.llmProxyUrl = llmProxyUrl;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, RUNTIME_CONFIG_KEYS.AUTH_BASE_URL)) {
+        const authBaseUrl = /** @type {Record<string, unknown>} */ (payload)[RUNTIME_CONFIG_KEYS.AUTH_BASE_URL];
+        if (typeof authBaseUrl !== TYPE_STRING) {
+            throw new Error(ERROR_MESSAGES.INVALID_PAYLOAD);
+        }
+        overrides.authBaseUrl = authBaseUrl;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, RUNTIME_CONFIG_KEYS.AUTH_TENANT_ID)) {
+        const authTenantId = /** @type {Record<string, unknown>} */ (payload)[RUNTIME_CONFIG_KEYS.AUTH_TENANT_ID];
+        if (typeof authTenantId !== TYPE_STRING) {
+            throw new Error(ERROR_MESSAGES.INVALID_PAYLOAD);
+        }
+        overrides.authTenantId = authTenantId;
+    }
+    return overrides;
+}
+
+/**
  * Determine the environment from the current location.
  * @param {Location|undefined} runtimeLocation
  * @returns {"production" | "development"}
  */
 function detectEnvironment(runtimeLocation) {
-    if (!runtimeLocation || typeof runtimeLocation.hostname !== "string") {
-        throw new Error(ERROR_MESSAGES.ENVIRONMENT_DETECTION_FAILURE);
+    if (!runtimeLocation || typeof runtimeLocation.hostname !== TYPE_STRING) {
+        return ENVIRONMENT_LABELS.DEVELOPMENT;
     }
     const hostname = runtimeLocation.hostname.toLowerCase();
     if (!hostname) {
-        throw new Error(ERROR_MESSAGES.ENVIRONMENT_DETECTION_FAILURE);
+        return ENVIRONMENT_LABELS.DEVELOPMENT;
     }
     if (LOOPBACK_HOSTNAMES.includes(hostname)) {
         return ENVIRONMENT_LABELS.DEVELOPMENT;
@@ -141,7 +216,7 @@ function detectEnvironment(runtimeLocation) {
     if (PRODUCTION_TLDS.some((suffix) => hostname.endsWith(suffix))) {
         return ENVIRONMENT_LABELS.PRODUCTION;
     }
-    throw new Error(ERROR_MESSAGES.ENVIRONMENT_DETECTION_FAILURE);
+    return ENVIRONMENT_LABELS.DEVELOPMENT;
 }
 
 /**
@@ -150,31 +225,27 @@ function detectEnvironment(runtimeLocation) {
  * @returns {Promise<void>}
  */
 export async function initializeRuntimeConfig(options = {}) {
-    const { fetchImplementation = typeof fetch === "function" ? fetch : null, location = typeof window !== "undefined" ? window.location : undefined } = options;
+    const { fetchImplementation = typeof fetch === TYPE_FUNCTION ? fetch : null, location = typeof window !== TYPE_UNDEFINED ? window.location : undefined } = options;
     if (!fetchImplementation) {
-        const environment = detectEnvironment(location);
-        setRuntimeConfig({ environment });
-        return;
+        throw new Error(ERROR_MESSAGES.MISSING_FETCH);
     }
     const environment = detectEnvironment(location);
     const targetPath = RUNTIME_CONFIG_PATHS[environment];
-    if (!targetPath) {
-        throw new Error(ERROR_MESSAGES.ENVIRONMENT_DETECTION_FAILURE);
-    }
     try {
         const response = await fetchRuntimeConfig(fetchImplementation, targetPath);
         if (!response.ok) {
             throw new Error(`${ERROR_MESSAGES.HTTP_FAILURE_PREFIX} ${response.status}`);
         }
         const payload = await response.json();
+        const overrides = parseRuntimeConfigPayload(payload, environment);
         setRuntimeConfig({
             environment,
-            ...payload
+            ...overrides
         });
     } catch (error) {
-        if (typeof options.onError === "function") {
+        if (typeof options.onError === TYPE_FUNCTION) {
             options.onError(error);
         }
-        setRuntimeConfig({ environment });
+        throw error;
     }
 }

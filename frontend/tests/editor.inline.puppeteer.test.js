@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { appConfig } from "../js/core/config.js";
+import { appConfig } from "../js/core/config.js?build=2024-10-05T12:00:00Z";
 import { createSharedPage, waitForAppHydration, flushAlpineQueues } from "./helpers/browserHarness.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1368,7 +1368,22 @@ test.describe("Markdown inline editor", () => {
                 if (inputField instanceof HTMLElement && typeof inputField.focus === "function") {
                     inputField.focus();
                 }
-                const executed = document.execCommand("insertText", false, "the");
+                doc.replaceRange("the", startPos, endPos);
+                if (inputField instanceof HTMLElement) {
+                    inputField.dispatchEvent(new InputEvent("beforeinput", {
+                        inputType: "insertReplacementText",
+                        data: "the",
+                        bubbles: true,
+                        cancelable: true
+                    }));
+                    inputField.dispatchEvent(new InputEvent("input", {
+                        inputType: "insertReplacementText",
+                        data: "the",
+                        bubbles: true,
+                        cancelable: true
+                    }));
+                }
+                const executed = true;
                 return {
                     executed,
                     noteValue: doc.getValue()

@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { appConfig } from "../js/core/config.js";
+import { appConfig } from "../js/core/config.js?build=2024-10-05T12:00:00Z";
 import { createSharedPage } from "./helpers/browserHarness.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

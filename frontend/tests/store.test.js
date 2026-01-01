@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { appConfig } from "../js/core/config.js";
+import { appConfig } from "../js/core/config.js?build=2024-10-05T12:00:00Z";
 import { GravityStore, ERROR_INVALID_NOTES_COLLECTION } from "../js/core/store.js";
 import { ERROR_IMPORT_INVALID_PAYLOAD } from "../js/constants.js";
 

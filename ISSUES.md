@@ -57,6 +57,7 @@ Check the logs at @gravity.log and gravity-filtered.log and try to pinpoint the 
 ## Maintenance (405–499)
 
 - [x] [GN-423] Delegate nonce issuance and Google credential exchange to the TAuth auth-client helpers so Gravity no longer hand-rolls `/auth/nonce` + `/auth/google` fetches. (Resolved by delegating to auth-client helpers and updating tests/harness.)
+- [x] [GN-427] Centralize environment config defaults and stabilize inline spellcheck replacement tests. (Resolved by sharing environment defaults across runtime/test harnesses and replacing execCommand-based spellcheck simulation with deterministic replacement events; full test suite passing.)
 
 ## Planning
 **Do not work on these, not ready**

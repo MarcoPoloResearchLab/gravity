@@ -1,116 +1,77 @@
+// @ts-check
+
 import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+    appConfig,
     clearRuntimeConfigForTesting,
-    resolveAuthBaseUrl,
-    resolveAuthTenantId,
-    resolveBackendBaseUrl,
-    resolveEnvironmentName,
-    resolveLlmProxyUrl,
     setRuntimeConfig
-} from "../js/core/config.js";
+} from "../js/core/config.js?build=2024-10-05T12:00:00Z";
+import {
+    DEVELOPMENT_ENVIRONMENT_CONFIG,
+    ENVIRONMENT_DEVELOPMENT,
+    ENVIRONMENT_PRODUCTION,
+    PRODUCTION_ENVIRONMENT_CONFIG
+} from "../js/core/environmentConfig.js?build=2024-10-05T12:00:00Z";
 
-const ENVIRONMENT_PRODUCTION = "production";
-const ENVIRONMENT_DEVELOPMENT = "development";
-const EMPTY_STRING = "";
-
-const BACKEND_URL_INPUT = " https://api.example.com/v1/ ";
-const BACKEND_URL_EXPECTED = "https://api.example.com/v1";
-const PRODUCTION_BACKEND_URL = "https://gravity-api.mprlab.com";
-
+const BACKEND_URL_OVERRIDE = "https://api.example.com/v1/";
 const LLM_PROXY_OVERRIDE = "http://localhost:5001/api/classify";
-const DEVELOPMENT_LLM_PROXY_URL = "http://computercat:8081/v1/gravity/classify";
+const AUTH_BASE_URL_OVERRIDE = "https://auth.example.com/service/";
+const AUTH_TENANT_OVERRIDE = " gravity ";
 
-const AUTH_BASE_URL_INPUT = " https://auth.example.com/service/ ";
-const AUTH_BASE_URL_EXPECTED = "https://auth.example.com/service";
-const PRODUCTION_AUTH_BASE_URL = "https://tauth.mprlab.com";
-
-const AUTH_TENANT_INPUT = " gravity ";
-const AUTH_TENANT_EXPECTED = "gravity";
-
-const SPACED_ENVIRONMENT_PRODUCTION = " Production ";
-const BLANK_INPUT = "   ";
+const TEST_LABELS = Object.freeze({
+    DEVELOPMENT_DEFAULTS: "setRuntimeConfig uses development defaults when overrides are omitted",
+    PRODUCTION_DEFAULTS: "setRuntimeConfig uses production defaults when overrides are omitted",
+    BACKEND_OVERRIDE: "setRuntimeConfig respects injected backendBaseUrl",
+    LLM_OVERRIDE: "setRuntimeConfig respects injected llmProxyUrl",
+    AUTH_BASE_OVERRIDE: "setRuntimeConfig respects injected authBaseUrl",
+    AUTH_TENANT_OVERRIDE: "setRuntimeConfig preserves injected authTenantId"
+});
 
 test.beforeEach(() => {
     clearRuntimeConfigForTesting();
 });
 
-test("resolveBackendBaseUrl throws when config missing", () => {
-    assert.throws(() => resolveBackendBaseUrl());
-});
-
-test("resolveLlmProxyUrl throws when config missing", () => {
-    assert.throws(() => resolveLlmProxyUrl());
-});
-
-test("resolveAuthBaseUrl throws when config missing", () => {
-    assert.throws(() => resolveAuthBaseUrl());
-});
-
-test("resolveAuthTenantId throws when config missing", () => {
-    assert.throws(() => resolveAuthTenantId());
-});
-
-test("resolveEnvironmentName throws when config missing", () => {
-    assert.throws(() => resolveEnvironmentName());
-});
-
-test("setRuntimeConfig throws when environment missing", () => {
-    assert.throws(() => setRuntimeConfig({ backendBaseUrl: BACKEND_URL_INPUT }));
-});
-
-test("resolveBackendBaseUrl trims injected URLs", () => {
-    setRuntimeConfig({ environment: ENVIRONMENT_DEVELOPMENT, backendBaseUrl: BACKEND_URL_INPUT });
-    assert.equal(resolveBackendBaseUrl(), BACKEND_URL_EXPECTED);
-});
-
-test("resolveBackendBaseUrl uses environment defaults when value omitted", () => {
-    setRuntimeConfig({ environment: ENVIRONMENT_PRODUCTION });
-    assert.equal(resolveBackendBaseUrl(), PRODUCTION_BACKEND_URL);
-});
-
-test("resolveLlmProxyUrl uses environment defaults when value omitted", () => {
+test(TEST_LABELS.DEVELOPMENT_DEFAULTS, () => {
     setRuntimeConfig({ environment: ENVIRONMENT_DEVELOPMENT });
-    assert.equal(resolveLlmProxyUrl(), DEVELOPMENT_LLM_PROXY_URL);
+
+    assert.equal(appConfig.environment, ENVIRONMENT_DEVELOPMENT);
+    assert.equal(appConfig.backendBaseUrl, DEVELOPMENT_ENVIRONMENT_CONFIG.backendBaseUrl);
+    assert.equal(appConfig.llmProxyUrl, DEVELOPMENT_ENVIRONMENT_CONFIG.llmProxyUrl);
+    assert.equal(appConfig.authBaseUrl, DEVELOPMENT_ENVIRONMENT_CONFIG.authBaseUrl);
+    assert.equal(appConfig.authTenantId, DEVELOPMENT_ENVIRONMENT_CONFIG.authTenantId);
 });
 
-test("resolveLlmProxyUrl respects injected override", () => {
+test(TEST_LABELS.PRODUCTION_DEFAULTS, () => {
+    setRuntimeConfig({ environment: ENVIRONMENT_PRODUCTION });
+
+    assert.equal(appConfig.environment, ENVIRONMENT_PRODUCTION);
+    assert.equal(appConfig.backendBaseUrl, PRODUCTION_ENVIRONMENT_CONFIG.backendBaseUrl);
+    assert.equal(appConfig.authBaseUrl, PRODUCTION_ENVIRONMENT_CONFIG.authBaseUrl);
+    assert.equal(appConfig.authTenantId, PRODUCTION_ENVIRONMENT_CONFIG.authTenantId);
+});
+
+test(TEST_LABELS.BACKEND_OVERRIDE, () => {
+    setRuntimeConfig({ environment: ENVIRONMENT_DEVELOPMENT, backendBaseUrl: BACKEND_URL_OVERRIDE });
+
+    assert.equal(appConfig.backendBaseUrl, BACKEND_URL_OVERRIDE);
+});
+
+test(TEST_LABELS.LLM_OVERRIDE, () => {
     setRuntimeConfig({ environment: ENVIRONMENT_DEVELOPMENT, llmProxyUrl: LLM_PROXY_OVERRIDE });
-    assert.equal(resolveLlmProxyUrl(), LLM_PROXY_OVERRIDE);
+
+    assert.equal(appConfig.llmProxyUrl, LLM_PROXY_OVERRIDE);
 });
 
-test("resolveLlmProxyUrl preserves intentional blanks", () => {
-    setRuntimeConfig({ environment: ENVIRONMENT_DEVELOPMENT, llmProxyUrl: BLANK_INPUT });
-    assert.equal(resolveLlmProxyUrl(), EMPTY_STRING);
+test(TEST_LABELS.AUTH_BASE_OVERRIDE, () => {
+    setRuntimeConfig({ environment: ENVIRONMENT_PRODUCTION, authBaseUrl: AUTH_BASE_URL_OVERRIDE });
+
+    assert.equal(appConfig.authBaseUrl, AUTH_BASE_URL_OVERRIDE);
 });
 
-test("resolveAuthBaseUrl respects injected override", () => {
-    setRuntimeConfig({ environment: ENVIRONMENT_PRODUCTION, authBaseUrl: AUTH_BASE_URL_INPUT });
-    assert.equal(resolveAuthBaseUrl(), AUTH_BASE_URL_EXPECTED);
-});
+test(TEST_LABELS.AUTH_TENANT_OVERRIDE, () => {
+    setRuntimeConfig({ environment: ENVIRONMENT_PRODUCTION, authTenantId: AUTH_TENANT_OVERRIDE });
 
-test("resolveAuthBaseUrl uses environment defaults", () => {
-    setRuntimeConfig({ environment: ENVIRONMENT_PRODUCTION });
-    assert.equal(resolveAuthBaseUrl(), PRODUCTION_AUTH_BASE_URL);
-});
-
-test("resolveAuthTenantId trims injected values", () => {
-    setRuntimeConfig({ environment: ENVIRONMENT_PRODUCTION, authTenantId: AUTH_TENANT_INPUT });
-    assert.equal(resolveAuthTenantId(), AUTH_TENANT_EXPECTED);
-});
-
-test("resolveAuthTenantId uses environment defaults", () => {
-    setRuntimeConfig({ environment: ENVIRONMENT_PRODUCTION });
-    assert.equal(resolveAuthTenantId(), AUTH_TENANT_EXPECTED);
-});
-
-test("resolveEnvironmentName normalizes injected value", () => {
-    setRuntimeConfig({ environment: SPACED_ENVIRONMENT_PRODUCTION });
-    assert.equal(resolveEnvironmentName(), ENVIRONMENT_PRODUCTION);
-});
-
-test("resolveEnvironmentName returns configured value", () => {
-    setRuntimeConfig({ environment: ENVIRONMENT_DEVELOPMENT });
-    assert.equal(resolveEnvironmentName(), ENVIRONMENT_DEVELOPMENT);
+    assert.equal(appConfig.authTenantId, AUTH_TENANT_OVERRIDE);
 });

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createClassifierClient, ClassifierClient } from "../js/core/classifier.js";
-import { clearRuntimeConfigForTesting, setRuntimeConfig } from "../js/core/config.js";
+import { clearRuntimeConfigForTesting, setRuntimeConfig } from "../js/core/config.js?build=2024-10-05T12:00:00Z";
 
 const ENVIRONMENT_DEVELOPMENT = "development";
 const EMPTY_STRING = "";

@@ -1,10 +1,13 @@
+// @ts-check
+
 import { randomBytes } from "node:crypto";
 import http from "node:http";
 import path from "node:path";
 import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
-import { appConfig } from "../../js/core/config.js";
+import { appConfig } from "../../js/core/config.js?build=2024-10-05T12:00:00Z";
+import { DEVELOPMENT_ENVIRONMENT_CONFIG } from "../../js/core/environmentConfig.js?build=2024-10-05T12:00:00Z";
 import {
     EVENT_AUTH_SIGN_IN,
     EVENT_NOTE_CREATE,
@@ -13,9 +16,10 @@ import {
 import { startTestBackend } from "./backendHarness.js";
 import {
     connectSharedBrowser,
+    installCdnMirrors,
     injectRuntimeConfig,
     registerRequestInterceptor,
-    createRequestInterceptorController,
+    injectTAuthStub,
     waitForAppHydration,
     flushAlpineQueues,
     attachImportAppModule
@@ -28,51 +32,10 @@ const DEFAULT_PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
 const DEFAULT_JWT_ISSUER = "https://accounts.google.com";
 const DEFAULT_JWT_AUDIENCE = appConfig.googleClientId;
 const EMPTY_STRING = "";
-const DEFAULT_AUTH_BASE_URL = "http://localhost:8082";
+const DEVELOPMENT_AUTH_BASE_URL = DEVELOPMENT_ENVIRONMENT_CONFIG.authBaseUrl;
 const STATIC_SERVER_HOST = "127.0.0.1";
-const CDN_FIXTURES_ROOT = path.resolve(TESTS_DIR, "..", "fixtures", "cdn");
-const CDN_MIRRORS = [
-    {
-        pattern: /^https:\/\/cdn\.jsdelivr\.net\/npm\/alpinejs@3\.13\.5\/dist\/module\.esm\.js$/u,
-        filePath: path.join(CDN_FIXTURES_ROOT, "jsdelivr", "npm", "alpinejs@3.13.5", "dist", "module.esm.js"),
-        contentType: "application/javascript"
-    },
-    {
-        pattern: /^https:\/\/cdn\.jsdelivr\.net\/npm\/marked@12\.0\.2\/marked\.min\.js$/u,
-        filePath: path.join(CDN_FIXTURES_ROOT, "jsdelivr", "npm", "marked@12.0.2", "marked.min.js"),
-        contentType: "application/javascript"
-    },
-    {
-        pattern: /^https:\/\/cdn\.jsdelivr\.net\/npm\/dompurify@3\.1\.7\/dist\/purify\.min\.js$/u,
-        filePath: path.join(CDN_FIXTURES_ROOT, "jsdelivr", "npm", "dompurify@3.1.7", "dist", "purify.min.js"),
-        contentType: "application/javascript"
-    },
-    {
-        pattern: /^https:\/\/cdn\.jsdelivr\.net\/npm\/easymde@2\.19\.0\/dist\/easymde\.min\.js$/u,
-        filePath: path.join(CDN_FIXTURES_ROOT, "jsdelivr", "npm", "easymde@2.19.0", "dist", "easymde.min.js"),
-        contentType: "application/javascript"
-    },
-    {
-        pattern: /^https:\/\/cdn\.jsdelivr\.net\/npm\/easymde@2\.19\.0\/dist\/easymde\.min\.css$/u,
-        filePath: path.join(CDN_FIXTURES_ROOT, "jsdelivr", "npm", "easymde@2.19.0", "dist", "easymde.min.css"),
-        contentType: "text/css"
-    }
-];
-const CDN_STUBS = [
-    {
-        pattern: /^https:\/\/accounts\.google\.com\/gsi\/client$/u,
-        contentType: "application/javascript",
-        body: "window.google=window.google||{accounts:{id:{initialize(){},prompt(){},renderButton(){}}}};"
-    },
-    {
-        pattern: /^https:\/\/loopaware\.mprlab\.com\/widget\.js(?:\?.*)?$/u,
-        contentType: "application/javascript",
-        body: ""
-    }
-];
 let staticServerOriginPromise = null;
 let staticServerHandle = null;
-const CDN_INTERCEPTOR_SYMBOL = Symbol("gravityCdnInterceptor");
 const MIME_TYPES = new Map([
     [".html", "text/html; charset=utf-8"],
     [".js", "application/javascript; charset=utf-8"],
@@ -97,7 +60,7 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
     const {
         backendBaseUrl,
         llmProxyUrl = EMPTY_STRING,
-        authBaseUrl = DEFAULT_AUTH_BASE_URL,
+        authBaseUrl = DEVELOPMENT_AUTH_BASE_URL,
         authTenantId = EMPTY_STRING,
         beforeNavigate,
         preserveLocalStorage = false
@@ -134,6 +97,7 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
         await beforeNavigate(page);
     }
     await attachImportAppModule(page);
+    await injectTAuthStub(page);
     await injectRuntimeConfig(page, {
         development: {
             backendBaseUrl,
@@ -249,7 +213,7 @@ export async function initializePuppeteerTest(pageUrl = DEFAULT_PAGE_URL, setupO
         development: {
             backendBaseUrl: backend.baseUrl,
             llmProxyUrl: EMPTY_STRING,
-            authBaseUrl: DEFAULT_AUTH_BASE_URL
+            authBaseUrl: DEVELOPMENT_AUTH_BASE_URL
         }
     };
     const mergedRuntimeOverrides = mergeRuntimeOverrides(baseRuntimeOverrides, setupOptions.runtimeConfig);
@@ -682,41 +646,6 @@ function encodeSegment(value) {
  */
 function generateJwtIdentifier() {
     return randomBytes(16).toString("hex");
-}
-
-async function installCdnMirrors(page) {
-    if (page[CDN_INTERCEPTOR_SYMBOL]) {
-        return;
-    }
-    const controller = await createRequestInterceptorController(page);
-    page[CDN_INTERCEPTOR_SYMBOL] = controller;
-    controller.add((request) => {
-        const url = request.url();
-        const mirror = CDN_MIRRORS.find((entry) => entry.pattern.test(url));
-        if (mirror) {
-            const headers = { "Access-Control-Allow-Origin": "*" };
-            fs.readFile(mirror.filePath)
-                .then((body) => request.respond({ status: 200, contentType: mirror.contentType, body, headers }).catch(() => {}))
-                .catch((error) => {
-                    if (process.env.GRAVITY_TEST_STREAM_LOGS === "1") {
-                        // eslint-disable-next-line no-console
-                        console.error(`[cdn mirror] missing ${mirror.filePath}: ${error?.message ?? error}`);
-                    }
-                    request.respond({ status: 404, contentType: mirror.contentType, body: "", headers }).catch(() => {});
-                });
-            return true;
-        }
-        const stub = CDN_STUBS.find((entry) => entry.pattern.test(url));
-        if (stub) {
-            request.respond({ status: 200, contentType: stub.contentType, body: stub.body, headers: { "Access-Control-Allow-Origin": "*" } }).catch(() => {});
-            return true;
-        }
-        return false;
-    });
-    page.once("close", () => {
-        controller.dispose();
-        delete page[CDN_INTERCEPTOR_SYMBOL];
-    });
 }
 
 async function resolvePageUrl(rawUrl) {
