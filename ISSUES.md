@@ -128,7 +128,7 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 ## Planning
 *do not implement yet*
 
-- [ ] [GN-55] The current llm-proxy URL is wrong -- there is no such path as https://llm-proxy.mprlab.com/v1/gravity/.
+- [ ] [GN-55] (P1) The current llm-proxy URL is wrong -- there is no such path as https://llm-proxy.mprlab.com/v1/gravity/.
   classify. There is only https://llm-proxy.mprlab.com/, and we need to be sending a system prompt to it to get classification. I have copied llm-proxy codebase under the tools folder. Prepare a system prompt for classification of the notes and send it to llm-proxy service.
 
 
