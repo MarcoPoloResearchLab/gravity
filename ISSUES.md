@@ -40,7 +40,7 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
   * **Caret mapping on click:** From HTML click Range → source Markdown offset (use your md/HTML source map or node `data.position`), set caret to that offset before applying the anchor compensation.
   - Anchors + AST metadata implemented: cards capture viewport positions (pinned or not), keep their edit height in HTML view until the user scrolls away, and HTML nodes now expose `data-md-start`/`data-md-end` from the markdown mapping so caret placement and reordering never cause visible jumps.
   - let's prepare a carefull plan and a list of behaviors that need to be defined or changed bases on this new visual behaviour
-- [ ] [GN-125] Have an info button in the control panel for every note.
+- [ ] [GN-125] (P0) Have an info button in the control panel for every note.
   The info button will show when the note was created, when was it last edited, how many words and charachters are in it etc
 
 
