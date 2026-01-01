@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { GravityStore } from "../js/core/store.js";
 import { createSyncManager } from "../js/core/syncManager.js";
+import { EVENT_NOTIFICATION_REQUEST } from "../js/constants.js";
 
 class LocalStorageStub {
     constructor() {
@@ -163,5 +164,93 @@ test.describe("SyncManager", () => {
         assert.equal(synchronizeResult.snapshotApplied, true, "snapshot should apply during forced sync");
         assert.equal(calls.includes("fetchSnapshot"), true, "fetchSnapshot should be invoked");
         assert.equal(calls.includes("syncOperations"), false, "syncOperations should be skipped when flushing disabled");
+    });
+
+    test("rejected sync operations remain in conflicts and preserve local edits", async () => {
+        const notifications = [];
+        const eventTarget = new EventTarget();
+        eventTarget.addEventListener(EVENT_NOTIFICATION_REQUEST, (event) => {
+            notifications.push(event?.detail ?? {});
+        });
+
+        const backendClient = {
+            async syncOperations({ operations }) {
+                return {
+                    results: operations.map((operation) => ({
+                        note_id: operation.note_id,
+                        accepted: false,
+                        version: 2,
+                        updated_at_s: operation.updated_at_s,
+                        last_writer_edit_seq: 2,
+                        is_deleted: false,
+                        payload: {
+                            noteId: operation.note_id,
+                            markdownText: "Server version",
+                            createdAtIso: "2023-11-14T21:00:00.000Z",
+                            updatedAtIso: "2023-11-14T21:00:00.000Z",
+                            lastActivityIso: "2023-11-14T21:00:00.000Z"
+                        }
+                    }))
+                };
+            },
+            async fetchSnapshot() {
+                return {
+                    notes: [
+                        {
+                            note_id: "note-conflict",
+                            created_at_s: 1700000000,
+                            updated_at_s: 1700000000,
+                            last_writer_edit_seq: 2,
+                            version: 2,
+                            is_deleted: false,
+                            payload: {
+                                noteId: "note-conflict",
+                                markdownText: "Server snapshot",
+                                createdAtIso: "2023-11-14T21:00:00.000Z",
+                                updatedAtIso: "2023-11-14T21:00:00.000Z",
+                                lastActivityIso: "2023-11-14T21:00:00.000Z"
+                            }
+                        }
+                    ]
+                };
+            }
+        };
+
+        const syncManager = createSyncManager({
+            backendClient,
+            clock: () => new Date("2023-11-14T21:00:00.000Z"),
+            randomUUID: () => "operation-conflict",
+            eventTarget
+        });
+
+        const localRecord = {
+            noteId: "note-conflict",
+            markdownText: "Local draft",
+            createdAtIso: "2023-11-14T20:59:00.000Z",
+            updatedAtIso: "2023-11-14T20:59:00.000Z",
+            lastActivityIso: "2023-11-14T20:59:00.000Z"
+        };
+
+        GravityStore.upsertNonEmpty(localRecord);
+        syncManager.recordLocalUpsert(localRecord);
+
+        const signInResult = await syncManager.handleSignIn({ userId: "user-conflict" });
+
+        assert.equal(signInResult.authenticated, true);
+        assert.equal(signInResult.queueFlushed, false);
+        assert.equal(signInResult.snapshotApplied, true);
+
+        const storedRecords = GravityStore.loadAllNotes();
+        assert.equal(storedRecords.length, 1);
+        assert.equal(storedRecords[0].markdownText, "Local draft");
+
+        const debugState = syncManager.getDebugState();
+        assert.equal(debugState.pendingOperations.length, 0);
+        assert.equal(debugState.conflictOperations.length, 1);
+        assert.equal(debugState.conflictOperations[0].status, "conflict");
+
+        assert.equal(notifications.length, 1);
+        assert.equal(typeof notifications[0].message, "string");
+        assert.equal(notifications[0].message.length > 0, true);
     });
 });

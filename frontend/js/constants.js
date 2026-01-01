@@ -44,6 +44,7 @@ export const MESSAGE_NOTES_IMPORTED = "Notes imported";
 export const MESSAGE_NOTES_SKIPPED = "No new notes found";
 export const MESSAGE_NOTES_IMPORT_FAILED = "Import failed";
 export const MESSAGE_FULLSCREEN_TOGGLE_FAILED = "Unable to toggle full screen mode.";
+export const MESSAGE_SYNC_CONFLICT = "Sync conflict detected. Review your latest changes.";
 
 export const FILENAME_EXPORT_NOTES_JSON = "gravity-notes.json";
 export const ACCEPT_IMPORT_NOTES_JSON = "application/json";
