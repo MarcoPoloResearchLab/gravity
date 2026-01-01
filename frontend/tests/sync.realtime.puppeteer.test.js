@@ -132,7 +132,7 @@ test.describe("Realtime synchronization", () => {
                 const importer = typeof window.importAppModule === "function"
                     ? window.importAppModule
                     : (specifier) => import(specifier);
-                const module = await importer("./js/core/config.js?build=2024-10-05T12:00:00Z");
+                const module = await importer("./js/core/config.js?build=2026-01-01T21:20:40Z");
                 return module.appConfig.backendBaseUrl;
             });
             console.log("[Realtime][Debug] backend base URL:", runtimeConfig);
@@ -234,7 +234,7 @@ async function bootstrapRealtimeSession(context, backend, userId, options = {}) 
         const importer = typeof window.importAppModule === "function"
             ? window.importAppModule
             : (specifier) => import(specifier);
-        const configModule = await importer("./js/core/config.js?build=2024-10-05T12:00:00Z");
+        const configModule = await importer("./js/core/config.js?build=2026-01-01T21:20:40Z");
         return configModule.appConfig.authBaseUrl;
     });
     console.log("[Realtime][Debug] authBaseUrl:", resolvedAuthBaseUrl);

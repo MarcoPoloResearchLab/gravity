@@ -1,13 +1,13 @@
 // @ts-check
 
-import { logging } from "../../utils/logging.js?build=2024-10-05T12:00:00Z";
-import { nowIso } from "../../utils/datetime.js?build=2024-10-05T12:00:00Z";
-import { isNonBlankString } from "../../utils/string.js?build=2024-10-05T12:00:00Z";
+import { logging } from "../../utils/logging.js?build=2026-01-01T21:20:40Z";
+import { nowIso } from "../../utils/datetime.js?build=2026-01-01T21:20:40Z";
+import { isNonBlankString } from "../../utils/string.js?build=2026-01-01T21:20:40Z";
 import {
     captureViewportAnchor,
     shouldCenterCard,
     maintainCardViewport
-} from "./viewport.js?build=2024-10-05T12:00:00Z";
+} from "./viewport.js?build=2026-01-01T21:20:40Z";
 import {
     createHtmlView,
     deleteHtmlView,
@@ -17,41 +17,41 @@ import {
     releaseEditingSurfaceHeight,
     persistCardState,
     normalizeHeight
-} from "./renderPipeline.js?build=2024-10-05T12:00:00Z";
-import { collapseExpandedHtmlView } from "./htmlView.js?build=2024-10-05T12:00:00Z";
-import { enforcePinnedAnchor } from "./layout.js?build=2024-10-05T12:00:00Z";
+} from "./renderPipeline.js?build=2026-01-01T21:20:40Z";
+import { collapseExpandedHtmlView } from "./htmlView.js?build=2026-01-01T21:20:40Z";
+import { enforcePinnedAnchor } from "./layout.js?build=2026-01-01T21:20:40Z";
 import {
     getEditorHost,
     incrementFinalizeSuppression,
     decrementFinalizeSuppression,
     isFinalizeSuppressed as isCardFinalizeSuppressed,
     disposeCardState
-} from "./cardState.js?build=2024-10-05T12:00:00Z";
+} from "./cardState.js?build=2026-01-01T21:20:40Z";
 import {
     transformMarkdownWithAttachments,
     collectReferencedAttachments,
     registerInitialAttachments,
     waitForPendingImagePastes
-} from "../imagePaste.js?build=2024-10-05T12:00:00Z";
-import { syncStoreFromDom } from "../storeSync.js?build=2024-10-05T12:00:00Z";
-import { updateActionButtons } from "./listControls.js?build=2024-10-05T12:00:00Z";
-import { togglePinnedNote, clearPinnedNoteIfMatches } from "../notesState.js?build=2024-10-05T12:00:00Z";
-import { suppressTopEditorAutofocus } from "../focusManager.js?build=2024-10-05T12:00:00Z";
-import { showSaveFeedback } from "../saveFeedback.js?build=2024-10-05T12:00:00Z";
+} from "../imagePaste.js?build=2026-01-01T21:20:40Z";
+import { syncStoreFromDom } from "../storeSync.js?build=2026-01-01T21:20:40Z";
+import { updateActionButtons } from "./listControls.js?build=2026-01-01T21:20:40Z";
+import { togglePinnedNote, clearPinnedNoteIfMatches } from "../notesState.js?build=2026-01-01T21:20:40Z";
+import { suppressTopEditorAutofocus } from "../focusManager.js?build=2026-01-01T21:20:40Z";
+import { showSaveFeedback } from "../saveFeedback.js?build=2026-01-01T21:20:40Z";
 import {
     dispatchNoteUpdate,
     dispatchNoteDelete,
     dispatchPinToggle
-} from "./events.js?build=2024-10-05T12:00:00Z";
-import { triggerClassificationForCard } from "./classification.js?build=2024-10-05T12:00:00Z";
+} from "./events.js?build=2026-01-01T21:20:40Z";
+import { triggerClassificationForCard } from "./classification.js?build=2026-01-01T21:20:40Z";
 import {
     storeCardAnchor,
     getCardAnchor,
     rememberExpandedHeight,
     releaseExpandedHeight,
     clearCardAnchor
-} from "./anchorState.js?build=2024-10-05T12:00:00Z";
-import { clearPlainTextMapping } from "./textMapping.js?build=2024-10-05T12:00:00Z";
+} from "./anchorState.js?build=2026-01-01T21:20:40Z";
+import { clearPlainTextMapping } from "./textMapping.js?build=2026-01-01T21:20:40Z";
 
 let currentEditingCard = /** @type {HTMLElement|null} */ (null);
 let mergeInProgress = false;

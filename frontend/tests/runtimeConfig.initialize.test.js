@@ -6,13 +6,13 @@ import test from "node:test";
 import {
     appConfig,
     clearRuntimeConfigForTesting,
-} from "../js/core/config.js?build=2024-10-05T12:00:00Z";
+} from "../js/core/config.js?build=2026-01-01T21:20:40Z";
 import { initializeRuntimeConfig } from "../js/core/runtimeConfig.js";
 import {
     DEVELOPMENT_ENVIRONMENT_CONFIG,
     ENVIRONMENT_DEVELOPMENT,
     ENVIRONMENT_PRODUCTION
-} from "../js/core/environmentConfig.js?build=2024-10-05T12:00:00Z";
+} from "../js/core/environmentConfig.js?build=2026-01-01T21:20:40Z";
 
 const TEST_LABELS = Object.freeze({
     APPLIES_REMOTE_CONFIG: "initializeRuntimeConfig applies remote payload when fetch succeeds",

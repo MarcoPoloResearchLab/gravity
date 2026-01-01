@@ -1,6 +1,6 @@
 // @ts-check
 
-import { ENVIRONMENT_CONFIG } from "./environmentConfig.js?build=2024-10-05T12:00:00Z";
+import { ENVIRONMENT_CONFIG } from "./environmentConfig.js?build=2026-01-01T21:20:40Z";
 
 const TIMEZONE_DEFAULT = "America/Los_Angeles";
 const DEFAULT_PRIVACY = "private";

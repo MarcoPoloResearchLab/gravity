@@ -1,7 +1,7 @@
 // @ts-check
 
-import { appConfig } from "./config.js?build=2024-10-05T12:00:00Z";
-import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
+import { appConfig } from "./config.js?build=2026-01-01T21:20:40Z";
+import { logging } from "../utils/logging.js?build=2026-01-01T21:20:40Z";
 
 const SCRIPT_ELEMENT_ID = "gravity-tauth-client-script";
 const SCRIPT_TAG_NAME = "script";

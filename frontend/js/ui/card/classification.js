@@ -1,10 +1,10 @@
 // @ts-check
 
-import { ClassifierClient } from "../../core/classifier.js?build=2024-10-05T12:00:00Z";
-import { GravityStore } from "../../core/store.js?build=2024-10-05T12:00:00Z";
-import { nowIso } from "../../utils/datetime.js?build=2024-10-05T12:00:00Z";
-import { logging } from "../../utils/logging.js?build=2024-10-05T12:00:00Z";
-import { createElement } from "../../utils/dom.js?build=2024-10-05T12:00:00Z";
+import { ClassifierClient } from "../../core/classifier.js?build=2026-01-01T21:20:40Z";
+import { GravityStore } from "../../core/store.js?build=2026-01-01T21:20:40Z";
+import { nowIso } from "../../utils/datetime.js?build=2026-01-01T21:20:40Z";
+import { logging } from "../../utils/logging.js?build=2026-01-01T21:20:40Z";
+import { createElement } from "../../utils/dom.js?build=2026-01-01T21:20:40Z";
 
 /**
  * Request a classification refresh for a note and update its chips on success.

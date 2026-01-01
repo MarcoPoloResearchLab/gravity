@@ -1,24 +1,24 @@
 // @ts-check
 
-import { nowIso } from "../../utils/datetime.js?build=2024-10-05T12:00:00Z";
-import { isNonBlankString } from "../../utils/string.js?build=2024-10-05T12:00:00Z";
+import { nowIso } from "../../utils/datetime.js?build=2026-01-01T21:20:40Z";
+import { isNonBlankString } from "../../utils/string.js?build=2026-01-01T21:20:40Z";
 import {
     bubbleCardToTop,
     createHtmlView as createHtmlViewBase,
     deleteHtmlView as deleteHtmlViewBase
-} from "./htmlView.js?build=2024-10-05T12:00:00Z";
+} from "./htmlView.js?build=2026-01-01T21:20:40Z";
 import {
     transformMarkdownWithAttachments,
     collectReferencedAttachments
-} from "../imagePaste.js?build=2024-10-05T12:00:00Z";
+} from "../imagePaste.js?build=2026-01-01T21:20:40Z";
 import {
     MARKDOWN_MODE_EDIT,
     MARKDOWN_MODE_VIEW
-} from "../markdownEditorHost.js?build=2024-10-05T12:00:00Z";
-import { syncStoreFromDom } from "../storeSync.js?build=2024-10-05T12:00:00Z";
-import { updateActionButtons } from "./listControls.js?build=2024-10-05T12:00:00Z";
-import { maintainCardViewport, captureViewportAnchor } from "./viewport.js?build=2024-10-05T12:00:00Z";
-import { getCardAnchor } from "./anchorState.js?build=2024-10-05T12:00:00Z";
+} from "../markdownEditorHost.js?build=2026-01-01T21:20:40Z";
+import { syncStoreFromDom } from "../storeSync.js?build=2026-01-01T21:20:40Z";
+import { updateActionButtons } from "./listControls.js?build=2026-01-01T21:20:40Z";
+import { maintainCardViewport, captureViewportAnchor } from "./viewport.js?build=2026-01-01T21:20:40Z";
+import { getCardAnchor } from "./anchorState.js?build=2026-01-01T21:20:40Z";
 
 const LINE_ENDING_NORMALIZE_PATTERN = /\r\n/g;
 const TRAILING_WHITESPACE_PATTERN = /[ \t]+$/;

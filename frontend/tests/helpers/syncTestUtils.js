@@ -6,8 +6,8 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
-import { appConfig } from "../../js/core/config.js?build=2024-10-05T12:00:00Z";
-import { DEVELOPMENT_ENVIRONMENT_CONFIG } from "../../js/core/environmentConfig.js?build=2024-10-05T12:00:00Z";
+import { appConfig } from "../../js/core/config.js?build=2026-01-01T21:20:40Z";
+import { DEVELOPMENT_ENVIRONMENT_CONFIG } from "../../js/core/environmentConfig.js?build=2026-01-01T21:20:40Z";
 import {
     EVENT_AUTH_SIGN_IN,
     EVENT_NOTE_CREATE,

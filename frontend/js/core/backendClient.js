@@ -1,7 +1,7 @@
 // @ts-check
 
-import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
-import { encodeUrlBlanks } from "../utils/url.js?build=2024-10-05T12:00:00Z";
+import { logging } from "../utils/logging.js?build=2026-01-01T21:20:40Z";
+import { encodeUrlBlanks } from "../utils/url.js?build=2026-01-01T21:20:40Z";
 
 /**
  * @typedef {{ operation: "upsert"|"delete", note_id: string, client_edit_seq: number, client_device?: string, client_time_s?: number, created_at_s?: number, updated_at_s?: number, payload?: unknown }} SyncOperation

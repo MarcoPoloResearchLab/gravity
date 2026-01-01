@@ -237,7 +237,7 @@ export async function createSyncScenarioHarness(options = {}) {
             const importer = typeof window.importAppModule === "function"
                 ? window.importAppModule
                 : (specifier) => import(specifier);
-            const { appConfig } = await importer("./js/core/config.js?build=2024-10-05T12:00:00Z");
+            const { appConfig } = await importer("./js/core/config.js?build=2026-01-01T21:20:40Z");
             const baseKey = typeof appConfig?.storageKey === "string" && appConfig.storageKey.trim().length > 0
                 ? appConfig.storageKey.trim()
                 : "gravityNotesData";

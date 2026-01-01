@@ -8,9 +8,9 @@ import {
     DATA_URL_PREFIX,
     ERROR_IMAGE_READ_FAILED,
     PASTED_IMAGE_ALT_TEXT_PREFIX
-} from "../constants.js?build=2024-10-05T12:00:00Z";
-import { sanitizeAttachmentDictionary, isAttachmentRecord } from "../core/attachments.js?build=2024-10-05T12:00:00Z";
-import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
+} from "../constants.js?build=2026-01-01T21:20:40Z";
+import { sanitizeAttachmentDictionary, isAttachmentRecord } from "../core/attachments.js?build=2026-01-01T21:20:40Z";
+import { logging } from "../utils/logging.js?build=2026-01-01T21:20:40Z";
 
 const DOUBLE_LINE_BREAK = "\n\n";
 const PLACEHOLDER_PREFIX = "pasted-image";

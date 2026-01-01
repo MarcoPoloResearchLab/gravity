@@ -1,7 +1,7 @@
 // @ts-check
 
-import { setRuntimeConfig } from "./config.js?build=2024-10-05T12:00:00Z";
-import { ENVIRONMENT_DEVELOPMENT, ENVIRONMENT_PRODUCTION } from "./environmentConfig.js?build=2024-10-05T12:00:00Z";
+import { setRuntimeConfig } from "./config.js?build=2026-01-01T21:20:40Z";
+import { ENVIRONMENT_DEVELOPMENT, ENVIRONMENT_PRODUCTION } from "./environmentConfig.js?build=2026-01-01T21:20:40Z";
 
 const ENVIRONMENT_LABELS = Object.freeze({
     PRODUCTION: ENVIRONMENT_PRODUCTION,

@@ -7,13 +7,13 @@ import {
     appConfig,
     clearRuntimeConfigForTesting,
     setRuntimeConfig
-} from "../js/core/config.js?build=2024-10-05T12:00:00Z";
+} from "../js/core/config.js?build=2026-01-01T21:20:40Z";
 import {
     DEVELOPMENT_ENVIRONMENT_CONFIG,
     ENVIRONMENT_DEVELOPMENT,
     ENVIRONMENT_PRODUCTION,
     PRODUCTION_ENVIRONMENT_CONFIG
-} from "../js/core/environmentConfig.js?build=2024-10-05T12:00:00Z";
+} from "../js/core/environmentConfig.js?build=2026-01-01T21:20:40Z";
 
 const BACKEND_URL_OVERRIDE = "https://api.example.com/v1/";
 const LLM_PROXY_OVERRIDE = "http://localhost:5001/api/classify";

@@ -1,11 +1,11 @@
 // @ts-check
 
-import { appConfig } from "./config.js?build=2024-10-05T12:00:00Z";
+import { appConfig } from "./config.js?build=2026-01-01T21:20:40Z";
 import {
     EVENT_AUTH_SIGN_IN,
     EVENT_AUTH_SIGN_OUT,
     EVENT_AUTH_ERROR
-} from "../constants.js?build=2024-10-05T12:00:00Z";
+} from "../constants.js?build=2026-01-01T21:20:40Z";
 
 const TYPE_FUNCTION = "function";
 const TYPE_OBJECT = "object";

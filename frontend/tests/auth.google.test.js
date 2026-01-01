@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { appConfig } from "../js/core/config.js?build=2024-10-05T12:00:00Z";
+import { appConfig } from "../js/core/config.js?build=2026-01-01T21:20:40Z";
 import {
     EVENT_AUTH_SIGN_IN,
     EVENT_AUTH_SIGN_OUT,

@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { appConfig } from "../js/core/config.js?build=2024-10-05T12:00:00Z";
+import { appConfig } from "../js/core/config.js?build=2026-01-01T21:20:40Z";
 import { EVENT_SYNC_SNAPSHOT_APPLIED } from "../js/constants.js";
 import { createSharedPage, waitForAppHydration, flushAlpineQueues } from "./helpers/browserHarness.js";
 

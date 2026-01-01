@@ -1,9 +1,9 @@
 // @ts-check
 
-import { createElement } from "../utils/dom.js?build=2024-10-05T12:00:00Z";
-import { copyToClipboard } from "../utils/clipboard.js?build=2024-10-05T12:00:00Z";
-import { isNonBlankString } from "../utils/string.js?build=2024-10-05T12:00:00Z";
-import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
+import { createElement } from "../utils/dom.js?build=2026-01-01T21:20:40Z";
+import { copyToClipboard } from "../utils/clipboard.js?build=2026-01-01T21:20:40Z";
+import { isNonBlankString } from "../utils/string.js?build=2026-01-01T21:20:40Z";
+import { logging } from "../utils/logging.js?build=2026-01-01T21:20:40Z";
 import {
     ARIA_LABEL_COPY_MARKDOWN,
     ARIA_LABEL_COPY_RENDERED,
@@ -23,9 +23,9 @@ import {
     LABEL_MOVE_UP,
     LABEL_PIN_NOTE,
     MESSAGE_NOTE_COPIED
-} from "../constants.js?build=2024-10-05T12:00:00Z";
-import { updateActionButtons, insertCardRespectingPinned } from "./card/listControls.js?build=2024-10-05T12:00:00Z";
-export { updateActionButtons, insertCardRespectingPinned } from "./card/listControls.js?build=2024-10-05T12:00:00Z";
+} from "../constants.js?build=2026-01-01T21:20:40Z";
+import { updateActionButtons, insertCardRespectingPinned } from "./card/listControls.js?build=2026-01-01T21:20:40Z";
+export { updateActionButtons, insertCardRespectingPinned } from "./card/listControls.js?build=2026-01-01T21:20:40Z";
 import {
     applyPinnedState,
     applyPinnedStateForToggle,
@@ -33,7 +33,7 @@ import {
     enforcePinnedAnchor,
     handlePinnedLayoutRefresh,
     placeCardRespectingPinned
-} from "./card/layout.js?build=2024-10-05T12:00:00Z";
+} from "./card/layout.js?build=2026-01-01T21:20:40Z";
 import {
     scheduleHtmlViewBubble,
     bubbleCardToTop,
@@ -41,7 +41,7 @@ import {
     restoreHtmlViewFocus,
     setHtmlViewExpanded,
     collapseExpandedHtmlView
-} from "./card/htmlView.js?build=2024-10-05T12:00:00Z";
+} from "./card/htmlView.js?build=2026-01-01T21:20:40Z";
 import {
     createHtmlView,
     deleteHtmlView,
@@ -50,23 +50,23 @@ import {
     persistCardState,
     createAttachmentSignature,
     stripMarkdownImages
-} from "./card/renderPipeline.js?build=2024-10-05T12:00:00Z";
+} from "./card/renderPipeline.js?build=2026-01-01T21:20:40Z";
 import {
     captureViewportAnchor,
     shouldCenterCard,
     clamp
-} from "./card/viewport.js?build=2024-10-05T12:00:00Z";
+} from "./card/viewport.js?build=2026-01-01T21:20:40Z";
 import {
     initializePointerTracking,
     shouldKeepEditingAfterBlur,
     shouldIgnoreCardPointerTarget,
     isPointerWithinInlineEditorSurface,
     clearLastPointerDownTarget
-} from "./card/pointerTracking.js?build=2024-10-05T12:00:00Z";
+} from "./card/pointerTracking.js?build=2026-01-01T21:20:40Z";
 import {
     renderHtmlViewToString,
     getHtmlViewPlainText
-} from "./htmlView.js?build=2024-10-05T12:00:00Z";
+} from "./htmlView.js?build=2026-01-01T21:20:40Z";
 import {
     enableClipboardImagePaste,
     waitForPendingImagePastes,
@@ -74,11 +74,11 @@ import {
     getAllAttachments,
     collectReferencedAttachments,
     transformMarkdownWithAttachments
-} from "./imagePaste.js?build=2024-10-05T12:00:00Z";
-import { createMarkdownEditorHost, MARKDOWN_MODE_EDIT, MARKDOWN_MODE_VIEW } from "./markdownEditorHost.js?build=2024-10-05T12:00:00Z";
-import { syncStoreFromDom } from "./storeSync.js?build=2024-10-05T12:00:00Z";
-import { suppressTopEditorAutofocus } from "./focusManager.js?build=2024-10-05T12:00:00Z";
-import { togglePinnedNote, clearPinnedNoteIfMatches } from "./notesState.js?build=2024-10-05T12:00:00Z";
+} from "./imagePaste.js?build=2026-01-01T21:20:40Z";
+import { createMarkdownEditorHost, MARKDOWN_MODE_EDIT, MARKDOWN_MODE_VIEW } from "./markdownEditorHost.js?build=2026-01-01T21:20:40Z";
+import { syncStoreFromDom } from "./storeSync.js?build=2026-01-01T21:20:40Z";
+import { suppressTopEditorAutofocus } from "./focusManager.js?build=2026-01-01T21:20:40Z";
+import { togglePinnedNote, clearPinnedNoteIfMatches } from "./notesState.js?build=2026-01-01T21:20:40Z";
 import {
     setEditorHost,
     getEditorHost,
@@ -86,12 +86,12 @@ import {
     setSuppressionState,
     clearSuppressionState,
     disposeCardState
-} from "./card/cardState.js?build=2024-10-05T12:00:00Z";
+} from "./card/cardState.js?build=2026-01-01T21:20:40Z";
 import {
     clearCopyFeedbackTimer,
     storeCopyFeedbackTimer,
     hasCopyFeedbackTimer
-} from "./card/copyFeedback.js?build=2024-10-05T12:00:00Z";
+} from "./card/copyFeedback.js?build=2026-01-01T21:20:40Z";
 import {
     getCurrentEditingCard,
     runMergeAction,
@@ -105,21 +105,21 @@ import {
     suppressFinalize,
     releaseFinalize,
     isFinalizeSuppressed
-} from "./card/editLifecycle.js?build=2024-10-05T12:00:00Z";
+} from "./card/editLifecycle.js?build=2026-01-01T21:20:40Z";
 import {
     dispatchNoteUpdate,
     dispatchNoteDelete,
     dispatchPinToggle
-} from "./card/events.js?build=2024-10-05T12:00:00Z";
+} from "./card/events.js?build=2026-01-01T21:20:40Z";
 import {
     triggerClassificationForCard,
     applyChips
-} from "./card/classification.js?build=2024-10-05T12:00:00Z";
+} from "./card/classification.js?build=2026-01-01T21:20:40Z";
 import {
     mapPlainOffsetToMarkdown,
     getPlainTextMapping,
     buildPlainTextMapping
-} from "./card/textMapping.js?build=2024-10-05T12:00:00Z";
+} from "./card/textMapping.js?build=2026-01-01T21:20:40Z";
 
 export {
     focusCardEditor,

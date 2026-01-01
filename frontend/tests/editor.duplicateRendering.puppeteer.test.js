@@ -5,7 +5,7 @@ import test from "node:test";
 
 import { decodePng } from "./helpers/png.js";
 
-import { appConfig } from "../js/core/config.js?build=2024-10-05T12:00:00Z";
+import { appConfig } from "../js/core/config.js?build=2026-01-01T21:20:40Z";
 import { createSharedPage } from "./helpers/browserHarness.js";
 import { saveScreenshotArtifact, withScreenshotCapture } from "./helpers/screenshotArtifacts.js";
 

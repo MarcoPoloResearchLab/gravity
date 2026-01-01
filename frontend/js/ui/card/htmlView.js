@@ -4,25 +4,25 @@ import {
     LABEL_COLLAPSE_NOTE,
     LABEL_EXPAND_NOTE,
     BADGE_LABEL_CODE
-} from "../../constants.js?build=2024-10-05T12:00:00Z";
-import { createElement } from "../../utils/dom.js?build=2024-10-05T12:00:00Z";
+} from "../../constants.js?build=2026-01-01T21:20:40Z";
+import { createElement } from "../../utils/dom.js?build=2026-01-01T21:20:40Z";
 import {
     buildHtmlViewSource,
     renderHtmlView
-} from "../htmlView.js?build=2024-10-05T12:00:00Z";
+} from "../htmlView.js?build=2026-01-01T21:20:40Z";
 import {
     collectReferencedAttachments,
     transformMarkdownWithAttachments
-} from "../imagePaste.js?build=2024-10-05T12:00:00Z";
-import { placeCardRespectingPinned, findCardById } from "./layout.js?build=2024-10-05T12:00:00Z";
-import { updateActionButtons } from "./listControls.js?build=2024-10-05T12:00:00Z";
-import { syncStoreFromDom } from "../storeSync.js?build=2024-10-05T12:00:00Z";
+} from "../imagePaste.js?build=2026-01-01T21:20:40Z";
+import { placeCardRespectingPinned, findCardById } from "./layout.js?build=2026-01-01T21:20:40Z";
+import { updateActionButtons } from "./listControls.js?build=2026-01-01T21:20:40Z";
+import { syncStoreFromDom } from "../storeSync.js?build=2026-01-01T21:20:40Z";
 import {
     applyStoredExpandedHeight,
     rememberExpandedHeight,
     releaseExpandedHeight
-} from "./anchorState.js?build=2024-10-05T12:00:00Z";
-import { annotateHtmlWithMarkdownPositions } from "./textMapping.js?build=2024-10-05T12:00:00Z";
+} from "./anchorState.js?build=2026-01-01T21:20:40Z";
+import { annotateHtmlWithMarkdownPositions } from "./textMapping.js?build=2026-01-01T21:20:40Z";
 
 /**
  * HTML view lifecycle is intentionally atomic:

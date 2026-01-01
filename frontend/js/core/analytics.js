@@ -1,8 +1,8 @@
 // @ts-check
 
-import { appConfig } from "./config.js?build=2024-10-05T12:00:00Z";
-import { GOOGLE_ANALYTICS_MEASUREMENT_ID } from "../constants.js?build=2024-10-05T12:00:00Z";
-import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
+import { appConfig } from "./config.js?build=2026-01-01T21:20:40Z";
+import { GOOGLE_ANALYTICS_MEASUREMENT_ID } from "../constants.js?build=2026-01-01T21:20:40Z";
+import { logging } from "../utils/logging.js?build=2026-01-01T21:20:40Z";
 
 let analyticsBootstrapped = false;
 

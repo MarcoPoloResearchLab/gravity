@@ -36,7 +36,7 @@ export const ARIA_LABEL_PIN_NOTE = "Pin note";
 export const ARIA_LABEL_UNPIN_NOTE = "Unpin note";
 export const LABEL_ENTER_FULL_SCREEN = "Enter full screen";
 export const LABEL_EXIT_FULL_SCREEN = "Exit full screen";
-export const APP_BUILD_ID = "2024-10-05T12:00:00Z";
+export const APP_BUILD_ID = "2026-01-01T21:20:40Z";
 export const GOOGLE_ANALYTICS_MEASUREMENT_ID = "G-WYL7PDVTHN";
 
 export const MESSAGE_NOTE_SAVED = "Saved";
