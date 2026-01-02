@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { appConfig } from "../js/core/config.js?build=2026-01-01T21:20:40Z";
+import { createAppConfig } from "../js/core/config.js?build=2026-01-01T22:43:21Z";
+import { ENVIRONMENT_DEVELOPMENT } from "../js/core/environmentConfig.js?build=2026-01-01T22:43:21Z";
 import { GravityStore, ERROR_INVALID_NOTES_COLLECTION } from "../js/core/store.js";
 import { ERROR_IMPORT_INVALID_PAYLOAD } from "../js/constants.js";
+
+const appConfig = createAppConfig({ environment: ENVIRONMENT_DEVELOPMENT });
 
 const SAMPLE_TIMESTAMP = "2024-01-01T00:00:00.000Z";
 

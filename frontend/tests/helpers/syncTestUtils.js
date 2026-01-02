@@ -6,8 +6,9 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
-import { appConfig } from "../../js/core/config.js?build=2026-01-01T21:20:40Z";
-import { DEVELOPMENT_ENVIRONMENT_CONFIG } from "../../js/core/environmentConfig.js?build=2026-01-01T21:20:40Z";
+import { createAppConfig } from "../../js/core/config.js?build=2026-01-01T22:43:21Z";
+import { ENVIRONMENT_DEVELOPMENT } from "../../js/core/environmentConfig.js?build=2026-01-01T22:43:21Z";
+import { DEVELOPMENT_ENVIRONMENT_CONFIG } from "../../js/core/environmentConfig.js?build=2026-01-01T22:43:21Z";
 import {
     EVENT_AUTH_SIGN_IN,
     EVENT_NOTE_CREATE,
@@ -30,6 +31,7 @@ const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(TESTS_DIR, "..", "..");
 const DEFAULT_PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
 const DEFAULT_JWT_ISSUER = "https://accounts.google.com";
+const appConfig = createAppConfig({ environment: ENVIRONMENT_DEVELOPMENT });
 const DEFAULT_JWT_AUDIENCE = appConfig.googleClientId;
 const EMPTY_STRING = "";
 const DEVELOPMENT_AUTH_BASE_URL = DEVELOPMENT_ENVIRONMENT_CONFIG.authBaseUrl;

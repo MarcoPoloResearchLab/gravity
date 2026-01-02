@@ -1,6 +1,6 @@
 // @ts-check
 
-import { VIEWPORT_ANCHOR_MARGIN_PX } from "./viewport.js?build=2026-01-01T21:20:40Z";
+import { VIEWPORT_ANCHOR_MARGIN_PX } from "./viewport.js?build=2026-01-01T22:43:21Z";
 
 /**
  * @typedef {import("./viewport.js").ViewportAnchor} ViewportAnchor

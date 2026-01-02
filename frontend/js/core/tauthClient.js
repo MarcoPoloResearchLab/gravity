@@ -1,7 +1,6 @@
 // @ts-check
 
-import { appConfig } from "./config.js?build=2026-01-01T21:20:40Z";
-import { logging } from "../utils/logging.js?build=2026-01-01T21:20:40Z";
+import { logging } from "../utils/logging.js?build=2026-01-01T22:43:21Z";
 
 const SCRIPT_ELEMENT_ID = "gravity-tauth-client-script";
 const SCRIPT_TAG_NAME = "script";
@@ -10,6 +9,7 @@ const SCRIPT_EVENT_ERROR = "error";
 const SCRIPT_TAUTH_PATH = "/tauth.js";
 const DATA_TENANT_ATTRIBUTE = "data-tenant-id";
 
+const TYPE_OBJECT = "object";
 const TYPE_UNDEFINED = "undefined";
 const TYPE_STRING = "string";
 
@@ -28,12 +28,15 @@ const LOG_MESSAGES = Object.freeze({
 /**
  * Ensure the TAuth tauth.js helper is loaded. Returns when the script
  * has been appended (or already present).
- * @param {{ documentRef?: Document|null, baseUrl?: string|null, tenantId?: string|null }} [options]
+ * @param {{ documentRef?: Document|null, baseUrl: string, tenantId?: string|null }} options
  * @returns {Promise<void>}
  */
-export async function ensureTAuthClientLoaded(options = {}) {
+export async function ensureTAuthClientLoaded(options) {
     if (typeof window === TYPE_UNDEFINED) {
         throw new Error(ERROR_MESSAGES.MISSING_WINDOW);
+    }
+    if (!options || typeof options !== TYPE_OBJECT) {
+        throw new Error(ERROR_MESSAGES.MISSING_BASE_URL);
     }
     const doc = options.documentRef ?? window.document;
     if (!doc) {
@@ -42,11 +45,11 @@ export async function ensureTAuthClientLoaded(options = {}) {
     if (doc.getElementById(SCRIPT_ELEMENT_ID)) {
         return;
     }
-    const authBaseUrl = options.baseUrl ?? appConfig.authBaseUrl;
+    const authBaseUrl = options.baseUrl;
     if (typeof authBaseUrl !== TYPE_STRING || authBaseUrl.length === 0) {
         throw new Error(ERROR_MESSAGES.MISSING_BASE_URL);
     }
-    const tenantId = options.tenantId ?? appConfig.authTenantId;
+    const tenantId = options.tenantId ?? null;
     if (tenantId !== null && tenantId !== undefined && typeof tenantId !== TYPE_STRING) {
         throw new Error(ERROR_MESSAGES.INVALID_TENANT_ID);
     }

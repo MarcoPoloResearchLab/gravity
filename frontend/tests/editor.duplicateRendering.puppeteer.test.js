@@ -5,9 +5,12 @@ import test from "node:test";
 
 import { decodePng } from "./helpers/png.js";
 
-import { appConfig } from "../js/core/config.js?build=2026-01-01T21:20:40Z";
-import { createSharedPage } from "./helpers/browserHarness.js";
+import { createAppConfig } from "../js/core/config.js?build=2026-01-01T22:43:21Z";
+import { ENVIRONMENT_DEVELOPMENT } from "../js/core/environmentConfig.js?build=2026-01-01T22:43:21Z";
+import { createSharedPage, waitForAppHydration } from "./helpers/browserHarness.js";
 import { saveScreenshotArtifact, withScreenshotCapture } from "./helpers/screenshotArtifacts.js";
+
+const appConfig = createAppConfig({ environment: ENVIRONMENT_DEVELOPMENT });
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
@@ -31,6 +34,13 @@ const SECOND_TOGGLE_MARKDOWN = [
 const EDIT_WORD_HIGHLIGHT_RGB = Object.freeze([32, 176, 32]);
 const SCROLLBAR_ALERT_RGB = Object.freeze([24, 148, 220]);
 const DUPLICATE_SURFACE_ALERT_RGB = Object.freeze([240, 128, 0]);
+const CHECKBOX_CLICK_TIMEOUT_MS = 2000;
+const CHECKBOX_WAIT_TIMEOUT_MS = 2000;
+const CHECKBOX_STABLE_FRAMES = 2;
+const ERROR_MESSAGES = Object.freeze({
+    CHECKBOX_MISSING: "editor.duplicate_rendering.checkbox_missing",
+    CHECKBOX_UNSTABLE: "editor.duplicate_rendering.checkbox_unstable"
+});
 
 const getCodeMirrorInputSelector = (scope) => `${scope} .CodeMirror [contenteditable="true"], ${scope} .CodeMirror textarea`;
 
@@ -135,8 +145,10 @@ test.describe("GN-58 duplicate markdown rendering", () => {
                 const htmlViewAfterFinalize = await countHtmlViewWrappers(page, cardSelector);
                 assert.equal(htmlViewAfterFinalize, 1, "htmlView wrapper reattaches after finalizing edit");
 
-                await page.click(`${cardSelector} input[data-task-index="0"]`);
+                await waitForHtmlViewCheckboxCount(page, cardSelector, 2);
+                await clickHtmlViewCheckbox(page, cardSelector, 0);
                 await waitForMarkdownValue(page, cardSelector, FIRST_TOGGLE_MARKDOWN);
+                await waitForCheckboxState(page, cardSelector, 0, true);
 
                 const firstToggleMarkdown = await getMarkdownValue(page, cardSelector);
                 assert.equal(firstToggleMarkdown, FIRST_TOGGLE_MARKDOWN, "toggling first checkbox persists markdown state");
@@ -152,8 +164,10 @@ test.describe("GN-58 duplicate markdown rendering", () => {
                 assert.equal(markdownInFirstToggleEdit, FIRST_TOGGLE_MARKDOWN, "editor reflects first toggle markdown");
                 await finalizeEditing(page, cardSelector);
 
-                await page.click(`${cardSelector} input[data-task-index="1"]`);
+                await waitForHtmlViewCheckboxCount(page, cardSelector, 2);
+                await clickHtmlViewCheckbox(page, cardSelector, 1);
                 await waitForMarkdownValue(page, cardSelector, SECOND_TOGGLE_MARKDOWN);
+                await waitForCheckboxState(page, cardSelector, 1, true);
 
                 const secondToggleMarkdown = await getMarkdownValue(page, cardSelector);
                 assert.equal(secondToggleMarkdown, SECOND_TOGGLE_MARKDOWN, "toggling second checkbox persists markdown state");
@@ -169,6 +183,7 @@ test.describe("GN-58 duplicate markdown rendering", () => {
                 assert.equal(markdownInSecondToggleEdit, SECOND_TOGGLE_MARKDOWN, "editor reflects fully toggled markdown");
                 await finalizeEditing(page, cardSelector);
 
+                await waitForHtmlViewCheckboxCount(page, cardSelector, 2);
                 const finalCheckboxCount = await countHtmlViewCheckboxes(page, cardSelector);
                 assert.equal(finalCheckboxCount, 2, "htmlView retains two interactive checkboxes after edits");
 
@@ -203,6 +218,7 @@ async function openPageWithRecords(records) {
         window.localStorage.setItem(storageKey, payload);
     }, appConfig.storageKey, serialized);
     await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
+    await waitForAppHydration(page);
     return { page, teardown };
 }
 
@@ -444,6 +460,66 @@ async function finalizeEditing(page, cardSelector) {
     await page.waitForSelector(`${cardSelector}:not(.editing-in-place)`);
 }
 
+async function clickHtmlViewCheckbox(page, cardSelector, taskIndex) {
+    const clicked = await page.evaluate((selector, index, timeoutMs) => new Promise((resolve) => {
+        const deadline = performance.now() + timeoutMs;
+        const tryClick = () => {
+            const card = document.querySelector(selector);
+            if (card instanceof HTMLElement) {
+                const checkbox = card.querySelectorAll("input.note-task-checkbox")[index];
+                if (checkbox instanceof HTMLElement) {
+                    checkbox.scrollIntoView({ block: "center", inline: "center" });
+                    checkbox.click();
+                    resolve(true);
+                    return;
+                }
+            }
+            if (performance.now() >= deadline) {
+                resolve(false);
+                return;
+            }
+            requestAnimationFrame(tryClick);
+        };
+        tryClick();
+    }), cardSelector, taskIndex, CHECKBOX_CLICK_TIMEOUT_MS);
+    if (!clicked) {
+        throw new Error(ERROR_MESSAGES.CHECKBOX_MISSING);
+    }
+}
+
+async function waitForHtmlViewCheckboxCount(page, cardSelector, expectedCount) {
+    const isStable = await page.evaluate((selector, expected, timeoutMs, requiredFrames) => new Promise((resolve) => {
+        const deadline = performance.now() + timeoutMs;
+        let stableFrames = 0;
+        const check = () => {
+            const card = document.querySelector(selector);
+            if (!(card instanceof HTMLElement)) {
+                stableFrames = 0;
+            } else {
+                const count = card.querySelectorAll(".note-html-view input.note-task-checkbox").length;
+                if (count === expected) {
+                    stableFrames += 1;
+                } else {
+                    stableFrames = 0;
+                }
+            }
+            if (stableFrames >= requiredFrames) {
+                resolve(true);
+                return;
+            }
+            if (performance.now() >= deadline) {
+                resolve(false);
+                return;
+            }
+            requestAnimationFrame(check);
+        };
+        check();
+    }), cardSelector, expectedCount, CHECKBOX_WAIT_TIMEOUT_MS, CHECKBOX_STABLE_FRAMES);
+    if (!isStable) {
+        throw new Error(ERROR_MESSAGES.CHECKBOX_UNSTABLE);
+    }
+}
+
 async function getMarkdownValue(page, cardSelector) {
     return page.evaluate((selector) => {
         const card = document.querySelector(selector);
@@ -511,6 +587,17 @@ async function isCheckboxChecked(page, cardSelector, index) {
         const checkbox = card.querySelectorAll("input.note-task-checkbox")[targetIndex];
         return checkbox instanceof HTMLInputElement ? checkbox.checked : false;
     }, cardSelector, index);
+}
+
+async function waitForCheckboxState(page, cardSelector, index, expectedChecked) {
+    await page.waitForFunction((selector, targetIndex, expected) => {
+        const card = document.querySelector(selector);
+        if (!(card instanceof HTMLElement)) {
+            return false;
+        }
+        const checkbox = card.querySelectorAll("input.note-task-checkbox")[targetIndex];
+        return checkbox instanceof HTMLInputElement && checkbox.checked === expected;
+    }, {}, cardSelector, index, expectedChecked);
 }
 
 async function getHtmlViewHtml(page, cardSelector) {

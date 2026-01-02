@@ -1,9 +1,8 @@
 /* global fetch */
 // @ts-check
 
-import { appConfig } from "./config.js?build=2026-01-01T21:20:40Z";
-import { clampEnum } from "../utils/enum.js?build=2026-01-01T21:20:40Z";
-import { titleCase, toTagToken } from "../utils/string.js?build=2026-01-01T21:20:40Z";
+import { clampEnum } from "../utils/enum.js?build=2026-01-01T22:43:21Z";
+import { titleCase, toTagToken } from "../utils/string.js?build=2026-01-01T22:43:21Z";
 import {
     CLASSIFIER_ALLOWED_HANDLES,
     CLASSIFIER_CATEGORIES,
@@ -11,14 +10,26 @@ import {
     CLASSIFIER_KNOWN_PROJECTS,
     CLASSIFIER_PRIVACY,
     CLASSIFIER_STATUSES
-} from "../constants.js?build=2026-01-01T21:20:40Z";
+} from "../constants.js?build=2026-01-01T22:43:21Z";
+
+const TYPE_FUNCTION = "function";
+
+const ERROR_MESSAGES = Object.freeze({
+    MISSING_CONFIG: "classifier.missing_config"
+});
 
 /**
  * Create a classifier client with an injectable fetch implementation for testing.
- * @param {{ fetchImplementation?: typeof fetch }} [options]
+ * @param {{ config: import("./config.js").AppConfig, fetchImplementation?: typeof fetch }} options
  */
-export function createClassifierClient(options = {}) {
-    const { fetchImplementation = typeof fetch === "function" ? fetch : null } = options;
+export function createClassifierClient(options) {
+    if (!options || typeof options !== "object") {
+        throw new Error(ERROR_MESSAGES.MISSING_CONFIG);
+    }
+    const { config, fetchImplementation = typeof fetch === TYPE_FUNCTION ? fetch : null } = options;
+    if (!config) {
+        throw new Error(ERROR_MESSAGES.MISSING_CONFIG);
+    }
 
     return Object.freeze({
         /**
@@ -30,26 +41,26 @@ export function createClassifierClient(options = {}) {
         async classifyOrFallback(titleText, bodyText) {
             const requestBody = {
                 now: new Date().toISOString(),
-                timezone: appConfig.timezone,
+                timezone: config.timezone,
                 hints: {
                     suggested_category: null,
                     known_projects: Array.from(CLASSIFIER_KNOWN_PROJECTS),
                     known_areas: Array.from(CLASSIFIER_KNOWN_AREAS),
                     allowed_handles: Array.from(CLASSIFIER_ALLOWED_HANDLES),
-                    default_privacy: appConfig.defaultPrivacy
+                    default_privacy: config.defaultPrivacy
                 },
                 title: titleText ?? "",
                 body: bodyText ?? ""
             };
 
-            const classifyEndpointRaw = appConfig.llmProxyUrl;
+            const classifyEndpointRaw = config.llmProxyUrl;
             const classifyEndpoint = typeof classifyEndpointRaw === "string" ? classifyEndpointRaw.trim() : "";
             if (classifyEndpoint.length === 0) {
-                return buildFallbackClassification(requestBody.now);
+                return buildFallbackClassification(requestBody.now, config.defaultPrivacy);
             }
 
             const aborter = new AbortController();
-            const timeoutId = setTimeout(() => aborter.abort(), appConfig.classificationTimeoutMs);
+            const timeoutId = setTimeout(() => aborter.abort(), config.classificationTimeoutMs);
 
             try {
                 if (!fetchImplementation) throw new Error("No fetch implementation available");
@@ -65,7 +76,7 @@ export function createClassifierClient(options = {}) {
 
                 const category = clampEnum(json.category, CLASSIFIER_CATEGORIES, "Journal");
                 const status   = clampEnum(json.status, CLASSIFIER_STATUSES, "idea");
-                const privacy  = clampEnum(json.privacy, CLASSIFIER_PRIVACY, appConfig.defaultPrivacy);
+                const privacy  = clampEnum(json.privacy, CLASSIFIER_PRIVACY, config.defaultPrivacy);
                 const occurredAt = (typeof json.occurred_at === "string") ? json.occurred_at : requestBody.now;
 
                 return {
@@ -82,20 +93,19 @@ export function createClassifierClient(options = {}) {
                 };
             } catch {
                 clearTimeout(timeoutId);
-                return buildFallbackClassification(requestBody.now);
+                return buildFallbackClassification(requestBody.now, config.defaultPrivacy);
             }
         }
     });
 }
 
-export const ClassifierClient = createClassifierClient();
-
 /**
  * Provide a conservative local classification when the proxy is unavailable.
  * @param {string} referenceIso
+ * @param {string} defaultPrivacy
  * @returns {import("../types.d.js").NoteClassification}
  */
-function buildFallbackClassification(referenceIso) {
+function buildFallbackClassification(referenceIso, defaultPrivacy) {
     const occurredAt = typeof referenceIso === "string" && referenceIso.length > 0
         ? referenceIso
         : new Date().toISOString();
@@ -105,7 +115,7 @@ function buildFallbackClassification(referenceIso) {
         areas: [],
         people_handles: [],
         status: "idea",
-        privacy: appConfig.defaultPrivacy,
+        privacy: defaultPrivacy,
         tags: [],
         occurred_at: occurredAt
     };

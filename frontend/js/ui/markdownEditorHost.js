@@ -1,17 +1,17 @@
 // @ts-check
 
-import { createElement } from "../utils/dom.js?build=2026-01-01T21:20:40Z";
+import { createElement } from "../utils/dom.js?build=2026-01-01T22:43:21Z";
 import {
     LABEL_EDIT_MARKDOWN,
     LABEL_VIEW_RENDERED
-} from "../constants.js?build=2026-01-01T21:20:40Z";
-import { logging } from "../utils/logging.js?build=2026-01-01T21:20:40Z";
+} from "../constants.js?build=2026-01-01T22:43:21Z";
+import { logging } from "../utils/logging.js?build=2026-01-01T22:43:21Z";
 import {
     insertAttachmentPlaceholders,
     waitForPendingImagePastes,
     extractGravityClipboardPayload,
     applyGravityClipboardPayload
-} from "./imagePaste.js?build=2026-01-01T21:20:40Z";
+} from "./imagePaste.js?build=2026-01-01T22:43:21Z";
 
 const MODE_EDIT = "edit";
 const MODE_VIEW = "view";

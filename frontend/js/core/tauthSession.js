@@ -1,11 +1,10 @@
 // @ts-check
 
-import { appConfig } from "./config.js?build=2026-01-01T21:20:40Z";
 import {
     EVENT_AUTH_SIGN_IN,
     EVENT_AUTH_SIGN_OUT,
     EVENT_AUTH_ERROR
-} from "../constants.js?build=2026-01-01T21:20:40Z";
+} from "../constants.js?build=2026-01-01T22:43:21Z";
 
 const TYPE_FUNCTION = "function";
 const TYPE_OBJECT = "object";
@@ -50,7 +49,7 @@ const PROFILE_AVATAR_KEYS = Object.freeze([
 /**
  * Create a controller that bridges TAuth's auth-client to the Gravity UI.
  * @param {{
- *   baseUrl?: string,
+ *   baseUrl: string,
  *   eventTarget?: EventTarget|null,
  *   tenantId?: string,
  *   windowRef?: typeof window
@@ -64,7 +63,7 @@ export function createTAuthSession(options = {}) {
     if (typeof win.initAuthClient !== TYPE_FUNCTION) {
         throw new Error(ERROR_MESSAGES.MISSING_INIT);
     }
-    const baseUrl = options.baseUrl ?? appConfig.authBaseUrl;
+    const baseUrl = options.baseUrl;
     if (typeof baseUrl !== TYPE_STRING || baseUrl.length === 0) {
         throw new Error(ERROR_MESSAGES.MISSING_BASE_URL);
     }

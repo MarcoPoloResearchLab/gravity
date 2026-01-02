@@ -3,16 +3,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-    appConfig,
-    clearRuntimeConfigForTesting,
-} from "../js/core/config.js?build=2026-01-01T21:20:40Z";
 import { initializeRuntimeConfig } from "../js/core/runtimeConfig.js";
 import {
     DEVELOPMENT_ENVIRONMENT_CONFIG,
     ENVIRONMENT_DEVELOPMENT,
     ENVIRONMENT_PRODUCTION
-} from "../js/core/environmentConfig.js?build=2026-01-01T21:20:40Z";
+} from "../js/core/environmentConfig.js?build=2026-01-01T22:43:21Z";
 
 const TEST_LABELS = Object.freeze({
     APPLIES_REMOTE_CONFIG: "initializeRuntimeConfig applies remote payload when fetch succeeds",
@@ -62,14 +58,6 @@ const SUITE_LABELS = Object.freeze({
 });
 
 test.describe(SUITE_LABELS.INITIALIZE_RUNTIME_CONFIG, () => {
-    test.beforeEach(() => {
-        clearRuntimeConfigForTesting();
-    });
-
-    test.afterEach(() => {
-        clearRuntimeConfigForTesting();
-    });
-
     test(TEST_LABELS.APPLIES_REMOTE_CONFIG, async () => {
         /** @type {{ resource: string, init: RequestInit | undefined }[]} */
         const fetchCalls = [];
@@ -91,7 +79,7 @@ test.describe(SUITE_LABELS.INITIALIZE_RUNTIME_CONFIG, () => {
 
         /** @type {unknown[]} */
         const errorNotifications = [];
-        await initializeRuntimeConfig({
+        const appConfig = await initializeRuntimeConfig({
             fetchImplementation: fetchStub,
             location: { hostname: HOSTNAMES.PRODUCTION },
             onError: (error) => {
@@ -131,7 +119,7 @@ test.describe(SUITE_LABELS.INITIALIZE_RUNTIME_CONFIG, () => {
 
         /** @type {unknown[]} */
         const errorNotifications = [];
-        await initializeRuntimeConfig({
+        const appConfig = await initializeRuntimeConfig({
             fetchImplementation: fetchStub,
             location: { hostname: HOSTNAMES.DEVELOPMENT },
             onError: (error) => {
@@ -173,7 +161,6 @@ test.describe(SUITE_LABELS.INITIALIZE_RUNTIME_CONFIG, () => {
 
         assert.equal(errorNotifications.length, 1);
         assert.equal(errorNotifications[0].message, `${ERROR_MESSAGES.HTTP_FAILURE_PREFIX} 503`);
-        assert.equal(appConfig.environment, undefined);
     });
 
     test(TEST_LABELS.HANDLES_ABORT_FAILURE, async () => {
@@ -206,6 +193,5 @@ test.describe(SUITE_LABELS.INITIALIZE_RUNTIME_CONFIG, () => {
         assert.equal(errorNotifications.length, 1);
         assert.equal(errorNotifications[0].message, ERROR_MESSAGES.TIMEOUT_FAILURE);
         assert.equal(errorNotifications[0].cause, abortError);
-        assert.equal(appConfig.backendBaseUrl, undefined);
     });
 });

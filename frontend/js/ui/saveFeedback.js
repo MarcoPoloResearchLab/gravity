@@ -1,6 +1,6 @@
 // @ts-check
 
-import { MESSAGE_NOTE_SAVED } from "../constants.js?build=2026-01-01T21:20:40Z";
+import { MESSAGE_NOTE_SAVED } from "../constants.js?build=2026-01-01T22:43:21Z";
 
 const TOAST_DURATION_MS = 2000;
 let toastTimerId = /** @type {number|undefined} */ (undefined);

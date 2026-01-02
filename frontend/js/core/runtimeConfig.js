@@ -1,7 +1,7 @@
 // @ts-check
 
-import { setRuntimeConfig } from "./config.js?build=2026-01-01T21:20:40Z";
-import { ENVIRONMENT_DEVELOPMENT, ENVIRONMENT_PRODUCTION } from "./environmentConfig.js?build=2026-01-01T21:20:40Z";
+import { createAppConfig } from "./config.js?build=2026-01-01T22:43:21Z";
+import { ENVIRONMENT_DEVELOPMENT, ENVIRONMENT_PRODUCTION } from "./environmentConfig.js?build=2026-01-01T22:43:21Z";
 
 const ENVIRONMENT_LABELS = Object.freeze({
     PRODUCTION: ENVIRONMENT_PRODUCTION,
@@ -220,9 +220,9 @@ function detectEnvironment(runtimeLocation) {
 }
 
 /**
- * Load the runtime configuration JSON and push it into the shared config store.
+ * Load the runtime configuration JSON and return a resolved app config.
  * @param {{ fetchImplementation?: typeof fetch, location?: Location, onError?: (error: unknown) => void }} [options]
- * @returns {Promise<void>}
+ * @returns {Promise<import("./config.js").AppConfig>}
  */
 export async function initializeRuntimeConfig(options = {}) {
     const { fetchImplementation = typeof fetch === TYPE_FUNCTION ? fetch : null, location = typeof window !== TYPE_UNDEFINED ? window.location : undefined } = options;
@@ -238,7 +238,7 @@ export async function initializeRuntimeConfig(options = {}) {
         }
         const payload = await response.json();
         const overrides = parseRuntimeConfigPayload(payload, environment);
-        setRuntimeConfig({
+        return createAppConfig({
             environment,
             ...overrides
         });

@@ -3,9 +3,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { appConfig } from "../js/core/config.js?build=2026-01-01T21:20:40Z";
+import { createAppConfig } from "../js/core/config.js?build=2026-01-01T22:43:21Z";
+import { ENVIRONMENT_DEVELOPMENT } from "../js/core/environmentConfig.js?build=2026-01-01T22:43:21Z";
 import { EVENT_SYNC_SNAPSHOT_APPLIED } from "../js/constants.js";
 import { createSharedPage, waitForAppHydration, flushAlpineQueues } from "./helpers/browserHarness.js";
+
+const appConfig = createAppConfig({ environment: ENVIRONMENT_DEVELOPMENT });
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");

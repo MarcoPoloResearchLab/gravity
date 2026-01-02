@@ -1,13 +1,13 @@
 // @ts-check
 
-import { logging } from "../../utils/logging.js?build=2026-01-01T21:20:40Z";
-import { nowIso } from "../../utils/datetime.js?build=2026-01-01T21:20:40Z";
-import { isNonBlankString } from "../../utils/string.js?build=2026-01-01T21:20:40Z";
+import { logging } from "../../utils/logging.js?build=2026-01-01T22:43:21Z";
+import { nowIso } from "../../utils/datetime.js?build=2026-01-01T22:43:21Z";
+import { isNonBlankString } from "../../utils/string.js?build=2026-01-01T22:43:21Z";
 import {
     captureViewportAnchor,
     shouldCenterCard,
     maintainCardViewport
-} from "./viewport.js?build=2026-01-01T21:20:40Z";
+} from "./viewport.js?build=2026-01-01T22:43:21Z";
 import {
     createHtmlView,
     deleteHtmlView,
@@ -17,44 +17,48 @@ import {
     releaseEditingSurfaceHeight,
     persistCardState,
     normalizeHeight
-} from "./renderPipeline.js?build=2026-01-01T21:20:40Z";
-import { collapseExpandedHtmlView } from "./htmlView.js?build=2026-01-01T21:20:40Z";
-import { enforcePinnedAnchor } from "./layout.js?build=2026-01-01T21:20:40Z";
+} from "./renderPipeline.js?build=2026-01-01T22:43:21Z";
+import { collapseExpandedHtmlView } from "./htmlView.js?build=2026-01-01T22:43:21Z";
+import { enforcePinnedAnchor } from "./layout.js?build=2026-01-01T22:43:21Z";
 import {
     getEditorHost,
     incrementFinalizeSuppression,
     decrementFinalizeSuppression,
     isFinalizeSuppressed as isCardFinalizeSuppressed,
     disposeCardState
-} from "./cardState.js?build=2026-01-01T21:20:40Z";
+} from "./cardState.js?build=2026-01-01T22:43:21Z";
 import {
     transformMarkdownWithAttachments,
     collectReferencedAttachments,
     registerInitialAttachments,
     waitForPendingImagePastes
-} from "../imagePaste.js?build=2026-01-01T21:20:40Z";
-import { syncStoreFromDom } from "../storeSync.js?build=2026-01-01T21:20:40Z";
-import { updateActionButtons } from "./listControls.js?build=2026-01-01T21:20:40Z";
-import { togglePinnedNote, clearPinnedNoteIfMatches } from "../notesState.js?build=2026-01-01T21:20:40Z";
-import { suppressTopEditorAutofocus } from "../focusManager.js?build=2026-01-01T21:20:40Z";
-import { showSaveFeedback } from "../saveFeedback.js?build=2026-01-01T21:20:40Z";
+} from "../imagePaste.js?build=2026-01-01T22:43:21Z";
+import { syncStoreFromDom } from "../storeSync.js?build=2026-01-01T22:43:21Z";
+import { updateActionButtons } from "./listControls.js?build=2026-01-01T22:43:21Z";
+import { togglePinnedNote, clearPinnedNoteIfMatches } from "../notesState.js?build=2026-01-01T22:43:21Z";
+import { suppressTopEditorAutofocus } from "../focusManager.js?build=2026-01-01T22:43:21Z";
+import { showSaveFeedback } from "../saveFeedback.js?build=2026-01-01T22:43:21Z";
 import {
     dispatchNoteUpdate,
     dispatchNoteDelete,
     dispatchPinToggle
-} from "./events.js?build=2026-01-01T21:20:40Z";
-import { triggerClassificationForCard } from "./classification.js?build=2026-01-01T21:20:40Z";
+} from "./events.js?build=2026-01-01T22:43:21Z";
+import { triggerClassificationForCard } from "./classification.js?build=2026-01-01T22:43:21Z";
 import {
     storeCardAnchor,
     getCardAnchor,
     rememberExpandedHeight,
     releaseExpandedHeight,
     clearCardAnchor
-} from "./anchorState.js?build=2026-01-01T21:20:40Z";
-import { clearPlainTextMapping } from "./textMapping.js?build=2026-01-01T21:20:40Z";
+} from "./anchorState.js?build=2026-01-01T22:43:21Z";
+import { clearPlainTextMapping } from "./textMapping.js?build=2026-01-01T22:43:21Z";
 
 let currentEditingCard = /** @type {HTMLElement|null} */ (null);
 let mergeInProgress = false;
+
+const ERROR_MESSAGES = Object.freeze({
+    MISSING_CONFIG: "card_edit.missing_config"
+});
 
 /**
  * Retrieve the card currently in inline edit mode.
@@ -84,14 +88,18 @@ export function runMergeAction(handler) {
  * Enable inline editing for a card.
  * @param {HTMLElement} card
  * @param {HTMLElement} notesContainer
- * @param {{ bubblePreviousCardToTop?: boolean, bubbleSelfToTop?: boolean }} [options]
+ * @param {{ bubblePreviousCardToTop?: boolean, bubbleSelfToTop?: boolean, config: import("../../core/config.js").AppConfig }} options
  * @returns {void}
  */
-export function enableInPlaceEditing(card, notesContainer, options = {}) {
+export function enableInPlaceEditing(card, notesContainer, options) {
     const {
         bubblePreviousCardToTop = true,
-        bubbleSelfToTop = false
+        bubbleSelfToTop = false,
+        config
     } = options;
+    if (!config) {
+        throw new Error(ERROR_MESSAGES.MISSING_CONFIG);
+    }
     const viewportAnchor = !bubbleSelfToTop ? captureViewportAnchor(card) : null;
     if (viewportAnchor) {
         storeCardAnchor(card, viewportAnchor);
@@ -112,7 +120,10 @@ export function enableInPlaceEditing(card, notesContainer, options = {}) {
         card.dataset.htmlViewExpanded = "true";
     }
     if (currentEditingCard && currentEditingCard !== card && !mergeInProgress) {
-        void finalizeCard(currentEditingCard, notesContainer, { bubbleToTop: bubblePreviousCardToTop });
+        void finalizeCard(currentEditingCard, notesContainer, {
+            bubbleToTop: bubblePreviousCardToTop,
+            config
+        });
     }
     currentEditingCard = card;
 
@@ -219,15 +230,19 @@ export function enableInPlaceEditing(card, notesContainer, options = {}) {
  * Finalize inline editing for a card.
  * @param {HTMLElement} card
  * @param {HTMLElement|null} notesContainer
- * @param {{ bubbleToTop?: boolean, forceBubble?: boolean, suppressTopEditorAutofocus?: boolean }} [options]
+ * @param {{ bubbleToTop?: boolean, forceBubble?: boolean, suppressTopEditorAutofocus?: boolean, config: import("../../core/config.js").AppConfig }} options
  * @returns {Promise<{ status: "deleted" | "unchanged" | "updated", record: import("../../types.d.js").NoteRecord | null }>}
  */
-export async function finalizeCard(card, notesContainer, options = {}) {
+export async function finalizeCard(card, notesContainer, options) {
     const {
         bubbleToTop = true,
         forceBubble = false,
-        suppressTopEditorAutofocus: shouldSuppressTopEditorAutofocus = false
+        suppressTopEditorAutofocus: shouldSuppressTopEditorAutofocus = false,
+        config
     } = options;
+    if (!config) {
+        throw new Error(ERROR_MESSAGES.MISSING_CONFIG);
+    }
     if (!card || mergeInProgress) return { status: "unchanged", record: null };
     if (isCardFinalizeSuppressed(card)) return { status: "unchanged", record: null };
 
@@ -330,7 +345,7 @@ export async function finalizeCard(card, notesContainer, options = {}) {
         showSaveFeedback();
         dispatchNoteUpdate(card, resultRecord, { storeUpdated: true, shouldRender: false });
         if (typeof noteId === "string" && notesContainer instanceof HTMLElement) {
-            triggerClassificationForCard(noteId, text, notesContainer);
+            triggerClassificationForCard(config, noteId, text, notesContainer);
         }
         return { status: "updated", record: resultRecord };
     }
@@ -531,18 +546,26 @@ export function mergeUp(card, notesContainer) {
  * Focus the editor for a specific card.
  * @param {HTMLElement} card
  * @param {HTMLElement} notesContainer
- * @param {{ caretPlacement?: "start" | "end" | number, bubblePreviousCardToTop?: boolean }} [options]
+ * @param {{ caretPlacement?: "start" | "end" | number, bubblePreviousCardToTop?: boolean, config: import("../../core/config.js").AppConfig }} options
  * @returns {boolean}
  */
-export function focusCardEditor(card, notesContainer, options = {}) {
+export function focusCardEditor(card, notesContainer, options) {
     if (!(card instanceof HTMLElement)) return false;
 
     const {
         caretPlacement = "start",
-        bubblePreviousCardToTop = false
+        bubblePreviousCardToTop = false,
+        config
     } = options;
+    if (!config) {
+        throw new Error(ERROR_MESSAGES.MISSING_CONFIG);
+    }
 
-    enableInPlaceEditing(card, notesContainer, { bubblePreviousCardToTop, bubbleSelfToTop: false });
+    enableInPlaceEditing(card, notesContainer, {
+        bubblePreviousCardToTop,
+        bubbleSelfToTop: false,
+        config
+    });
 
     requestAnimationFrame(() => {
         const host = getEditorHost(card);
@@ -592,14 +615,15 @@ export function focusCardEditor(card, notesContainer, options = {}) {
  * Focus the top editor from within a card.
  * @param {HTMLElement} card
  * @param {HTMLElement|null} notesContainer
+ * @param {import("../../core/config.js").AppConfig} config
  * @returns {boolean}
  */
-export function focusTopEditorFromCard(card, notesContainer) {
+export function focusTopEditorFromCard(card, notesContainer, config) {
     const topWrapper = document.querySelector("#top-editor .markdown-block.top-editor");
     const topHost = topWrapper?.__markdownHost;
     if (!topHost) return false;
 
-    void finalizeCard(card, notesContainer, { bubbleToTop: false });
+    void finalizeCard(card, notesContainer, { bubbleToTop: false, config });
 
     requestAnimationFrame(() => {
         topHost.setMode("edit");
@@ -615,20 +639,22 @@ export function focusTopEditorFromCard(card, notesContainer) {
  * @param {HTMLElement} card
  * @param {number} direction
  * @param {HTMLElement} notesContainer
+ * @param {import("../../core/config.js").AppConfig} config
  * @returns {boolean}
  */
-export function navigateToAdjacentCard(card, direction, notesContainer) {
+export function navigateToAdjacentCard(card, direction, notesContainer, config) {
     const targetCard = direction < 0 ? card.previousElementSibling : card.nextElementSibling;
     if (targetCard instanceof HTMLElement && targetCard.classList.contains("markdown-block")) {
         const caretPlacement = direction < 0 ? "end" : "start";
         return focusCardEditor(targetCard, notesContainer, {
             caretPlacement,
-            bubblePreviousCardToTop: true
+            bubblePreviousCardToTop: true,
+            config
         });
     }
 
     if (direction < 0) {
-        return focusTopEditorFromCard(card, notesContainer);
+        return focusTopEditorFromCard(card, notesContainer, config);
     }
 
     return false;

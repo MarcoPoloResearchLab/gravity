@@ -1,15 +1,15 @@
 // @ts-check
 
-import { appConfig } from "./config.js?build=2026-01-01T21:20:40Z";
-import { logging } from "../utils/logging.js?build=2026-01-01T21:20:40Z";
-import { ERROR_IMPORT_INVALID_PAYLOAD } from "../constants.js?build=2026-01-01T21:20:40Z";
-import { sanitizeAttachmentDictionary } from "./attachments.js?build=2026-01-01T21:20:40Z";
+import { STORAGE_KEY, STORAGE_KEY_USER_PREFIX } from "./config.js?build=2026-01-01T22:43:21Z";
+import { logging } from "../utils/logging.js?build=2026-01-01T22:43:21Z";
+import { ERROR_IMPORT_INVALID_PAYLOAD } from "../constants.js?build=2026-01-01T22:43:21Z";
+import { sanitizeAttachmentDictionary } from "./attachments.js?build=2026-01-01T22:43:21Z";
 
 const EMPTY_STRING = "";
-const STORAGE_KEY_BASE = appConfig.storageKey;
+const STORAGE_KEY_BASE = STORAGE_KEY;
 const STORAGE_USER_PREFIX = (() => {
-    const configured = typeof appConfig.storageKeyUserPrefix === "string"
-        ? appConfig.storageKeyUserPrefix.trim()
+    const configured = typeof STORAGE_KEY_USER_PREFIX === "string"
+        ? STORAGE_KEY_USER_PREFIX.trim()
         : "";
     const prefix = configured.length > 0 ? configured : `${STORAGE_KEY_BASE}:user`;
     return prefix.endsWith(":") ? prefix : `${prefix}:`;

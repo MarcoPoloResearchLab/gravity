@@ -17,6 +17,7 @@ and are grouped by the date the work landed on `master`.
 - Auth header now shows only the signed-in display name to avoid exposing email addresses (GN-208).
 - TAuth session now delegates nonce issuance and credential exchange to auth-client helpers instead of local fetches (GN-423).
 - Centralized environment config defaults and reused them across runtime config and test harnesses (GN-427).
+- Runtime config now returns a frozen app config and callers pass it explicitly instead of shared globals (GN-427).
 
 ### Fixed
 - Updated the TAuth helper loader and harness to use `/tauth.js`, keeping Gravity aligned with current TAuth builds (GN-424).

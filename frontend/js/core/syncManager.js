@@ -1,16 +1,22 @@
 // @ts-check
 
-import { GravityStore } from "./store.js?build=2026-01-01T21:20:40Z";
-import { createBackendClient } from "./backendClient.js?build=2026-01-01T21:20:40Z";
-import { createSyncMetadataStore } from "./syncMetadataStore.js?build=2026-01-01T21:20:40Z";
-import { createSyncQueue } from "./syncQueue.js?build=2026-01-01T21:20:40Z";
-import { appConfig } from "./config.js?build=2026-01-01T21:20:40Z";
-import { logging } from "../utils/logging.js?build=2026-01-01T21:20:40Z";
-import { EVENT_NOTIFICATION_REQUEST, EVENT_SYNC_SNAPSHOT_APPLIED, MESSAGE_SYNC_CONFLICT } from "../constants.js?build=2026-01-01T21:20:40Z";
+import { GravityStore } from "./store.js?build=2026-01-01T22:43:21Z";
+import { createBackendClient } from "./backendClient.js?build=2026-01-01T22:43:21Z";
+import { createSyncMetadataStore } from "./syncMetadataStore.js?build=2026-01-01T22:43:21Z";
+import { createSyncQueue } from "./syncQueue.js?build=2026-01-01T22:43:21Z";
+import { logging } from "../utils/logging.js?build=2026-01-01T22:43:21Z";
+import { EVENT_NOTIFICATION_REQUEST, EVENT_SYNC_SNAPSHOT_APPLIED, MESSAGE_SYNC_CONFLICT } from "../constants.js?build=2026-01-01T22:43:21Z";
 
 const debugEnabled = () => typeof globalThis !== "undefined" && globalThis.__debugSyncScenarios === true;
 const SYNC_OPERATION_STATUS_PENDING = "pending";
 const SYNC_OPERATION_STATUS_CONFLICT = "conflict";
+const TYPE_OBJECT = "object";
+const TYPE_STRING = "string";
+
+const ERROR_MESSAGES = Object.freeze({
+    MISSING_OPTIONS: "sync_manager.missing_options",
+    MISSING_BACKEND_BASE_URL: "sync_manager.missing_backend_base_url"
+});
 
 /**
  * @typedef {import("./syncMetadataStore.js").NoteMetadata} NoteMetadata
@@ -24,16 +30,22 @@ const SYNC_OPERATION_STATUS_CONFLICT = "conflict";
 /**
  * Create a synchronization manager responsible for coordinating backend persistence.
  * @param {{
+ *   backendBaseUrl?: string,
  *   backendClient?: ReturnType<typeof createBackendClient>,
  *   metadataStore?: ReturnType<typeof createSyncMetadataStore>,
  *   queueStore?: ReturnType<typeof createSyncQueue>,
  *   clock?: () => Date,
  *   randomUUID?: () => string,
  *   eventTarget?: EventTarget|null
- * }} [options]
+ * }} options
  */
-export function createSyncManager(options = {}) {
-    const backendClient = options.backendClient ?? createBackendClient({ baseUrl: appConfig.backendBaseUrl });
+export function createSyncManager(options) {
+    if (!options || typeof options !== TYPE_OBJECT) {
+        throw new Error(ERROR_MESSAGES.MISSING_OPTIONS);
+    }
+    const backendClient = options.backendClient ?? createBackendClient({
+        baseUrl: assertBaseUrl(options.backendBaseUrl)
+    });
     const metadataStore = options.metadataStore ?? createSyncMetadataStore();
     const queueStore = options.queueStore ?? createSyncQueue();
     const clock = typeof options.clock === "function" ? options.clock : () => new Date();
@@ -650,6 +662,17 @@ export function createSyncManager(options = {}) {
         }
     }
 
+}
+
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
+function assertBaseUrl(value) {
+    if (typeof value !== TYPE_STRING || value.length === 0) {
+        throw new Error(ERROR_MESSAGES.MISSING_BACKEND_BASE_URL);
+    }
+    return value;
 }
 
 /**

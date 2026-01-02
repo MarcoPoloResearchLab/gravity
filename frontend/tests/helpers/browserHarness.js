@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { APP_BUILD_ID } from "../../js/constants.js";
-import { DEVELOPMENT_ENVIRONMENT_CONFIG } from "../../js/core/environmentConfig.js?build=2026-01-01T21:20:40Z";
+import { DEVELOPMENT_ENVIRONMENT_CONFIG } from "../../js/core/environmentConfig.js?build=2026-01-01T22:43:21Z";
 
 import {
     ensurePuppeteerSandbox,
