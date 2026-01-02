@@ -1,108 +1,117 @@
 // @ts-check
 
-const DEFAULT_BACKEND_BASE_URL = "http://localhost:8080";
-const DEFAULT_LLM_PROXY_URL = "https://llm-proxy.mprlab.com/v1/gravity/classify";
-const DEFAULT_AUTH_BASE_URL = "http://localhost:8082";
-const DEFAULT_AUTH_TENANT_ID = "";
+import { ENVIRONMENT_CONFIG } from "./environmentConfig.js?build=2026-01-01T22:43:21Z";
 
-const DEFAULT_ENVIRONMENT_CONFIG = Object.freeze({
-    production: Object.freeze({
-        backendBaseUrl: "https://gravity-api.mprlab.com",
-        llmProxyUrl: "https://llm-proxy.mprlab.com/v1/gravity/classify",
-        authBaseUrl: "https://tauth.mprlab.com",
-        authTenantId: "gravity"
-    }),
-    development: Object.freeze({
-        backendBaseUrl: "http://localhost:8080",
-        llmProxyUrl: "http://computercat:8081/v1/gravity/classify",
-        authBaseUrl: "http://localhost:8082",
-        authTenantId: DEFAULT_AUTH_TENANT_ID
-    })
+const TYPE_OBJECT = "object";
+const TYPE_STRING = "string";
+
+const CONFIG_KEYS = Object.freeze({
+    ENVIRONMENT: "environment",
+    BACKEND_BASE_URL: "backendBaseUrl",
+    LLM_PROXY_URL: "llmProxyUrl",
+    AUTH_BASE_URL: "authBaseUrl",
+    AUTH_TENANT_ID: "authTenantId"
 });
 
-const RUNTIME_CONFIG_STATE_KEY = Symbol.for("gravity.core.config.runtimeState");
+const ERROR_MESSAGES = Object.freeze({
+    INVALID_CONFIG: "app_config.invalid_config",
+    INVALID_ENVIRONMENT: "app_config.invalid_environment",
+    INVALID_BACKEND_BASE_URL: "app_config.invalid_backend_base_url",
+    INVALID_LLM_PROXY_URL: "app_config.invalid_llm_proxy_url",
+    INVALID_AUTH_BASE_URL: "app_config.invalid_auth_base_url",
+    INVALID_AUTH_TENANT_ID: "app_config.invalid_auth_tenant_id"
+});
+
+export const TIMEZONE_DEFAULT = "America/Los_Angeles";
+export const CLASSIFICATION_TIMEOUT_MS = 5000;
+export const DEFAULT_PRIVACY = "private";
+export const STORAGE_KEY = "gravityNotesData";
+export const STORAGE_KEY_USER_PREFIX = "gravityNotesData:user";
+export const GOOGLE_CLIENT_ID = "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com";
+
+export const STATIC_APP_CONFIG = Object.freeze({
+    timezone: TIMEZONE_DEFAULT,
+    classificationTimeoutMs: CLASSIFICATION_TIMEOUT_MS,
+    defaultPrivacy: DEFAULT_PRIVACY,
+    storageKey: STORAGE_KEY,
+    storageKeyUserPrefix: STORAGE_KEY_USER_PREFIX,
+    googleClientId: GOOGLE_CLIENT_ID
+});
 
 /**
- * Resolve the shared runtime configuration backing store. Using a shared symbol keeps
- * the browser modules (loaded with build fingerprints) and the Node test modules in
- * sync even though their specifiers differ.
- * @returns {{ config: { environment: ("production" | "development" | null), backendBaseUrl: string, llmProxyUrl: string, authBaseUrl: string, authTenantId: string } | null }}
+ * @typedef {{
+ *   environment: "production" | "development",
+ *   backendBaseUrl: string,
+ *   llmProxyUrl: string,
+ *   authBaseUrl: string,
+ *   authTenantId: string,
+ *   timezone: string,
+ *   classificationTimeoutMs: number,
+ *   defaultPrivacy: string,
+ *   storageKey: string,
+ *   storageKeyUserPrefix: string,
+ *   googleClientId: string
+ * }} AppConfig
  */
-function resolveRuntimeConfigState() {
-    const globalScope = typeof globalThis === "object" && globalThis !== null ? globalThis : {};
-    const existing = /** @type {{ config: { environment: ("production" | "development" | null), backendBaseUrl: string, llmProxyUrl: string, authBaseUrl: string, authTenantId: string } | null } | undefined} */
-        (globalScope[RUNTIME_CONFIG_STATE_KEY]);
-    if (existing && typeof existing === "object" && Object.prototype.hasOwnProperty.call(existing, "config")) {
-        return existing;
-    }
-    const state = { config: null };
-    try {
-        Object.defineProperty(globalScope, RUNTIME_CONFIG_STATE_KEY, {
-            value: state,
-            enumerable: false,
-            configurable: false,
-            writable: false
-        });
-    } catch {
-        // Fallback assignment when defineProperty is unavailable (older runtimes / frozen globals).
-        /** @type {any} */ (globalScope)[RUNTIME_CONFIG_STATE_KEY] = state;
-    }
-    return state;
-}
-
-const runtimeConfigState = resolveRuntimeConfigState();
-
-const staticConfig = {
-    timezone: { value: "America/Los_Angeles", enumerable: true },
-    environment: {
-        enumerable: true,
-        get: () => resolveEnvironmentName()
-    },
-    classificationTimeoutMs: { value: 5000, enumerable: true },
-    defaultPrivacy: { value: "private", enumerable: true },
-    storageKey: { value: "gravityNotesData", enumerable: true },
-    storageKeyUserPrefix: { value: "gravityNotesData:user", enumerable: true },
-    googleClientId: { value: "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com", enumerable: true },
-    backendBaseUrl: {
-        enumerable: true,
-        get: () => resolveBackendBaseUrl()
-    },
-    llmProxyUrl: {
-        enumerable: true,
-        get: () => resolveLlmProxyUrl()
-    },
-    authBaseUrl: {
-        enumerable: true,
-        get: () => resolveAuthBaseUrl()
-    },
-    authTenantId: {
-        enumerable: true,
-        get: () => resolveAuthTenantId()
-    }
-};
-
-export const appConfig = (() => {
-    const target = {};
-    Object.defineProperties(target, staticConfig);
-    return Object.freeze(target);
-})();
 
 /**
- * Inject the runtime configuration that downstream modules will consume.
- * @param {{ environment?: string|null, backendBaseUrl?: string|null, llmProxyUrl?: string|null, authBaseUrl?: string|null, authTenantId?: string|null }} [config]
- * @returns {void}
+ * @typedef {{
+ *   environment: "production" | "development",
+ *   backendBaseUrl?: string,
+ *   llmProxyUrl?: string,
+ *   authBaseUrl?: string,
+ *   authTenantId?: string
+ * }} RuntimeConfigOverrides
  */
-export function setRuntimeConfig(config = {}) {
-    const normalizedEnvironment = normalizeEnvironmentName(config.environment);
-    const environmentDefaults = normalizedEnvironment ? DEFAULT_ENVIRONMENT_CONFIG[normalizedEnvironment] : null;
 
-    const backendBaseUrl = normalizeUrl(config.backendBaseUrl ?? environmentDefaults?.backendBaseUrl ?? DEFAULT_BACKEND_BASE_URL);
-    const llmProxyUrl = normalizeUrl(config.llmProxyUrl ?? environmentDefaults?.llmProxyUrl ?? DEFAULT_LLM_PROXY_URL);
-    const authBaseUrl = normalizeUrl(config.authBaseUrl ?? environmentDefaults?.authBaseUrl ?? DEFAULT_AUTH_BASE_URL);
-    const authTenantId = normalizeTenantId(config.authTenantId ?? environmentDefaults?.authTenantId ?? DEFAULT_AUTH_TENANT_ID);
+/**
+ * Build a fully-resolved runtime configuration for the application.
+ * @param {RuntimeConfigOverrides} config
+ * @returns {AppConfig}
+ */
+export function createAppConfig(config) {
+    if (!config || typeof config !== TYPE_OBJECT || Array.isArray(config)) {
+        throw new Error(ERROR_MESSAGES.INVALID_CONFIG);
+    }
 
-    runtimeConfigState.config = Object.freeze({
-        environment: normalizedEnvironment,
+    const environment = config[CONFIG_KEYS.ENVIRONMENT];
+    const environmentDefaults = ENVIRONMENT_CONFIG[environment];
+    if (!environmentDefaults) {
+        throw new Error(ERROR_MESSAGES.INVALID_ENVIRONMENT);
+    }
+
+    const backendBaseUrl = resolveConfigValue(
+        config,
+        CONFIG_KEYS.BACKEND_BASE_URL,
+        environmentDefaults.backendBaseUrl,
+        false,
+        ERROR_MESSAGES.INVALID_BACKEND_BASE_URL
+    );
+    const llmProxyUrl = resolveConfigValue(
+        config,
+        CONFIG_KEYS.LLM_PROXY_URL,
+        environmentDefaults.llmProxyUrl,
+        true,
+        ERROR_MESSAGES.INVALID_LLM_PROXY_URL
+    );
+    const authBaseUrl = resolveConfigValue(
+        config,
+        CONFIG_KEYS.AUTH_BASE_URL,
+        environmentDefaults.authBaseUrl,
+        false,
+        ERROR_MESSAGES.INVALID_AUTH_BASE_URL
+    );
+    const authTenantId = resolveConfigValue(
+        config,
+        CONFIG_KEYS.AUTH_TENANT_ID,
+        environmentDefaults.authTenantId,
+        true,
+        ERROR_MESSAGES.INVALID_AUTH_TENANT_ID
+    );
+
+    return Object.freeze({
+        ...STATIC_APP_CONFIG,
+        environment,
         backendBaseUrl,
         llmProxyUrl,
         authBaseUrl,
@@ -111,137 +120,32 @@ export function setRuntimeConfig(config = {}) {
 }
 
 /**
- * Reset stored runtime config (testing only).
- * @returns {void}
- */
-export function clearRuntimeConfigForTesting() {
-    runtimeConfigState.config = null;
-}
-
-/**
- * Resolve the backend base URL from the injected config or defaults.
+ * @param {RuntimeConfigOverrides} config
+ * @param {string} key
+ * @param {string} fallback
+ * @param {boolean} allowEmpty
+ * @param {string} errorCode
  * @returns {string}
  */
-export function resolveBackendBaseUrl() {
-    if (runtimeConfigState.config?.backendBaseUrl) {
-        return runtimeConfigState.config.backendBaseUrl;
+function resolveConfigValue(config, key, fallback, allowEmpty, errorCode) {
+    if (Object.prototype.hasOwnProperty.call(config, key)) {
+        return assertString(config[key], allowEmpty, errorCode);
     }
-    return DEFAULT_BACKEND_BASE_URL;
+    return assertString(fallback, allowEmpty, errorCode);
 }
 
 /**
- * Resolve the LLM proxy URL from the injected config or defaults.
- * @returns {string}
- */
-export function resolveLlmProxyUrl() {
-    if (runtimeConfigState.config?.llmProxyUrl !== undefined) {
-        return runtimeConfigState.config.llmProxyUrl;
-    }
-    return DEFAULT_LLM_PROXY_URL;
-}
-
-/**
- * Resolve the TAuth base URL from the injected config or defaults.
- * @returns {string}
- */
-export function resolveAuthBaseUrl() {
-    if (runtimeConfigState.config?.authBaseUrl !== undefined) {
-        return runtimeConfigState.config.authBaseUrl;
-    }
-    return DEFAULT_AUTH_BASE_URL;
-}
-
-/**
- * Resolve the TAuth tenant identifier from the injected config or defaults.
- * @returns {string}
- */
-export function resolveAuthTenantId() {
-    if (runtimeConfigState.config?.authTenantId !== undefined) {
-        return runtimeConfigState.config.authTenantId;
-    }
-    return DEFAULT_AUTH_TENANT_ID;
-}
-
-/**
- * Resolve the current environment label.
- * @returns {("production" | "development" | null)}
- */
-export function resolveEnvironmentName() {
-    if (runtimeConfigState.config?.environment) {
-        return runtimeConfigState.config.environment;
-    }
-    return inferEnvironmentFromLocation(typeof window !== "undefined" ? window.location : undefined);
-}
-
-/**
- * Normalize user-provided environment names.
- * @param {unknown} candidate
- * @returns {("production" | "development" | null)}
- */
-function normalizeEnvironmentName(candidate) {
-    if (typeof candidate !== "string") {
-        return null;
-    }
-    const normalized = candidate.trim().toLowerCase();
-    if (normalized === "production" || normalized === "development") {
-        return normalized;
-    }
-    return null;
-}
-
-/**
- * Normalize endpoint URLs while preserving intentional blanks.
  * @param {unknown} value
+ * @param {boolean} allowEmpty
+ * @param {string} errorCode
  * @returns {string}
  */
-function normalizeUrl(value) {
-    if (value === undefined || value === null) {
-        return "";
+function assertString(value, allowEmpty, errorCode) {
+    if (typeof value !== TYPE_STRING) {
+        throw new Error(errorCode);
     }
-    if (typeof value !== "string") {
-        return "";
+    if (!allowEmpty && value.length === 0) {
+        throw new Error(errorCode);
     }
-    const trimmed = value.trim();
-    if (trimmed.length === 0) {
-        return "";
-    }
-    return trimmed.replace(/\/+$/u, "");
-}
-
-/**
- * Normalize tenant identifiers while preserving intentional blanks.
- * @param {unknown} value
- * @returns {string}
- */
-function normalizeTenantId(value) {
-    if (value === undefined || value === null) {
-        return "";
-    }
-    if (typeof value !== "string") {
-        return "";
-    }
-    const trimmed = value.trim();
-    if (trimmed.length === 0) {
-        return "";
-    }
-    return trimmed;
-}
-
-/**
- * Best-effort environment inference from the active location.
- * @param {Location|undefined} runtimeLocation
- * @returns {("production" | "development" | null)}
- */
-function inferEnvironmentFromLocation(runtimeLocation) {
-    if (!runtimeLocation) {
-        return null;
-    }
-    const hostname = typeof runtimeLocation.hostname === "string" ? runtimeLocation.hostname.toLowerCase() : "";
-    if (!hostname || hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]" || hostname.endsWith(".local") || hostname.endsWith(".test")) {
-        return "development";
-    }
-    if (hostname.endsWith(".com")) {
-        return "production";
-    }
-    return null;
+    return value;
 }

@@ -128,14 +128,6 @@ test.describe("Realtime synchronization", () => {
             console.log("[Realtime][Debug] state:", realtimeState);
             const debugState = await extractSyncDebugState(pageB);
             console.log("[Realtime][Debug] sync state:", debugState);
-            const runtimeConfig = await pageB.evaluate(async () => {
-                const importer = typeof window.importAppModule === "function"
-                    ? window.importAppModule
-                    : (specifier) => import(specifier);
-                const module = await importer("./js/core/config.js");
-                return module.appConfig.backendBaseUrl;
-            });
-            console.log("[Realtime][Debug] backend base URL:", runtimeConfig);
             await pageB.waitForFunction(() => {
                 const debug = window.__GRAVITY_REALTIME_DEBUG__;
                 return Array.isArray(debug?.connects) && debug.connects.length >= 1;
@@ -230,14 +222,6 @@ async function bootstrapRealtimeSession(context, backend, userId, options = {}) 
         await beforeAuth(page);
     }
     await waitForTAuthSession(page);
-    const resolvedAuthBaseUrl = await page.evaluate(async () => {
-        const importer = typeof window.importAppModule === "function"
-            ? window.importAppModule
-            : (specifier) => import(specifier);
-        const configModule = await importer("./js/core/config.js");
-        return configModule.appConfig.authBaseUrl;
-    });
-    console.log("[Realtime][Debug] authBaseUrl:", resolvedAuthBaseUrl);
     const credential = composeTestCredential({
         userId,
         email: `${userId}@example.com`,

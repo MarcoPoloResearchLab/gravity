@@ -5,7 +5,7 @@ import {
     CLIPBOARD_DATA_ATTRIBUTE,
     CLIPBOARD_METADATA_DATA_URL_PREFIX,
     CLIPBOARD_MIME_NOTE
-} from "../constants.js?build=2024-10-05T12:00:00Z";
+} from "../constants.js?build=2026-01-01T22:43:21Z";
 
 const PLACEHOLDER_PATTERN = /!\[\[([^\[\]]+)\]\]/g;
 

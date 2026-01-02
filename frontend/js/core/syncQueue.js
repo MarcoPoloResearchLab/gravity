@@ -1,7 +1,11 @@
 // @ts-check
 
 /**
- * @typedef {{ operationId: string, noteId: string, operation: "upsert"|"delete", payload: unknown, clientEditSeq: number, updatedAtSeconds: number, createdAtSeconds: number, clientTimeSeconds: number }} PendingOperation
+ * @typedef {{ serverVersion: number, serverEditSeq: number, serverUpdatedAtSeconds: number, serverPayload: unknown, rejectedAtSeconds: number }} ConflictInfo
+ */
+
+/**
+ * @typedef {{ operationId: string, noteId: string, operation: "upsert"|"delete", payload: unknown, clientEditSeq: number, updatedAtSeconds: number, createdAtSeconds: number, clientTimeSeconds: number, status?: "pending"|"conflict", conflict?: ConflictInfo }} PendingOperation
  */
 
 /**

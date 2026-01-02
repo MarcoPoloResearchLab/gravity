@@ -1,9 +1,9 @@
 // @ts-check
 
-import { GravityStore } from "../core/store.js?build=2024-10-05T12:00:00Z";
-import { nowIso } from "../utils/datetime.js?build=2024-10-05T12:00:00Z";
-import { collectReferencedAttachments } from "./imagePaste.js?build=2024-10-05T12:00:00Z";
-import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
+import { GravityStore } from "../core/store.js?build=2026-01-01T22:43:21Z";
+import { nowIso } from "../utils/datetime.js?build=2026-01-01T22:43:21Z";
+import { collectReferencedAttachments } from "./imagePaste.js?build=2026-01-01T22:43:21Z";
+import { logging } from "../utils/logging.js?build=2026-01-01T22:43:21Z";
 
 const debugEnabled = () => typeof globalThis !== "undefined" && globalThis.__debugSyncScenarios === true;
 

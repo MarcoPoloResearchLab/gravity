@@ -4,8 +4,9 @@ import {
     REALTIME_EVENT_HEARTBEAT,
     REALTIME_EVENT_NOTE_CHANGE,
     REALTIME_SOURCE_BACKEND
-} from "../constants.js?build=2024-10-05T12:00:00Z";
-import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
+} from "../constants.js?build=2026-01-01T22:43:21Z";
+import { logging } from "../utils/logging.js?build=2026-01-01T22:43:21Z";
+import { encodeUrlBlanks } from "../utils/url.js?build=2026-01-01T22:43:21Z";
 
 const RECONNECT_BASE_DELAY_MS = 1000;
 const RECONNECT_MAX_DELAY_MS = 30000;
@@ -33,7 +34,7 @@ export function createRealtimeSyncController(options) {
     let reconnectDelayMs = RECONNECT_BASE_DELAY_MS;
 
     function connect(params) {
-        const baseUrl = typeof params?.baseUrl === "string" ? params.baseUrl.trim() : "";
+        const baseUrl = normalizeBaseUrl(params?.baseUrl);
         if (!baseUrl) {
             return;
         }
@@ -164,6 +165,22 @@ export function createRealtimeSyncController(options) {
 function composeStreamUrl(baseUrl) {
     const normalized = baseUrl.replace(/\/+$/u, "");
     return `${normalized}/notes/stream`;
+}
+
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
+function normalizeBaseUrl(value) {
+    if (typeof value !== "string") {
+        return "";
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return "";
+    }
+    const encoded = encodeUrlBlanks(trimmed);
+    return encoded.replace(/\/+$/u, "");
 }
 
 /**

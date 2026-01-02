@@ -3,18 +3,17 @@
 
 import Alpine from "https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/module.esm.js";
 
-import { renderCard, updateActionButtons, insertCardRespectingPinned } from "./ui/card.js?build=2024-10-05T12:00:00Z";
-import { initializeImportExport } from "./ui/importExport.js?build=2024-10-05T12:00:00Z";
-import { GravityStore } from "./core/store.js?build=2024-10-05T12:00:00Z";
-import { appConfig } from "./core/config.js?build=2024-10-05T12:00:00Z";
-import { initializeRuntimeConfig } from "./core/runtimeConfig.js?build=2024-10-05T12:00:00Z";
-import { createGoogleIdentityController, isGoogleIdentitySupportedOrigin } from "./core/auth.js?build=2024-10-05T12:00:00Z";
-import { initializeAnalytics } from "./core/analytics.js?build=2024-10-05T12:00:00Z";
-import { createSyncManager } from "./core/syncManager.js?build=2024-10-05T12:00:00Z";
-import { createRealtimeSyncController } from "./core/realtimeSyncController.js?build=2024-10-05T12:00:00Z";
-import { ensureTAuthClientLoaded } from "./core/tauthClient.js?build=2024-10-05T12:00:00Z";
-import { createTAuthSession } from "./core/tauthSession.js?build=2024-10-05T12:00:00Z";
-import { mountTopEditor } from "./ui/topEditor.js?build=2024-10-05T12:00:00Z";
+import { renderCard, updateActionButtons, insertCardRespectingPinned } from "./ui/card.js?build=2026-01-01T22:43:21Z";
+import { initializeImportExport } from "./ui/importExport.js?build=2026-01-01T22:43:21Z";
+import { GravityStore } from "./core/store.js?build=2026-01-01T22:43:21Z";
+import { initializeRuntimeConfig } from "./core/runtimeConfig.js?build=2026-01-01T22:43:21Z";
+import { createGoogleIdentityController, isGoogleIdentitySupportedOrigin } from "./core/auth.js?build=2026-01-01T22:43:21Z";
+import { initializeAnalytics } from "./core/analytics.js?build=2026-01-01T22:43:21Z";
+import { createSyncManager } from "./core/syncManager.js?build=2026-01-01T22:43:21Z";
+import { createRealtimeSyncController } from "./core/realtimeSyncController.js?build=2026-01-01T22:43:21Z";
+import { ensureTAuthClientLoaded } from "./core/tauthClient.js?build=2026-01-01T22:43:21Z";
+import { createTAuthSession } from "./core/tauthSession.js?build=2026-01-01T22:43:21Z";
+import { mountTopEditor } from "./ui/topEditor.js?build=2026-01-01T22:43:21Z";
 import {
     LABEL_APP_SUBTITLE,
     LABEL_APP_TITLE,
@@ -38,15 +37,15 @@ import {
     MESSAGE_NOTES_SKIPPED,
     MESSAGE_NOTES_IMPORT_FAILED,
     APP_BUILD_ID
-} from "./constants.js?build=2024-10-05T12:00:00Z";
-import { initializeKeyboardShortcutsModal } from "./ui/keyboardShortcutsModal.js?build=2024-10-05T12:00:00Z";
-import { initializeNotesState } from "./ui/notesState.js?build=2024-10-05T12:00:00Z";
-import { showSaveFeedback } from "./ui/saveFeedback.js?build=2024-10-05T12:00:00Z";
-import { initializeAuthControls } from "./ui/authControls.js?build=2024-10-05T12:00:00Z";
-import { createAvatarMenu } from "./ui/menu/avatarMenu.js?build=2024-10-05T12:00:00Z";
-import { initializeFullScreenToggle } from "./ui/fullScreenToggle.js?build=2024-10-05T12:00:00Z";
-import { initializeVersionRefresh } from "./utils/versionRefresh.js?build=2024-10-05T12:00:00Z";
-import { logging } from "./utils/logging.js?build=2024-10-05T12:00:00Z";
+} from "./constants.js?build=2026-01-01T22:43:21Z";
+import { initializeKeyboardShortcutsModal } from "./ui/keyboardShortcutsModal.js?build=2026-01-01T22:43:21Z";
+import { initializeNotesState } from "./ui/notesState.js?build=2026-01-01T22:43:21Z";
+import { showSaveFeedback } from "./ui/saveFeedback.js?build=2026-01-01T22:43:21Z";
+import { initializeAuthControls } from "./ui/authControls.js?build=2026-01-01T22:43:21Z";
+import { createAvatarMenu } from "./ui/menu/avatarMenu.js?build=2026-01-01T22:43:21Z";
+import { initializeFullScreenToggle } from "./ui/fullScreenToggle.js?build=2026-01-01T22:43:21Z";
+import { initializeVersionRefresh } from "./utils/versionRefresh.js?build=2026-01-01T22:43:21Z";
+import { logging } from "./utils/logging.js?build=2026-01-01T22:43:21Z";
 
 const CONSTANTS_VIEW_MODEL = Object.freeze({
     LABEL_APP_SUBTITLE,
@@ -96,16 +95,16 @@ bootstrapApplication().catch((error) => {
 });
 
 async function bootstrapApplication() {
-    await initializeRuntimeConfig();
+    const appConfig = await initializeRuntimeConfig();
     await ensureTAuthClientLoaded({
         baseUrl: appConfig.authBaseUrl,
         tenantId: appConfig.authTenantId
     }).catch((error) => {
         logging.error("TAuth client failed to load", error);
     });
-    initializeAnalytics();
+    initializeAnalytics({ config: appConfig });
     document.addEventListener("alpine:init", () => {
-        Alpine.data("gravityApp", gravityApp);
+        Alpine.data("gravityApp", () => gravityApp(appConfig));
     });
     window.Alpine = Alpine;
     Alpine.start();
@@ -115,7 +114,7 @@ async function bootstrapApplication() {
  * Alpine root component that wires the Gravity Notes application.
  * @returns {import("alpinejs").AlpineComponent}
  */
-function gravityApp() {
+function gravityApp(appConfig) {
     return {
         constants: CONSTANTS_VIEW_MODEL,
         notesContainer: /** @type {HTMLElement|null} */ (null),
@@ -167,6 +166,7 @@ function gravityApp() {
             this.initializeTopEditor();
             this.initializeImportExport();
             this.syncManager = createSyncManager({
+                backendBaseUrl: appConfig.backendBaseUrl,
                 eventTarget: this.$el ?? null
             });
             this.realtimeSync = createRealtimeSyncController({ syncManager: this.syncManager });
@@ -754,7 +754,7 @@ function gravityApp() {
                     continue;
                 }
 
-                const freshCard = renderCard(record, { notesContainer: container });
+                const freshCard = renderCard(record, { notesContainer: container, config: appConfig });
                 desiredOrder.push(freshCard);
                 if (existingCard) {
                     existingCard.replaceWith(freshCard);
@@ -784,7 +784,8 @@ function gravityApp() {
                 return;
             }
             mountTopEditor({
-                notesContainer: container
+                notesContainer: container,
+                config: appConfig
             });
         },
 

@@ -1,23 +1,25 @@
 // @ts-check
 
-import { ClassifierClient } from "../../core/classifier.js?build=2024-10-05T12:00:00Z";
-import { GravityStore } from "../../core/store.js?build=2024-10-05T12:00:00Z";
-import { nowIso } from "../../utils/datetime.js?build=2024-10-05T12:00:00Z";
-import { logging } from "../../utils/logging.js?build=2024-10-05T12:00:00Z";
-import { createElement } from "../../utils/dom.js?build=2024-10-05T12:00:00Z";
+import { createClassifierClient } from "../../core/classifier.js?build=2026-01-01T22:43:21Z";
+import { GravityStore } from "../../core/store.js?build=2026-01-01T22:43:21Z";
+import { nowIso } from "../../utils/datetime.js?build=2026-01-01T22:43:21Z";
+import { logging } from "../../utils/logging.js?build=2026-01-01T22:43:21Z";
+import { createElement } from "../../utils/dom.js?build=2026-01-01T22:43:21Z";
 
 /**
  * Request a classification refresh for a note and update its chips on success.
+ * @param {import("../../core/config.js").AppConfig} config
  * @param {string} noteId
  * @param {string} text
  * @param {HTMLElement|null} notesContainer
  * @returns {void}
  */
-export function triggerClassificationForCard(noteId, text, notesContainer) {
+export function triggerClassificationForCard(config, noteId, text, notesContainer) {
     const firstLine = text.split("\n").find((line) => line.trim().length > 0) || "";
     const title = firstLine.replace(/^#\s*/, "").slice(0, 120).trim();
 
-    ClassifierClient.classifyOrFallback(title, text)
+    const client = createClassifierClient({ config });
+    client.classifyOrFallback(title, text)
         .then((classification) => {
             const records = GravityStore.loadAllNotes();
             const record = records.find((candidate) => candidate.noteId === noteId);

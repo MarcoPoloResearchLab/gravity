@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createClassifierClient, ClassifierClient } from "../js/core/classifier.js";
-import { clearRuntimeConfigForTesting, setRuntimeConfig } from "../js/core/config.js";
+import { createClassifierClient } from "../js/core/classifier.js";
+import { createAppConfig } from "../js/core/config.js?build=2026-01-01T22:43:21Z";
+import { ENVIRONMENT_DEVELOPMENT } from "../js/core/environmentConfig.js?build=2026-01-01T22:43:21Z";
 
-test.beforeEach(() => {
-    clearRuntimeConfigForTesting();
-});
+const EMPTY_STRING = "";
 
 test("createClassifierClient uses injected fetch for classification", async () => {
+    const config = createAppConfig({ environment: ENVIRONMENT_DEVELOPMENT });
     const mockResponse = {
         ok: true,
         status: 200,
@@ -27,6 +27,7 @@ test("createClassifierClient uses injected fetch for classification", async () =
     };
     const fetchCalls = [];
     const client = createClassifierClient({
+        config,
         fetchImplementation: async (url, options) => {
             fetchCalls.push({ url, options });
             return mockResponse;
@@ -47,8 +48,9 @@ test("createClassifierClient uses injected fetch for classification", async () =
 });
 
 test("ClassifierClient falls back when endpoint disabled", async () => {
-    setRuntimeConfig({ llmProxyUrl: "" });
-    const result = await ClassifierClient.classifyOrFallback("Any", "Text");
+    const config = createAppConfig({ environment: ENVIRONMENT_DEVELOPMENT, llmProxyUrl: EMPTY_STRING });
+    const client = createClassifierClient({ config });
+    const result = await client.classifyOrFallback("Any", "Text");
     assert.equal(result.category, "Journal");
     assert.equal(result.status, "idea");
     assert.equal(typeof result.occurred_at, "string");
@@ -57,7 +59,9 @@ test("ClassifierClient falls back when endpoint disabled", async () => {
 });
 
 test("createClassifierClient returns fallback on fetch error", async () => {
+    const config = createAppConfig({ environment: ENVIRONMENT_DEVELOPMENT });
     const client = createClassifierClient({
+        config,
         fetchImplementation: async () => { throw new Error("network"); }
     });
     const result = await client.classifyOrFallback("Title", "Body");

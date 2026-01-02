@@ -5,93 +5,94 @@ import test from "node:test";
 
 import { createTAuthSession } from "../js/core/tauthSession.js";
 
-test("createTAuthSession binds the default fetch to the window context for logout fallback", async () => {
-    const originalFetch = globalThis.fetch;
-    try {
-        const fakeWindow = {
-            initAuthClient: async () => {},
-            getAuthEndpoints: () => ({
-                logoutUrl: "https://tauth.local/custom/logout"
-            })
-        };
-        const fetchCalls = [];
-        /** @type {(input: RequestInfo, init?: RequestInit) => Promise<Response>} */
-        const mockFetch = function mockFetch(url, init) {
-            if (this !== fakeWindow) {
-                throw new TypeError("fetch invoked with incorrect context");
-            }
-            fetchCalls.push({ url, init });
-            return Promise.resolve({
-                ok: true,
-                async json() {
-                    return {};
-                }
-            });
-        };
-        globalThis.fetch = mockFetch;
-
-        const session = createTAuthSession({
-            baseUrl: "https://tauth.local",
-            windowRef: fakeWindow
-        });
-
-        await session.signOut();
-
-        assert.equal(fetchCalls.length, 1);
-        assert.equal(fetchCalls[0].url, "https://tauth.local/custom/logout");
-    } finally {
-        if (typeof originalFetch === "function") {
-            globalThis.fetch = originalFetch;
-        } else {
-            delete globalThis.fetch;
-        }
-    }
+const TEST_LABELS = Object.freeze({
+    SIGN_OUT_DELEGATES_LOGOUT: "createTAuthSession delegates signOut to auth-client logout",
+    REQUEST_NONCE_DELEGATES: "createTAuthSession delegates nonce requests to auth-client helper",
+    EXCHANGE_DELEGATES: "createTAuthSession delegates credential exchange to auth-client helper"
 });
 
-test("createTAuthSession delegates nonce requests to auth-client helper", async () => {
+const BASE_URL = "https://tauth.local";
+const NONCE_VALUE = "test-nonce";
+const CREDENTIAL_TOKEN = "google-token";
+const NONCE_TOKEN = "nonce-123";
+
+const EVENT_TARGET = {
+    dispatchEvent() {
+        return true;
+    }
+};
+
+test(TEST_LABELS.SIGN_OUT_DELEGATES_LOGOUT, async () => {
+    let initCalls = 0;
+    let logoutCalls = 0;
     const fakeWindow = {
-        initAuthClient: async () => {},
-        requestNonce: async () => "test-nonce"
+        initAuthClient: async () => {
+            initCalls += 1;
+        },
+        logout: async () => {
+            logoutCalls += 1;
+        }
     };
+
     const session = createTAuthSession({
-        baseUrl: "https://tauth.local",
-        fetchImplementation: async () => ({
-            ok: true,
-            async json() {
-                return {};
-            }
-        }),
+        baseUrl: BASE_URL,
+        eventTarget: EVENT_TARGET,
+        windowRef: fakeWindow
+    });
+
+    await session.signOut();
+
+    assert.equal(initCalls, 1);
+    assert.equal(logoutCalls, 1);
+});
+
+test(TEST_LABELS.REQUEST_NONCE_DELEGATES, async () => {
+    let initCalls = 0;
+    let nonceCalls = 0;
+    const fakeWindow = {
+        initAuthClient: async () => {
+            initCalls += 1;
+        },
+        requestNonce: async () => {
+            nonceCalls += 1;
+            return NONCE_VALUE;
+        },
+        logout: async () => {}
+    };
+
+    const session = createTAuthSession({
+        baseUrl: BASE_URL,
+        eventTarget: EVENT_TARGET,
         windowRef: fakeWindow
     });
 
     const nonce = await session.requestNonce();
 
-    assert.equal(nonce, "test-nonce");
+    assert.equal(initCalls, 1);
+    assert.equal(nonceCalls, 1);
+    assert.equal(nonce, NONCE_VALUE);
 });
 
-test("createTAuthSession delegates credential exchange to auth-client helper", async () => {
+test(TEST_LABELS.EXCHANGE_DELEGATES, async () => {
     const exchangeCalls = [];
     const fakeWindow = {
         initAuthClient: async () => {},
         exchangeGoogleCredential: async (payload) => {
             exchangeCalls.push(payload);
-        }
+        },
+        logout: async () => {}
     };
+
     const session = createTAuthSession({
-        baseUrl: "https://tauth.local",
-        fetchImplementation: async () => ({
-            ok: true,
-            async json() {
-                return {};
-            }
-        }),
+        baseUrl: BASE_URL,
+        eventTarget: EVENT_TARGET,
         windowRef: fakeWindow
     });
 
     await session.exchangeGoogleCredential({
-        credential: "google-token",
-        nonceToken: "nonce-123"
+        credential: CREDENTIAL_TOKEN,
+        nonceToken: NONCE_TOKEN
     });
 
-    assert.deepEqual(exchangeCalls, [{ credential: "google-token", nonceToken: "nonce-123" }]);
+    assert.deepEqual(exchangeCalls, [{ credential: CREDENTIAL_TOKEN, nonceToken: NONCE_TOKEN }]);
 });

@@ -1,17 +1,24 @@
 // @ts-check
 
-import { appConfig } from "./config.js?build=2024-10-05T12:00:00Z";
-import { GOOGLE_ANALYTICS_MEASUREMENT_ID } from "../constants.js?build=2024-10-05T12:00:00Z";
-import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
+import { ENVIRONMENT_PRODUCTION } from "./environmentConfig.js?build=2026-01-01T22:43:21Z";
+import { GOOGLE_ANALYTICS_MEASUREMENT_ID } from "../constants.js?build=2026-01-01T22:43:21Z";
+import { logging } from "../utils/logging.js?build=2026-01-01T22:43:21Z";
 
 let analyticsBootstrapped = false;
 
+const ERROR_MESSAGES = Object.freeze({
+    MISSING_CONFIG: "analytics.missing_config"
+});
+
 /**
  * Initialize Google Analytics when the runtime environment allows it.
- * @param {{ measurementId?: string|null }} [options]
+ * @param {{ config: import("./config.js").AppConfig, measurementId?: string|null }} options
  * @returns {void}
  */
-export function initializeAnalytics(options = {}) {
+export function initializeAnalytics(options) {
+    if (!options || typeof options !== "object") {
+        throw new Error(ERROR_MESSAGES.MISSING_CONFIG);
+    }
     if (analyticsBootstrapped) {
         return;
     }
@@ -19,7 +26,7 @@ export function initializeAnalytics(options = {}) {
     if (!measurementId) {
         return;
     }
-    if (appConfig.environment !== "production") {
+    if (options.config.environment !== ENVIRONMENT_PRODUCTION) {
         return;
     }
     if (typeof window === "undefined" || typeof document === "undefined") {
