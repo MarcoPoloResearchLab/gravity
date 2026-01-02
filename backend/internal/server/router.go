@@ -217,6 +217,9 @@ func (h *httpHandler) handleNotesSync(c *gin.Context) {
 		payloadJSON := ""
 		if len(op.Payload) > 0 {
 			payloadJSON = string(op.Payload)
+			if opType == notes.OperationTypeDelete && strings.TrimSpace(payloadJSON) == "null" {
+				payloadJSON = ""
+			}
 		}
 		envelope, err := notes.NewChangeEnvelope(notes.ChangeEnvelopeConfig{
 			UserID:          userID,

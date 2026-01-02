@@ -25,6 +25,7 @@ and are grouped by the date the work landed on `master`.
 - TAuth runtime config now forwards `authTenantId` into the loader/session bridge and drops the crossOrigin attribute so tauth.js loads cleanly in stricter CORS setups (GN-426).
 - Spellcheck replacement regression coverage now simulates replacement input events instead of `execCommand` to avoid flakes (GN-427).
 - Hardened sync payload validation to require noteId + markdownText, enforce note id matching, and rollback on audit/id failures (GN-427).
+- Sync deletes now treat JSON null payloads as empty so delete operations are not rejected during validation (GN-431).
 - Conflict-aware LWW sync now preserves local edits on rejected operations, tracks conflicts, and avoids overwriting local changes during snapshots (GN-429).
 - Html view interactions now reserve the chevron toggle for expansion while single clicks anywhere else enter inline edit mode (GN-109).
 - Inline editor now wraps selected text with matching backtick fences and escalates when the selection already contains backticks, covering GN-106 with new regression tests.
