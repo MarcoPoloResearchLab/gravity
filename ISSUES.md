@@ -111,11 +111,13 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
     - `window.__gravityForceMarkdownEditor`
     - `window.__gravityHtmlViewBubbleDelayMs`
     - `window.sessionStorage.__gravityTestInitialized`
+- [x] [GN-102] Expand synchronization regression coverage across multi-session scenarios: comprehensive Puppeteer suites now verify snapshot application, dual-client editing, offline queue replay, and session bootstrap flows for both freshly authenticated and returning users; helpers gained reusable note event utilities and existing persistence tests consume them, with targeted sync suites executed successfully.
 - [x] [GN-429] Conflict-aware LWW sync: retain rejected operations, surface conflicts, and avoid overwriting local edits when the server is ahead. (Resolved by tracking conflict operations, preserving local edits on rejected sync results, and skipping snapshot overwrites for conflicts.)
 
 
 ## BugFixes (429–528)
 
+- [ ] [GN-31] Persist authenticated sessions across reload by validating stored Google credentials before wiring stores, and add integration coverage without relying on the backend harness.
 - [x] [GN-311] Synchronization doesnt work properly __ ihave added an addition to a note from one browser but when I opened the note later on on a mobile, it was not there.
   Check the logs at @gravity.log and gravity-filtered.log and try to pinpoint the root cause (Resolved by retrying backend sync calls after refreshing expired TAuth sessions; added backend client regression coverage.)
 - [ ] [GN-421] Gravity production runtime config still points authBaseUrl at the old TAuth host, causing nonce/auth client failures after the deployment.
@@ -160,6 +162,8 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
   (Resolved by sharing environment defaults across runtime/test harnesses and replacing execCommand-based spellcheck simulation with deterministic replacement events; full test suite passing.)
 - [x] [GN-430] Stabilize inline editor tests (backtick wrapping + edit blur) to eliminate flakiness in repeated runs.
   (Resolved by making selection/keypress atomic in tests and clicking a deterministic badge surface for edit-mode exit.)
+- [x] [GN-50] Provide a development docker compose that rebuilds the backend image on launch.
+  (Resolved by adding a dev compose configuration that rebuilds the backend image on launch.)
 
 
 ## Planning
