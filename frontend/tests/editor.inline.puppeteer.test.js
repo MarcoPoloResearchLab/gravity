@@ -3,8 +3,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { appConfig } from "../js/core/config.js?build=2026-01-01T21:20:40Z";
+import { createAppConfig } from "../js/core/config.js?build=2026-01-01T22:43:21Z";
+import { ENVIRONMENT_DEVELOPMENT } from "../js/core/environmentConfig.js?build=2026-01-01T22:43:21Z";
 import { createSharedPage, waitForAppHydration, flushAlpineQueues } from "./helpers/browserHarness.js";
+
+const appConfig = createAppConfig({ environment: ENVIRONMENT_DEVELOPMENT });
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
@@ -43,6 +46,12 @@ const TASK_MARKDOWN = "- [ ] Pending task\n- [x] Completed task";
 const LONG_NOTE_ID = "inline-long-fixture";
 const LONG_NOTE_PARAGRAPH_COUNT = 18;
 const LONG_NOTE_MARKDOWN = Array.from({ length: LONG_NOTE_PARAGRAPH_COUNT }, (_, index) => `Paragraph ${index + 1} maintains scroll state.`).join("\n\n");
+const EDITOR_SCROLLBAR_SETTLE_TIMEOUT_MS = 2000;
+const EDITOR_SCROLLBAR_STABLE_FRAMES = 2;
+const EDITOR_SCROLLBAR_UNSTABLE_ERROR = "inline_editor.scrollbars_unstable";
+const CARD_MODE_WAIT_TIMEOUT_MS = 2000;
+const CODEMIRROR_READY_TIMEOUT_MS = 1000;
+const CODEMIRROR_SELECTION_MISSING_ERROR = "inline_editor.selection_missing";
 const HEIGHT_RESET_NOTE_ID = "inline-height-reset";
 const BRACKET_NOTE_ID = "inline-bracket-fixture";
 const BRACKET_MARKDOWN = "Bracket baseline";
@@ -91,6 +100,8 @@ const GN48_MARKDOWN = [
     "",
     "This note validates that re-clicking an already-editing card keeps the editor in place without flickering back to htmlView.",
     "",
+    "The body includes `inline code` so the code badge renders during editing.",
+    "",
     "The body includes multiple paragraphs so the editor has height and padding beyond the CodeMirror viewport.",
     "",
     "Double clicking different parts of the card should merely reposition the caret."
@@ -129,8 +140,14 @@ const GN105_MARKDOWN = [
 ].join("\n");
 const GN106_INLINE_WRAP_NOTE_ID = "inline-backtick-wrap";
 const GN106_INLINE_WRAP_MARKDOWN = "Backtick wrapping baseline text";
+const GN106_INLINE_WRAP_SELECTION = "wrapping";
 const GN106_NESTED_WRAP_NOTE_ID = "inline-backtick-nested";
 const GN106_NESTED_WRAP_MARKDOWN = "Nested `inline` snippet baseline";
+const GN106_NESTED_WRAP_SELECTION = "`inline`";
+const BACKQUOTE_KEY = "Backquote";
+const BACKQUOTE_VALUE = "`";
+const BACKQUOTE_KEY_CODE = 96;
+const KEYPRESS_EVENT = "keypress";
 const GN105_SECOND_NOTE_ID = "inline-outside-click-dismiss-secondary";
 const GN105_SECOND_MARKDOWN = [
     "# Outside Click Secondary",
@@ -515,27 +532,7 @@ test.describe("Markdown inline editor", () => {
         try {
             await enterCardEditMode(page, cardSelector);
 
-            await page.waitForFunction((selector) => {
-                const card = document.querySelector(selector);
-                if (!(card instanceof HTMLElement)) {
-                    return false;
-                }
-                const cardStyle = window.getComputedStyle(card);
-                if (cardStyle.overflowY === "auto" || cardStyle.overflowY === "scroll") {
-                    return false;
-                }
-                const cmScroll = card.querySelector(".CodeMirror-scroll");
-                if (!(cmScroll instanceof HTMLElement)) {
-                    return false;
-                }
-                const cmStyle = window.getComputedStyle(cmScroll);
-                if (cmStyle.overflowY === "auto" || cmStyle.overflowY === "scroll") {
-                    return false;
-                }
-                const cardWithinBounds = card.scrollHeight <= card.clientHeight + 16;
-                const cmWithinBounds = cmScroll.scrollHeight <= cmScroll.clientHeight + 64;
-                return cardWithinBounds && cmWithinBounds;
-            }, { timeout: 1000 }, cardSelector);
+            await waitForStableEditorSizing(page, cardSelector);
 
             const metrics = await page.evaluate((selector) => {
                 const card = document.querySelector(selector);
@@ -1154,38 +1151,31 @@ test.describe("Markdown inline editor", () => {
             assert.equal(baselineState.mode, "edit", "Card should begin in edit mode");
             assert.equal(baselineState.hasEditingClass, true, "Card should carry editing-in-place class");
 
-            const pointerTarget = await page.evaluate((selector) => {
-                const card = document.querySelector(selector);
-                if (!(card instanceof HTMLElement)) {
+            const badgeSelector = `${cardSelector} .note-badges`;
+            await page.waitForFunction((selector) => {
+                const badges = document.querySelector(selector);
+                return badges instanceof HTMLElement && badges.childElementCount > 0;
+            }, {}, badgeSelector);
+
+            const badgeClickPoint = await page.$eval(badgeSelector, (element) => {
+                if (!(element instanceof HTMLElement)) {
                     return null;
                 }
-                const cardContent = card.querySelector(".card-content");
-                if (!(cardContent instanceof HTMLElement)) {
-                    return null;
-                }
-                const pointerDown = new PointerEvent("pointerdown", { bubbles: true, cancelable: true });
-                cardContent.dispatchEvent(pointerDown);
-                const mouseDown = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
-                cardContent.dispatchEvent(mouseDown);
-                const pointerUp = new PointerEvent("pointerup", { bubbles: true, cancelable: true });
-                cardContent.dispatchEvent(pointerUp);
-                const mouseUp = new MouseEvent("mouseup", { bubbles: true, cancelable: true });
-                cardContent.dispatchEvent(mouseUp);
-                const click = new MouseEvent("click", { bubbles: true, cancelable: true });
-                cardContent.dispatchEvent(click);
-                const activeElement = document.activeElement;
-                if (activeElement instanceof HTMLElement) {
-                    activeElement.blur();
-                }
+                const rect = element.getBoundingClientRect();
                 return {
-                    tagName: cardContent.tagName.toLowerCase(),
-                    classList: Array.from(cardContent.classList)
+                    x: rect.left + rect.width / 2,
+                    y: rect.top + rect.height / 2
                 };
-            }, cardSelector);
-            assert.ok(pointerTarget, "Expected to dispatch pointer events on the card chrome surface");
-            assert.equal(pointerTarget.tagName, "div", "Card chrome target should be a div element");
-            assert.ok(pointerTarget.classList.includes("card-content"), "Pointer target must be the card content wrapper");
-            await pause(page, 50);
+            });
+            assert.ok(badgeClickPoint, "Expected to resolve a badge click target");
+            await page.mouse.click(badgeClickPoint.x, badgeClickPoint.y);
+            await page.evaluate(() => {
+                const active = document.activeElement;
+                if (active instanceof HTMLElement) {
+                    active.blur();
+                }
+            });
+            await waitForCardMode(page, cardSelector, "view");
 
             const postClickState = await collectCardEditingTelemetry(page, cardSelector);
             assert.ok(postClickState, "Expected to capture post-click editor state");
@@ -1242,19 +1232,7 @@ test.describe("Markdown inline editor", () => {
             assert.ok(clickPoint, "Meta chips click target should resolve");
 
             await page.mouse.click(clickPoint.x, clickPoint.y);
-            await pause(page, 50);
-
-            await page.waitForFunction((selector) => {
-                const card = document.querySelector(selector);
-                if (!(card instanceof HTMLElement)) {
-                    return false;
-                }
-                if (card.classList.contains("editing-in-place")) {
-                    return false;
-                }
-                const host = Reflect.get(card, "__markdownHost");
-                return Boolean(host && typeof host.getMode === "function" && host.getMode() === "view");
-            }, { timeout: 1500 }, cardSelector);
+            await waitForCardMode(page, cardSelector, "view");
 
             await page.waitForSelector(`${cardSelector} .note-html-view .markdown-content`, { timeout: 2000 });
             const finalTelemetry = await collectCardEditingTelemetry(page, cardSelector);
@@ -1479,19 +1457,7 @@ test.describe("Markdown inline editor", () => {
                 }
                 element.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
             });
-            await pause(page, 50);
-
-            await page.waitForFunction((selector) => {
-                const card = document.querySelector(selector);
-                if (!(card instanceof HTMLElement)) {
-                    return false;
-                }
-                if (card.classList.contains("editing-in-place")) {
-                    return false;
-                }
-                const host = Reflect.get(card, "__markdownHost");
-                return Boolean(host && typeof host.getMode === "function" && host.getMode() === "view");
-            }, { timeout: 1500 }, firstCardSelector);
+            await waitForCardMode(page, firstCardSelector, "view");
 
             const finalTelemetry = await collectCardEditingTelemetry(page, firstCardSelector);
             assert.ok(finalTelemetry, "Expected to collect telemetry after exiting edit mode");
@@ -1553,24 +1519,7 @@ test.describe("Markdown inline editor", () => {
 
             assert.ok(controlClickPoint, "Control column click target should resolve");
             await page.mouse.click(controlClickPoint.x, controlClickPoint.y);
-            await pause(page, 80);
-
-            await page.waitForFunction((selector) => {
-                const card = document.querySelector(selector);
-                if (!(card instanceof HTMLElement)) {
-                    return false;
-                }
-                if (card.classList.contains("editing-in-place")) {
-                    return false;
-                }
-                const host = Reflect.get(card, "__markdownHost");
-                if (!host || typeof host.getMode !== "function") {
-                    return false;
-                }
-                return host.getMode() === "view";
-            }, { timeout: 1500 }, cardSelector);
-
-            await pause(page, 120);
+            await waitForCardMode(page, cardSelector, "view");
             const finalTelemetry = await collectCardEditingTelemetry(page, cardSelector);
             assert.ok(finalTelemetry, "Final telemetry should resolve after clicking the control column");
             assert.equal(finalTelemetry.mode, "view", "Card should remain in view mode after interacting with the control column");
@@ -1593,91 +1542,17 @@ test.describe("Markdown inline editor", () => {
         try {
             await page.waitForSelector(cardSelector, { timeout: 5000 });
             await enterCardEditMode(page, cardSelector);
-            await pause(page, 80);
-            await page.evaluate((selector) => {
-                const card = document.querySelector(selector);
-                if (!(card instanceof HTMLElement)) {
-                    return;
-                }
-                const host = /** @type {any} */ (card).__markdownHost;
-                if (!host) {
-                    return;
-                }
-                const value = host.getValue();
-                const target = "wrapping";
-                const startIndex = value.indexOf(target);
-                if (startIndex < 0) {
-                    return;
-                }
-                const endIndex = startIndex + target.length;
-                const cmElement = card.querySelector(".CodeMirror");
-                const cmInstance = cmElement && typeof /** @type {any} */ (cmElement).CodeMirror !== "undefined"
-                    ? /** @type {any} */ (cmElement).CodeMirror
-                    : null;
-                if (!cmInstance || typeof cmInstance.getDoc !== "function") {
-                    return;
-                }
-                const doc = cmInstance.getDoc();
-                const startPos = doc.posFromIndex(startIndex);
-                const endPos = doc.posFromIndex(endIndex);
-                doc.setSelection(startPos, endPos);
-                cmInstance.focus();
-            }, cardSelector);
-
-            const selectionBefore = await page.evaluate((selector) => {
-                const card = document.querySelector(selector);
-                if (!(card instanceof HTMLElement)) {
-                    return null;
-                }
-                const cmElement = card.querySelector(".CodeMirror");
-                const cmInstance = cmElement && typeof /** @type {any} */ (cmElement).CodeMirror !== "undefined"
-                    ? /** @type {any} */ (cmElement).CodeMirror
-                    : null;
-                if (!cmInstance || typeof cmInstance.getDoc !== "function") {
-                    return null;
-                }
-                const doc = cmInstance.getDoc();
-                const selection = doc.getSelection();
-                const primary = doc.listSelections()?.[0] ?? null;
-                return {
-                    selection,
-                    anchor: primary?.anchor ?? null,
-                    head: primary?.head ?? null
-                };
-            }, cardSelector);
-            assert.ok(selectionBefore, "Expected to capture selection state before wrapping");
-            assert.equal(selectionBefore.selection, "wrapping", "Selection should target the wrapping token before inserting backticks");
-
-            await page.keyboard.press("Backquote");
-
-            const editorState = await page.evaluate((selector) => {
-                const card = document.querySelector(selector);
-                if (!(card instanceof HTMLElement)) {
-                    return null;
-                }
-                const host = /** @type {any} */ (card).__markdownHost;
-                if (!host || typeof host.getValue !== "function") {
-                    return null;
-                }
-                const cmElement = card.querySelector(".CodeMirror");
-                const cmInstance = cmElement && typeof /** @type {any} */ (cmElement).CodeMirror !== "undefined"
-                    ? /** @type {any} */ (cmElement).CodeMirror
-                    : null;
-                const doc = cmInstance && typeof cmInstance.getDoc === "function"
-                    ? cmInstance.getDoc()
-                    : null;
-                const selections = doc ? doc.listSelections() : [];
-                const selectedText = doc ? doc.getSelection() : "";
-                return {
-                    value: host.getValue(),
-                    selectedText,
-                    selectionCount: Array.isArray(selections) ? selections.length : 0
-                };
-            }, cardSelector);
+            await waitForCodeMirrorReady(page, cardSelector);
+            const editorState = await applyBackquoteWrap(page, cardSelector, GN106_INLINE_WRAP_SELECTION);
 
             assert.ok(editorState, "Expected to capture editor state after wrapping");
+            assert.equal(
+                editorState.selectionBefore,
+                GN106_INLINE_WRAP_SELECTION,
+                "Selection should target the wrapping token before inserting backticks"
+            );
             assert.equal(editorState.value, "Backtick `wrapping` baseline text");
-            assert.equal(editorState.selectedText, "wrapping", "Selection should remain on the original text");
+            assert.equal(editorState.selectionAfter, GN106_INLINE_WRAP_SELECTION, "Selection should remain on the original text");
             assert.equal(editorState.selectionCount, 1, "Single selection range expected");
         } finally {
             await teardown();
@@ -1697,75 +1572,16 @@ test.describe("Markdown inline editor", () => {
         try {
             await page.waitForSelector(cardSelector, { timeout: 5000 });
             await enterCardEditMode(page, cardSelector);
-            await pause(page, 80);
-            await page.evaluate((selector) => {
-                const card = document.querySelector(selector);
-                if (!(card instanceof HTMLElement)) {
-                    return;
-                }
-                const host = /** @type {any} */ (card).__markdownHost;
-                if (!host) {
-                    return;
-                }
-                const value = host.getValue();
-                const target = "`inline`";
-                const startIndex = value.indexOf(target);
-                if (startIndex < 0) {
-                    return;
-                }
-                const endIndex = startIndex + target.length;
-                const cmElement = card.querySelector(".CodeMirror");
-                const cmInstance = cmElement && typeof /** @type {any} */ (cmElement).CodeMirror !== "undefined"
-                    ? /** @type {any} */ (cmElement).CodeMirror
-                    : null;
-                if (!cmInstance || typeof cmInstance.getDoc !== "function") {
-                    return;
-                }
-                const doc = cmInstance.getDoc();
-                const startPos = doc.posFromIndex(startIndex);
-                const endPos = doc.posFromIndex(endIndex);
-                doc.setSelection(startPos, endPos);
-                cmInstance.focus();
-            }, cardSelector);
+            await waitForCodeMirrorReady(page, cardSelector);
+            const editorState = await applyBackquoteWrap(page, cardSelector, GN106_NESTED_WRAP_SELECTION);
 
-            const selectionBefore = await page.evaluate((selector) => {
-                const card = document.querySelector(selector);
-                if (!(card instanceof HTMLElement)) {
-                    return null;
-                }
-                const cmElement = card.querySelector(".CodeMirror");
-                const cmInstance = cmElement && typeof /** @type {any} */ (cmElement).CodeMirror !== "undefined"
-                    ? /** @type {any} */ (cmElement).CodeMirror
-                    : null;
-                if (!cmInstance || typeof cmInstance.getDoc !== "function") {
-                    return null;
-                }
-                const doc = cmInstance.getDoc();
-                const selection = doc.getSelection();
-                const primary = doc.listSelections()?.[0] ?? null;
-                return {
-                    selection,
-                    anchor: primary?.anchor ?? null,
-                    head: primary?.head ?? null
-                };
-            }, cardSelector);
-            assert.ok(selectionBefore, "Expected to capture selection state before expanding backticks");
-            assert.equal(selectionBefore.selection, "`inline`", "Selection should target the inline snippet before expanding wrapper");
-
-            await page.keyboard.press("Backquote");
-
-            const markdownValue = await page.evaluate((selector) => {
-                const card = document.querySelector(selector);
-                if (!(card instanceof HTMLElement)) {
-                    return null;
-                }
-                const host = /** @type {any} */ (card).__markdownHost;
-                return host && typeof host.getValue === "function"
-                    ? host.getValue()
-                    : null;
-            }, cardSelector);
-
-            assert.equal(markdownValue, "Nested ```inline``` snippet baseline");
+            assert.ok(editorState, "Expected to capture editor state before expanding backticks");
+            assert.equal(
+                editorState.selectionBefore,
+                GN106_NESTED_WRAP_SELECTION,
+                "Selection should target the inline snippet before expanding wrapper"
+            );
+            assert.equal(editorState.value, "Nested ```inline``` snippet baseline");
         } finally {
             await teardown();
         }
@@ -1818,7 +1634,19 @@ test.describe("Markdown inline editor", () => {
                 root.dispatchEvent(new CustomEvent("gravity:sync-snapshot-applied"));
             });
 
-            await pause(page, 150);
+            await page.waitForFunction((selector, expectedValue) => {
+                const card = document.querySelector(selector);
+                if (!(card instanceof HTMLElement)) {
+                    return false;
+                }
+                const host = /** @type {any} */ (card).__markdownHost;
+                if (!host || typeof host.getMode !== "function" || typeof host.getValue !== "function") {
+                    return false;
+                }
+                return card.classList.contains("editing-in-place")
+                    && host.getMode() === "edit"
+                    && host.getValue() === expectedValue;
+            }, { timeout: 1500 }, cardSelector, draftValue);
 
             const postSnapshotState = await page.evaluate((selector) => {
                 const card = document.querySelector(selector);
@@ -2166,7 +1994,13 @@ test.describe("Markdown inline editor", () => {
                 return card instanceof HTMLElement && !card.classList.contains("editing-in-place");
             }, {}, currentEditSelector);
             await flushAlpineQueues(page);
-            await pause(page, 32);
+            await page.waitForFunction((targetNoteId) => {
+                const editingCard = document.querySelector(".markdown-block.editing-in-place");
+                if (!(editingCard instanceof HTMLElement)) {
+                    return false;
+                }
+                return editingCard.getAttribute("data-note-id") === targetNoteId;
+            }, { timeout: 1500 }, GN81_TARGET_NOTE_ID);
 
             const editingNoteId = await page.evaluate(() => {
                 const editingCard = document.querySelector(".markdown-block.editing-in-place");
@@ -2352,11 +2186,7 @@ test.describe("Markdown inline editor — actions", () => {
             await page.keyboard.press("Enter");
             await page.keyboard.up("Shift");
 
-            await page.waitForFunction((selector) => {
-                const card = document.querySelector(selector);
-                return card instanceof HTMLElement && !card.classList.contains("editing-in-place");
-            }, {}, cardSelector);
-            await pause(page, 50);
+            await waitForCardMode(page, cardSelector, "view");
 
             const telemetry = await collectCardEditingTelemetry(page, cardSelector);
             assert.ok(telemetry, "Expected to collect telemetry after Shift+Enter submission");
@@ -2737,6 +2567,47 @@ async function enterCardEditMode(page, cardSelector) {
     return codeMirrorTextarea;
 }
 
+async function waitForStableEditorSizing(page, cardSelector) {
+    const isStable = await page.evaluate((selector, timeoutMs, requiredFrames) => new Promise((resolve) => {
+        const deadline = performance.now() + timeoutMs;
+        let stableFrames = 0;
+        const check = () => {
+            const card = document.querySelector(selector);
+            if (!(card instanceof HTMLElement)) {
+                stableFrames = 0;
+            } else {
+                const cardStyle = window.getComputedStyle(card);
+                const cmScroll = card.querySelector(".CodeMirror-scroll");
+                const cmStyle = cmScroll instanceof HTMLElement ? window.getComputedStyle(cmScroll) : null;
+                const cardScrollable = cardStyle.overflowY === "auto" || cardStyle.overflowY === "scroll";
+                const cmScrollable = cmStyle && (cmStyle.overflowY === "auto" || cmStyle.overflowY === "scroll");
+                const cardWithinBounds = card.scrollHeight <= card.clientHeight + 16;
+                const cmWithinBounds = cmScroll instanceof HTMLElement
+                    ? cmScroll.scrollHeight <= cmScroll.clientHeight + 64
+                    : false;
+                if (!cardScrollable && !cmScrollable && cardWithinBounds && cmWithinBounds) {
+                    stableFrames += 1;
+                } else {
+                    stableFrames = 0;
+                }
+            }
+            if (stableFrames >= requiredFrames) {
+                resolve(true);
+                return;
+            }
+            if (performance.now() >= deadline) {
+                resolve(false);
+                return;
+            }
+            requestAnimationFrame(check);
+        };
+        check();
+    }), cardSelector, EDITOR_SCROLLBAR_SETTLE_TIMEOUT_MS, EDITOR_SCROLLBAR_STABLE_FRAMES);
+    if (!isStable) {
+        throw new Error(EDITOR_SCROLLBAR_UNSTABLE_ERROR);
+    }
+}
+
 async function focusCardEditor(page, cardSelector, caretPosition = "end") {
     const textareaSelector = getCodeMirrorInputSelector(cardSelector);
     await page.waitForSelector(textareaSelector);
@@ -2873,6 +2744,100 @@ async function pause(page, durationMs) {
     await page.evaluate((ms) => new Promise((resolve) => {
         setTimeout(resolve, typeof ms === "number" ? Math.max(ms, 0) : 0);
     }), durationMs);
+}
+
+async function waitForCardMode(page, cardSelector, targetMode) {
+    await page.waitForFunction((selector, expectedMode) => {
+        const card = document.querySelector(selector);
+        if (!(card instanceof HTMLElement)) {
+            return false;
+        }
+        const host = Reflect.get(card, "__markdownHost");
+        if (!host || typeof host.getMode !== "function") {
+            return false;
+        }
+        const resolvedMode = host.getMode();
+        const hasEditingClass = card.classList.contains("editing-in-place");
+        if (resolvedMode !== expectedMode) {
+            return false;
+        }
+        if (expectedMode === "view") {
+            return !hasEditingClass;
+        }
+        return hasEditingClass;
+    }, { timeout: CARD_MODE_WAIT_TIMEOUT_MS }, cardSelector, targetMode);
+}
+
+async function waitForCodeMirrorReady(page, cardSelector) {
+    await page.waitForFunction((selector) => {
+        const card = document.querySelector(selector);
+        if (!(card instanceof HTMLElement)) {
+            return false;
+        }
+        const cmElement = card.querySelector(".CodeMirror");
+        if (!(cmElement instanceof HTMLElement)) {
+            return false;
+        }
+        const cmInstance = /** @type {any} */ (cmElement).CodeMirror;
+        return Boolean(cmInstance && typeof cmInstance.getDoc === "function");
+    }, { timeout: CODEMIRROR_READY_TIMEOUT_MS }, cardSelector);
+}
+
+async function applyBackquoteWrap(page, cardSelector, selectionText) {
+    return page.evaluate((selector, target, key, keyCodeValue, codeValue, eventType, missingError) => {
+        const card = document.querySelector(selector);
+        if (!(card instanceof HTMLElement)) {
+            throw new Error(missingError);
+        }
+        const host = Reflect.get(card, "__markdownHost");
+        if (!host || typeof host.getValue !== "function") {
+            throw new Error(missingError);
+        }
+        const value = host.getValue();
+        const startIndex = value.indexOf(target);
+        if (startIndex < 0) {
+            throw new Error(missingError);
+        }
+        const endIndex = startIndex + target.length;
+        const cmElement = card.querySelector(".CodeMirror");
+        if (!(cmElement instanceof HTMLElement)) {
+            throw new Error(missingError);
+        }
+        const cmInstance = /** @type {any} */ (cmElement).CodeMirror;
+        if (!cmInstance || typeof cmInstance.getDoc !== "function") {
+            throw new Error(missingError);
+        }
+        const doc = cmInstance.getDoc();
+        const startPos = doc.posFromIndex(startIndex);
+        const endPos = doc.posFromIndex(endIndex);
+        doc.setSelection(startPos, endPos);
+        const selectionBefore = doc.getSelection();
+        const inputField = typeof cmInstance.getInputField === "function"
+            ? cmInstance.getInputField()
+            : null;
+        if (!(inputField instanceof HTMLElement)) {
+            throw new Error(missingError);
+        }
+        inputField.focus();
+        const event = new KeyboardEvent(eventType, {
+            key,
+            code: codeValue,
+            keyCode: keyCodeValue,
+            charCode: keyCodeValue,
+            which: keyCodeValue,
+            bubbles: true,
+            cancelable: true
+        });
+        inputField.dispatchEvent(event);
+        const selectionAfter = doc.getSelection();
+        const selections = doc.listSelections();
+        return {
+            selectionBefore,
+            selectionAfter,
+            selectionCount: Array.isArray(selections) ? selections.length : 0,
+            value: host.getValue()
+        };
+    }, cardSelector, selectionText, BACKQUOTE_VALUE, BACKQUOTE_KEY_CODE, BACKQUOTE_KEY, KEYPRESS_EVENT, CODEMIRROR_SELECTION_MISSING_ERROR);
 }
 
 async function preparePage({ records, htmlViewBubbleDelayMs, waitUntil = "domcontentloaded" }) {
