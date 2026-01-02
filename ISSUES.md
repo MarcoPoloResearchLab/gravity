@@ -158,6 +158,8 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
   (Resolved by delegating to auth-client helpers and updating tests/harness.)
 - [x] [GN-427] Centralize environment config defaults and stabilize inline spellcheck replacement tests.
   (Resolved by sharing environment defaults across runtime/test harnesses and replacing execCommand-based spellcheck simulation with deterministic replacement events; full test suite passing.)
+- [x] [GN-430] Stabilize inline editor tests (backtick wrapping + edit blur) to eliminate flakiness in repeated runs.
+  (Resolved by making selection/keypress atomic in tests and clicking a deterministic badge surface for edit-mode exit.)
 
 
 ## Planning
@@ -166,4 +168,3 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 - [ ] [GN-55] (P1) The current llm-proxy URL is wrong -- there is no such path as https://llm-proxy.mprlab.com/v1/gravity/.
   classify. There is only https://llm-proxy.mprlab.com/, and we need to be sending a system prompt to it to get classification. I have copied llm-proxy codebase under the tools folder. Prepare a system prompt for classification of the notes and send it to llm-proxy service.
 - [ ] [GN-428] Evaluate CRDT/OT sync for multi-device edits; define merge strategy, payload schema, and migration plan.
-
