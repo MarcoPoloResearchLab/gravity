@@ -36,7 +36,7 @@ export const ARIA_LABEL_PIN_NOTE = "Pin note";
 export const ARIA_LABEL_UNPIN_NOTE = "Unpin note";
 export const LABEL_ENTER_FULL_SCREEN = "Enter full screen";
 export const LABEL_EXIT_FULL_SCREEN = "Exit full screen";
-export const APP_BUILD_ID = "2024-10-05T12:00:00Z";
+export const APP_BUILD_ID = "2026-01-01T22:43:21Z";
 export const GOOGLE_ANALYTICS_MEASUREMENT_ID = "G-WYL7PDVTHN";
 
 export const MESSAGE_NOTE_SAVED = "Saved";
@@ -44,6 +44,7 @@ export const MESSAGE_NOTES_IMPORTED = "Notes imported";
 export const MESSAGE_NOTES_SKIPPED = "No new notes found";
 export const MESSAGE_NOTES_IMPORT_FAILED = "Import failed";
 export const MESSAGE_FULLSCREEN_TOGGLE_FAILED = "Unable to toggle full screen mode.";
+export const MESSAGE_SYNC_CONFLICT = "Sync conflict detected. Review your latest changes.";
 
 export const FILENAME_EXPORT_NOTES_JSON = "gravity-notes.json";
 export const ACCEPT_IMPORT_NOTES_JSON = "application/json";

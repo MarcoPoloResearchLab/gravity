@@ -1,30 +1,25 @@
+// @ts-check
+
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-    clearRuntimeConfigForTesting,
-    resolveAuthTenantId,
-    resolveBackendBaseUrl,
-    resolveEnvironmentName,
-    resolveLlmProxyUrl
-} from "../js/core/config.js";
 import { initializeRuntimeConfig } from "../js/core/runtimeConfig.js";
+import {
+    DEVELOPMENT_ENVIRONMENT_CONFIG,
+    ENVIRONMENT_DEVELOPMENT,
+    ENVIRONMENT_PRODUCTION
+} from "../js/core/environmentConfig.js?build=2026-01-01T22:43:21Z";
 
 const TEST_LABELS = Object.freeze({
     APPLIES_REMOTE_CONFIG: "initializeRuntimeConfig applies remote payload when fetch succeeds",
     RETRIES_TRANSIENT_FAILURES: "initializeRuntimeConfig retries transient failures before succeeding",
-    HANDLES_HTTP_FAILURE: "initializeRuntimeConfig reports HTTP failures and preserves defaults",
+    HANDLES_HTTP_FAILURE: "initializeRuntimeConfig rejects HTTP failures",
     HANDLES_ABORT_FAILURE: "initializeRuntimeConfig normalizes abort failures into timeout errors"
 });
 
 const HOSTNAMES = Object.freeze({
     PRODUCTION: "gravity-notes.example.com",
     DEVELOPMENT: "localhost"
-});
-
-const ENVIRONMENT_LABELS = Object.freeze({
-    PRODUCTION: "production",
-    DEVELOPMENT: "development"
 });
 
 const RUNTIME_PATHS = Object.freeze({
@@ -44,12 +39,6 @@ const REMOTE_ENDPOINTS = Object.freeze({
 
 const REMOTE_AUTH_TENANT_ID = "gravity";
 
-const DEFAULT_ENDPOINTS = Object.freeze({
-    BACKEND: "http://localhost:8080",
-    LLM_PROXY: "https://llm-proxy.mprlab.com/v1/gravity/classify",
-    DEVELOPMENT_LLM_PROXY: "http://computercat:8081/v1/gravity/classify"
-});
-
 const ERROR_MESSAGES = Object.freeze({
     HTTP_FAILURE_PREFIX: "Failed to load runtime config: HTTP",
     TIMEOUT_FAILURE: "Timed out while fetching runtime configuration"
@@ -64,15 +53,11 @@ const TRANSIENT_ERROR_MESSAGES = Object.freeze({
     ABORT: "request aborted"
 });
 
-test.describe("initializeRuntimeConfig", () => {
-    test.beforeEach(() => {
-        clearRuntimeConfigForTesting();
-    });
+const SUITE_LABELS = Object.freeze({
+    INITIALIZE_RUNTIME_CONFIG: "initializeRuntimeConfig"
+});
 
-    test.afterEach(() => {
-        clearRuntimeConfigForTesting();
-    });
-
+test.describe(SUITE_LABELS.INITIALIZE_RUNTIME_CONFIG, () => {
     test(TEST_LABELS.APPLIES_REMOTE_CONFIG, async () => {
         /** @type {{ resource: string, init: RequestInit | undefined }[]} */
         const fetchCalls = [];
@@ -83,6 +68,7 @@ test.describe("initializeRuntimeConfig", () => {
                 status: 200,
                 async json() {
                     return {
+                        environment: ENVIRONMENT_PRODUCTION,
                         backendBaseUrl: REMOTE_ENDPOINTS.BACKEND,
                         llmProxyUrl: REMOTE_ENDPOINTS.LLM_PROXY,
                         authTenantId: REMOTE_AUTH_TENANT_ID
@@ -93,7 +79,7 @@ test.describe("initializeRuntimeConfig", () => {
 
         /** @type {unknown[]} */
         const errorNotifications = [];
-        await initializeRuntimeConfig({
+        const appConfig = await initializeRuntimeConfig({
             fetchImplementation: fetchStub,
             location: { hostname: HOSTNAMES.PRODUCTION },
             onError: (error) => {
@@ -105,10 +91,10 @@ test.describe("initializeRuntimeConfig", () => {
         assert.equal(fetchCalls[0].resource, RUNTIME_PATHS.PRODUCTION);
         assert.equal(fetchCalls[0].init?.cache, FETCH_OPTIONS.CACHE_DIRECTIVE);
         assert.equal(fetchCalls[0].init?.credentials, FETCH_OPTIONS.CREDENTIAL_POLICY);
-        assert.equal(resolveEnvironmentName(), ENVIRONMENT_LABELS.PRODUCTION);
-        assert.equal(resolveBackendBaseUrl(), REMOTE_ENDPOINTS.BACKEND);
-        assert.equal(resolveLlmProxyUrl(), REMOTE_ENDPOINTS.LLM_PROXY);
-        assert.equal(resolveAuthTenantId(), REMOTE_AUTH_TENANT_ID);
+        assert.equal(appConfig.environment, ENVIRONMENT_PRODUCTION);
+        assert.equal(appConfig.backendBaseUrl, REMOTE_ENDPOINTS.BACKEND);
+        assert.equal(appConfig.llmProxyUrl, REMOTE_ENDPOINTS.LLM_PROXY);
+        assert.equal(appConfig.authTenantId, REMOTE_AUTH_TENANT_ID);
         assert.equal(errorNotifications.length, 0);
     });
 
@@ -123,14 +109,17 @@ test.describe("initializeRuntimeConfig", () => {
                 ok: true,
                 status: 200,
                 async json() {
-                    return { backendBaseUrl: REMOTE_ENDPOINTS.BACKEND };
+                    return {
+                        environment: ENVIRONMENT_DEVELOPMENT,
+                        backendBaseUrl: REMOTE_ENDPOINTS.BACKEND
+                    };
                 }
             };
         };
 
         /** @type {unknown[]} */
         const errorNotifications = [];
-        await initializeRuntimeConfig({
+        const appConfig = await initializeRuntimeConfig({
             fetchImplementation: fetchStub,
             location: { hostname: HOSTNAMES.DEVELOPMENT },
             onError: (error) => {
@@ -139,9 +128,9 @@ test.describe("initializeRuntimeConfig", () => {
         });
 
         assert.equal(attemptCount, 2);
-        assert.equal(resolveEnvironmentName(), ENVIRONMENT_LABELS.DEVELOPMENT);
-        assert.equal(resolveBackendBaseUrl(), REMOTE_ENDPOINTS.BACKEND);
-        assert.equal(resolveLlmProxyUrl(), DEFAULT_ENDPOINTS.DEVELOPMENT_LLM_PROXY);
+        assert.equal(appConfig.environment, ENVIRONMENT_DEVELOPMENT);
+        assert.equal(appConfig.backendBaseUrl, REMOTE_ENDPOINTS.BACKEND);
+        assert.equal(appConfig.llmProxyUrl, DEVELOPMENT_ENVIRONMENT_CONFIG.llmProxyUrl);
         assert.equal(errorNotifications.length, 0);
     });
 
@@ -156,20 +145,22 @@ test.describe("initializeRuntimeConfig", () => {
 
         /** @type {Error[]} */
         const errorNotifications = [];
-        await initializeRuntimeConfig({
-            fetchImplementation: fetchStub,
-            location: { hostname: HOSTNAMES.DEVELOPMENT },
-            onError: (error) => {
-                errorNotifications.push(/** @type {Error} */ (error));
+        await assert.rejects(
+            () => initializeRuntimeConfig({
+                fetchImplementation: fetchStub,
+                location: { hostname: HOSTNAMES.DEVELOPMENT },
+                onError: (error) => {
+                    errorNotifications.push(/** @type {Error} */ (error));
+                }
+            }),
+            (error) => {
+                assert.equal(error.message, `${ERROR_MESSAGES.HTTP_FAILURE_PREFIX} 503`);
+                return true;
             }
-        });
+        );
 
         assert.equal(errorNotifications.length, 1);
         assert.equal(errorNotifications[0].message, `${ERROR_MESSAGES.HTTP_FAILURE_PREFIX} 503`);
-        assert.equal(resolveEnvironmentName(), ENVIRONMENT_LABELS.DEVELOPMENT);
-        assert.equal(resolveBackendBaseUrl(), DEFAULT_ENDPOINTS.BACKEND);
-        assert.equal(resolveLlmProxyUrl(), DEFAULT_ENDPOINTS.DEVELOPMENT_LLM_PROXY);
-        assert.equal(resolveAuthTenantId(), "");
     });
 
     test(TEST_LABELS.HANDLES_ABORT_FAILURE, async () => {
@@ -183,20 +174,24 @@ test.describe("initializeRuntimeConfig", () => {
 
         /** @type {Error[]} */
         const errorNotifications = [];
-        await initializeRuntimeConfig({
-            fetchImplementation: fetchStub,
-            location: { hostname: HOSTNAMES.DEVELOPMENT },
-            onError: (error) => {
-                errorNotifications.push(/** @type {Error} */ (error));
+        await assert.rejects(
+            () => initializeRuntimeConfig({
+                fetchImplementation: fetchStub,
+                location: { hostname: HOSTNAMES.DEVELOPMENT },
+                onError: (error) => {
+                    errorNotifications.push(/** @type {Error} */ (error));
+                }
+            }),
+            (error) => {
+                assert.equal(error.message, ERROR_MESSAGES.TIMEOUT_FAILURE);
+                assert.equal(error.cause, abortError);
+                return true;
             }
-        });
+        );
 
         assert.equal(attemptCount, 2);
         assert.equal(errorNotifications.length, 1);
         assert.equal(errorNotifications[0].message, ERROR_MESSAGES.TIMEOUT_FAILURE);
         assert.equal(errorNotifications[0].cause, abortError);
-        assert.equal(resolveEnvironmentName(), ENVIRONMENT_LABELS.DEVELOPMENT);
-        assert.equal(resolveBackendBaseUrl(), DEFAULT_ENDPOINTS.BACKEND);
-        assert.equal(resolveLlmProxyUrl(), DEFAULT_ENDPOINTS.DEVELOPMENT_LLM_PROXY);
     });
 });

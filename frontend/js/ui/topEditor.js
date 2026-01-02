@@ -1,16 +1,16 @@
 // @ts-check
 
-import { nowIso } from "../utils/datetime.js?build=2024-10-05T12:00:00Z";
-import { generateNoteId } from "../utils/id.js?build=2024-10-05T12:00:00Z";
-import { createElement } from "../utils/dom.js?build=2024-10-05T12:00:00Z";
+import { nowIso } from "../utils/datetime.js?build=2026-01-01T22:43:21Z";
+import { generateNoteId } from "../utils/id.js?build=2026-01-01T22:43:21Z";
+import { createElement } from "../utils/dom.js?build=2026-01-01T22:43:21Z";
 import {
     ARIA_LABEL_NEW_NOTE,
     ERROR_NOTES_CONTAINER_NOT_FOUND,
     ERROR_TOP_EDITOR_NOT_FOUND,
     EVENT_NOTE_CREATE
-} from "../constants.js?build=2024-10-05T12:00:00Z";
-import { triggerClassificationForCard, focusCardEditor } from "./card.js?build=2024-10-05T12:00:00Z";
-import { renderHtmlView } from "./htmlView.js?build=2024-10-05T12:00:00Z";
+} from "../constants.js?build=2026-01-01T22:43:21Z";
+import { triggerClassificationForCard, focusCardEditor } from "./card.js?build=2026-01-01T22:43:21Z";
+import { renderHtmlView } from "./htmlView.js?build=2026-01-01T22:43:21Z";
 import {
     enableClipboardImagePaste,
     registerInitialAttachments,
@@ -18,21 +18,21 @@ import {
     collectReferencedAttachments,
     resetAttachments,
     transformMarkdownWithAttachments
-} from "./imagePaste.js?build=2024-10-05T12:00:00Z";
-import { createMarkdownEditorHost, MARKDOWN_MODE_EDIT } from "./markdownEditorHost.js?build=2024-10-05T12:00:00Z";
+} from "./imagePaste.js?build=2026-01-01T22:43:21Z";
+import { createMarkdownEditorHost, MARKDOWN_MODE_EDIT } from "./markdownEditorHost.js?build=2026-01-01T22:43:21Z";
 import {
     isTopEditorAutofocusSuppressed,
     clearTopEditorAutofocusSuppression,
     suppressTopEditorAutofocus
-} from "./focusManager.js?build=2024-10-05T12:00:00Z";
+} from "./focusManager.js?build=2026-01-01T22:43:21Z";
 
 /**
  * Mount the always-empty top editor. It never persists empties; on finalize
  * it creates a record and passes it to onCreateRecord so a card can be inserted.
- * @param {{ notesContainer: HTMLElement }} params
+ * @param {{ notesContainer: HTMLElement, config: import("../core/config.js").AppConfig }} params
  * @returns {void}
  */
-export function mountTopEditor({ notesContainer }) {
+export function mountTopEditor({ notesContainer, config }) {
     if (!(notesContainer instanceof HTMLElement)) {
         throw new Error(ERROR_NOTES_CONTAINER_NOT_FOUND);
     }
@@ -149,7 +149,7 @@ export function mountTopEditor({ notesContainer }) {
         resetAttachments(editor);
         keepFocus();
 
-        triggerClassificationForCard(record.noteId, text, notesContainer);
+        triggerClassificationForCard(config, record.noteId, text, notesContainer);
     }
 
     function keepFocus(options = {}) {
@@ -211,7 +211,7 @@ export function mountTopEditor({ notesContainer }) {
     function focusFirstPersistedCard(container) {
         const firstCard = container?.querySelector(".markdown-block:not(.top-editor)");
         if (!firstCard) return false;
-        return focusCardEditor(firstCard, container, { bubblePreviousCardToTop: false });
+        return focusCardEditor(firstCard, container, { bubblePreviousCardToTop: false, config });
     }
 }
 

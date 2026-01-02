@@ -341,13 +341,6 @@ function buildAuthClientStub(profile) {
                 window.__tauthHarnessEvents = { initCount: 0, authenticatedCount: 0 };
             }
             const TENANT_HEADER_NAME = "X-TAuth-Tenant";
-            const normalizeTenantId = (value) => {
-                if (typeof value !== "string") {
-                    return "";
-                }
-                const trimmed = value.trim();
-                return trimmed.length > 0 ? trimmed : "";
-            };
             const harness = {
                 profile: ${serializedProfile},
                 options: null,
@@ -365,7 +358,7 @@ function buildAuthClientStub(profile) {
                     }
                 }
             };
-            const resolveTenantId = () => normalizeTenantId(harness.options?.tenantId);
+            const resolveTenantId = () => harness.options?.tenantId;
             const withTenantHeader = (headers) => {
                 const mergedHeaders = Object.assign({}, headers || {});
                 const tenantId = resolveTenantId();

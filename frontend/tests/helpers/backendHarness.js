@@ -15,6 +15,9 @@ const DEFAULT_SESSION_SIGNING_SECRET = "gravity-test-session-secret";
 const DEFAULT_SESSION_ISSUER = "mprlab-auth";
 const DEFAULT_SESSION_COOKIE = "app_session";
 const DEFAULT_LOG_LEVEL = "info";
+const HEADER_COOKIE = "Cookie";
+const HEADER_AUTHORIZATION = "Authorization";
+const AUTH_SCHEME_BEARER = "Bearer";
 const isWindows = process.platform === "win32";
 let backendBinaryPromise = null;
 
@@ -271,7 +274,8 @@ export function fetchBackendNotes({ backendUrl, sessionToken, cookieName, timeou
                 path: url.pathname,
                 protocol: url.protocol,
                 headers: {
-                    Cookie: `${cookieName}=${sessionToken}`
+                    [HEADER_COOKIE]: `${cookieName}=${sessionToken}`,
+                    [HEADER_AUTHORIZATION]: `${AUTH_SCHEME_BEARER} ${sessionToken}`
                 }
             }, (response) => {
                 const chunks = [];

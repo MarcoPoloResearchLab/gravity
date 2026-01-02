@@ -1,44 +1,85 @@
 // @ts-check
 
-import { appConfig } from "./config.js?build=2024-10-05T12:00:00Z";
-import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
 import {
     EVENT_AUTH_SIGN_IN,
     EVENT_AUTH_SIGN_OUT,
     EVENT_AUTH_ERROR
-} from "../constants.js?build=2024-10-05T12:00:00Z";
+} from "../constants.js?build=2026-01-01T22:43:21Z";
 
-const DEFAULT_HEADERS = Object.freeze({
-    "Content-Type": "application/json",
-    "X-Requested-With": "XMLHttpRequest"
+const TYPE_FUNCTION = "function";
+const TYPE_OBJECT = "object";
+const TYPE_STRING = "string";
+const TYPE_UNDEFINED = "undefined";
+
+const ERROR_MESSAGES = Object.freeze({
+    MISSING_WINDOW: "tauth_session.missing_window",
+    MISSING_EVENT_TARGET: "tauth_session.missing_event_target",
+    MISSING_BASE_URL: "tauth_session.missing_base_url",
+    INVALID_TENANT_ID: "tauth_session.invalid_tenant_id",
+    MISSING_INIT: "tauth_session.missing_init_auth_client",
+    MISSING_LOGOUT: "tauth_session.missing_logout",
+    NONCE_UNAVAILABLE: "tauth.nonce_unavailable",
+    EXCHANGE_UNAVAILABLE: "tauth.exchange_unavailable",
+    EXCHANGE_FAILED: "tauth.exchange_failed"
 });
+
+const UNAUTHENTICATED_REASON = "session-ended";
+
+const PROFILE_KEYS = Object.freeze({
+    USER_ID: "user_id",
+    USER_EMAIL: "user_email",
+    DISPLAY: "display",
+    USER_DISPLAY: "user_display",
+    USER_DISPLAY_NAME: "user_display_name",
+    AVATAR_URL: "avatar_url",
+    USER_AVATAR_URL: "user_avatar_url"
+});
+
+const PROFILE_NAME_KEYS = Object.freeze([
+    PROFILE_KEYS.DISPLAY,
+    PROFILE_KEYS.USER_DISPLAY,
+    PROFILE_KEYS.USER_DISPLAY_NAME
+]);
+
+const PROFILE_AVATAR_KEYS = Object.freeze([
+    PROFILE_KEYS.AVATAR_URL,
+    PROFILE_KEYS.USER_AVATAR_URL
+]);
 
 /**
  * Create a controller that bridges TAuth's auth-client to the Gravity UI.
  * @param {{
- *   baseUrl?: string,
+ *   baseUrl: string,
  *   eventTarget?: EventTarget|null,
- *   fetchImplementation?: typeof fetch,
  *   tenantId?: string,
  *   windowRef?: typeof window
  * }} [options]
  */
 export function createTAuthSession(options = {}) {
-    const win = options.windowRef ?? (typeof window !== "undefined" ? window : null);
-    const baseUrl = normalizeBaseUrl(options.baseUrl ?? appConfig.authBaseUrl);
-    const fetchImplementation = resolveFetchImplementation(options.fetchImplementation, win);
-    const events = options.eventTarget ?? (typeof document !== "undefined" ? document : null);
-    const tenantId = normalizeTenantId(options.tenantId);
-
-    if (!fetchImplementation) {
-        throw new Error("TAuth session requires a fetch implementation.");
+    const win = options.windowRef ?? (typeof window !== TYPE_UNDEFINED ? window : null);
+    if (!win) {
+        throw new Error(ERROR_MESSAGES.MISSING_WINDOW);
+    }
+    if (typeof win.initAuthClient !== TYPE_FUNCTION) {
+        throw new Error(ERROR_MESSAGES.MISSING_INIT);
+    }
+    const baseUrl = options.baseUrl;
+    if (typeof baseUrl !== TYPE_STRING || baseUrl.length === 0) {
+        throw new Error(ERROR_MESSAGES.MISSING_BASE_URL);
+    }
+    const events = options.eventTarget ?? (typeof document !== TYPE_UNDEFINED ? document : null);
+    if (!events || typeof events.dispatchEvent !== TYPE_FUNCTION) {
+        throw new Error(ERROR_MESSAGES.MISSING_EVENT_TARGET);
+    }
+    const tenantId = options.tenantId ?? null;
+    if (tenantId !== null && tenantId !== undefined && typeof tenantId !== TYPE_STRING) {
+        throw new Error(ERROR_MESSAGES.INVALID_TENANT_ID);
     }
 
     const state = {
         initialized: false,
         initializing: null,
         baseUrl,
-        fetch: fetchImplementation,
         initOptions: /** @type {{ baseUrl: string, tenantId?: string, onAuthenticated(profile: unknown): void, onUnauthenticated(): void }|null} */ (null)
     };
 
@@ -48,7 +89,7 @@ export function createTAuthSession(options = {}) {
         });
     };
     const handleUnauthenticated = () => {
-        dispatch(events, EVENT_AUTH_SIGN_OUT, { reason: "session-ended" });
+        dispatch(events, EVENT_AUTH_SIGN_OUT, { reason: UNAUTHENTICATED_REASON });
     };
 
     return Object.freeze({
@@ -57,41 +98,32 @@ export function createTAuthSession(options = {}) {
         },
 
         async signOut() {
-            if (win && typeof win.logout === "function") {
-                await win.logout();
-                return;
+            await ensureInitialized(false);
+            if (typeof win.logout !== TYPE_FUNCTION) {
+                throw new Error(ERROR_MESSAGES.MISSING_LOGOUT);
             }
-            const logoutUrl = resolveLogoutEndpoint(win, baseUrl);
-            try {
-                await state.fetch(logoutUrl, {
-                    method: "POST",
-                    headers: DEFAULT_HEADERS,
-                    credentials: "include"
-                });
-            } catch (error) {
-                logging.error("TAuth logout failed", error);
-            }
+            await win.logout();
         },
 
         async requestNonce() {
-            const initialized = await ensureInitialized(false);
-            if (!initialized || !win || typeof win.requestNonce !== "function") {
-                throw new Error("tauth.nonce_unavailable");
+            await ensureInitialized(false);
+            if (typeof win.requestNonce !== TYPE_FUNCTION) {
+                throw new Error(ERROR_MESSAGES.NONCE_UNAVAILABLE);
             }
             return win.requestNonce();
         },
 
         async exchangeGoogleCredential({ credential, nonceToken }) {
-            const initialized = await ensureInitialized(false);
-            if (!initialized || !win || typeof win.exchangeGoogleCredential !== "function") {
-                const reason = "tauth.exchange_unavailable";
+            await ensureInitialized(false);
+            if (typeof win.exchangeGoogleCredential !== TYPE_FUNCTION) {
+                const reason = ERROR_MESSAGES.EXCHANGE_UNAVAILABLE;
                 dispatch(events, EVENT_AUTH_ERROR, { reason });
                 throw new Error(reason);
             }
             try {
                 await win.exchangeGoogleCredential({ credential, nonceToken });
             } catch (error) {
-                const reason = error instanceof Error ? error.message : "tauth.exchange_failed";
+                const reason = error instanceof Error ? error.message : ERROR_MESSAGES.EXCHANGE_FAILED;
                 dispatch(events, EVENT_AUTH_ERROR, { reason });
                 if (error instanceof Error) {
                     throw error;
@@ -112,148 +144,46 @@ export function createTAuthSession(options = {}) {
             return true;
         }
         state.initializing = (async () => {
-            if (!win || typeof win.initAuthClient !== "function") {
-                logging.warn("TAuth auth-client unavailable; skipping session initialization.");
-                return false;
-            }
             if (!state.initOptions) {
-                state.initOptions = {
+                const initOptions = {
                     baseUrl,
-                    ...(tenantId ? { tenantId } : {}),
                     onAuthenticated: handleAuthenticated,
                     onUnauthenticated: handleUnauthenticated
                 };
+                if (tenantId !== null && tenantId !== undefined) {
+                    initOptions.tenantId = tenantId;
+                }
+                state.initOptions = initOptions;
             }
-            try {
-                await win.initAuthClient(state.initOptions);
-                return true;
-            } catch (error) {
-                logging.error("TAuth client initialization failed", error);
-                return false;
-            }
+            await win.initAuthClient(state.initOptions);
+            return true;
         })();
         try {
             const result = await state.initializing;
             state.initialized = Boolean(result);
             return state.initialized;
+        } catch (error) {
+            state.initialized = false;
+            throw error;
         } finally {
             state.initializing = null;
         }
     }
 }
 
-function normalizeBaseUrl(value) {
-    if (typeof value !== "string") {
-        return "";
-    }
-    const trimmed = value.trim();
-    if (!trimmed) {
-        return "";
-    }
-    return trimmed.replace(/\/+$/u, "");
-}
-
-/**
- * Normalize a tenant identifier.
- * @param {unknown} value
- * @returns {string}
- */
-function normalizeTenantId(value) {
-    if (typeof value !== "string") {
-        return "";
-    }
-    const trimmed = value.trim();
-    if (!trimmed) {
-        return "";
-    }
-    return trimmed;
-}
-
-/**
- * Resolve the logout endpoint from the auth-client when available.
- * @param {typeof window|null} windowRef
- * @param {string} baseUrl
- * @returns {string}
- */
-function resolveLogoutEndpoint(windowRef, baseUrl) {
-    const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
-    const fallback = `${normalizedBaseUrl}/auth/logout`;
-    if (!windowRef || typeof windowRef.getAuthEndpoints !== "function") {
-        return fallback;
-    }
-    try {
-        const endpoints = windowRef.getAuthEndpoints();
-        const logoutUrl = normalizeEndpoint(endpoints?.logoutUrl) || fallback;
-        return logoutUrl;
-    } catch (error) {
-        logging.warn("Failed to resolve TAuth logout endpoint from auth-client", error);
-        return fallback;
-    }
-}
-
-/**
- * Normalize endpoint URLs while preserving intentional blanks.
- * @param {unknown} value
- * @returns {string}
- */
-function normalizeEndpoint(value) {
-    if (value === undefined || value === null) {
-        return "";
-    }
-    if (typeof value !== "string") {
-        return "";
-    }
-    const trimmed = value.trim();
-    if (!trimmed) {
-        return "";
-    }
-    return trimmed;
-}
-
-function resolveFetchImplementation(customFetch, windowRef) {
-    if (typeof customFetch === "function") {
-        return customFetch;
-    }
-    if (typeof fetch === "function") {
-        const scope = resolveGlobalScope(windowRef);
-        if (typeof fetch.bind === "function") {
-            return fetch.bind(scope);
-        }
-        return (...args) => fetch.apply(scope, args);
-    }
-    return null;
-}
-
-function resolveGlobalScope(windowRef) {
-    if (windowRef && typeof windowRef === "object") {
-        return windowRef;
-    }
-    if (typeof globalThis === "object" && globalThis !== null) {
-        return globalThis;
-    }
-    return undefined;
-}
-
 function dispatch(target, type, detail) {
-    if (!target) {
-        return;
-    }
-    try {
-        target.dispatchEvent(new CustomEvent(type, { detail }));
-    } catch (error) {
-        logging.error(error);
-    }
+    target.dispatchEvent(new CustomEvent(type, { detail }));
 }
 
 function normalizeProfile(profile) {
-    if (!profile || typeof profile !== "object") {
+    if (!profile || typeof profile !== TYPE_OBJECT) {
         return null;
     }
     return {
-        id: typeof profile.user_id === "string" ? profile.user_id : null,
-        email: typeof profile.user_email === "string" ? profile.user_email : null,
-        name: selectString(profile, ["display", "user_display", "user_display_name"]),
-        pictureUrl: selectString(profile, ["avatar_url", "user_avatar_url"]),
+        id: typeof profile[PROFILE_KEYS.USER_ID] === TYPE_STRING ? profile[PROFILE_KEYS.USER_ID] : null,
+        email: typeof profile[PROFILE_KEYS.USER_EMAIL] === TYPE_STRING ? profile[PROFILE_KEYS.USER_EMAIL] : null,
+        name: selectString(profile, PROFILE_NAME_KEYS),
+        pictureUrl: selectString(profile, PROFILE_AVATAR_KEYS),
         raw: profile
     };
 }
@@ -266,7 +196,7 @@ function normalizeProfile(profile) {
 function selectString(profile, keys) {
     for (const key of keys) {
         const value = profile[key];
-        if (typeof value === "string" && value.trim().length > 0) {
+        if (typeof value === TYPE_STRING && value.trim().length > 0) {
             return value;
         }
     }

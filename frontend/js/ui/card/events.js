@@ -1,11 +1,11 @@
 // @ts-check
 
-import { isNonBlankString } from "../../utils/string.js?build=2024-10-05T12:00:00Z";
+import { isNonBlankString } from "../../utils/string.js?build=2026-01-01T22:43:21Z";
 import {
     EVENT_NOTE_UPDATE,
     EVENT_NOTE_DELETE,
     EVENT_NOTE_PIN_TOGGLE
-} from "../../constants.js?build=2024-10-05T12:00:00Z";
+} from "../../constants.js?build=2026-01-01T22:43:21Z";
 
 /**
  * Dispatch a note update event so the composition root can persist or re-render.
