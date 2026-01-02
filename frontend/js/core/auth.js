@@ -5,8 +5,8 @@ import {
     EVENT_AUTH_SIGN_IN,
     EVENT_AUTH_SIGN_OUT,
     EVENT_AUTH_CREDENTIAL_RECEIVED
-} from "../constants.js?build=2024-10-05T12:00:00Z";
-import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
+} from "../constants.js?build=2026-01-01T22:43:21Z";
+import { logging } from "../utils/logging.js?build=2026-01-01T22:43:21Z";
 
 /**
  * @typedef {{

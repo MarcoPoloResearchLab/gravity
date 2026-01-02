@@ -3,9 +3,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { appConfig } from "../js/core/config.js";
+import { createAppConfig } from "../js/core/config.js?build=2026-01-01T22:43:21Z";
+import { ENVIRONMENT_DEVELOPMENT } from "../js/core/environmentConfig.js?build=2026-01-01T22:43:21Z";
 import { CLIPBOARD_MIME_NOTE } from "../js/constants.js";
 import { createSharedPage } from "./helpers/browserHarness.js";
+
+const appConfig = createAppConfig({ environment: ENVIRONMENT_DEVELOPMENT });
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");

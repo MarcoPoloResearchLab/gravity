@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { appConfig } from "../js/core/config.js";
+import { createAppConfig } from "../js/core/config.js?build=2026-01-01T22:43:21Z";
+import { ENVIRONMENT_DEVELOPMENT } from "../js/core/environmentConfig.js?build=2026-01-01T22:43:21Z";
 import {
     EVENT_AUTH_SIGN_IN,
     EVENT_AUTH_SIGN_OUT,
     EVENT_AUTH_CREDENTIAL_RECEIVED
 } from "../js/constants.js";
 import { createGoogleIdentityController, isGoogleIdentitySupportedOrigin } from "../js/core/auth.js";
+
+const appConfig = createAppConfig({ environment: ENVIRONMENT_DEVELOPMENT });
 
 const SAMPLE_USER = {
     sub: "demo-user-123",

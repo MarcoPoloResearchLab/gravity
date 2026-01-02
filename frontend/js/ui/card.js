@@ -1,9 +1,9 @@
 // @ts-check
 
-import { createElement } from "../utils/dom.js?build=2024-10-05T12:00:00Z";
-import { copyToClipboard } from "../utils/clipboard.js?build=2024-10-05T12:00:00Z";
-import { isNonBlankString } from "../utils/string.js?build=2024-10-05T12:00:00Z";
-import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
+import { createElement } from "../utils/dom.js?build=2026-01-01T22:43:21Z";
+import { copyToClipboard } from "../utils/clipboard.js?build=2026-01-01T22:43:21Z";
+import { isNonBlankString } from "../utils/string.js?build=2026-01-01T22:43:21Z";
+import { logging } from "../utils/logging.js?build=2026-01-01T22:43:21Z";
 import {
     ARIA_LABEL_COPY_MARKDOWN,
     ARIA_LABEL_COPY_RENDERED,
@@ -23,9 +23,9 @@ import {
     LABEL_MOVE_UP,
     LABEL_PIN_NOTE,
     MESSAGE_NOTE_COPIED
-} from "../constants.js?build=2024-10-05T12:00:00Z";
-import { updateActionButtons, insertCardRespectingPinned } from "./card/listControls.js?build=2024-10-05T12:00:00Z";
-export { updateActionButtons, insertCardRespectingPinned } from "./card/listControls.js?build=2024-10-05T12:00:00Z";
+} from "../constants.js?build=2026-01-01T22:43:21Z";
+import { updateActionButtons, insertCardRespectingPinned } from "./card/listControls.js?build=2026-01-01T22:43:21Z";
+export { updateActionButtons, insertCardRespectingPinned } from "./card/listControls.js?build=2026-01-01T22:43:21Z";
 import {
     applyPinnedState,
     applyPinnedStateForToggle,
@@ -33,7 +33,7 @@ import {
     enforcePinnedAnchor,
     handlePinnedLayoutRefresh,
     placeCardRespectingPinned
-} from "./card/layout.js?build=2024-10-05T12:00:00Z";
+} from "./card/layout.js?build=2026-01-01T22:43:21Z";
 import {
     scheduleHtmlViewBubble,
     bubbleCardToTop,
@@ -41,7 +41,7 @@ import {
     restoreHtmlViewFocus,
     setHtmlViewExpanded,
     collapseExpandedHtmlView
-} from "./card/htmlView.js?build=2024-10-05T12:00:00Z";
+} from "./card/htmlView.js?build=2026-01-01T22:43:21Z";
 import {
     createHtmlView,
     deleteHtmlView,
@@ -50,23 +50,23 @@ import {
     persistCardState,
     createAttachmentSignature,
     stripMarkdownImages
-} from "./card/renderPipeline.js?build=2024-10-05T12:00:00Z";
+} from "./card/renderPipeline.js?build=2026-01-01T22:43:21Z";
 import {
     captureViewportAnchor,
     shouldCenterCard,
     clamp
-} from "./card/viewport.js?build=2024-10-05T12:00:00Z";
+} from "./card/viewport.js?build=2026-01-01T22:43:21Z";
 import {
     initializePointerTracking,
     shouldKeepEditingAfterBlur,
     shouldIgnoreCardPointerTarget,
     isPointerWithinInlineEditorSurface,
     clearLastPointerDownTarget
-} from "./card/pointerTracking.js?build=2024-10-05T12:00:00Z";
+} from "./card/pointerTracking.js?build=2026-01-01T22:43:21Z";
 import {
     renderHtmlViewToString,
     getHtmlViewPlainText
-} from "./htmlView.js?build=2024-10-05T12:00:00Z";
+} from "./htmlView.js?build=2026-01-01T22:43:21Z";
 import {
     enableClipboardImagePaste,
     waitForPendingImagePastes,
@@ -74,11 +74,11 @@ import {
     getAllAttachments,
     collectReferencedAttachments,
     transformMarkdownWithAttachments
-} from "./imagePaste.js?build=2024-10-05T12:00:00Z";
-import { createMarkdownEditorHost, MARKDOWN_MODE_EDIT, MARKDOWN_MODE_VIEW } from "./markdownEditorHost.js?build=2024-10-05T12:00:00Z";
-import { syncStoreFromDom } from "./storeSync.js?build=2024-10-05T12:00:00Z";
-import { suppressTopEditorAutofocus } from "./focusManager.js?build=2024-10-05T12:00:00Z";
-import { togglePinnedNote, clearPinnedNoteIfMatches } from "./notesState.js?build=2024-10-05T12:00:00Z";
+} from "./imagePaste.js?build=2026-01-01T22:43:21Z";
+import { createMarkdownEditorHost, MARKDOWN_MODE_EDIT, MARKDOWN_MODE_VIEW } from "./markdownEditorHost.js?build=2026-01-01T22:43:21Z";
+import { syncStoreFromDom } from "./storeSync.js?build=2026-01-01T22:43:21Z";
+import { suppressTopEditorAutofocus } from "./focusManager.js?build=2026-01-01T22:43:21Z";
+import { togglePinnedNote, clearPinnedNoteIfMatches } from "./notesState.js?build=2026-01-01T22:43:21Z";
 import {
     setEditorHost,
     getEditorHost,
@@ -86,12 +86,12 @@ import {
     setSuppressionState,
     clearSuppressionState,
     disposeCardState
-} from "./card/cardState.js?build=2024-10-05T12:00:00Z";
+} from "./card/cardState.js?build=2026-01-01T22:43:21Z";
 import {
     clearCopyFeedbackTimer,
     storeCopyFeedbackTimer,
     hasCopyFeedbackTimer
-} from "./card/copyFeedback.js?build=2024-10-05T12:00:00Z";
+} from "./card/copyFeedback.js?build=2026-01-01T22:43:21Z";
 import {
     getCurrentEditingCard,
     runMergeAction,
@@ -105,21 +105,21 @@ import {
     suppressFinalize,
     releaseFinalize,
     isFinalizeSuppressed
-} from "./card/editLifecycle.js?build=2024-10-05T12:00:00Z";
+} from "./card/editLifecycle.js?build=2026-01-01T22:43:21Z";
 import {
     dispatchNoteUpdate,
     dispatchNoteDelete,
     dispatchPinToggle
-} from "./card/events.js?build=2024-10-05T12:00:00Z";
+} from "./card/events.js?build=2026-01-01T22:43:21Z";
 import {
     triggerClassificationForCard,
     applyChips
-} from "./card/classification.js?build=2024-10-05T12:00:00Z";
+} from "./card/classification.js?build=2026-01-01T22:43:21Z";
 import {
     mapPlainOffsetToMarkdown,
     getPlainTextMapping,
     buildPlainTextMapping
-} from "./card/textMapping.js?build=2024-10-05T12:00:00Z";
+} from "./card/textMapping.js?build=2026-01-01T22:43:21Z";
 
 export {
     focusCardEditor,
@@ -136,6 +136,9 @@ const CARET_PLACEMENT_START = "start";
 const CARET_PLACEMENT_END = "end";
 const TASK_LINE_REGEX = /^(\s*(?:[-*+]|\d+[.)])\s+\[)( |x|X)(\])([^\n]*)$/;
 const COPY_FEEDBACK_DURATION_MS = 1800;
+const ERROR_MESSAGES = Object.freeze({
+    MISSING_CONFIG: "card.missing_config"
+});
 
 /**
  * @typedef {{ top: number, bottom: number, height: number, viewportHeight: number }} ViewportAnchor
@@ -385,14 +388,18 @@ function updatePinButtonState(card, pinned) {
 /**
  * Render a persisted note card into the provided container.
  * @param {import("../types.d.js").NoteRecord} record
- * @param {{ notesContainer?: HTMLElement }} [options]
+ * @param {{ notesContainer?: HTMLElement, config: import("../core/config.js").AppConfig }} options
  * @returns {HTMLElement}
  */
-export function renderCard(record, options = {}) {
+export function renderCard(record, options) {
     const notesContainer = options.notesContainer ?? document.getElementById("notes-container");
     if (!notesContainer) {
         throw new Error(ERROR_NOTES_CONTAINER_NOT_FOUND);
     }
+    if (!options.config) {
+        throw new Error(ERROR_MESSAGES.MISSING_CONFIG);
+    }
+    const appConfig = options.config;
 
     initializePointerTracking();
 
@@ -419,7 +426,8 @@ export function renderCard(record, options = {}) {
         dispatchPinToggle(notesContainer, record.noteId, { storeUpdated: true, shouldRender: false });
         finalizeCard(card, notesContainer, {
             bubbleToTop: false,
-            suppressTopEditorAutofocus: true
+            suppressTopEditorAutofocus: true,
+            config: appConfig
         });
     };
 
@@ -523,7 +531,8 @@ export function renderCard(record, options = {}) {
         const finalizeTask = () => {
             void finalizeCard(card, notesContainer, {
                 bubbleToTop: false,
-                suppressTopEditorAutofocus: true
+                suppressTopEditorAutofocus: true,
+                config: appConfig
             });
         };
         if (typeof setTimeout === "function") {
@@ -643,7 +652,8 @@ export function renderCard(record, options = {}) {
         setHtmlViewExpanded(card, true);
         focusCardEditor(card, notesContainer, {
             caretPlacement,
-            bubblePreviousCardToTop: true
+            bubblePreviousCardToTop: true,
+            config: appConfig
         });
     };
 
@@ -676,7 +686,8 @@ export function renderCard(record, options = {}) {
         setHtmlViewExpanded(card, true);
         focusCardEditor(card, notesContainer, {
             caretPlacement,
-            bubblePreviousCardToTop: true
+            bubblePreviousCardToTop: true,
+            config: appConfig
         });
     };
 
@@ -740,11 +751,12 @@ export function renderCard(record, options = {}) {
     });
     editorHost.on("submit", () => finalizeCard(card, notesContainer, {
         forceBubble: true,
-        suppressTopEditorAutofocus: true
+        suppressTopEditorAutofocus: true,
+        config: appConfig
     }));
     editorHost.on("blur", () => {
         if (typeof window === "undefined") {
-            finalizeCard(card, notesContainer);
+            finalizeCard(card, notesContainer, { config: appConfig });
             return;
         }
         window.requestAnimationFrame(() => {
@@ -757,11 +769,11 @@ export function renderCard(record, options = {}) {
                 editorHost.focus();
                 return;
             }
-            finalizeCard(card, notesContainer);
+            finalizeCard(card, notesContainer, { config: appConfig });
         });
     });
-    editorHost.on("navigatePrevious", () => navigateToAdjacentCard(card, DIRECTION_PREVIOUS, notesContainer));
-    editorHost.on("navigateNext", () => navigateToAdjacentCard(card, DIRECTION_NEXT, notesContainer));
+    editorHost.on("navigatePrevious", () => navigateToAdjacentCard(card, DIRECTION_PREVIOUS, notesContainer, appConfig));
+    editorHost.on("navigateNext", () => navigateToAdjacentCard(card, DIRECTION_NEXT, notesContainer, appConfig));
 
     updateModeControls();
 

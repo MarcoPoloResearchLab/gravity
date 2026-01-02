@@ -1,6 +1,7 @@
 // @ts-check
 
-import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
+import { logging } from "../utils/logging.js?build=2026-01-01T22:43:21Z";
+import { encodeUrlBlanks } from "../utils/url.js?build=2026-01-01T22:43:21Z";
 
 /**
  * @typedef {{ operation: "upsert"|"delete", note_id: string, client_edit_seq: number, client_device?: string, client_time_s?: number, created_at_s?: number, updated_at_s?: number, payload?: unknown }} SyncOperation
@@ -122,6 +123,10 @@ function normalizeBaseUrl(value) {
     if (!value) {
         return "";
     }
-    const trimmed = value.trim().replace(/\/+$/u, "");
-    return trimmed.length === 0 ? "" : trimmed;
+    const trimmed = value.trim();
+    if (trimmed.length === 0) {
+        return "";
+    }
+    const encoded = encodeUrlBlanks(trimmed);
+    return encoded.replace(/\/+$/u, "");
 }

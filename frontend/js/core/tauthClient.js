@@ -1,86 +1,74 @@
 // @ts-check
 
-import { appConfig } from "./config.js?build=2024-10-05T12:00:00Z";
-import { logging } from "../utils/logging.js?build=2024-10-05T12:00:00Z";
+import { logging } from "../utils/logging.js?build=2026-01-01T22:43:21Z";
 
 const SCRIPT_ELEMENT_ID = "gravity-tauth-client-script";
+const SCRIPT_TAG_NAME = "script";
+const SCRIPT_EVENT_LOAD = "load";
+const SCRIPT_EVENT_ERROR = "error";
+const SCRIPT_TAUTH_PATH = "/tauth.js";
+const DATA_TENANT_ATTRIBUTE = "data-tenant-id";
+
+const TYPE_OBJECT = "object";
+const TYPE_UNDEFINED = "undefined";
+const TYPE_STRING = "string";
+
+const ERROR_MESSAGES = Object.freeze({
+    MISSING_WINDOW: "tauth_client.missing_window",
+    MISSING_DOCUMENT: "tauth_client.missing_document",
+    MISSING_BASE_URL: "tauth_client.missing_base_url",
+    INVALID_TENANT_ID: "tauth_client.invalid_tenant_id",
+    LOAD_FAILED: "tauth-client-load-failed"
+});
+
+const LOG_MESSAGES = Object.freeze({
+    LOAD_FAILED: "Failed to load TAuth tauth.js"
+});
 
 /**
  * Ensure the TAuth tauth.js helper is loaded. Returns when the script
  * has been appended (or already present).
- * @param {{ documentRef?: Document|null, baseUrl?: string|null, tenantId?: string|null }} [options]
+ * @param {{ documentRef?: Document|null, baseUrl: string, tenantId?: string|null }} options
  * @returns {Promise<void>}
  */
-export async function ensureTAuthClientLoaded(options = {}) {
-    if (typeof window === "undefined") {
-        return;
+export async function ensureTAuthClientLoaded(options) {
+    if (typeof window === TYPE_UNDEFINED) {
+        throw new Error(ERROR_MESSAGES.MISSING_WINDOW);
     }
-    const doc = options.documentRef ?? window.document ?? null;
+    if (!options || typeof options !== TYPE_OBJECT) {
+        throw new Error(ERROR_MESSAGES.MISSING_BASE_URL);
+    }
+    const doc = options.documentRef ?? window.document;
     if (!doc) {
-        return;
+        throw new Error(ERROR_MESSAGES.MISSING_DOCUMENT);
     }
     if (doc.getElementById(SCRIPT_ELEMENT_ID)) {
         return;
     }
-    const authBaseUrl = normalizeUrl(options.baseUrl ?? appConfig.authBaseUrl);
-    const tenantId = normalizeTenantId(options.tenantId ?? appConfig.authTenantId);
-    if (!authBaseUrl) {
-        logging.warn("TAuth authBaseUrl missing; skipping auth-client injection.");
-        return;
+    const authBaseUrl = options.baseUrl;
+    if (typeof authBaseUrl !== TYPE_STRING || authBaseUrl.length === 0) {
+        throw new Error(ERROR_MESSAGES.MISSING_BASE_URL);
+    }
+    const tenantId = options.tenantId ?? null;
+    if (tenantId !== null && tenantId !== undefined && typeof tenantId !== TYPE_STRING) {
+        throw new Error(ERROR_MESSAGES.INVALID_TENANT_ID);
     }
 
-    const script = doc.createElement("script");
+    const script = doc.createElement(SCRIPT_TAG_NAME);
     script.id = SCRIPT_ELEMENT_ID;
     script.defer = true;
-    script.src = `${authBaseUrl.replace(/\/+$/u, "")}/tauth.js`;
-    if (tenantId) {
-        script.setAttribute("data-tenant-id", tenantId);
+    script.src = authBaseUrl + SCRIPT_TAUTH_PATH;
+    if (tenantId !== null && tenantId !== undefined) {
+        script.setAttribute(DATA_TENANT_ATTRIBUTE, tenantId);
     }
 
     await new Promise((resolve, reject) => {
-        script.addEventListener("load", () => resolve(undefined), { once: true });
-        script.addEventListener("error", (event) => {
-            logging.error("Failed to load TAuth tauth.js", event);
+        script.addEventListener(SCRIPT_EVENT_LOAD, () => resolve(undefined), { once: true });
+        script.addEventListener(SCRIPT_EVENT_ERROR, (event) => {
+            logging.error(LOG_MESSAGES.LOAD_FAILED, event);
             doc.getElementById(SCRIPT_ELEMENT_ID)?.remove();
-            reject(new Error("tauth-client-load-failed"));
+            reject(new Error(ERROR_MESSAGES.LOAD_FAILED));
         }, { once: true });
-        doc.head?.appendChild(script) ?? doc.body?.appendChild(script);
-    }).catch(() => {
-        // Already logged the failure above.
+        doc.head.appendChild(script);
     });
-}
-
-/**
- * Normalize a URL string (trim and drop trailing slashes).
- * @param {unknown} value
- * @returns {string}
- */
-function normalizeUrl(value) {
-    if (typeof value !== "string") {
-        return "";
-    }
-    const trimmed = value.trim();
-    if (!trimmed) {
-        return "";
-    }
-    return trimmed.replace(/\/+$/u, "");
-}
-
-/**
- * Normalize a tenant identifier while preserving intentional blanks.
- * @param {unknown} value
- * @returns {string}
- */
-function normalizeTenantId(value) {
-    if (value === undefined || value === null) {
-        return "";
-    }
-    if (typeof value !== "string") {
-        return "";
-    }
-    const trimmed = value.trim();
-    if (!trimmed) {
-        return "";
-    }
-    return trimmed;
 }
