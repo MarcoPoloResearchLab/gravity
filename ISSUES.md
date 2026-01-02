@@ -111,6 +111,7 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
     - `window.__gravityForceMarkdownEditor`
     - `window.__gravityHtmlViewBubbleDelayMs`
     - `window.sessionStorage.__gravityTestInitialized`
+- [x] [GN-429] Conflict-aware LWW sync: retain rejected operations, surface conflicts, and avoid overwriting local edits when the server is ahead. (Resolved by tracking conflict operations, preserving local edits on rejected sync results, and skipping snapshot overwrites for conflicts.)
 
 
 ## BugFixes (429–528)
@@ -127,6 +128,8 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
   Override the height lock with inline `!important` styles so expanded cards keep their height in edit mode.
 - [x] [GN-426] Gravity now forwards `authTenantId` into the tauth.js loader and TAuth session bridge while dropping the crossOrigin attribute so auth can load in stricter CORS setups.
   (Resolved by wiring authTenantId through runtime config, loader/session init, and harness CORS headers.)
+- [x] [GN-427] Harden sync payload validation to require noteId/markdownText, enforce note id matching, and rollback on audit/id failures.
+  (Resolved by validating ChangeEnvelope payloads, rejecting invalid sync operations, and adding rollback/normalization coverage.)
 - [ ] [GN-428] CRITICAL: Gravity keeps the UI authenticated even when its backend rejects the session token.
   When Gravity returns 401/invalid token (e.g., issuer/signing key mismatch), the frontend stays logged in because it only keys off TAuth `/me`. We need a client-side 401 handler that clears auth state (trigger tauth.js logout or force re-auth) whenever Gravity API calls fail token validation, so users are not shown authenticated UI with failing backend access.
   Repro (local multi-tenant demo):
@@ -162,5 +165,5 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 
 - [ ] [GN-55] (P1) The current llm-proxy URL is wrong -- there is no such path as https://llm-proxy.mprlab.com/v1/gravity/.
   classify. There is only https://llm-proxy.mprlab.com/, and we need to be sending a system prompt to it to get classification. I have copied llm-proxy codebase under the tools folder. Prepare a system prompt for classification of the notes and send it to llm-proxy service.
-
+- [ ] [GN-428] Evaluate CRDT/OT sync for multi-device edits; define merge strategy, payload schema, and migration plan.
 

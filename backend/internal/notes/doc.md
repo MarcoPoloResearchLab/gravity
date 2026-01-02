@@ -6,7 +6,7 @@ Gravity Notes' backend keeps validation logic at the domain edges. All construct
 
 - `NewUserID` / `NewNoteID` ensure identifiers are non-empty, trimmed, and within storage bounds.
 - `NewUnixTimestamp` rejects non-positive values so persisted times are well-formed.
-- `createNoteRecord` sanitises attachments, normalises booleans, and throws when required fields are missing. Callers must catch the error and avoid persisting malformed payloads.
+- `NewChangeEnvelope` validates payload JSON for upserts (requires `noteId` and `markdownText`, with matching note identifiers) so malformed payloads never reach persistence.
 
 ## ChangeEnvelope
 
@@ -18,6 +18,6 @@ Gravity Notes' backend keeps validation logic at the domain edges. All construct
 
 1. `UserID` instances created via `NewUserID`.
 2. `ChangeEnvelope` values from `NewChangeEnvelope`.
-3. Storage writes run through `createNoteRecord` so invalid notes are rejected before persistence.
+3. Payload JSON validation (noteId + markdownText) runs before persistence so invalid notes are rejected at the edge.
 
 The helper functions in `test_helpers_test.go` provide deterministic fixtures for tests without reimplementing validation.
