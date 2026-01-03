@@ -1,3 +1,5 @@
+// @ts-check
+
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -52,8 +54,8 @@ test.describe("Backend persistence", () => {
         let contextB = null;
 
         try {
-            await dispatchSignIn(pageA, credentialA, TEST_USER_ID);
             await attachBackendSessionCookie(pageA, backendContext, TEST_USER_ID);
+            await dispatchSignIn(pageA, credentialA, TEST_USER_ID);
             await waitForSyncManagerUser(pageA, TEST_USER_ID);
             await waitForPendingOperations(pageA);
 
@@ -85,8 +87,8 @@ test.describe("Backend persistence", () => {
                 llmProxyUrl: ""
             });
 
-            await dispatchSignIn(pageB, credentialB, TEST_USER_ID);
             await attachBackendSessionCookie(pageB, backendContext, TEST_USER_ID);
+            await dispatchSignIn(pageB, credentialB, TEST_USER_ID);
             await waitForSyncManagerUser(pageB, TEST_USER_ID);
             await waitForPendingOperations(pageB);
             await pageB.waitForSelector(".auth-avatar:not([hidden])");

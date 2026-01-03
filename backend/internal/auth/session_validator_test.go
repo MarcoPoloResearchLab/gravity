@@ -9,12 +9,18 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+const (
+	testSessionSigningSecret = "secret"
+	testSessionCookieName    = "app_session"
+	testSessionUserID        = "user-123"
+	testSessionUserEmail     = "user@example.com"
+)
+
 func TestSessionValidatorValidateToken(t *testing.T) {
 	clockNow := time.Date(2024, 9, 1, 12, 0, 0, 0, time.UTC)
 	validator, err := NewSessionValidator(SessionValidatorConfig{
-		SigningSecret: []byte("secret"),
-		Issuer:        "mprlab-auth",
-		CookieName:    "app_session",
+		SigningSecret: []byte(testSessionSigningSecret),
+		CookieName:    testSessionCookieName,
 		Clock: func() time.Time {
 			return clockNow
 		},
@@ -24,17 +30,17 @@ func TestSessionValidatorValidateToken(t *testing.T) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, SessionClaims{
-		UserID:    "user-123",
-		UserEmail: "user@example.com",
+		UserID:    testSessionUserID,
+		UserEmail: testSessionUserEmail,
 		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    "mprlab-auth",
-			Subject:   "user-123",
+			Issuer:    defaultSessionIssuer,
+			Subject:   testSessionUserID,
 			IssuedAt:  jwt.NewNumericDate(clockNow.Add(-time.Minute)),
 			NotBefore: jwt.NewNumericDate(clockNow.Add(-time.Minute)),
 			ExpiresAt: jwt.NewNumericDate(clockNow.Add(time.Hour)),
 		},
 	})
-	signed, err := token.SignedString([]byte("secret"))
+	signed, err := token.SignedString([]byte(testSessionSigningSecret))
 	if err != nil {
 		t.Fatalf("failed to sign token: %v", err)
 	}
@@ -43,7 +49,7 @@ func TestSessionValidatorValidateToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected validation failure: %v", err)
 	}
-	if claims.UserID != "user-123" {
+	if claims.UserID != testSessionUserID {
 		t.Fatalf("unexpected user id: %s", claims.UserID)
 	}
 }
@@ -51,9 +57,8 @@ func TestSessionValidatorValidateToken(t *testing.T) {
 func TestSessionValidatorValidateTokenExpired(t *testing.T) {
 	clockNow := time.Date(2024, 9, 1, 12, 0, 0, 0, time.UTC)
 	validator, err := NewSessionValidator(SessionValidatorConfig{
-		SigningSecret: []byte("secret"),
-		Issuer:        "mprlab-auth",
-		CookieName:    "app_session",
+		SigningSecret: []byte(testSessionSigningSecret),
+		CookieName:    testSessionCookieName,
 		Clock: func() time.Time {
 			return clockNow
 		},
@@ -63,15 +68,15 @@ func TestSessionValidatorValidateTokenExpired(t *testing.T) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, SessionClaims{
-		UserID: "user-123",
+		UserID: testSessionUserID,
 		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    "mprlab-auth",
-			Subject:   "user-123",
+			Issuer:    defaultSessionIssuer,
+			Subject:   testSessionUserID,
 			IssuedAt:  jwt.NewNumericDate(clockNow.Add(-2 * time.Hour)),
 			ExpiresAt: jwt.NewNumericDate(clockNow.Add(-time.Hour)),
 		},
 	})
-	signed, err := token.SignedString([]byte("secret"))
+	signed, err := token.SignedString([]byte(testSessionSigningSecret))
 	if err != nil {
 		t.Fatalf("failed to sign token: %v", err)
 	}
@@ -83,32 +88,31 @@ func TestSessionValidatorValidateTokenExpired(t *testing.T) {
 
 func TestSessionValidatorValidateRequestUsesCookie(t *testing.T) {
 	validator, err := NewSessionValidator(SessionValidatorConfig{
-		SigningSecret: []byte("secret"),
-		Issuer:        "mprlab-auth",
-		CookieName:    "app_session",
+		SigningSecret: []byte(testSessionSigningSecret),
+		CookieName:    testSessionCookieName,
 	})
 	if err != nil {
 		t.Fatalf("failed to construct validator: %v", err)
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, SessionClaims{
-		UserID: "user-123",
+		UserID: testSessionUserID,
 		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    "mprlab-auth",
-			Subject:   "user-123",
+			Issuer:    defaultSessionIssuer,
+			Subject:   testSessionUserID,
 			IssuedAt:  jwt.NewNumericDate(time.Now().Add(-time.Minute)),
 			NotBefore: jwt.NewNumericDate(time.Now().Add(-time.Minute)),
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 		},
 	})
-	signed, err := token.SignedString([]byte("secret"))
+	signed, err := token.SignedString([]byte(testSessionSigningSecret))
 	if err != nil {
 		t.Fatalf("failed to sign token: %v", err)
 	}
 
 	request := httptest.NewRequest(http.MethodGet, "/notes", http.NoBody)
 	request.AddCookie(&http.Cookie{
-		Name:  "app_session",
+		Name:  testSessionCookieName,
 		Value: signed,
 	})
 
@@ -116,7 +120,7 @@ func TestSessionValidatorValidateRequestUsesCookie(t *testing.T) {
 	if err != nil {
 		t.Fatalf("validation failed: %v", err)
 	}
-	if claims.UserID != "user-123" {
+	if claims.UserID != testSessionUserID {
 		t.Fatalf("unexpected user id: %s", claims.UserID)
 	}
 }

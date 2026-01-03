@@ -43,9 +43,6 @@ export function createSyncManager(options) {
     if (!options || typeof options !== TYPE_OBJECT) {
         throw new Error(ERROR_MESSAGES.MISSING_OPTIONS);
     }
-    const backendClient = options.backendClient ?? createBackendClient({
-        baseUrl: assertBaseUrl(options.backendBaseUrl)
-    });
     const metadataStore = options.metadataStore ?? createSyncMetadataStore();
     const queueStore = options.queueStore ?? createSyncQueue();
     const clock = typeof options.clock === "function" ? options.clock : () => new Date();
@@ -57,6 +54,10 @@ export function createSyncManager(options) {
         ? globalThis.document
         : null;
     const syncEventTarget = options.eventTarget ?? defaultEventTarget;
+    const backendClient = options.backendClient ?? createBackendClient({
+        baseUrl: assertBaseUrl(options.backendBaseUrl),
+        eventTarget: syncEventTarget
+    });
 
     /** @type {{ userId: string|null, metadata: Record<string, NoteMetadata>, queue: PendingOperation[], flushing: boolean }} */
     const state = {

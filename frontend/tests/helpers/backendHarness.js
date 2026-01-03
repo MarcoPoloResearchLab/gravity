@@ -1,3 +1,5 @@
+// @ts-check
+
 import { spawn } from "node:child_process";
 import { createHmac } from "node:crypto";
 import { once } from "node:events";
@@ -12,7 +14,6 @@ import { readRuntimeContext } from "./runtimeContext.js";
 const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..", "..");
 const BACKEND_DIR = path.join(REPO_ROOT, "backend");
 const DEFAULT_SESSION_SIGNING_SECRET = "gravity-test-session-secret";
-const DEFAULT_SESSION_ISSUER = "mprlab-auth";
 const DEFAULT_SESSION_COOKIE = "app_session";
 const DEFAULT_LOG_LEVEL = "info";
 const HEADER_COOKIE = "Cookie";
@@ -25,7 +26,6 @@ let backendBinaryPromise = null;
  * Start a Gravity backend instance for integration tests.
  * @param {{
  *   signingSecret?: string,
- *   issuer?: string,
  *   cookieName?: string,
  *   logLevel?: string
  * }} [options]
@@ -46,7 +46,6 @@ let sharedBackendRefs = 0;
 export async function startTestBackend(options = {}) {
     const normalizedOptions = {
         signingSecret: options.signingSecret ?? DEFAULT_SESSION_SIGNING_SECRET,
-        issuer: options.issuer ?? DEFAULT_SESSION_ISSUER,
         cookieName: options.cookieName ?? DEFAULT_SESSION_COOKIE,
         logLevel: options.logLevel ?? DEFAULT_LOG_LEVEL
     };
@@ -75,7 +74,6 @@ export async function startTestBackend(options = {}) {
         address: backendAddress,
         databasePath,
         signingSecret: normalizedOptions.signingSecret,
-        issuer: normalizedOptions.issuer,
         cookieName: normalizedOptions.cookieName,
         logLevel: normalizedOptions.logLevel
     });
@@ -88,7 +86,6 @@ export async function startTestBackend(options = {}) {
         baseUrl: `http://${backendAddress}`,
         googleClientId: "gravity-test-client",
         signingSecret: normalizedOptions.signingSecret,
-        issuer: normalizedOptions.issuer,
         cookieName: normalizedOptions.cookieName,
         signingKeyPem: deriveDummyPem(normalizedOptions.signingSecret),
         signingKeyId: "tauth-session-secret",
@@ -102,7 +99,6 @@ export async function startTestBackend(options = {}) {
         createSessionToken(userId, expiresInSeconds = 5 * 60) {
             return mintSessionToken({
                 userId,
-                issuer: normalizedOptions.issuer,
                 signingSecret: normalizedOptions.signingSecret,
                 expiresInSeconds
             });
@@ -148,7 +144,6 @@ function attemptRuntimeContextBackend(normalizedOptions) {
     const {
         baseUrl,
         signingSecret,
-        issuer,
         cookieName,
         signingKeyPem,
         signingKeyId,
@@ -157,19 +152,17 @@ function attemptRuntimeContextBackend(normalizedOptions) {
     if (
         typeof baseUrl !== "string"
         || typeof signingSecret !== "string"
-        || typeof issuer !== "string"
         || typeof cookieName !== "string"
     ) {
         return null;
     }
-    if (normalizedOptions.signingSecret !== signingSecret || normalizedOptions.issuer !== issuer || normalizedOptions.cookieName !== cookieName) {
+    if (normalizedOptions.signingSecret !== signingSecret || normalizedOptions.cookieName !== cookieName) {
         return null;
     }
 
     return {
         baseUrl,
         signingSecret,
-        issuer,
         cookieName,
         googleClientId: typeof googleClientId === "string" ? googleClientId : "gravity-test-client",
         signingKeyPem: typeof signingKeyPem === "string" ? signingKeyPem : deriveDummyPem(signingSecret),
@@ -184,7 +177,6 @@ function attemptRuntimeContextBackend(normalizedOptions) {
         createSessionToken(userId, expiresInSeconds = 5 * 60) {
             return mintSessionToken({
                 userId,
-                issuer,
                 signingSecret,
                 expiresInSeconds
             });
@@ -301,14 +293,13 @@ export function fetchBackendNotes({ backendUrl, sessionToken, cookieName, timeou
     });
 }
 
-async function startBackendProcess({ binaryPath, address, databasePath, signingSecret, issuer, cookieName, logLevel }) {
+async function startBackendProcess({ binaryPath, address, databasePath, signingSecret, cookieName, logLevel }) {
     const [host, port] = address.split(":");
     const env = {
         ...process.env,
         GRAVITY_HTTP_ADDRESS: `0.0.0.0:${port}`,
         GRAVITY_DATABASE_PATH: databasePath,
         GRAVITY_TAUTH_SIGNING_SECRET: signingSecret,
-        GRAVITY_TAUTH_ISSUER: issuer,
         GRAVITY_TAUTH_COOKIE_NAME: cookieName,
         GRAVITY_LOG_LEVEL: logLevel
     };
@@ -439,7 +430,7 @@ function runCommand(command, args, options) {
     });
 }
 
-function mintSessionToken({ userId, issuer, signingSecret, expiresInSeconds }) {
+function mintSessionToken({ userId, signingSecret, expiresInSeconds }) {
     const header = {
         alg: "HS256",
         typ: "JWT"
@@ -451,7 +442,7 @@ function mintSessionToken({ userId, issuer, signingSecret, expiresInSeconds }) {
         user_display_name: "Gravity Test User",
         user_avatar_url: "https://example.com/avatar.png",
         user_roles: ["user"],
-        iss: issuer,
+        iss: "tauth",
         sub: userId,
         iat: issuedAtSeconds,
         nbf: issuedAtSeconds - 30,
