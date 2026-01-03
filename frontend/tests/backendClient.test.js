@@ -1,7 +1,10 @@
+// @ts-check
+
 import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createBackendClient } from "../js/core/backendClient.js";
+import { EVENT_AUTH_SIGN_OUT_REQUEST } from "../js/constants.js";
 
 class StubResponse {
     constructor(status, body, headers = {}) {
@@ -80,4 +83,39 @@ test("custom fetch is preferred over apiFetch", async () => {
     const result = await client.syncOperations({ operations: [] });
     assert.deepEqual(result, { results: [] });
     assert.equal(customCalls, 1);
+});
+
+test("backend client dispatches sign-out requests on unauthorized responses", async () => {
+    const events = [];
+    const eventTarget = new EventTarget();
+    eventTarget.addEventListener(EVENT_AUTH_SIGN_OUT_REQUEST, (event) => {
+        events.push(event?.detail ?? null);
+    });
+
+    const responses = [
+        new StubResponse(401, { error: "unauthorized" }),
+        new StubResponse(200, { notes: [] }),
+        new StubResponse(401, { error: "unauthorized" })
+    ];
+
+    const client = createBackendClient({
+        baseUrl: "https://api.example.com",
+        eventTarget,
+        fetchImplementation: async () => {
+            const response = responses.shift();
+            if (!response) {
+                throw new Error("unexpected request");
+            }
+            return response;
+        }
+    });
+
+    await assert.rejects(() => client.fetchSnapshot());
+    const snapshot = await client.fetchSnapshot();
+    assert.deepEqual(snapshot, { notes: [] });
+    await assert.rejects(() => client.fetchSnapshot());
+
+    assert.equal(events.length, 2);
+    assert.equal(events[0]?.reason, "backend-unauthorized");
+    assert.equal(events[0]?.status, 401);
 });

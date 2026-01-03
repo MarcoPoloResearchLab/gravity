@@ -133,7 +133,7 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 - [x] [GN-427] Harden sync payload validation to require noteId/markdownText, enforce note id matching, and rollback on audit/id failures.
   (Resolved by validating ChangeEnvelope payloads, rejecting invalid sync operations, and adding rollback/normalization coverage.)
 - [x] [GN-431] Treat JSON null sync payloads as empty for delete operations so deletes are not rejected as invalid changes. (Resolved by normalizing delete payloads when JSON null is provided and adding handler coverage.)
-- [ ] [GN-428] CRITICAL: Gravity keeps the UI authenticated even when its backend rejects the session token.
+- [x] [GN-428] CRITICAL: Gravity keeps the UI authenticated even when its backend rejects the session token.
   When Gravity returns 401/invalid token (e.g., issuer/signing key mismatch), the frontend stays logged in because it only keys off TAuth `/me`. We need a client-side 401 handler that clears auth state (trigger tauth.js logout or force re-auth) whenever Gravity API calls fail token validation, so users are not shown authenticated UI with failing backend access.
   Repro (local multi-tenant demo):
   - Introduce a session validator mismatch (e.g., set GRAVITY_TAUTH_ISSUER to a non-tauth value or change GRAVITY_TAUTH_SIGNING_SECRET).
@@ -148,6 +148,7 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
   - The frontend should not show authenticated UI when backend rejects the session.
   Backend alignment (do this in Gravity so issuer config is never required):
   - `tools/gravity/backend/internal/config/config.go`: remove `tauth.issuer` default + validation (stop requiring GRAVITY_TAUTH_ISSUER).
+  (Resolved by dispatching auth sign-out requests on backend 401 responses, wiring app sign-out handling, and ensuring backend persistence tests attach session cookies before sign-in.)
   - `tools/gravity/backend/cmd/gravity-api/main.go`: drop the `tauth-issuer` flag and viper binding.
   - `tools/gravity/backend/internal/auth/session_validator.go`: default issuer to `tauth` when empty (match TAuth), keep whitespace invalid.
   - `tools/gravity/.env.gravity.example`: remove `GRAVITY_TAUTH_ISSUER`.
