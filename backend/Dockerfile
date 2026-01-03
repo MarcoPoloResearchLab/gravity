@@ -7,7 +7,8 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/gravity-api ./cmd/gravity-api
 
-FROM gcr.io/distroless/base-debian12
+FROM alpine:latest
+RUN apk add --no-cache ca-certificates && mkdir -p /data
 WORKDIR /app
 COPY --from=build /out/gravity-api /app/gravity-api
 EXPOSE 8080
