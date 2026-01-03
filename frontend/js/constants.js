@@ -81,6 +81,7 @@ export const EVENT_NOTES_IMPORTED = "gravity:notes-imported";
 export const EVENT_NOTIFICATION_REQUEST = "gravity:notify";
 export const EVENT_AUTH_SIGN_IN = "gravity:auth-sign-in";
 export const EVENT_AUTH_SIGN_OUT = "gravity:auth-sign-out";
+export const EVENT_AUTH_SIGN_OUT_REQUEST = "gravity:auth-sign-out-request";
 export const EVENT_AUTH_ERROR = "gravity:auth-error";
 export const EVENT_AUTH_CREDENTIAL_RECEIVED = "gravity:auth-credential";
 export const EVENT_SYNC_SNAPSHOT_APPLIED = "gravity:sync-snapshot-applied";
