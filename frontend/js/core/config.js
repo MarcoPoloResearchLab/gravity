@@ -5,14 +5,6 @@ import { ENVIRONMENT_CONFIG } from "./environmentConfig.js?build=2026-01-01T22:4
 const TYPE_OBJECT = "object";
 const TYPE_STRING = "string";
 
-const CONFIG_KEYS = Object.freeze({
-    ENVIRONMENT: "environment",
-    BACKEND_BASE_URL: "backendBaseUrl",
-    LLM_PROXY_URL: "llmProxyUrl",
-    AUTH_BASE_URL: "authBaseUrl",
-    AUTH_TENANT_ID: "authTenantId"
-});
-
 const ERROR_MESSAGES = Object.freeze({
     INVALID_CONFIG: "app_config.invalid_config",
     INVALID_ENVIRONMENT: "app_config.invalid_environment",
@@ -74,39 +66,43 @@ export function createAppConfig(config) {
         throw new Error(ERROR_MESSAGES.INVALID_CONFIG);
     }
 
-    const environment = config[CONFIG_KEYS.ENVIRONMENT];
+    const environment = config.environment;
     const environmentDefaults = ENVIRONMENT_CONFIG[environment];
     if (!environmentDefaults) {
         throw new Error(ERROR_MESSAGES.INVALID_ENVIRONMENT);
     }
 
+    const hasBackendBaseUrl = Object.prototype.hasOwnProperty.call(config, "backendBaseUrl");
     const backendBaseUrl = resolveConfigValue(
-        config,
-        CONFIG_KEYS.BACKEND_BASE_URL,
+        config.backendBaseUrl,
         environmentDefaults.backendBaseUrl,
         false,
-        ERROR_MESSAGES.INVALID_BACKEND_BASE_URL
+        ERROR_MESSAGES.INVALID_BACKEND_BASE_URL,
+        hasBackendBaseUrl
     );
+    const hasLlmProxyUrl = Object.prototype.hasOwnProperty.call(config, "llmProxyUrl");
     const llmProxyUrl = resolveConfigValue(
-        config,
-        CONFIG_KEYS.LLM_PROXY_URL,
+        config.llmProxyUrl,
         environmentDefaults.llmProxyUrl,
         true,
-        ERROR_MESSAGES.INVALID_LLM_PROXY_URL
+        ERROR_MESSAGES.INVALID_LLM_PROXY_URL,
+        hasLlmProxyUrl
     );
+    const hasAuthBaseUrl = Object.prototype.hasOwnProperty.call(config, "authBaseUrl");
     const authBaseUrl = resolveConfigValue(
-        config,
-        CONFIG_KEYS.AUTH_BASE_URL,
+        config.authBaseUrl,
         environmentDefaults.authBaseUrl,
         false,
-        ERROR_MESSAGES.INVALID_AUTH_BASE_URL
+        ERROR_MESSAGES.INVALID_AUTH_BASE_URL,
+        hasAuthBaseUrl
     );
+    const hasAuthTenantId = Object.prototype.hasOwnProperty.call(config, "authTenantId");
     const authTenantId = resolveConfigValue(
-        config,
-        CONFIG_KEYS.AUTH_TENANT_ID,
+        config.authTenantId,
         environmentDefaults.authTenantId,
         true,
-        ERROR_MESSAGES.INVALID_AUTH_TENANT_ID
+        ERROR_MESSAGES.INVALID_AUTH_TENANT_ID,
+        hasAuthTenantId
     );
 
     return Object.freeze({
@@ -120,18 +116,16 @@ export function createAppConfig(config) {
 }
 
 /**
- * @param {RuntimeConfigOverrides} config
- * @param {string} key
+ * @param {unknown} value
  * @param {string} fallback
  * @param {boolean} allowEmpty
  * @param {string} errorCode
+ * @param {boolean} hasOverride
  * @returns {string}
  */
-function resolveConfigValue(config, key, fallback, allowEmpty, errorCode) {
-    if (Object.prototype.hasOwnProperty.call(config, key)) {
-        return assertString(config[key], allowEmpty, errorCode);
-    }
-    return assertString(fallback, allowEmpty, errorCode);
+function resolveConfigValue(value, fallback, allowEmpty, errorCode, hasOverride) {
+    const resolvedValue = hasOverride ? value : fallback;
+    return assertString(resolvedValue, allowEmpty, errorCode);
 }
 
 /**
