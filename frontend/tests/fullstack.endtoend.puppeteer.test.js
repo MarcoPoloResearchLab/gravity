@@ -1,3 +1,5 @@
+// @ts-check
+
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -59,8 +61,8 @@ test.describe("Full stack integration", () => {
             llmProxyUrl: ""
         });
         try {
-            await dispatchSignIn(page, credential, userId);
             await attachBackendSessionCookie(page, backendContext, userId);
+            await dispatchSignIn(page, credential, userId);
             await waitForSyncManagerUser(page, userId);
 
             const noteId = "fullstack-sync-note";

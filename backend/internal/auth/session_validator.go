@@ -12,13 +12,14 @@ import (
 
 var (
 	ErrMissingSessionSigningKey = errors.New("session validator: signing key required")
-	ErrMissingSessionIssuer     = errors.New("session validator: issuer required")
 	ErrMissingSessionCookieName = errors.New("session validator: cookie name required")
 	ErrMissingSessionToken      = errors.New("session validator: token required")
 	ErrInvalidSessionToken      = errors.New("session validator: invalid token")
 	ErrExpiredSessionToken      = errors.New("session validator: token expired")
 	ErrMissingSessionSubject    = errors.New("session validator: subject required")
 )
+
+const defaultSessionIssuer = "tauth"
 
 // SessionClaims mirror the payload emitted by TAuth.
 type SessionClaims struct {
@@ -33,7 +34,6 @@ type SessionClaims struct {
 // SessionValidatorConfig describes how to validate HS256 session cookies.
 type SessionValidatorConfig struct {
 	SigningSecret []byte
-	Issuer        string
 	CookieName    string
 	Clock         func() time.Time
 }
@@ -51,10 +51,6 @@ func NewSessionValidator(cfg SessionValidatorConfig) (*SessionValidator, error) 
 	if len(cfg.SigningSecret) == 0 {
 		return nil, ErrMissingSessionSigningKey
 	}
-	issuer := strings.TrimSpace(cfg.Issuer)
-	if issuer == "" {
-		return nil, ErrMissingSessionIssuer
-	}
 	cookieName := strings.TrimSpace(cfg.CookieName)
 	if cookieName == "" {
 		return nil, ErrMissingSessionCookieName
@@ -65,7 +61,7 @@ func NewSessionValidator(cfg SessionValidatorConfig) (*SessionValidator, error) 
 	}
 	return &SessionValidator{
 		signingSecret: append([]byte(nil), cfg.SigningSecret...),
-		issuer:        issuer,
+		issuer:        defaultSessionIssuer,
 		cookieName:    cookieName,
 		clock:         clock,
 	}, nil

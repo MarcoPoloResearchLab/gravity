@@ -18,6 +18,16 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	sessionSigningSecret = "integration-secret"
+	sessionCookieName    = "app_session"
+	sessionIssuer        = "tauth"
+	sessionUserID        = "user-abc"
+	sessionNoteID        = "note-1"
+	sessionClientDevice  = "web"
+	jsonContentType      = "application/json"
+)
+
 func TestAuthAndSyncFlow(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -39,9 +49,8 @@ func TestAuthAndSyncFlow(t *testing.T) {
 		t.Fatalf("failed to build notes service: %v", err)
 	}
 	sessionValidator, err := auth.NewSessionValidator(auth.SessionValidatorConfig{
-		SigningSecret: []byte("integration-secret"),
-		Issuer:        "mprlab-auth",
-		CookieName:    "app_session",
+		SigningSecret: []byte(sessionSigningSecret),
+		CookieName:    sessionCookieName,
 	})
 	if err != nil {
 		t.Fatalf("failed to construct session validator: %v", err)
@@ -49,7 +58,7 @@ func TestAuthAndSyncFlow(t *testing.T) {
 
 	handler, err := server.NewHTTPHandler(server.Dependencies{
 		SessionValidator: sessionValidator,
-		SessionCookie:    "app_session",
+		SessionCookie:    sessionCookieName,
 		NotesService:     notesService,
 		Logger:           zap.NewNop(),
 	})
@@ -60,24 +69,24 @@ func TestAuthAndSyncFlow(t *testing.T) {
 	testServer := httptest.NewServer(handler)
 	defer testServer.Close()
 
-	sessionToken := mustMintSessionToken(t, "integration-secret", "mprlab-auth", "user-abc", time.Now())
+	sessionToken := mustMintSessionToken(t, sessionSigningSecret, sessionUserID, time.Now())
 	sessionCookie := &http.Cookie{
-		Name:  "app_session",
+		Name:  sessionCookieName,
 		Value: sessionToken,
 	}
 
 	syncRequest := map[string]any{
 		"operations": []any{
 			map[string]any{
-				"note_id":         "note-1",
+				"note_id":         sessionNoteID,
 				"operation":       "upsert",
 				"client_edit_seq": 1,
-				"client_device":   "web",
+				"client_device":   sessionClientDevice,
 				"client_time_s":   1700000000,
 				"created_at_s":    1700000000,
 				"updated_at_s":    1700000000,
 				"payload": map[string]any{
-					"noteId":       "note-1",
+					"noteId":       sessionNoteID,
 					"markdownText": "hello",
 				},
 			},
@@ -86,7 +95,7 @@ func TestAuthAndSyncFlow(t *testing.T) {
 	syncBody, _ := json.Marshal(syncRequest)
 	syncReq, _ := http.NewRequest(http.MethodPost, testServer.URL+"/notes/sync", bytes.NewReader(syncBody))
 	syncReq.AddCookie(sessionCookie)
-	syncReq.Header.Set("Content-Type", "application/json")
+	syncReq.Header.Set("Content-Type", jsonContentType)
 
 	syncResp, err := http.DefaultClient.Do(syncReq)
 	if err != nil {
@@ -134,7 +143,7 @@ func TestAuthAndSyncFlow(t *testing.T) {
 	if len(snapshotPayload.Notes) != 1 {
 		t.Fatalf("expected single note in snapshot, got %d", len(snapshotPayload.Notes))
 	}
-	if snapshotPayload.Notes[0].NoteID != "note-1" {
+	if snapshotPayload.Notes[0].NoteID != sessionNoteID {
 		t.Fatalf("unexpected note id in snapshot: %s", snapshotPayload.Notes[0].NoteID)
 	}
 	if snapshotPayload.Notes[0].IsDeleted {
@@ -147,14 +156,14 @@ func TestAuthAndSyncFlow(t *testing.T) {
 	staleRequest := map[string]any{
 		"operations": []any{
 			map[string]any{
-				"note_id":         "note-1",
+				"note_id":         sessionNoteID,
 				"operation":       "upsert",
 				"client_edit_seq": 0,
-				"client_device":   "web",
+				"client_device":   sessionClientDevice,
 				"client_time_s":   1700000001,
 				"updated_at_s":    1700000001,
 				"payload": map[string]any{
-					"noteId":       "note-1",
+					"noteId":       sessionNoteID,
 					"markdownText": "stale",
 				},
 			},
@@ -163,7 +172,7 @@ func TestAuthAndSyncFlow(t *testing.T) {
 	staleBody, _ := json.Marshal(staleRequest)
 	staleReq, _ := http.NewRequest(http.MethodPost, testServer.URL+"/notes/sync", bytes.NewReader(staleBody))
 	staleReq.AddCookie(sessionCookie)
-	staleReq.Header.Set("Content-Type", "application/json")
+	staleReq.Header.Set("Content-Type", jsonContentType)
 
 	staleResp, err := http.DefaultClient.Do(staleReq)
 	if err != nil {
@@ -188,12 +197,12 @@ func TestAuthAndSyncFlow(t *testing.T) {
 	}
 }
 
-func mustMintSessionToken(t *testing.T, signingSecret, issuer, userID string, now time.Time) string {
+func mustMintSessionToken(t *testing.T, signingSecret, userID string, now time.Time) string {
 	t.Helper()
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, auth.SessionClaims{
 		UserID: userID,
 		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    issuer,
+			Issuer:    sessionIssuer,
 			Subject:   userID,
 			IssuedAt:  jwt.NewNumericDate(now.Add(-time.Minute)),
 			NotBefore: jwt.NewNumericDate(now.Add(-time.Minute)),

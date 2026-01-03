@@ -18,6 +18,15 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	sessionSigningSecret = "test-signing-secret"
+	sessionCookieName    = "app_session"
+	sessionIssuer        = "tauth"
+	sessionUserID        = "user-123"
+	sessionNoteID        = "note-1"
+	jsonContentType      = "application/json"
+)
+
 func TestRealtimeStreamEmitsNoteChangeEvents(t *testing.T) {
 	db, err := gorm.Open(githubsqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
 	if err != nil {
@@ -36,9 +45,8 @@ func TestRealtimeStreamEmitsNoteChangeEvents(t *testing.T) {
 		t.Fatalf("failed to construct notes service: %v", err)
 	}
 	sessionValidator, err := auth.NewSessionValidator(auth.SessionValidatorConfig{
-		SigningSecret: []byte("test-signing-secret"),
-		Issuer:        "mprlab-auth",
-		CookieName:    "app_session",
+		SigningSecret: []byte(sessionSigningSecret),
+		CookieName:    sessionCookieName,
 	})
 	if err != nil {
 		t.Fatalf("failed to construct session validator: %v", err)
@@ -47,7 +55,7 @@ func TestRealtimeStreamEmitsNoteChangeEvents(t *testing.T) {
 	dispatcher := NewRealtimeDispatcher()
 	handler, err := NewHTTPHandler(Dependencies{
 		SessionValidator: sessionValidator,
-		SessionCookie:    "app_session",
+		SessionCookie:    sessionCookieName,
 		NotesService:     noteService,
 		Logger:           zap.NewExample(),
 		Realtime:         dispatcher,
@@ -59,7 +67,7 @@ func TestRealtimeStreamEmitsNoteChangeEvents(t *testing.T) {
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 
-	sessionToken := mustMintSessionToken(t, "test-signing-secret", "mprlab-auth", "user-123", time.Now())
+	sessionToken := mustMintSessionToken(t, sessionSigningSecret, sessionUserID, time.Now())
 
 	streamRequest, err := http.NewRequest(http.MethodGet, server.URL+"/notes/stream?access_token="+sessionToken, http.NoBody)
 	if err != nil {
@@ -78,13 +86,13 @@ func TestRealtimeStreamEmitsNoteChangeEvents(t *testing.T) {
 
 	streamReader := bufio.NewReader(streamResp.Body)
 
-	payload := `{"operations":[{"note_id":"note-1","operation":"upsert","client_edit_seq":1,"client_time_s":1700000000,"created_at_s":1700000000,"updated_at_s":1700000000,"payload":{"noteId":"note-1","markdownText":"hello world","createdAtIso":"2023-01-01T00:00:00Z","updatedAtIso":"2023-01-01T00:00:00Z","lastActivityIso":"2023-01-01T00:00:00Z"}}]}`
+	payload := `{"operations":[{"note_id":"` + sessionNoteID + `","operation":"upsert","client_edit_seq":1,"client_time_s":1700000000,"created_at_s":1700000000,"updated_at_s":1700000000,"payload":{"noteId":"` + sessionNoteID + `","markdownText":"hello world","createdAtIso":"2023-01-01T00:00:00Z","updatedAtIso":"2023-01-01T00:00:00Z","lastActivityIso":"2023-01-01T00:00:00Z"}}]}`
 	syncReq, err := http.NewRequest(http.MethodPost, server.URL+"/notes/sync", bytes.NewBufferString(payload))
 	if err != nil {
 		t.Fatalf("failed to construct sync request: %v", err)
 	}
-	syncReq.AddCookie(&http.Cookie{Name: "app_session", Value: sessionToken})
-	syncReq.Header.Set("Content-Type", "application/json")
+	syncReq.AddCookie(&http.Cookie{Name: sessionCookieName, Value: sessionToken})
+	syncReq.Header.Set("Content-Type", jsonContentType)
 	syncResp, err := http.DefaultClient.Do(syncReq)
 	if err != nil {
 		t.Fatalf("sync request failed: %v", err)
@@ -102,7 +110,7 @@ func TestRealtimeStreamEmitsNoteChangeEvents(t *testing.T) {
 		t.Fatalf("failed to decode sync response: %v", err)
 	}
 	_ = syncResp.Body.Close()
-	if len(syncPayload.Results) != 1 || !syncPayload.Results[0].Accepted || syncPayload.Results[0].NoteID != "note-1" {
+	if len(syncPayload.Results) != 1 || !syncPayload.Results[0].Accepted || syncPayload.Results[0].NoteID != sessionNoteID {
 		t.Fatalf("unexpected sync results: %#v", syncPayload)
 	}
 
@@ -148,7 +156,7 @@ func TestRealtimeStreamEmitsNoteChangeEvents(t *testing.T) {
 			if err := json.Unmarshal([]byte(dataJSON), &payload); err != nil {
 				t.Fatalf("failed to decode event payload: %v", err)
 			}
-			if len(payload.NoteIDs) == 0 || payload.NoteIDs[0] != "note-1" {
+			if len(payload.NoteIDs) == 0 || payload.NoteIDs[0] != sessionNoteID {
 				t.Fatalf("unexpected note identifiers: %#v", payload.NoteIDs)
 			}
 			return
@@ -156,12 +164,12 @@ func TestRealtimeStreamEmitsNoteChangeEvents(t *testing.T) {
 	}
 }
 
-func mustMintSessionToken(t *testing.T, signingSecret, issuer, userID string, now time.Time) string {
+func mustMintSessionToken(t *testing.T, signingSecret, userID string, now time.Time) string {
 	t.Helper()
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, auth.SessionClaims{
 		UserID: userID,
 		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    issuer,
+			Issuer:    sessionIssuer,
 			Subject:   userID,
 			IssuedAt:  jwt.NewNumericDate(now.Add(-time.Minute)),
 			NotBefore: jwt.NewNumericDate(now.Add(-time.Minute)),

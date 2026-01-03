@@ -52,14 +52,12 @@ func setupFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().String("database-path", defaults.GetString("database.path"), "SQLite database path")
 	cmd.PersistentFlags().String("log-level", defaults.GetString("log.level"), "Log level (debug, info, warn, error)")
 	cmd.PersistentFlags().String("tauth-signing-secret", defaults.GetString("tauth.signing_secret"), "Shared HS256 signing secret from TAuth")
-	cmd.PersistentFlags().String("tauth-issuer", defaults.GetString("tauth.issuer"), "Expected issuer for TAuth session tokens")
 	cmd.PersistentFlags().String("tauth-cookie-name", defaults.GetString("tauth.cookie_name"), "Cookie name carrying the TAuth session token")
 
 	bindFlag(cmd, "http.address", "http-address")
 	bindFlag(cmd, "database.path", "database-path")
 	bindFlag(cmd, "log.level", "log-level")
 	bindFlag(cmd, "tauth.signing_secret", "tauth-signing-secret")
-	bindFlag(cmd, "tauth.issuer", "tauth-issuer")
 	bindFlag(cmd, "tauth.cookie_name", "tauth-cookie-name")
 }
 
@@ -108,7 +106,6 @@ func runServer(ctx context.Context) error {
 
 	sessionValidator, err := auth.NewSessionValidator(auth.SessionValidatorConfig{
 		SigningSecret: []byte(appConfig.TAuthSigningKey),
-		Issuer:        appConfig.TAuthIssuer,
 		CookieName:    appConfig.TAuthCookieName,
 	})
 	if err != nil {
