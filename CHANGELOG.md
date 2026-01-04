@@ -49,6 +49,7 @@ and are grouped by the date the work landed on `master`.
 - Checkbox toggles triggered during htmlView bubbling no longer spawn duplicate note cards; bubbling now resolves to the live DOM node and a Safari-focused regression locks the behavior (GN-306).
 - Expand/collapse toggles now align to the full card width rather than the text column, with resize-aware positioning and mobile regression coverage (GN-307).
 - Clicking the card control column now finalizes inline editing without flickering back to markdown mode, covered by a regression targeting the GN-308 scenario (GN-308).
+- Puppeteer sync persistence tests now ensure backend session cookies attach (with a request-interceptor fallback for file:// origins), stabilizing multi-iteration runs (GN-432).
 
 ### Documentation
 - Folded `MIGRATION.md` into `ARCHITECTURE.md`, clarifying event contracts and module guidance (GN-54).
