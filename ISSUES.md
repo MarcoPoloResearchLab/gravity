@@ -154,6 +154,8 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
   - `tools/gravity/.env.gravity.example`: remove `GRAVITY_TAUTH_ISSUER`.
   - `tools/gravity/README.md` + `tools/gravity/ARCHITECTURE.md`: remove issuer references in setup guidance.
   - `tools/gravity/frontend/tests/helpers/backendHarness.js`: stop passing `GRAVITY_TAUTH_ISSUER` or set it to the default internally.
+- [x] [GN-432] Intermittent `persistence.sync.puppeteer.test.js` failures during multi-iteration `make ci` runs.
+  (Resolved by verifying backend session cookies attach in Puppeteer and falling back to injecting Cookie headers per backend request when file:// origins reject setCookie; multi-iteration frontend suites now stay stable.)
 
 
 ## Maintenance (428–499)

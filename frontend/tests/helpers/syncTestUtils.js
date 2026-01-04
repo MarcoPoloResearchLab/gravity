@@ -299,21 +299,55 @@ export async function dispatchSignIn(page, credential, userId) {
  * @param {import("puppeteer").Page} page
  * @param {{ baseUrl: string, cookieName: string, createSessionToken: (userId: string, expiresInSeconds?: number) => string }} backend
  * @param {string} userId
- * @returns {Promise<void>}
+ * @returns {Promise<string>}
  */
 export async function attachBackendSessionCookie(page, backend, userId) {
     if (!backend || typeof backend.baseUrl !== "string") {
         throw new Error("attachBackendSessionCookie requires a backend handle.");
     }
     const sessionToken = backend.createSessionToken(userId);
+    const cookieName = backend.cookieName;
+    let cookieAttached = false;
     try {
         await page.setCookie({
-            name: backend.cookieName,
+            name: cookieName,
             value: sessionToken,
             url: backend.baseUrl
         });
+        const cookies = await page.cookies(backend.baseUrl);
+        cookieAttached = cookies.some((cookie) => cookie.name === cookieName && cookie.value === sessionToken);
     } catch {
+        cookieAttached = false;
         // ignore failures; some browsers disallow setting cookies for file:// origins in automation
+    }
+    if (!cookieAttached) {
+        // Fallback for file:// origins that reject setCookie: inject Cookie header per request.
+        const dispose = await registerRequestInterceptor(page, (request) => {
+            const url = request.url();
+            if (!url.startsWith(backend.baseUrl)) {
+                return false;
+            }
+            const headers = request.headers();
+            const existingCookie = headers.cookie ?? "";
+            const filtered = existingCookie
+                .split(";")
+                .map((entry) => entry.trim())
+                .filter((entry) => entry.length > 0 && !entry.startsWith(`${cookieName}=`))
+                .join("; ");
+            const cookieHeader = filtered.length > 0
+                ? `${filtered}; ${cookieName}=${sessionToken}`
+                : `${cookieName}=${sessionToken}`;
+            request.continue({
+                headers: {
+                    ...headers,
+                    cookie: cookieHeader
+                }
+            }).catch(() => {});
+            return true;
+        });
+        page.once("close", () => {
+            dispose();
+        });
     }
     return sessionToken;
 }
