@@ -1,0 +1,16 @@
+.git
+.gitignore
+*.md
+.idea
+.vscode
+.env*
+data/
+tests/
+tools/
+docs/
+.cache/
+.github/
+*.db
+*.sqlite
+Makefile
+issues.md/

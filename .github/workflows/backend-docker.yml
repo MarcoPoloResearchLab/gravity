@@ -11,6 +11,7 @@ on:
       - master
     paths:
       - backend/Dockerfile
+      - backend/.dockerignore
       - .github/workflows/backend-docker.yml
   workflow_dispatch:
 
