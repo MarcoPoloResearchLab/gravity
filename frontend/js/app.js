@@ -392,16 +392,10 @@ function gravityApp(appConfig) {
                 return;
             }
             if (!this.authNonceToken) {
-                try {
-                    this.authNonceToken = await this.tauthSession.requestNonce();
-                } catch (error) {
-                    logging.error("Failed to request auth nonce", error);
-                    this.authControls?.showError(ERROR_AUTHENTICATION_GENERIC);
-                    return;
-                }
-            }
-            if (!this.authNonceToken) {
+                logging.error("Auth nonce missing during credential exchange - reinitializing");
                 this.authControls?.showError(ERROR_AUTHENTICATION_GENERIC);
+                this.authController?.dispose();
+                this.authController = null;
                 return;
             }
             try {
@@ -470,6 +464,8 @@ function gravityApp(appConfig) {
             }
             if (this.authController) {
                 this.authController.signOut(reason);
+                this.authController.dispose();
+                this.authController = null;
             } else {
                 this.dispatchAuthSignOut(reason);
             }
