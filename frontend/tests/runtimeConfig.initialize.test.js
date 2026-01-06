@@ -34,7 +34,8 @@ const FETCH_OPTIONS = Object.freeze({
 
 const REMOTE_ENDPOINTS = Object.freeze({
     BACKEND: "https://api.example.com/v1",
-    LLM_PROXY: "https://llm.example.com/v1/classify"
+    LLM_PROXY: "https://llm.example.com/v1/classify",
+    AUTH: "https://auth.example.com"
 });
 
 const REMOTE_AUTH_TENANT_ID = "gravity";
@@ -71,6 +72,7 @@ test.describe(SUITE_LABELS.INITIALIZE_RUNTIME_CONFIG, () => {
                         environment: ENVIRONMENT_PRODUCTION,
                         backendBaseUrl: REMOTE_ENDPOINTS.BACKEND,
                         llmProxyUrl: REMOTE_ENDPOINTS.LLM_PROXY,
+                        authBaseUrl: REMOTE_ENDPOINTS.AUTH,
                         authTenantId: REMOTE_AUTH_TENANT_ID
                     };
                 }
@@ -94,6 +96,7 @@ test.describe(SUITE_LABELS.INITIALIZE_RUNTIME_CONFIG, () => {
         assert.equal(appConfig.environment, ENVIRONMENT_PRODUCTION);
         assert.equal(appConfig.backendBaseUrl, REMOTE_ENDPOINTS.BACKEND);
         assert.equal(appConfig.llmProxyUrl, REMOTE_ENDPOINTS.LLM_PROXY);
+        assert.equal(appConfig.authBaseUrl, REMOTE_ENDPOINTS.AUTH);
         assert.equal(appConfig.authTenantId, REMOTE_AUTH_TENANT_ID);
         assert.equal(errorNotifications.length, 0);
     });

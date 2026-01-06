@@ -36,12 +36,12 @@ test(TEST_LABELS.DEVELOPMENT_DEFAULTS, () => {
 });
 
 test(TEST_LABELS.PRODUCTION_DEFAULTS, () => {
-    const appConfig = createAppConfig({ environment: ENVIRONMENT_PRODUCTION });
-
-    assert.equal(appConfig.environment, ENVIRONMENT_PRODUCTION);
-    assert.equal(appConfig.backendBaseUrl, PRODUCTION_ENVIRONMENT_CONFIG.backendBaseUrl);
-    assert.equal(appConfig.authBaseUrl, PRODUCTION_ENVIRONMENT_CONFIG.authBaseUrl);
-    assert.equal(appConfig.authTenantId, PRODUCTION_ENVIRONMENT_CONFIG.authTenantId);
+    // Production config requires runtime overrides from runtime.config.production.json
+    // Empty defaults should throw when no override is provided
+    assert.throws(
+        () => createAppConfig({ environment: ENVIRONMENT_PRODUCTION }),
+        { message: "app_config.invalid_backend_base_url" }
+    );
 });
 
 test(TEST_LABELS.BACKEND_OVERRIDE, () => {
@@ -57,13 +57,24 @@ test(TEST_LABELS.LLM_OVERRIDE, () => {
 });
 
 test(TEST_LABELS.AUTH_BASE_OVERRIDE, () => {
-    const appConfig = createAppConfig({ environment: ENVIRONMENT_PRODUCTION, authBaseUrl: AUTH_BASE_URL_OVERRIDE });
+    // Production requires backendBaseUrl override as well
+    const appConfig = createAppConfig({
+        environment: ENVIRONMENT_PRODUCTION,
+        backendBaseUrl: BACKEND_URL_OVERRIDE,
+        authBaseUrl: AUTH_BASE_URL_OVERRIDE
+    });
 
     assert.equal(appConfig.authBaseUrl, AUTH_BASE_URL_OVERRIDE);
 });
 
 test(TEST_LABELS.AUTH_TENANT_OVERRIDE, () => {
-    const appConfig = createAppConfig({ environment: ENVIRONMENT_PRODUCTION, authTenantId: AUTH_TENANT_OVERRIDE });
+    // Production requires backendBaseUrl and authBaseUrl overrides as well
+    const appConfig = createAppConfig({
+        environment: ENVIRONMENT_PRODUCTION,
+        backendBaseUrl: BACKEND_URL_OVERRIDE,
+        authBaseUrl: AUTH_BASE_URL_OVERRIDE,
+        authTenantId: AUTH_TENANT_OVERRIDE
+    });
 
     assert.equal(appConfig.authTenantId, AUTH_TENANT_OVERRIDE);
 });

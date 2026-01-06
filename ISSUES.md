@@ -120,8 +120,8 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 - [ ] [GN-31] Persist authenticated sessions across reload by validating stored Google credentials before wiring stores, and add integration coverage without relying on the backend harness.
 - [x] [GN-311] Synchronization doesnt work properly __ ihave added an addition to a note from one browser but when I opened the note later on on a mobile, it was not there.
   Check the logs at @gravity.log and gravity-filtered.log and try to pinpoint the root cause (Resolved by retrying backend sync calls after refreshing expired TAuth sessions; added backend client regression coverage.)
-- [ ] [GN-421] Gravity production runtime config still points authBaseUrl at the old TAuth host, causing nonce/auth client failures after the deployment.
-  Update production defaults/runtime config and align tests.
+- [x] [GN-421] Gravity production runtime config still points authBaseUrl at the old TAuth host, causing nonce/auth client failures after the deployment.
+  Fixed `authBaseUrl` to `tauth-api.mprlab.com` in `runtime.config.production.json`; removed hardcoded production URLs from `environmentConfig.js` so JSON is the single source of truth.
 - [x] [GN-422] Align Gravity's TAuth session flow with auth-client endpoint mapping to avoid CORS/404s after client updates.
   (Resolved by using the auth-client endpoint map and updating tests.)
 - [x] [GN-424] Gravity still loads the legacy TAuth helper at `/static/auth-client.js`, which no longer exists.
