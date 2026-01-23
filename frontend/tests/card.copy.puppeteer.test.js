@@ -1,14 +1,14 @@
+// @ts-check
+
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { createAppConfig } from "../js/core/config.js?build=2026-01-01T22:43:21Z";
-import { ENVIRONMENT_DEVELOPMENT } from "../js/core/environmentConfig.js?build=2026-01-01T22:43:21Z";
 import { CLIPBOARD_MIME_NOTE } from "../js/constants.js";
-import { createSharedPage } from "./helpers/browserHarness.js";
-
-const appConfig = createAppConfig({ environment: ENVIRONMENT_DEVELOPMENT });
+import { connectSharedBrowser } from "./helpers/browserHarness.js";
+import { startTestBackend } from "./helpers/backendHarness.js";
+import { buildUserStorageKey, prepareFrontendPage, signInTestUser } from "./helpers/syncTestUtils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
@@ -18,13 +18,14 @@ const VIEW_MODE_NOTE_ID = "copy-htmlView-fixture";
 const VIEW_MODE_MARKDOWN = "HtmlView **bold** payload.";
 const EDIT_MODE_NOTE_ID = "copy-edit-fixture";
 const EDIT_MODE_MARKDOWN = "Edit mode copy baseline.";
+const TEST_USER_ID = "clipboard-user";
 
 test.describe("Card clipboard actions", () => {
     test("copy action uses rendered htmlView when available", async () => {
         const seededRecords = [
             buildNoteRecord({ noteId: VIEW_MODE_NOTE_ID, markdownText: VIEW_MODE_MARKDOWN })
         ];
-        const { page, teardown } = await prepareClipboardPage({ records: seededRecords });
+        const { page, teardown } = await prepareClipboardPage({ records: seededRecords, userId: TEST_USER_ID });
         const cardSelector = `.markdown-block[data-note-id="${VIEW_MODE_NOTE_ID}"]`;
         try {
             await page.waitForSelector(`${cardSelector} .note-html-view .markdown-content`);
@@ -48,7 +49,7 @@ test.describe("Card clipboard actions", () => {
         const seededRecords = [
             buildNoteRecord({ noteId: EDIT_MODE_NOTE_ID, markdownText: EDIT_MODE_MARKDOWN })
         ];
-        const { page, teardown } = await prepareClipboardPage({ records: seededRecords });
+        const { page, teardown } = await prepareClipboardPage({ records: seededRecords, userId: TEST_USER_ID });
         const cardSelector = `.markdown-block[data-note-id="${EDIT_MODE_NOTE_ID}"]`;
         try {
             await page.waitForSelector(cardSelector);
@@ -99,70 +100,86 @@ function buildNoteRecord({ noteId, markdownText }) {
     };
 }
 
-async function prepareClipboardPage({ records }) {
-    const { page, teardown } = await createSharedPage();
+async function prepareClipboardPage({ records, userId }) {
+    const backend = await startTestBackend();
+    const browser = await connectSharedBrowser();
+    const context = await browser.createBrowserContext();
     const serializedRecords = JSON.stringify(Array.isArray(records) ? records : []);
-    await page.evaluateOnNewDocument((storageKey, payload) => {
-        window.sessionStorage.setItem("__gravityTestInitialized", "true");
-        window.localStorage.clear();
-        window.localStorage.setItem(storageKey, payload);
-        window.__gravityForceMarkdownEditor = true;
-        window.__copiedPayloads = [];
-        class ClipboardItemStub {
-            constructor(items) {
-                this.items = items;
-                this.types = Object.keys(items);
-            }
-            async getType(type) {
-                const blob = this.items?.[type];
-                if (!blob) {
-                    throw new Error(`Unsupported clipboard type: ${type}`);
-                }
-                return blob;
-            }
-        }
-        window.ClipboardItem = ClipboardItemStub;
-        const clipboardStub = {
-            async write(items) {
-                const aggregated = {};
-                for (const item of Array.isArray(items) ? items : []) {
-                    if (!item || typeof item.getType !== "function") {
-                        continue;
+    const storageKey = buildUserStorageKey(userId);
+    const page = await prepareFrontendPage(context, PAGE_URL, {
+        backendBaseUrl: backend.baseUrl,
+        beforeNavigate: (targetPage) => {
+            return targetPage.evaluateOnNewDocument((payloadKey, payload) => {
+                window.sessionStorage.setItem("__gravityTestInitialized", "true");
+                window.localStorage.clear();
+                window.localStorage.setItem(payloadKey, payload);
+                window.__gravityForceMarkdownEditor = true;
+                window.__copiedPayloads = [];
+                class ClipboardItemStub {
+                    constructor(items) {
+                        this.items = items;
+                        this.types = Object.keys(items);
                     }
-                    const itemTypes = Array.isArray(item.types) ? item.types : Object.keys(item.items || {});
-                    for (const type of itemTypes) {
-                        try {
-                            const blob = await item.getType(type);
-                            if (blob && typeof blob.text === "function") {
-                                aggregated[type] = await blob.text();
-                            }
-                        } catch {
-                            aggregated[type] = "";
+                    async getType(type) {
+                        const blob = this.items?.[type];
+                        if (!blob) {
+                            throw new Error(`Unsupported clipboard type: ${type}`);
                         }
+                        return blob;
                     }
                 }
-                window.__copiedPayloads.push(aggregated);
-                return true;
-            },
-            async writeText(text) {
-                window.__copiedPayloads.push({
-                    "text/plain": typeof text === "string" ? text : ""
+                window.ClipboardItem = ClipboardItemStub;
+                const clipboardStub = {
+                    async write(items) {
+                        const aggregated = {};
+                        for (const item of Array.isArray(items) ? items : []) {
+                            if (!item || typeof item.getType !== "function") {
+                                continue;
+                            }
+                            const itemTypes = Array.isArray(item.types) ? item.types : Object.keys(item.items || {});
+                            for (const type of itemTypes) {
+                                try {
+                                    const blob = await item.getType(type);
+                                    if (blob && typeof blob.text === "function") {
+                                        aggregated[type] = await blob.text();
+                                    }
+                                } catch {
+                                    aggregated[type] = "";
+                                }
+                            }
+                        }
+                        window.__copiedPayloads.push(aggregated);
+                        return true;
+                    },
+                    async writeText(text) {
+                        window.__copiedPayloads.push({
+                            "text/plain": typeof text === "string" ? text : ""
+                        });
+                        return true;
+                    }
+                };
+                Object.defineProperty(navigator, "clipboard", {
+                    configurable: true,
+                    get() {
+                        return clipboardStub;
+                    }
                 });
-                return true;
-            }
-        };
-        Object.defineProperty(navigator, "clipboard", {
-            configurable: true,
-            get() {
-                return clipboardStub;
-            }
-        });
-    }, appConfig.storageKey, serializedRecords);
-    await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
+            }, storageKey, serializedRecords);
+        }
+    });
+    await signInTestUser(page, backend, userId);
     if (Array.isArray(records) && records.length > 0) {
         await page.waitForSelector(".markdown-block[data-note-id]");
     }
-    return { page, teardown };
+    return {
+        page,
+        teardown: async () => {
+            await page.close().catch(() => {});
+            await context.close().catch(() => {});
+            browser.disconnect();
+            await backend.close();
+        }
+    };
 }
 
 async function waitForClipboardWrites(page) {

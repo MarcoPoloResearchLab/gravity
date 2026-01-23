@@ -18,8 +18,10 @@ and are grouped by the date the work landed on `master`.
 - TAuth session now delegates nonce issuance and credential exchange to auth-client helpers instead of local fetches (GN-423).
 - Centralized environment config defaults and reused them across runtime config and test harnesses (GN-427).
 - Runtime config now returns a frozen app config and callers pass it explicitly instead of shared globals (GN-427).
+- Signed-out visitors now see a landing page with a Google sign-in button; the Gravity interface requires authentication (GN-126).
 
 ### Fixed
+- Landing sign-in now sets mpr-ui auth base/login/logout/nonce attributes so nonce requests hit TAuth instead of the frontend origin (GN-433).
 - Updated the TAuth helper loader and harness to use `/tauth.js`, keeping Gravity aligned with current TAuth builds (GN-424).
 - Expanded edit-height locks now override CodeMirror auto sizing so expanded cards keep their height in edit mode (GN-425).
 - TAuth runtime config now forwards `authTenantId` into the loader/session bridge and drops the crossOrigin attribute so tauth.js loads cleanly in stricter CORS setups (GN-426).

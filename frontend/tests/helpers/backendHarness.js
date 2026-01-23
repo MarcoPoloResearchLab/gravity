@@ -141,19 +141,17 @@ function attemptRuntimeContextBackend(normalizedOptions) {
         return null;
     }
 
-    const {
-        baseUrl,
-        signingSecret,
-        cookieName,
-        signingKeyPem,
-        signingKeyId,
-        googleClientId
-    } = backend;
-    if (
-        typeof baseUrl !== "string"
-        || typeof signingSecret !== "string"
-        || typeof cookieName !== "string"
-    ) {
+    const baseUrl = backend.baseUrl;
+    const signingSecret = typeof backend.signingSecret === "string"
+        ? backend.signingSecret
+        : normalizedOptions.signingSecret;
+    const cookieName = typeof backend.cookieName === "string"
+        ? backend.cookieName
+        : normalizedOptions.cookieName;
+    const signingKeyPem = backend.signingKeyPem;
+    const signingKeyId = backend.signingKeyId;
+    const googleClientId = backend.googleClientId;
+    if (typeof baseUrl !== "string") {
         return null;
     }
     if (normalizedOptions.signingSecret !== signingSecret || normalizedOptions.cookieName !== cookieName) {

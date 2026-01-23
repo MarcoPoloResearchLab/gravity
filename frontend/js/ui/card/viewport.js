@@ -63,15 +63,19 @@ export function shouldCenterCard(anchor) {
     }
     const margin = Math.max(viewportHeight * 0.05, VIEWPORT_ANCHOR_MARGIN_PX);
     const effectiveViewportHeight = viewportHeight - margin * 2;
+    const topThreshold = margin;
     if (!Number.isFinite(anchor.height) || anchor.height <= 0) {
-        return anchor.top < margin || anchor.bottom > viewportHeight - margin;
+        return anchor.top <= topThreshold;
     }
     if (effectiveViewportHeight <= 0 || anchor.height >= effectiveViewportHeight) {
         return false;
     }
-    const topThreshold = margin;
-    const bottomThreshold = viewportHeight - margin;
-    return anchor.top < topThreshold || anchor.bottom > bottomThreshold;
+    const bottomOverflow = Number.isFinite(anchor.bottom)
+        && anchor.bottom >= viewportHeight + VIEWPORT_ANCHOR_MARGIN_PX;
+    if (bottomOverflow) {
+        return true;
+    }
+    return anchor.top <= topThreshold;
 }
 
 /**
@@ -93,7 +97,7 @@ export function computeCenteredCardTop(cardHeight, viewportHeight) {
 /**
  * Adjust the viewport so the provided card maintains its intended position.
  * @param {HTMLElement} card
- * @param {{ behavior?: "center"|"preserve", baselineTop?: number|null, anchor?: ViewportAnchor|null, attempts?: number }} [options]
+ * @param {{ behavior?: "center"|"preserve", baselineTop?: number|null, anchor?: ViewportAnchor|null, attempts?: number, anchorCompensation?: boolean }} [options]
  * @returns {void}
  */
 export function maintainCardViewport(card, options = {}) {
@@ -150,17 +154,23 @@ export function maintainCardViewport(card, options = {}) {
         } else {
             targetTop = rect.top;
         }
+        const currentScroll = window.scrollY || window.pageYOffset || 0;
+        const maxScroll = Math.max(0, scroller.scrollHeight - viewportHeight);
+        const margin = Math.max(viewportHeight * 0.05, VIEWPORT_ANCHOR_MARGIN_PX);
+        const minTop = margin * -1;
+        const maxTop = Math.max(viewportHeight - rect.height - margin, minTop);
         let clampedTargetTop = targetTop;
         if (!anchorCompensation) {
-            const margin = Math.max(viewportHeight * 0.05, VIEWPORT_ANCHOR_MARGIN_PX);
-            const minTop = margin * -1;
-            const maxTop = Math.max(viewportHeight - rect.height - margin, minTop);
             clampedTargetTop = clamp(targetTop, minTop, maxTop);
         }
-        const delta = rect.top - clampedTargetTop;
+        let delta = rect.top - clampedTargetTop;
+        if (anchorCompensation && anchor && Number.isFinite(delta)) {
+            const desiredScroll = currentScroll + delta;
+            if (desiredScroll < 0 || desiredScroll > maxScroll) {
+                delta = clamp(desiredScroll, 0, maxScroll) - currentScroll;
+            }
+        }
         if (Math.abs(delta) > 0.5) {
-            const currentScroll = window.scrollY || window.pageYOffset || 0;
-            const maxScroll = Math.max(0, scroller.scrollHeight - viewportHeight);
             const nextScroll = clamp(currentScroll + delta, 0, maxScroll);
             if (nextScroll !== currentScroll) {
                 window.scrollTo(0, nextScroll);

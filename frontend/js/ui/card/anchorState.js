@@ -1,6 +1,10 @@
 // @ts-check
 
-import { VIEWPORT_ANCHOR_MARGIN_PX } from "./viewport.js?build=2026-01-01T22:43:21Z";
+import {
+    VIEWPORT_ANCHOR_MARGIN_PX,
+    computeCenteredCardTop,
+    maintainCardViewport
+} from "./viewport.js?build=2026-01-01T22:43:21Z";
 
 /**
  * @typedef {import("./viewport.js").ViewportAnchor} ViewportAnchor
@@ -9,6 +13,8 @@ import { VIEWPORT_ANCHOR_MARGIN_PX } from "./viewport.js?build=2026-01-01T22:43:
 const anchorStore = new WeakMap();
 const expandedHeightStore = new WeakMap();
 const trackedCards = new Set();
+const centeredAdjustments = new WeakMap();
+const editScrollBaselines = new WeakMap();
 const CLEAR_DISTANCE_PX = VIEWPORT_ANCHOR_MARGIN_PX * 2;
 let scrollMonitorRegistered = false;
 
@@ -23,6 +29,9 @@ export function storeCardAnchor(card, anchor) {
         return;
     }
     anchorStore.set(card, anchor);
+    if (typeof window !== "undefined") {
+        editScrollBaselines.set(card, window.scrollY || window.pageYOffset || 0);
+    }
     trackCard(card);
 }
 
@@ -50,6 +59,8 @@ export function clearCardAnchor(card) {
     anchorStore.delete(card);
     releaseExpandedHeight(card);
     trackedCards.delete(card);
+    centeredAdjustments.delete(card);
+    editScrollBaselines.delete(card);
 }
 
 /**
@@ -143,6 +154,8 @@ function handleViewportDrift() {
             trackedCards.delete(card);
             anchorStore.delete(card);
             expandedHeightStore.delete(card);
+            centeredAdjustments.delete(card);
+            editScrollBaselines.delete(card);
             return;
         }
         const anchor = anchorStore.get(card);
@@ -157,10 +170,38 @@ function handleViewportDrift() {
             return;
         }
         const delta = Math.abs(rect.top - anchor.top);
+        if (card.classList.contains("editing-in-place")) {
+            const viewportHeight = typeof window.innerHeight === "number"
+                ? window.innerHeight
+                : document.documentElement?.clientHeight ?? 0;
+            const scrollY = typeof window.scrollY === "number" ? window.scrollY : window.pageYOffset || 0;
+            const baseline = editScrollBaselines.get(card);
+            const scrollDelta = typeof baseline === "number" ? Math.abs(scrollY - baseline) : 0;
+            if (delta > CLEAR_DISTANCE_PX) {
+                anchorStore.set(card, {
+                    top: rect.top,
+                    bottom: rect.bottom,
+                    height: rect.height,
+                    viewportHeight
+                });
+            }
+            if (scrollDelta > CLEAR_DISTANCE_PX && card.dataset.allowEditCenter === "true") {
+                const centeredTop = computeCenteredCardTop(rect.height, viewportHeight);
+                const lastCenteredAt = centeredAdjustments.get(card) ?? 0;
+                const now = typeof Date !== "undefined" ? Date.now() : 0;
+                if (Math.abs(rect.top - centeredTop) > CLEAR_DISTANCE_PX && now - lastCenteredAt > 240) {
+                    centeredAdjustments.set(card, now);
+                    maintainCardViewport(card, { behavior: "center", attempts: 3 });
+                }
+            }
+            return;
+        }
         if (delta > CLEAR_DISTANCE_PX) {
             anchorStore.delete(card);
             releaseExpandedHeight(card);
             trackedCards.delete(card);
+            centeredAdjustments.delete(card);
+            editScrollBaselines.delete(card);
         }
     });
 }
