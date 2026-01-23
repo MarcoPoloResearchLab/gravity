@@ -158,6 +158,9 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
   - `tools/gravity/frontend/tests/helpers/backendHarness.js`: stop passing `GRAVITY_TAUTH_ISSUER` or set it to the default internally.
 - [x] [GN-432] Intermittent `persistence.sync.puppeteer.test.js` failures during multi-iteration `make ci` runs.
   (Resolved by verifying backend session cookies attach in Puppeteer and falling back to injecting Cookie headers per backend request when file:// origins reject setCookie; multi-iteration frontend suites now stay stable.)
+- [x] [GN-433] Landing auth error because the login button is configured with tauth-* attributes instead of mpr-ui base/login/logout/nonce attributes, causing /auth/nonce to hit the frontend origin and fail. (Resolved by wiring the base/login/logout/nonce attributes alongside tauth fields so the mpr-ui login button uses TAuth endpoints.)
+- [ ] [GN-434] (P2) `sync.endtoend.puppeteer.test.js` timed out waiting for `.markdown-block:not(.top-editor)[data-note-id]` during baseline `make test` runs; investigate the flake.
+- [ ] [GN-435] (P2) `htmlView.checkmark.puppeteer.test.js` intermittently fails the anchored-card assertion during `make ci` (observed ~28px drift).
 
 
 ## Maintenance (428–499)

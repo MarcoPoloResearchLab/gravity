@@ -173,6 +173,10 @@ function configureAuthElements(appConfig) {
         loginButton.setAttribute("tauth-login-path", TAUTH_LOGIN_PATH);
         loginButton.setAttribute("tauth-logout-path", TAUTH_LOGOUT_PATH);
         loginButton.setAttribute("tauth-nonce-path", TAUTH_NONCE_PATH);
+        loginButton.setAttribute("base-url", appConfig.authBaseUrl);
+        loginButton.setAttribute("login-path", TAUTH_LOGIN_PATH);
+        loginButton.setAttribute("logout-path", TAUTH_LOGOUT_PATH);
+        loginButton.setAttribute("nonce-path", TAUTH_NONCE_PATH);
         loginButton.setAttribute("button-text", LABEL_SIGN_IN_WITH_GOOGLE);
     }
 
