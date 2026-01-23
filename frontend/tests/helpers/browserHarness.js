@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { APP_BUILD_ID } from "../../js/constants.js";
+import { GOOGLE_CLIENT_ID } from "../../js/core/config.js?build=2026-01-01T22:43:21Z";
 import { DEVELOPMENT_ENVIRONMENT_CONFIG } from "../../js/core/environmentConfig.js?build=2026-01-01T22:43:21Z";
 
 import {
@@ -88,13 +89,15 @@ const RUNTIME_CONFIG_KEYS = Object.freeze({
     BACKEND_BASE_URL: "backendBaseUrl",
     LLM_PROXY_URL: "llmProxyUrl",
     AUTH_BASE_URL: "authBaseUrl",
-    AUTH_TENANT_ID: "authTenantId"
+    AUTH_TENANT_ID: "authTenantId",
+    GOOGLE_CLIENT_ID: "googleClientId"
 });
 const TEST_RUNTIME_CONFIG = Object.freeze({
     backendBaseUrl: DEVELOPMENT_ENVIRONMENT_CONFIG.backendBaseUrl,
     llmProxyUrl: EMPTY_STRING,
     authBaseUrl: DEVELOPMENT_ENVIRONMENT_CONFIG.authBaseUrl,
-    authTenantId: DEFAULT_TEST_TENANT_ID
+    authTenantId: DEFAULT_TEST_TENANT_ID,
+    googleClientId: GOOGLE_CLIENT_ID
 });
 const CDN_INTERCEPTOR_SYMBOL = Symbol("gravityCdnInterceptor");
 const RUNTIME_CONFIG_SYMBOL = Symbol("gravityRuntimeConfigOverrides");
@@ -409,14 +412,16 @@ export async function injectRuntimeConfig(page, overrides = {}) {
             [RUNTIME_CONFIG_KEYS.BACKEND_BASE_URL]: overridesByEnvironment.development.backendBaseUrl,
             [RUNTIME_CONFIG_KEYS.LLM_PROXY_URL]: overridesByEnvironment.development.llmProxyUrl,
             [RUNTIME_CONFIG_KEYS.AUTH_BASE_URL]: overridesByEnvironment.development.authBaseUrl,
-            [RUNTIME_CONFIG_KEYS.AUTH_TENANT_ID]: overridesByEnvironment.development.authTenantId
+            [RUNTIME_CONFIG_KEYS.AUTH_TENANT_ID]: overridesByEnvironment.development.authTenantId,
+            [RUNTIME_CONFIG_KEYS.GOOGLE_CLIENT_ID]: overridesByEnvironment.development.googleClientId
         },
         production: {
             [RUNTIME_CONFIG_KEYS.ENVIRONMENT]: "production",
             [RUNTIME_CONFIG_KEYS.BACKEND_BASE_URL]: overridesByEnvironment.production.backendBaseUrl,
             [RUNTIME_CONFIG_KEYS.LLM_PROXY_URL]: overridesByEnvironment.production.llmProxyUrl,
             [RUNTIME_CONFIG_KEYS.AUTH_BASE_URL]: overridesByEnvironment.production.authBaseUrl,
-            [RUNTIME_CONFIG_KEYS.AUTH_TENANT_ID]: overridesByEnvironment.production.authTenantId
+            [RUNTIME_CONFIG_KEYS.AUTH_TENANT_ID]: overridesByEnvironment.production.authTenantId,
+            [RUNTIME_CONFIG_KEYS.GOOGLE_CLIENT_ID]: overridesByEnvironment.production.googleClientId
         }
     });
     await registerRequestInterceptor(page, (request) => {
@@ -440,7 +445,8 @@ export async function injectRuntimeConfig(page, overrides = {}) {
             [RUNTIME_CONFIG_KEYS.BACKEND_BASE_URL]: resolvedOverrides.backendBaseUrl,
             [RUNTIME_CONFIG_KEYS.LLM_PROXY_URL]: resolvedOverrides.llmProxyUrl,
             [RUNTIME_CONFIG_KEYS.AUTH_BASE_URL]: resolvedOverrides.authBaseUrl,
-            [RUNTIME_CONFIG_KEYS.AUTH_TENANT_ID]: resolvedOverrides.authTenantId
+            [RUNTIME_CONFIG_KEYS.AUTH_TENANT_ID]: resolvedOverrides.authTenantId,
+            [RUNTIME_CONFIG_KEYS.GOOGLE_CLIENT_ID]: resolvedOverrides.googleClientId
         });
         request.respond({ status: 200, contentType: "application/json", body }).catch(() => {});
         return true;
@@ -576,7 +582,7 @@ function isThenable(value) {
 /**
  * @param {Record<string, any>} overrides
  * @param {"development" | "production"} environment
- * @returns {{ backendBaseUrl: string, llmProxyUrl: string }}
+ * @returns {{ backendBaseUrl: string, llmProxyUrl: string, authBaseUrl: string, authTenantId: string, googleClientId: string }}
  */
 function resolveRuntimeConfigOverrides(overrides, environment) {
     if (!overrides || typeof overrides !== "object") {
@@ -592,7 +598,11 @@ function resolveRuntimeConfigOverrides(overrides, environment) {
     const authTenantId = typeof authTenantIdCandidate === "string"
         ? authTenantIdCandidate
         : TEST_RUNTIME_CONFIG.authTenantId;
-    return { backendBaseUrl, llmProxyUrl, authBaseUrl, authTenantId };
+    const googleClientIdCandidate = scoped?.googleClientId ?? overrides.googleClientId ?? TEST_RUNTIME_CONFIG.googleClientId;
+    const googleClientId = typeof googleClientIdCandidate === "string"
+        ? googleClientIdCandidate
+        : TEST_RUNTIME_CONFIG.googleClientId;
+    return { backendBaseUrl, llmProxyUrl, authBaseUrl, authTenantId, googleClientId };
 }
 
 /**

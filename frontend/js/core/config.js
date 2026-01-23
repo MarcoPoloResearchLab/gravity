@@ -11,7 +11,8 @@ const ERROR_MESSAGES = Object.freeze({
     INVALID_BACKEND_BASE_URL: "app_config.invalid_backend_base_url",
     INVALID_LLM_PROXY_URL: "app_config.invalid_llm_proxy_url",
     INVALID_AUTH_BASE_URL: "app_config.invalid_auth_base_url",
-    INVALID_AUTH_TENANT_ID: "app_config.invalid_auth_tenant_id"
+    INVALID_AUTH_TENANT_ID: "app_config.invalid_auth_tenant_id",
+    INVALID_GOOGLE_CLIENT_ID: "app_config.invalid_google_client_id"
 });
 
 export const TIMEZONE_DEFAULT = "America/Los_Angeles";
@@ -52,7 +53,8 @@ export const STATIC_APP_CONFIG = Object.freeze({
  *   backendBaseUrl?: string,
  *   llmProxyUrl?: string,
  *   authBaseUrl?: string,
- *   authTenantId?: string
+ *   authTenantId?: string,
+ *   googleClientId?: string
  * }} RuntimeConfigOverrides
  */
 
@@ -104,6 +106,14 @@ export function createAppConfig(config) {
         ERROR_MESSAGES.INVALID_AUTH_TENANT_ID,
         hasAuthTenantId
     );
+    const hasGoogleClientId = Object.prototype.hasOwnProperty.call(config, "googleClientId");
+    const googleClientId = resolveConfigValue(
+        config.googleClientId,
+        STATIC_APP_CONFIG.googleClientId,
+        false,
+        ERROR_MESSAGES.INVALID_GOOGLE_CLIENT_ID,
+        hasGoogleClientId
+    );
 
     return Object.freeze({
         ...STATIC_APP_CONFIG,
@@ -111,7 +121,8 @@ export function createAppConfig(config) {
         backendBaseUrl,
         llmProxyUrl,
         authBaseUrl,
-        authTenantId
+        authTenantId,
+        googleClientId
     });
 }
 

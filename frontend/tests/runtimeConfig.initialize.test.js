@@ -35,7 +35,8 @@ const FETCH_OPTIONS = Object.freeze({
 const REMOTE_ENDPOINTS = Object.freeze({
     BACKEND: "https://api.example.com/v1",
     LLM_PROXY: "https://llm.example.com/v1/classify",
-    AUTH: "https://auth.example.com"
+    AUTH: "https://auth.example.com",
+    GOOGLE_CLIENT_ID: "test-client-id.apps.googleusercontent.com"
 });
 
 const REMOTE_AUTH_TENANT_ID = "gravity";
@@ -73,7 +74,8 @@ test.describe(SUITE_LABELS.INITIALIZE_RUNTIME_CONFIG, () => {
                         backendBaseUrl: REMOTE_ENDPOINTS.BACKEND,
                         llmProxyUrl: REMOTE_ENDPOINTS.LLM_PROXY,
                         authBaseUrl: REMOTE_ENDPOINTS.AUTH,
-                        authTenantId: REMOTE_AUTH_TENANT_ID
+                        authTenantId: REMOTE_AUTH_TENANT_ID,
+                        googleClientId: REMOTE_ENDPOINTS.GOOGLE_CLIENT_ID
                     };
                 }
             };
@@ -98,6 +100,7 @@ test.describe(SUITE_LABELS.INITIALIZE_RUNTIME_CONFIG, () => {
         assert.equal(appConfig.llmProxyUrl, REMOTE_ENDPOINTS.LLM_PROXY);
         assert.equal(appConfig.authBaseUrl, REMOTE_ENDPOINTS.AUTH);
         assert.equal(appConfig.authTenantId, REMOTE_AUTH_TENANT_ID);
+        assert.equal(appConfig.googleClientId, REMOTE_ENDPOINTS.GOOGLE_CLIENT_ID);
         assert.equal(errorNotifications.length, 0);
     });
 

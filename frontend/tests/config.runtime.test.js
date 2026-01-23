@@ -15,6 +15,7 @@ const BACKEND_URL_OVERRIDE = "https://api.example.com/v1/";
 const LLM_PROXY_OVERRIDE = "http://localhost:5001/api/classify";
 const AUTH_BASE_URL_OVERRIDE = "https://auth.example.com/service/";
 const AUTH_TENANT_OVERRIDE = " gravity ";
+const GOOGLE_CLIENT_ID_OVERRIDE = "custom-client.apps.googleusercontent.com";
 
 const TEST_LABELS = Object.freeze({
     DEVELOPMENT_DEFAULTS: "createAppConfig uses development defaults when overrides are omitted",
@@ -22,7 +23,8 @@ const TEST_LABELS = Object.freeze({
     BACKEND_OVERRIDE: "createAppConfig respects injected backendBaseUrl",
     LLM_OVERRIDE: "createAppConfig respects injected llmProxyUrl",
     AUTH_BASE_OVERRIDE: "createAppConfig respects injected authBaseUrl",
-    AUTH_TENANT_OVERRIDE: "createAppConfig preserves injected authTenantId"
+    AUTH_TENANT_OVERRIDE: "createAppConfig preserves injected authTenantId",
+    GOOGLE_CLIENT_ID_OVERRIDE: "createAppConfig preserves injected googleClientId"
 });
 
 test(TEST_LABELS.DEVELOPMENT_DEFAULTS, () => {
@@ -77,4 +79,13 @@ test(TEST_LABELS.AUTH_TENANT_OVERRIDE, () => {
     });
 
     assert.equal(appConfig.authTenantId, AUTH_TENANT_OVERRIDE);
+});
+
+test(TEST_LABELS.GOOGLE_CLIENT_ID_OVERRIDE, () => {
+    const appConfig = createAppConfig({
+        environment: ENVIRONMENT_DEVELOPMENT,
+        googleClientId: GOOGLE_CLIENT_ID_OVERRIDE
+    });
+
+    assert.equal(appConfig.googleClientId, GOOGLE_CLIENT_ID_OVERRIDE);
 });
