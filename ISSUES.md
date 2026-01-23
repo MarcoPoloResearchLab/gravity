@@ -163,6 +163,8 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 - [ ] [GN-435] (P2) `htmlView.checkmark.puppeteer.test.js` intermittently fails the anchored-card assertion during `make ci` (observed ~28px drift).
 - [x] [GN-436] (P1) Simplify mpr-ui loading by including the bundle in `frontend/index.html` and mounting auth components with runtime-configured attributes before initialization.
   (Resolved by loading mpr-ui via a static script tag, cloning auth elements from templates after runtime config, and applying auth attributes before mounting.)
+- [x] [GN-437] (P1) Load mpr-ui assets from the `@latest` CDN tag to keep the frontend in sync with upstream releases.
+  (Resolved by switching the frontend CDN links and test harness mirrors to `@latest`.)
 
 
 ## Maintenance (428–499)
