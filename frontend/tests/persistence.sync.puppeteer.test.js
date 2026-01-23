@@ -91,7 +91,7 @@ test.describe("Backend persistence", () => {
             await dispatchSignIn(pageB, credentialB, TEST_USER_ID);
             await waitForSyncManagerUser(pageB, TEST_USER_ID);
             await waitForPendingOperations(pageB);
-            await pageB.waitForSelector(".auth-avatar:not([hidden])");
+            await pageB.waitForSelector("mpr-user[data-mpr-user-status=\"authenticated\"]");
             await pageB.waitForSelector(`.markdown-block[data-note-id="${NOTE_IDENTIFIER}"]`);
 
             const renderedMarkdown = await pageB.$eval(

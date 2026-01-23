@@ -197,7 +197,16 @@ export async function installTAuthHarness(page, options) {
 }
 
 /**
- * @typedef {{ user_id: string, user_email: string | null, display: string | null, avatar_url: string | null, user_display?: string | null, user_avatar_url?: string | null }} TAuthProfile
+ * @typedef {{
+ *   user_id: string,
+ *   user_email: string | null,
+ *   display: string | null,
+ *   name?: string | null,
+ *   given_name?: string | null,
+ *   avatar_url: string | null,
+ *   user_display?: string | null,
+ *   user_avatar_url?: string | null
+ * }} TAuthProfile
  */
 
 function notifyAuthenticated(page, profile) {
@@ -265,6 +274,9 @@ function deriveProfileFromCredential(credential) {
     const userDisplay = typeof payload.name === "string" && payload.name.trim().length > 0
         ? payload.name.trim()
         : userEmail ?? userId;
+    const userGivenName = typeof payload.given_name === "string" && payload.given_name.trim().length > 0
+        ? payload.given_name.trim()
+        : userDisplay.split(/\s+/u)[0] || userDisplay;
     const userAvatarUrl = typeof payload.picture === "string" && payload.picture.trim().length > 0
         ? payload.picture.trim()
         : null;
@@ -272,6 +284,8 @@ function deriveProfileFromCredential(credential) {
         user_id: userId,
         user_email: userEmail,
         display: userDisplay,
+        name: userDisplay,
+        given_name: userGivenName,
         avatar_url: userAvatarUrl,
         user_display: userDisplay,
         user_avatar_url: userAvatarUrl
@@ -399,6 +413,9 @@ function buildAuthClientStub(profile) {
                 if (typeof harness.options.onUnauthenticated === "function") {
                     harness.options.onUnauthenticated();
                 }
+            };
+            window.getCurrentUser = async function getCurrentUser() {
+                return harness.profile ?? null;
             };
             window.getAuthEndpoints = function getAuthEndpoints() {
                 const baseUrl = typeof harness.options?.baseUrl === "string"

@@ -1,18 +1,19 @@
+// @ts-check
+
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { createAppConfig } from "../js/core/config.js?build=2026-01-01T22:43:21Z";
-import { ENVIRONMENT_DEVELOPMENT } from "../js/core/environmentConfig.js?build=2026-01-01T22:43:21Z";
 import { EVENT_SYNC_SNAPSHOT_APPLIED } from "../js/constants.js";
 import { createSharedPage, waitForAppHydration, flushAlpineQueues } from "./helpers/browserHarness.js";
-
-const appConfig = createAppConfig({ environment: ENVIRONMENT_DEVELOPMENT });
+import { startTestBackend } from "./helpers/backendHarness.js";
+import { seedNotes, signInTestUser } from "./helpers/syncTestUtils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+const TEST_USER_ID = "ui-stability-user";
 
 const NOTE_ID = "flicker-fixture";
 const NOTE_MARKDOWN = [
@@ -98,17 +99,26 @@ test("snapshot events without changes do not churn rendered cards", async () => 
 });
 
 async function preparePage() {
+    const backend = await startTestBackend();
     const { page, teardown } = await createSharedPage();
     const records = [buildNoteRecord({ noteId: NOTE_ID, markdownText: NOTE_MARKDOWN })];
-    const serialized = JSON.stringify(records);
-    await page.evaluateOnNewDocument((storageKey, payload) => {
+    await page.evaluateOnNewDocument(() => {
         window.sessionStorage.setItem("__gravityTestInitialized", "true");
-        window.localStorage.setItem(storageKey, payload);
+        window.localStorage.clear();
         window.__gravityForceMarkdownEditor = true;
-    }, appConfig.storageKey, serialized);
+    });
     await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
     await waitForAppHydration(page);
-    return { page, teardown, records };
+    await signInTestUser(page, backend, TEST_USER_ID);
+    await seedNotes(page, records, TEST_USER_ID);
+    return {
+        page,
+        teardown: async () => {
+            await teardown();
+            await backend.close();
+        },
+        records
+    };
 }
 
 function buildNoteRecord({ noteId, markdownText, attachments = {} }) {

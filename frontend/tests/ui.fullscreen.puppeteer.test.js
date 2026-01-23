@@ -1,3 +1,5 @@
+// @ts-check
+
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -5,14 +7,18 @@ import test from "node:test";
 
 import { LABEL_ENTER_FULL_SCREEN, LABEL_EXIT_FULL_SCREEN } from "../js/constants.js";
 import { createSharedPage } from "./helpers/browserHarness.js";
+import { startTestBackend } from "./helpers/backendHarness.js";
+import { signInTestUser } from "./helpers/syncTestUtils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
 const FULLSCREEN_TOGGLE_SELECTOR = '[data-test="fullscreen-toggle"]';
+const TEST_USER_ID = "fullscreen-user";
 
 test.describe("GN-204 header full-screen toggle", () => {
     test("enters and exits full screen while updating icon state", async () => {
+        const backend = await startTestBackend();
         const { page, teardown } = await createSharedPage();
         try {
             await page.evaluateOnNewDocument(() => {
@@ -63,6 +69,7 @@ test.describe("GN-204 header full-screen toggle", () => {
             });
 
             await page.goto(PAGE_URL);
+            await signInTestUser(page, backend, TEST_USER_ID);
             await page.waitForSelector(FULLSCREEN_TOGGLE_SELECTOR, { timeout: 3000 });
             await page.evaluate((selector) => {
                 const button = document.querySelector(selector);
@@ -120,6 +127,7 @@ test.describe("GN-204 header full-screen toggle", () => {
             );
         } finally {
             await teardown();
+            await backend.close();
         }
     });
 });

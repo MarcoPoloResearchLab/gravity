@@ -41,7 +41,7 @@ Gravity Notes is a single-page Markdown notebook designed to keep you in flow. E
 
 ## Accounts, Sync, and Offline Use
 
-- Sign in with Google from the header to scope the notebook to your account. Each user gets a private storage namespace, so shared devices never mix data.
+- Sign in with Google from the landing page to open your notebook. Each user gets a private storage namespace, so shared devices never mix data.
 - Gravity keeps working offline. Notes persist in `localStorage` and sync when connectivity returns or when you sign in.
 - Sessions survive refreshes. Sign out from the avatar menu to return to the anonymous notebook.
 

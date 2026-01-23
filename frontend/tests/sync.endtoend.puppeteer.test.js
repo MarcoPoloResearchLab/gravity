@@ -1,19 +1,22 @@
+// @ts-check
+
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { EVENT_AUTH_CREDENTIAL_RECEIVED } from "../js/constants.js";
 import { startTestBackend, waitForBackendNote } from "./helpers/backendHarness.js";
 import {
     prepareFrontendPage,
     waitForSyncManagerUser,
     waitForPendingOperations,
     waitForTAuthSession,
-    composeTestCredential
+    composeTestCredential,
+    exchangeTAuthCredential
 } from "./helpers/syncTestUtils.js";
 import { connectSharedBrowser } from "./helpers/browserHarness.js";
 import { installTAuthHarness } from "./helpers/tauthHarness.js";
+import { readRuntimeContext } from "./helpers/runtimeContext.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
@@ -50,7 +53,17 @@ test.describe("UI sync integration", () => {
         const browser = await connectSharedBrowser();
         const context = await browser.createBrowserContext();
 
-        const userId = "ui-sync-user";
+        let iterationSuffix = 1;
+        try {
+            const runtimeContext = readRuntimeContext();
+            const runtimeIteration = runtimeContext?.test?.iteration;
+            if (Number.isInteger(runtimeIteration) && runtimeIteration > 0) {
+                iterationSuffix = runtimeIteration;
+            }
+        } catch {
+            iterationSuffix = 1;
+        }
+        const userId = `ui-sync-user-${iterationSuffix}`;
         const page = await prepareFrontendPage(context, PAGE_URL, {
             backendBaseUrl: backendContext.baseUrl,
             llmProxyUrl: "",
@@ -65,29 +78,13 @@ test.describe("UI sync integration", () => {
         });
         try {
             await waitForTAuthSession(page);
-            await page.evaluate((eventName, detail) => {
-                const target = document.querySelector("body");
-                if (!target) {
-                    throw new Error("Application root missing");
-                }
-                target.dispatchEvent(new CustomEvent(eventName, {
-                    bubbles: true,
-                    detail
-                }));
-            }, EVENT_AUTH_CREDENTIAL_RECEIVED, {
-                credential: composeTestCredential({
-                    userId,
-                    email: `${userId}@example.com`,
-                    name: "UI Sync User",
-                    pictureUrl: "https://example.com/avatar.png"
-                }),
-                user: {
-                    id: userId,
-                    email: `${userId}@example.com`,
-                    name: "UI Sync User",
-                    pictureUrl: "https://example.com/avatar.png"
-                }
+            const credential = composeTestCredential({
+                userId,
+                email: `${userId}@example.com`,
+                name: "UI Sync User",
+                pictureUrl: "https://example.com/avatar.png"
             });
+            await exchangeTAuthCredential(page, credential);
             await waitForSyncManagerUser(page, userId);
 
             const editorSelector = "#top-editor .markdown-editor";

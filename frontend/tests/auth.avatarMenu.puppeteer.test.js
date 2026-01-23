@@ -1,11 +1,12 @@
+// @ts-check
+
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import {
-    EVENT_AUTH_SIGN_OUT,
-    LABEL_ENTER_FULL_SCREEN,
+    EVENT_MPR_AUTH_UNAUTHENTICATED,
     LABEL_EXPORT_NOTES,
     LABEL_IMPORT_NOTES,
     LABEL_SIGN_OUT
@@ -13,6 +14,7 @@ import {
 import {
     initializePuppeteerTest,
     dispatchSignIn,
+    attachBackendSessionCookie,
     waitForSyncManagerUser,
     resetToSignedOut
 } from "./helpers/syncTestUtils.js";
@@ -20,6 +22,22 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+const USER_MENU_TIMEOUT_MS = 8000;
+
+/**
+ * @param {import("puppeteer").Page} page
+ */
+async function readUserMenuState(page) {
+    return page.evaluate(() => {
+        const menu = document.querySelector("mpr-user");
+        return {
+            authState: document.body?.dataset?.authState ?? null,
+            status: menu?.getAttribute("data-mpr-user-status") ?? null,
+            mode: menu?.getAttribute("data-mpr-user-mode") ?? null,
+            error: menu?.getAttribute("data-mpr-user-error") ?? null
+        };
+    });
+}
 
 let puppeteerAvailable = true;
 try {
@@ -54,7 +72,7 @@ if (!puppeteerAvailable) {
             harness = null;
         });
 
-        test("hides Google button after sign-in and reveals stacked avatar menu", async () => {
+        test("shows landing sign-in and reveals user menu after authentication", async () => {
             if (!harness) {
                 test.skip(launchError ? launchError.message : "Puppeteer harness unavailable");
                 return;
@@ -67,86 +85,51 @@ if (!puppeteerAvailable) {
             assert.equal(LABEL_EXPORT_NOTES, "Export Notes");
             assert.equal(LABEL_IMPORT_NOTES, "Import Notes");
 
-            await page.waitForSelector(".auth-button-host");
-            await page.waitForSelector("#guest-export-button:not([hidden])");
-
-            await page.evaluate(() => {
-                window.__guestExports = [];
-                window.__guestExportOriginalCreate = URL.createObjectURL;
-                window.__guestExportOriginalRevoke = URL.revokeObjectURL;
-                URL.createObjectURL = (blob) => {
-                    if (blob && typeof blob.text === "function") {
-                        blob.text().then((text) => {
-                            window.__guestExports.push(text);
-                        });
-                    }
-                    return "blob:mock";
-                };
-                URL.revokeObjectURL = () => {};
+            await page.waitForSelector("[data-test=\"landing-login\"]");
+            const landingVisible = await page.evaluate(() => {
+                const landing = document.querySelector("[data-test=\"landing\"]");
+                return Boolean(landing && !landing.hasAttribute("hidden"));
             });
+            assert.equal(landingVisible, true);
 
-            await page.click("#guest-export-button");
-            await page.waitForFunction(() => Array.isArray(window.__guestExports) && window.__guestExports.length > 0);
-            const exportedPayload = await page.evaluate(() => window.__guestExports[0]);
-            assert.equal(exportedPayload, "[]");
-
-            await page.evaluate(() => {
-                if (window.__guestExportOriginalCreate) {
-                    URL.createObjectURL = window.__guestExportOriginalCreate;
-                    delete window.__guestExportOriginalCreate;
-                }
-                if (window.__guestExportOriginalRevoke) {
-                    URL.revokeObjectURL = window.__guestExportOriginalRevoke;
-                    delete window.__guestExportOriginalRevoke;
-                }
-                delete window.__guestExports;
-            });
-
-            const hostBeforeSignIn = await page.$(".auth-button-host");
-            assert.ok(hostBeforeSignIn, "auth button host should render while signed out");
-
+            await attachBackendSessionCookie(page, backend, "avatar-menu-user");
             const credential = backend.tokenFactory("avatar-menu-user");
             await dispatchSignIn(page, credential, "avatar-menu-user");
-            await waitForSyncManagerUser(page, "avatar-menu-user");
+            await waitForSyncManagerUser(page, "avatar-menu-user", USER_MENU_TIMEOUT_MS);
 
-            await page.waitForFunction(() => !document.querySelector(".auth-button-host"));
+            await page.waitForSelector("[data-test=\"app-shell\"]:not([hidden])");
+            try {
+                await page.waitForSelector("mpr-user[data-mpr-user-status=\"authenticated\"]", { timeout: USER_MENU_TIMEOUT_MS });
+            } catch (error) {
+                const menuState = await readUserMenuState(page);
+                throw new Error(`User menu did not authenticate: ${JSON.stringify(menuState)}`, { cause: error });
+            }
 
-            const hostAfterSignIn = await page.$(".auth-button-host");
-            assert.equal(hostAfterSignIn, null);
+            await page.click("mpr-user [data-mpr-user=\"trigger\"]");
+            await page.waitForSelector("mpr-user[data-mpr-user-open=\"true\"] [data-mpr-user=\"menu\"]");
 
-            await page.waitForSelector(".auth-avatar:not([hidden])");
-
-            const guestHiddenAfterSignIn = await page.evaluate(() => {
-                const button = document.querySelector("#guest-export-button");
-                return button ? button.hasAttribute("hidden") : false;
-            });
-            assert.equal(guestHiddenAfterSignIn, true);
-
-            await page.click(".auth-avatar-trigger");
-            await page.waitForSelector("[data-test='auth-menu'][data-open='true']");
-
-            const visibleItems = await page.$$eval("[data-test='auth-menu'] .auth-menu-item", (elements) => {
+            const visibleItems = await page.$$eval("mpr-user [data-mpr-user=\"menu-item\"]", (elements) => {
                 return elements.map((element) => element.textContent?.trim() ?? "").filter((text) => text.length > 0);
             });
 
             assert.deepEqual(visibleItems, [
                 LABEL_EXPORT_NOTES,
-                LABEL_IMPORT_NOTES,
-                LABEL_ENTER_FULL_SCREEN,
-                LABEL_SIGN_OUT
+                LABEL_IMPORT_NOTES
             ]);
+
+            const logoutLabel = await page.$eval("mpr-user [data-mpr-user=\"logout\"]", (element) => element.textContent?.trim() ?? "");
+            assert.equal(logoutLabel, LABEL_SIGN_OUT);
 
             await page.evaluate((eventName) => {
                 const root = document.querySelector("body");
                 if (!root) return;
                 root.dispatchEvent(new CustomEvent(eventName, {
-                    detail: { reason: "test" },
+                    detail: { profile: null },
                     bubbles: true
                 }));
-            }, EVENT_AUTH_SIGN_OUT);
+            }, EVENT_MPR_AUTH_UNAUTHENTICATED);
 
-            await page.waitForSelector(".auth-button-host");
-            await page.waitForSelector("#guest-export-button:not([hidden])");
+            await page.waitForSelector("[data-test=\"landing\"]:not([hidden])");
         });
     });
 }

@@ -3,7 +3,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { EVENT_AUTH_CREDENTIAL_RECEIVED } from "../../js/constants.js";
 import {
     composeTestCredential,
     dispatchNoteCreate,
@@ -11,7 +10,8 @@ import {
     prepareFrontendPage,
     waitForPendingOperations,
     waitForSyncManagerUser,
-    waitForTAuthSession
+    waitForTAuthSession,
+    exchangeTAuthCredential
 } from "./syncTestUtils.js";
 import { installTAuthHarness } from "./tauthHarness.js";
 import { connectSharedBrowser, registerRequestInterceptor } from "./browserHarness.js";
@@ -362,24 +362,7 @@ async function signInViaTAuth(page, userId) {
         name: `Gravity User ${userId}`,
         pictureUrl: "https://example.com/avatar.png"
     });
-    await page.evaluate((eventName, detail) => {
-        const target = document.querySelector("body");
-        if (!target) {
-            throw new Error("Application root missing");
-        }
-        target.dispatchEvent(new CustomEvent(eventName, {
-            bubbles: true,
-            detail
-        }));
-    }, EVENT_AUTH_CREDENTIAL_RECEIVED, {
-        credential,
-        user: {
-            id: userId,
-            email: `${userId}@example.com`,
-            name: `Gravity User ${userId}`,
-            pictureUrl: "https://example.com/avatar.png"
-        }
-    });
+    await exchangeTAuthCredential(page, credential);
     await page.waitForFunction(() => {
         return Boolean(window.__tauthHarnessEvents && window.__tauthHarnessEvents.authenticatedCount >= 1);
     }, { timeout: 10000 });

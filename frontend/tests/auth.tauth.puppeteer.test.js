@@ -1,16 +1,18 @@
+// @ts-check
+
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { EVENT_AUTH_CREDENTIAL_RECEIVED } from "../js/constants.js";
 import {
     composeTestCredential,
     prepareFrontendPage,
     waitForPendingOperations,
     waitForSyncManagerUser,
     dispatchNoteCreate,
-    waitForTAuthSession
+    waitForTAuthSession,
+    exchangeTAuthCredential
 } from "./helpers/syncTestUtils.js";
 import { startTestBackend, waitForBackendNote } from "./helpers/backendHarness.js";
 import { connectSharedBrowser } from "./helpers/browserHarness.js";
@@ -55,7 +57,7 @@ test.describe("TAuth integration", () => {
                 noteId
             });
 
-            await env.page.waitForSelector(".auth-avatar:not([hidden])", { timeout: 5000 });
+            await env.page.waitForSelector("mpr-user[data-mpr-user-status=\"authenticated\"]", { timeout: 5000 });
 
             const requests = env.tauthHarnessHandle.getRequestLog();
             const paths = requests.map((entry) => entry.path);
@@ -71,12 +73,19 @@ test.describe("TAuth integration", () => {
         const env = await bootstrapTAuthEnvironment();
         try {
             env.tauthHarnessHandle.triggerNonceMismatch();
-            await dispatchCredential(env.page, DEFAULT_USER);
-            const errorSelector = ".auth-status[data-status=\"error\"]";
+            let exchangeError = null;
+            try {
+                await dispatchCredential(env.page, DEFAULT_USER);
+            } catch (error) {
+                exchangeError = error;
+            }
+            assert.ok(exchangeError instanceof Error);
+            assert.ok(exchangeError.message.startsWith("nonce_mismatch"));
+            const errorSelector = "[data-test=\"landing-status\"][data-status=\"error\"]";
             await env.page.waitForSelector(errorSelector, { timeout: 10000 });
             const errorMessage = await env.page.$eval(errorSelector, (element) => element.textContent?.trim() ?? "");
             assert.equal(errorMessage, "Authentication error");
-            await env.page.waitForSelector(".auth-avatar[hidden]", { timeout: 5000 });
+            await env.page.waitForSelector("mpr-user[data-mpr-user-status=\"unauthenticated\"]", { timeout: 5000 });
         } finally {
             await cleanupTAuthEnvironment(env);
         }
@@ -106,12 +115,12 @@ test.describe("TAuth integration", () => {
             await dispatchCredential(env.page, DEFAULT_USER);
             await waitForSyncManagerUser(env.page, DEFAULT_USER.id);
             await env.page.evaluate(() => {
-                const button = document.querySelector("[x-ref='authSignOutButton']");
-                if (button instanceof HTMLButtonElement) {
-                    button.click();
+                if (typeof window.logout === "function") {
+                    return window.logout();
                 }
+                throw new Error("logout helper unavailable");
             });
-            await env.page.waitForSelector(".auth-avatar[hidden]", { timeout: 5000 });
+            await env.page.waitForSelector("mpr-user[data-mpr-user-status=\"unauthenticated\"]", { timeout: 5000 });
             const paths = env.tauthHarnessHandle.getRequestLog().map((entry) => entry.path);
             assert.ok(paths.includes("/auth/logout"), "expected /auth/logout request");
         } finally {
@@ -157,24 +166,7 @@ async function dispatchCredential(page, user) {
         name: user.name,
         pictureUrl: "https://example.com/avatar.png"
     });
-    await page.evaluate((eventName, detail) => {
-        const target = document.querySelector("body");
-        if (!target) {
-            throw new Error("Application root missing");
-        }
-        target.dispatchEvent(new CustomEvent(eventName, {
-            bubbles: true,
-            detail
-        }));
-    }, EVENT_AUTH_CREDENTIAL_RECEIVED, {
-        credential,
-        user: {
-            id: user.id,
-            email: user.email,
-            name: user.name,
-            pictureUrl: "https://example.com/avatar.png"
-        }
-    });
+    await exchangeTAuthCredential(page, credential);
 }
 
 async function pageWaitForAuthenticatedEvents(page, minimumCount) {

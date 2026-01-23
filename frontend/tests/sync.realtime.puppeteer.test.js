@@ -1,9 +1,10 @@
+// @ts-check
+
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { EVENT_AUTH_CREDENTIAL_RECEIVED } from "../js/constants.js";
 import { startTestBackend } from "./helpers/backendHarness.js";
 import {
     prepareFrontendPage,
@@ -11,7 +12,8 @@ import {
     waitForPendingOperations,
     extractSyncDebugState,
     waitForTAuthSession,
-    composeTestCredential
+    composeTestCredential,
+    exchangeTAuthCredential
 } from "./helpers/syncTestUtils.js";
 import { connectSharedBrowser } from "./helpers/browserHarness.js";
 import { installTAuthHarness } from "./helpers/tauthHarness.js";
@@ -228,24 +230,7 @@ async function bootstrapRealtimeSession(context, backend, userId, options = {}) 
         name: `Realtime User ${userId}`,
         pictureUrl: "https://example.com/avatar.png"
     });
-    await page.evaluate((eventName, detail) => {
-        const target = document.querySelector("body");
-        if (!target) {
-            throw new Error("Application root missing");
-        }
-        target.dispatchEvent(new CustomEvent(eventName, {
-            bubbles: true,
-            detail
-        }));
-    }, EVENT_AUTH_CREDENTIAL_RECEIVED, {
-        credential,
-        user: {
-            id: userId,
-            email: `${userId}@example.com`,
-            name: `Realtime User ${userId}`,
-            pictureUrl: "https://example.com/avatar.png"
-        }
-    });
+    await exchangeTAuthCredential(page, credential);
     if (harnessHandle) {
         await waitForHarnessRequest(harnessHandle, "/auth/google");
     }

@@ -74,6 +74,8 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
     - The grid remains visually stable; no unexpected reflow or scrollbars appear.
     - Existing editing behavior (inline edit, blur save, no-jump UX) is unchanged.
     - Tests pass via the standard `make test` workflow.
+- [x] [GN-126] (P0) Gate Gravity behind authentication and show a landing page when signed out.
+  Require login to view the Gravity interface; unauthenticated visitors see a landing page with a Google sign-in button instead. (Resolved by adding landing UI + mpr-ui auth wiring, updating tests, and stabilizing the harness to keep multi-iteration runs green.)
 
 
 ## Improvements (202–299)

@@ -1,3 +1,5 @@
+// @ts-check
+
 import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
@@ -7,7 +9,8 @@ import {
     waitForSyncManagerUser,
     dispatchNoteCreate,
     waitForTAuthSession,
-    composeTestCredential
+    composeTestCredential,
+    exchangeTAuthCredential
 } from "./helpers/syncTestUtils.js";
 import {
     startTestBackend,
@@ -15,7 +18,6 @@ import {
 } from "./helpers/backendHarness.js";
 import { connectSharedBrowser } from "./helpers/browserHarness.js";
 import { installTAuthHarness } from "./helpers/tauthHarness.js";
-import { EVENT_AUTH_CREDENTIAL_RECEIVED } from "../js/constants.js";
 
 const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const PAGE_URL = `file://${path.join(REPO_ROOT, "index.html")}`;
@@ -84,29 +86,13 @@ test.describe("Backend sync integration", () => {
         });
         try {
                 await waitForTAuthSession(page);
-                await raceWithSignal(deadlineSignal, page.evaluate((eventName, detail) => {
-                    const target = document.querySelector("body");
-                    if (!target) {
-                        throw new Error("Application root missing");
-                    }
-                    target.dispatchEvent(new CustomEvent(eventName, {
-                        bubbles: true,
-                        detail
-                    }));
-                }, EVENT_AUTH_CREDENTIAL_RECEIVED, {
-                    credential: composeTestCredential({
-                        userId: TEST_USER_ID,
-                        email: `${TEST_USER_ID}@example.com`,
-                        name: "Integration Sync User",
-                        pictureUrl: "https://example.com/avatar.png"
-                    }),
-                    user: {
-                        id: TEST_USER_ID,
-                        email: `${TEST_USER_ID}@example.com`,
-                        name: "Integration Sync User",
-                        pictureUrl: "https://example.com/avatar.png"
-                    }
-                }));
+                const credential = composeTestCredential({
+                    userId: TEST_USER_ID,
+                    email: `${TEST_USER_ID}@example.com`,
+                    name: "Integration Sync User",
+                    pictureUrl: "https://example.com/avatar.png"
+                });
+                await raceWithSignal(deadlineSignal, exchangeTAuthCredential(page, credential));
                 try {
                     await raceWithSignal(
                         deadlineSignal,
