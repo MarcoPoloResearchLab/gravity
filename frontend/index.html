@@ -33,6 +33,11 @@
     <!-- Styles -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@v2.0.2/mpr-ui.css"/>
     <link rel="stylesheet" href="./styles.css?build=2026-01-01T22:43:21Z"/>
+    <script
+            id="mpr-ui-bundle"
+            defer
+            src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@v2.0.2/mpr-ui.js"
+    ></script>
 </head>
 <body x-data="gravityApp()" data-auth-state="loading">
 <section class="landing" x-ref="landingView" data-test="landing">
@@ -42,7 +47,10 @@
             <h1 class="landing-title" x-text="constants.LABEL_LANDING_TITLE">Notes that stay anchored.</h1>
             <p class="landing-description" x-text="constants.LABEL_LANDING_DESCRIPTION"></p>
             <div class="landing-actions">
-                <mpr-login-button id="landing-login" class="landing-login" x-ref="landingLogin" data-test="landing-login"></mpr-login-button>
+                <template id="landing-login-template">
+                    <mpr-login-button id="landing-login" class="landing-login" x-ref="landingLogin" data-test="landing-login"></mpr-login-button>
+                </template>
+                <div id="landing-login-slot"></div>
                 <p class="landing-hint" x-text="constants.LABEL_LANDING_SIGN_IN_HINT"></p>
             </div>
             <div class="landing-status" x-ref="landingStatus" data-test="landing-status" hidden></div>
@@ -89,7 +97,10 @@
                 </svg>
                 <span class="fullscreen-toggle__label" data-role="fullscreen-label" x-text="constants.LABEL_ENTER_FULL_SCREEN">Full Screen</span>
             </button>
-            <mpr-user id="app-user-menu" x-ref="userMenu" data-test="user-menu"></mpr-user>
+            <template id="user-menu-template">
+                <mpr-user id="app-user-menu" x-ref="userMenu" data-test="user-menu"></mpr-user>
+            </template>
+            <div id="user-menu-slot"></div>
         </div>
     </header>
 

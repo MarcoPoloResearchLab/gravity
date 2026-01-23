@@ -12,7 +12,6 @@ import { initializeAnalytics } from "./core/analytics.js?build=2026-01-01T22:43:
 import { createSyncManager } from "./core/syncManager.js?build=2026-01-01T22:43:21Z";
 import { createRealtimeSyncController } from "./core/realtimeSyncController.js?build=2026-01-01T22:43:21Z";
 import { ensureTAuthClientLoaded } from "./core/tauthClient.js?build=2026-01-01T22:43:21Z";
-import { ensureMprUiLoaded } from "./core/mprUiClient.js?build=2026-01-01T22:43:21Z";
 import { mountTopEditor } from "./ui/topEditor.js?build=2026-01-01T22:43:21Z";
 import {
     LABEL_APP_SUBTITLE,
@@ -71,8 +70,13 @@ const USER_MENU_ACTION_IMPORT = "import-notes";
 const TAUTH_LOGIN_PATH = "/auth/google";
 const TAUTH_LOGOUT_PATH = "/auth/logout";
 const TAUTH_NONCE_PATH = "/auth/nonce";
-const MPR_UI_SCRIPT_URL = "https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@v2.0.2/mpr-ui.js";
 const TYPE_STRING = "string";
+const LANDING_LOGIN_ELEMENT_ID = "landing-login";
+const LANDING_LOGIN_TEMPLATE_ID = "landing-login-template";
+const LANDING_LOGIN_SLOT_ID = "landing-login-slot";
+const USER_MENU_ELEMENT_ID = "app-user-menu";
+const USER_MENU_TEMPLATE_ID = "user-menu-template";
+const USER_MENU_SLOT_ID = "user-menu-slot";
 
 const PROFILE_KEYS = Object.freeze({
     USER_ID: "user_id",
@@ -136,18 +140,13 @@ bootstrapApplication().catch((error) => {
 
 async function bootstrapApplication() {
     const appConfig = await initializeRuntimeConfig();
-    configureAuthElements(appConfig);
     await ensureTAuthClientLoaded({
         baseUrl: appConfig.authBaseUrl,
         tenantId: appConfig.authTenantId
     }).catch((error) => {
         logging.error("TAuth client failed to load", error);
     });
-    await ensureMprUiLoaded({
-        scriptUrl: MPR_UI_SCRIPT_URL
-    }).catch((error) => {
-        logging.error("MPR UI failed to load", error);
-    });
+    configureAuthElements(appConfig);
     initializeAnalytics({ config: appConfig });
     document.addEventListener("alpine:init", () => {
         Alpine.data("gravityApp", () => gravityApp(appConfig));
@@ -165,28 +164,67 @@ function configureAuthElements(appConfig) {
     if (typeof document === "undefined") {
         return;
     }
-    const loginButton = document.getElementById("landing-login");
-    if (loginButton) {
-        loginButton.setAttribute("site-id", appConfig.googleClientId);
-        loginButton.setAttribute("tauth-tenant-id", appConfig.authTenantId);
-        loginButton.setAttribute("tauth-url", appConfig.authBaseUrl);
-        loginButton.setAttribute("tauth-login-path", TAUTH_LOGIN_PATH);
-        loginButton.setAttribute("tauth-logout-path", TAUTH_LOGOUT_PATH);
-        loginButton.setAttribute("tauth-nonce-path", TAUTH_NONCE_PATH);
-        loginButton.setAttribute("base-url", appConfig.authBaseUrl);
-        loginButton.setAttribute("login-path", TAUTH_LOGIN_PATH);
-        loginButton.setAttribute("logout-path", TAUTH_LOGOUT_PATH);
-        loginButton.setAttribute("nonce-path", TAUTH_NONCE_PATH);
-        loginButton.setAttribute("button-text", LABEL_SIGN_IN_WITH_GOOGLE);
-    }
+    ensureAuthElementMounted(
+        LANDING_LOGIN_ELEMENT_ID,
+        LANDING_LOGIN_TEMPLATE_ID,
+        LANDING_LOGIN_SLOT_ID,
+        (loginButton) => {
+            loginButton.setAttribute("site-id", appConfig.googleClientId);
+            loginButton.setAttribute("tauth-tenant-id", appConfig.authTenantId);
+            loginButton.setAttribute("tauth-url", appConfig.authBaseUrl);
+            loginButton.setAttribute("tauth-login-path", TAUTH_LOGIN_PATH);
+            loginButton.setAttribute("tauth-logout-path", TAUTH_LOGOUT_PATH);
+            loginButton.setAttribute("tauth-nonce-path", TAUTH_NONCE_PATH);
+            loginButton.setAttribute("base-url", appConfig.authBaseUrl);
+            loginButton.setAttribute("login-path", TAUTH_LOGIN_PATH);
+            loginButton.setAttribute("logout-path", TAUTH_LOGOUT_PATH);
+            loginButton.setAttribute("nonce-path", TAUTH_NONCE_PATH);
+            loginButton.setAttribute("button-text", LABEL_SIGN_IN_WITH_GOOGLE);
+        }
+    );
 
-    const userMenu = document.getElementById("app-user-menu");
-    if (userMenu) {
-        userMenu.setAttribute("display-mode", "avatar-name");
-        userMenu.setAttribute("logout-url", resolveLogoutUrl());
-        userMenu.setAttribute("logout-label", LABEL_SIGN_OUT);
-        userMenu.setAttribute("tauth-tenant-id", appConfig.authTenantId);
+    ensureAuthElementMounted(
+        USER_MENU_ELEMENT_ID,
+        USER_MENU_TEMPLATE_ID,
+        USER_MENU_SLOT_ID,
+        (userMenu) => {
+            userMenu.setAttribute("display-mode", "avatar-name");
+            userMenu.setAttribute("logout-url", resolveLogoutUrl());
+            userMenu.setAttribute("logout-label", LABEL_SIGN_OUT);
+            userMenu.setAttribute("tauth-tenant-id", appConfig.authTenantId);
+        }
+    );
+}
+
+/**
+ * @param {string} elementId
+ * @param {string} templateId
+ * @param {string} slotId
+ * @param {(element: HTMLElement) => void} applyAttributes
+ * @returns {HTMLElement|null}
+ */
+function ensureAuthElementMounted(elementId, templateId, slotId, applyAttributes) {
+    if (typeof document === "undefined") {
+        return null;
     }
+    const existing = document.getElementById(elementId);
+    if (existing instanceof HTMLElement) {
+        applyAttributes(existing);
+        return existing;
+    }
+    const template = document.getElementById(templateId);
+    const slot = document.getElementById(slotId);
+    if (!(template instanceof HTMLTemplateElement) || !(slot instanceof HTMLElement)) {
+        return null;
+    }
+    const fragment = template.content.cloneNode(true);
+    const staged = fragment.querySelector(`#${elementId}`);
+    if (!(staged instanceof HTMLElement)) {
+        return null;
+    }
+    applyAttributes(staged);
+    slot.appendChild(fragment);
+    return staged;
 }
 
 /**

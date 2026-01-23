@@ -161,6 +161,8 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 - [x] [GN-433] Landing auth error because the login button is configured with tauth-* attributes instead of mpr-ui base/login/logout/nonce attributes, causing /auth/nonce to hit the frontend origin and fail. (Resolved by wiring the base/login/logout/nonce attributes alongside tauth fields so the mpr-ui login button uses TAuth endpoints.)
 - [ ] [GN-434] (P2) `sync.endtoend.puppeteer.test.js` timed out waiting for `.markdown-block:not(.top-editor)[data-note-id]` during baseline `make test` runs; investigate the flake.
 - [ ] [GN-435] (P2) `htmlView.checkmark.puppeteer.test.js` intermittently fails the anchored-card assertion during `make ci` (observed ~28px drift).
+- [x] [GN-436] (P1) Simplify mpr-ui loading by including the bundle in `frontend/index.html` and mounting auth components with runtime-configured attributes before initialization.
+  (Resolved by loading mpr-ui via a static script tag, cloning auth elements from templates after runtime config, and applying auth attributes before mounting.)
 
 
 ## Maintenance (428–499)

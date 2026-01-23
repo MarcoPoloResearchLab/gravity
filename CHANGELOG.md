@@ -19,6 +19,7 @@ and are grouped by the date the work landed on `master`.
 - Centralized environment config defaults and reused them across runtime config and test harnesses (GN-427).
 - Runtime config now returns a frozen app config and callers pass it explicitly instead of shared globals (GN-427).
 - Signed-out visitors now see a landing page with a Google sign-in button; the Gravity interface requires authentication (GN-126).
+- mpr-ui now loads from a static script tag and auth components mount after runtime config so attributes are applied before initialization (GN-436).
 
 ### Fixed
 - Landing sign-in now sets mpr-ui auth base/login/logout/nonce attributes so nonce requests hit TAuth instead of the frontend origin (GN-433).
