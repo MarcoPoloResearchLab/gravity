@@ -20,15 +20,13 @@ export const CLASSIFICATION_TIMEOUT_MS = 5000;
 export const DEFAULT_PRIVACY = "private";
 export const STORAGE_KEY = "gravityNotesData";
 export const STORAGE_KEY_USER_PREFIX = "gravityNotesData:user";
-export const GOOGLE_CLIENT_ID = "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com";
 
 export const STATIC_APP_CONFIG = Object.freeze({
     timezone: TIMEZONE_DEFAULT,
     classificationTimeoutMs: CLASSIFICATION_TIMEOUT_MS,
     defaultPrivacy: DEFAULT_PRIVACY,
     storageKey: STORAGE_KEY,
-    storageKeyUserPrefix: STORAGE_KEY_USER_PREFIX,
-    googleClientId: GOOGLE_CLIENT_ID
+    storageKeyUserPrefix: STORAGE_KEY_USER_PREFIX
 });
 
 /**
@@ -54,13 +52,13 @@ export const STATIC_APP_CONFIG = Object.freeze({
  *   llmProxyUrl?: string,
  *   authBaseUrl?: string,
  *   authTenantId?: string,
- *   googleClientId?: string
- * }} RuntimeConfigOverrides
+ *   googleClientId: string
+ * }} RuntimeConfigInput
  */
 
 /**
  * Build a fully-resolved runtime configuration for the application.
- * @param {RuntimeConfigOverrides} config
+ * @param {RuntimeConfigInput} config
  * @returns {AppConfig}
  */
 export function createAppConfig(config) {
@@ -106,13 +104,13 @@ export function createAppConfig(config) {
         ERROR_MESSAGES.INVALID_AUTH_TENANT_ID,
         hasAuthTenantId
     );
-    const hasGoogleClientId = Object.prototype.hasOwnProperty.call(config, "googleClientId");
-    const googleClientId = resolveConfigValue(
+    if (!Object.prototype.hasOwnProperty.call(config, "googleClientId")) {
+        throw new Error(ERROR_MESSAGES.INVALID_GOOGLE_CLIENT_ID);
+    }
+    const googleClientId = assertString(
         config.googleClientId,
-        STATIC_APP_CONFIG.googleClientId,
         false,
-        ERROR_MESSAGES.INVALID_GOOGLE_CLIENT_ID,
-        hasGoogleClientId
+        ERROR_MESSAGES.INVALID_GOOGLE_CLIENT_ID
     );
 
     return Object.freeze({

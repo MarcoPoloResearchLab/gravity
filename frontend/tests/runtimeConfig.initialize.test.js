@@ -117,7 +117,8 @@ test.describe(SUITE_LABELS.INITIALIZE_RUNTIME_CONFIG, () => {
                 async json() {
                     return {
                         environment: ENVIRONMENT_DEVELOPMENT,
-                        backendBaseUrl: REMOTE_ENDPOINTS.BACKEND
+                        backendBaseUrl: REMOTE_ENDPOINTS.BACKEND,
+                        googleClientId: REMOTE_ENDPOINTS.GOOGLE_CLIENT_ID
                     };
                 }
             };

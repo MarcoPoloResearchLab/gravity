@@ -6,7 +6,6 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { APP_BUILD_ID } from "../../js/constants.js";
-import { GOOGLE_CLIENT_ID } from "../../js/core/config.js?build=2026-01-01T22:43:21Z";
 import { DEVELOPMENT_ENVIRONMENT_CONFIG } from "../../js/core/environmentConfig.js?build=2026-01-01T22:43:21Z";
 
 import {
@@ -29,6 +28,7 @@ const CDN_LOG_PREFIX = "[cdn mirror] missing";
 const GOOGLE_GSI_STUB = "window.google=window.google||{accounts:{id:{initialize(){},prompt(){},renderButton(){}}}};";
 const AVATAR_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=";
 const AVATAR_PNG_BYTES = Buffer.from(AVATAR_PNG_BASE64, "base64");
+const DEFAULT_GOOGLE_CLIENT_ID = "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com";
 const DEFAULT_TEST_TENANT_ID = "gravity";
 const CDN_MIRRORS = Object.freeze([
     {
@@ -97,7 +97,7 @@ const TEST_RUNTIME_CONFIG = Object.freeze({
     llmProxyUrl: EMPTY_STRING,
     authBaseUrl: DEVELOPMENT_ENVIRONMENT_CONFIG.authBaseUrl,
     authTenantId: DEFAULT_TEST_TENANT_ID,
-    googleClientId: GOOGLE_CLIENT_ID
+    googleClientId: DEFAULT_GOOGLE_CLIENT_ID
 });
 const CDN_INTERCEPTOR_SYMBOL = Symbol("gravityCdnInterceptor");
 const RUNTIME_CONFIG_SYMBOL = Symbol("gravityRuntimeConfigOverrides");

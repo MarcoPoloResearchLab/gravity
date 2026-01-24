@@ -32,7 +32,11 @@ const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(TESTS_DIR, "..", "..");
 const DEFAULT_PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
 const DEFAULT_JWT_ISSUER = "https://accounts.google.com";
-const appConfig = createAppConfig({ environment: ENVIRONMENT_DEVELOPMENT });
+const DEFAULT_GOOGLE_CLIENT_ID = "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com";
+const appConfig = createAppConfig({
+    environment: ENVIRONMENT_DEVELOPMENT,
+    googleClientId: DEFAULT_GOOGLE_CLIENT_ID
+});
 const DEFAULT_JWT_AUDIENCE = appConfig.googleClientId;
 const EMPTY_STRING = "";
 const DEVELOPMENT_AUTH_BASE_URL = DEVELOPMENT_ENVIRONMENT_CONFIG.authBaseUrl;
