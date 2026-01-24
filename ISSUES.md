@@ -160,7 +160,12 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
   (Resolved by verifying backend session cookies attach in Puppeteer and falling back to injecting Cookie headers per backend request when file:// origins reject setCookie; multi-iteration frontend suites now stay stable.)
 - [x] [GN-433] Landing auth error because the login button is configured with tauth-* attributes instead of mpr-ui base/login/logout/nonce attributes, causing /auth/nonce to hit the frontend origin and fail. (Resolved by wiring the base/login/logout/nonce attributes alongside tauth fields so the mpr-ui login button uses TAuth endpoints.)
 - [ ] [GN-434] (P2) `sync.endtoend.puppeteer.test.js` timed out waiting for `.markdown-block:not(.top-editor)[data-note-id]` during baseline `make test` runs; investigate the flake.
+  Root cause: test targets `.markdown-editor` before the authenticated shell/CodeMirror input is ready, so keystrokes sometimes land in the hidden textarea and no note is created.
+  Blocked: `make test` fails due to GN-435 drift plus new multi-iteration frontend harness timeouts.
 - [ ] [GN-435] (P2) `htmlView.checkmark.puppeteer.test.js` intermittently fails the anchored-card assertion during `make ci` (observed ~28px drift).
+  Observed again during GN-434 `make test`: anchored diff 28.5px plus intermittent timeouts.
+- [ ] [GN-439] (P2) Multi-iteration frontend harness intermittently times out or fails across editor inline, expansion persistence, sync scenarios, and fullstack/persistence backend flows during `make test`.
+  Observed during GN-434 `make test` attempts: timeouts in `editor.inline.puppeteer.test.js`, `htmlView.expansionPersistence.puppeteer.test.js`, `sync.scenarios.puppeteer.test.js`, plus 401/`note not found` failures in `persistence.backend.puppeteer.test.js` and `fullstack.endtoend.puppeteer.test.js`.
 - [x] [GN-436] (P1) Simplify mpr-ui loading by including the bundle in `frontend/index.html` and mounting auth components with runtime-configured attributes before initialization.
   (Resolved by loading mpr-ui via a static script tag, cloning auth elements from templates after runtime config, and applying auth attributes before mounting.)
 - [x] [GN-437] (P1) Load mpr-ui assets from the `@latest` CDN tag to keep the frontend in sync with upstream releases.
