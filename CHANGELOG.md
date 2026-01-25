@@ -55,6 +55,7 @@ and are grouped by the date the work landed on `master`.
 - Clicking the card control column now finalizes inline editing without flickering back to markdown mode, covered by a regression targeting the GN-308 scenario (GN-308).
 - Puppeteer sync persistence tests now ensure backend session cookies attach (with a request-interceptor fallback for file:// origins), stabilizing multi-iteration runs (GN-432).
 - Sync end-to-end coverage now waits for the authenticated shell and CodeMirror input before typing to avoid focus races (GN-434).
+- Expanded htmlView checkbox toggles now preserve viewport anchors and skip redundant re-renders to prevent drift (GN-435).
 
 ### Documentation
 - Folded `MIGRATION.md` into `ARCHITECTURE.md`, clarifying event contracts and module guidance (GN-54).

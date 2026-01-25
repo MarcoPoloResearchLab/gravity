@@ -162,7 +162,9 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 - [x] [GN-434] (P2) `sync.endtoend.puppeteer.test.js` timed out waiting for `.markdown-block:not(.top-editor)[data-note-id]` during baseline `make test` runs; investigate the flake.
   (Resolved by waiting for the authenticated app shell and CodeMirror input before typing.)
   Root cause: the test targets `.markdown-editor` before the authenticated shell/CodeMirror input is ready, so keystrokes can land in the hidden textarea and no note is created.
-- [ ] [GN-435] (P2) `htmlView.checkmark.puppeteer.test.js` intermittently fails the anchored-card assertion during `make ci` (observed ~28px drift).
+- [x] [GN-435] (P2) `htmlView.checkmark.puppeteer.test.js` intermittently fails the anchored-card assertion during `make ci` (observed ~28px drift).
+  Root cause: checkbox toggles re-rendered htmlView twice without preserving the card anchor, so expansion scroll compensation could drift the card after the second rebuild.
+  (Resolved by storing the viewport anchor, suppressing redundant scroll compensation, and removing the extra htmlView rebuild in the checkbox handler.)
 - [x] [GN-436] (P1) Simplify mpr-ui loading by including the bundle in `frontend/index.html` and mounting auth components with runtime-configured attributes before initialization.
   (Resolved by loading mpr-ui via a static script tag, cloning auth elements from templates after runtime config, and applying auth attributes before mounting.)
 - [x] [GN-437] (P1) Load mpr-ui assets from the `@latest` CDN tag to keep the frontend in sync with upstream releases.
