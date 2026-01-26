@@ -159,17 +159,14 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 - [x] [GN-432] Intermittent `persistence.sync.puppeteer.test.js` failures during multi-iteration `make ci` runs.
   (Resolved by verifying backend session cookies attach in Puppeteer and falling back to injecting Cookie headers per backend request when file:// origins reject setCookie; multi-iteration frontend suites now stay stable.)
 - [x] [GN-433] Landing auth error because the login button is configured with tauth-* attributes instead of mpr-ui base/login/logout/nonce attributes, causing /auth/nonce to hit the frontend origin and fail. (Resolved by wiring the base/login/logout/nonce attributes alongside tauth fields so the mpr-ui login button uses TAuth endpoints.)
-- [x] [GN-434] (P2) `sync.endtoend.puppeteer.test.js` timed out waiting for `.markdown-block:not(.top-editor)[data-note-id]` during baseline `make test` runs; investigate the flake.
-  (Resolved by waiting for the authenticated app shell and CodeMirror input before typing.)
-  Root cause: the test targets `.markdown-editor` before the authenticated shell/CodeMirror input is ready, so keystrokes can land in the hidden textarea and no note is created.
-- [x] [GN-435] (P2) `htmlView.checkmark.puppeteer.test.js` intermittently fails the anchored-card assertion during `make ci` (observed ~28px drift).
-  Root cause: checkbox toggles re-rendered htmlView twice without preserving the card anchor, so expansion scroll compensation could drift the card after the second rebuild.
-  (Resolved by storing the viewport anchor, suppressing redundant scroll compensation, and removing the extra htmlView rebuild in the checkbox handler.)
+- [ ] [GN-434] (P2) `sync.endtoend.puppeteer.test.js` timed out waiting for `.markdown-block:not(.top-editor)[data-note-id]` during baseline `make test` runs; investigate the flake.
+  Observed again during GN-438 `make test`; rerun passed.
+- [ ] [GN-435] (P2) `htmlView.checkmark.puppeteer.test.js` intermittently fails the anchored-card assertion during `make ci` (observed ~28px drift).
 - [x] [GN-436] (P1) Simplify mpr-ui loading by including the bundle in `frontend/index.html` and mounting auth components with runtime-configured attributes before initialization.
   (Resolved by loading mpr-ui via a static script tag, cloning auth elements from templates after runtime config, and applying auth attributes before mounting.)
 - [x] [GN-437] (P1) Load mpr-ui assets from the `@latest` CDN tag to keep the frontend in sync with upstream releases.
   (Resolved by switching the frontend CDN links and test harness mirrors to `@latest`.)
-- [x] [GN-438] (P1) Login button stays blank because runtime config does not supply the Google client ID used by GIS, so the origin/client pairing fails and the button never renders. (Resolved by requiring googleClientId in runtime config payloads and fixtures.)
+- [x] [GN-438] (P1) Allow runtime config to override the Google client ID so local dev origins can match the correct GSI project. (Resolved by requiring googleClientId in runtime config payloads/JSON, plumbing through the config builder, and updating tests.)
 - [ ] [GN-439] (P1) `sync.manager.test.js` fails during `make ci` with `offline` errors and duplicate sync operations (expected 1, observed 2) in the "coalesces repeated upserts" case; investigate and stabilize.
 - [ ] [GN-439] (P1) `QuotaExceededError` in sync queue persistence when localStorage fills; redesign persistence to avoid localStorage quotas and coalesce pending sync operations.
 
