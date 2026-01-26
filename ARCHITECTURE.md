@@ -73,7 +73,7 @@ EasyMDE produces markdown, marked renders it to HTML, and DOMPurify sanitises th
 
 **Storage, Configuration, and Auth**
 
-- `GravityStore` persists notes in `localStorage` for offline-first behaviour; reconciliation applies backend snapshots.
+- `GravityStore` persists notes in IndexedDB for offline-first behaviour; reconciliation applies backend snapshots.
 - `createNoteRecord` validates note identifiers/markdown before writes so malformed payloads never hit storage.
 - `GravityStore.setUserScope(userId)` switches the storage namespace so each Google account receives an isolated notebook.
 - Runtime configuration loads from environment-specific JSON files under `data/`, selected according to the active hostname. Each profile now surfaces `authBaseUrl` so the frontend knows which TAuth origin to contact when requesting `/auth/nonce`, `/auth/google`, and `/auth/logout`.

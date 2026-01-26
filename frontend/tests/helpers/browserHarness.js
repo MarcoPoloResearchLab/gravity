@@ -28,6 +28,7 @@ const CDN_LOG_PREFIX = "[cdn mirror] missing";
 const GOOGLE_GSI_STUB = "window.google=window.google||{accounts:{id:{initialize(){},prompt(){},renderButton(){}}}};";
 const AVATAR_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=";
 const AVATAR_PNG_BYTES = Buffer.from(AVATAR_PNG_BASE64, "base64");
+const DEFAULT_GOOGLE_CLIENT_ID = "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com";
 const DEFAULT_TEST_TENANT_ID = "gravity";
 const DEFAULT_GOOGLE_CLIENT_ID = "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com";
 const CDN_MIRRORS = Object.freeze([
@@ -242,6 +243,9 @@ export async function createSharedPage(runtimeConfigOverrides = {}) {
     const browser = await connectSharedBrowser();
     const context = await browser.createBrowserContext();
     const page = await context.newPage();
+    await page.evaluateOnNewDocument(() => {
+        window.__gravityForceLocalStorage = true;
+    });
     if (process.env.GRAVITY_TEST_STREAM_LOGS === "1") {
         page.on("console", (message) => {
             const type = message.type?.().toUpperCase?.() ?? "LOG";

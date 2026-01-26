@@ -140,6 +140,7 @@ bootstrapApplication().catch((error) => {
 
 async function bootstrapApplication() {
     const appConfig = await initializeRuntimeConfig();
+    await GravityStore.initialize();
     await ensureTAuthClientLoaded({
         baseUrl: appConfig.authBaseUrl,
         tenantId: appConfig.authTenantId
@@ -305,20 +306,35 @@ function gravityApp(appConfig) {
             GravityStore.setUserScope(null);
 
             if (typeof window !== "undefined") {
-                window.addEventListener("storage", (event) => {
-                    if (!event) {
+                const unsubscribe = GravityStore.subscribeToChanges?.((storageKey) => {
+                    if (storageKey !== GravityStore.getActiveStorageKey()) {
                         return;
                     }
-                    if (event.storageArea !== window.localStorage) {
-                        return;
-                    }
-                    const activeKey = GravityStore.getActiveStorageKey();
-                    if (event.key !== activeKey) {
-                        return;
-                    }
-                    this.initializeNotes();
-                    void this.syncManager?.synchronize({ flushQueue: false });
-                });
+                    void GravityStore.hydrateActiveScope()
+                        .then(() => {
+                            this.initializeNotes();
+                            void this.syncManager?.synchronize({ flushQueue: false });
+                        })
+                        .catch((error) => {
+                            logging.error("Storage hydration failed", error);
+                        });
+                }) ?? null;
+                if (!unsubscribe) {
+                    window.addEventListener("storage", (event) => {
+                        if (!event) {
+                            return;
+                        }
+                        if (event.storageArea !== window.localStorage) {
+                            return;
+                        }
+                        const activeKey = GravityStore.getActiveStorageKey();
+                        if (event.key !== activeKey) {
+                            return;
+                        }
+                        this.initializeNotes();
+                        void this.syncManager?.synchronize({ flushQueue: false });
+                    });
+                }
                 if (this.syncIntervalHandle === null) {
                     this.syncIntervalHandle = window.setInterval(() => {
                         void this.syncManager?.synchronize({ flushQueue: false });
@@ -460,7 +476,6 @@ function gravityApp(appConfig) {
                 this.authUser = normalizedUser;
                 this.clearLandingStatus();
                 this.setAuthState(AUTH_STATE_AUTHENTICATED);
-                GravityStore.setUserScope(normalizedUser.id);
                 this.initializeNotes();
                 this.realtimeSync?.connect({
                     baseUrl: appConfig.backendBaseUrl
@@ -472,10 +487,11 @@ function gravityApp(appConfig) {
                 }
             };
 
-            const applySignedOutState = () => {
+            const applySignedOutState = async () => {
                 this.authUser = null;
                 this.setAuthState(AUTH_STATE_UNAUTHENTICATED);
                 GravityStore.setUserScope(null);
+                await GravityStore.hydrateActiveScope();
                 this.initializeNotes();
                 this.syncManager?.handleSignOut();
                 this.realtimeSync?.disconnect();
@@ -483,18 +499,19 @@ function gravityApp(appConfig) {
 
             try {
                 GravityStore.setUserScope(normalizedUser.id);
+                await GravityStore.hydrateActiveScope();
                 const result = this.syncManager && typeof this.syncManager.handleSignIn === "function"
                     ? await this.syncManager.handleSignIn({ userId: normalizedUser.id })
                     : { authenticated: true, queueFlushed: false, snapshotApplied: false };
                 if (!result?.authenticated) {
-                    applySignedOutState();
+                    await applySignedOutState();
                     this.setLandingStatus(ERROR_AUTHENTICATION_GENERIC, "error");
                     return;
                 }
                 applySignedInState();
             } catch (error) {
                 logging.error(error);
-                applySignedOutState();
+                await applySignedOutState();
                 this.setLandingStatus(ERROR_AUTHENTICATION_GENERIC, "error");
             } finally {
                 if (this.pendingSignInUserId === normalizedUser.id) {
@@ -503,7 +520,7 @@ function gravityApp(appConfig) {
             }
         },
 
-        handleAuthUnauthenticated() {
+        async handleAuthUnauthenticated() {
             this.authUser = null;
             this.pendingSignInUserId = null;
             this.setAuthState(AUTH_STATE_UNAUTHENTICATED);
@@ -513,6 +530,7 @@ function gravityApp(appConfig) {
                 this.clearLandingStatus();
             }
             GravityStore.setUserScope(null);
+            await GravityStore.hydrateActiveScope();
             this.initializeNotes();
             this.syncManager?.handleSignOut();
             this.realtimeSync?.disconnect();
@@ -536,7 +554,7 @@ function gravityApp(appConfig) {
 
         handleAuthSignOutRequest(reason = "manual") {
             void reason;
-            this.handleAuthUnauthenticated();
+            void this.handleAuthUnauthenticated();
             if (typeof window !== "undefined" && typeof window.logout === "function") {
                 window.logout().catch((error) => {
                     logging.error("TAuth logout failed", error);
@@ -549,7 +567,7 @@ function gravityApp(appConfig) {
                 return;
             }
             if (typeof window === "undefined" || typeof window.getCurrentUser !== "function") {
-                this.handleAuthUnauthenticated();
+                void this.handleAuthUnauthenticated();
                 return;
             }
             try {
@@ -565,7 +583,7 @@ function gravityApp(appConfig) {
                 logging.error("Auth bootstrap failed", error);
             }
             if (this.authState === AUTH_STATE_LOADING) {
-                this.handleAuthUnauthenticated();
+                void this.handleAuthUnauthenticated();
             }
         },
 
@@ -677,7 +695,7 @@ function gravityApp(appConfig) {
             });
 
             root.addEventListener(EVENT_MPR_AUTH_UNAUTHENTICATED, () => {
-                this.handleAuthUnauthenticated();
+                void this.handleAuthUnauthenticated();
             });
 
             root.addEventListener(EVENT_MPR_AUTH_ERROR, (event) => {

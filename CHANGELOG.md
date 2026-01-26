@@ -13,6 +13,7 @@ and are grouped by the date the work landed on `master`.
 - Background version watcher polls a manifest and reloads the app when a new deploy ships so browsers never run stale code (GN-206).
 
 ### Changed
+- Frontend persistence now uses IndexedDB with a localStorage migration and BroadcastChannel refreshes (GN-439).
 - Full-screen toggle now lives inside the avatar menu with updated exit icon strokes and a text label (GN-207).
 - Auth header now shows only the signed-in display name to avoid exposing email addresses (GN-208).
 - TAuth session now delegates nonce issuance and credential exchange to auth-client helpers instead of local fetches (GN-423).
@@ -23,6 +24,7 @@ and are grouped by the date the work landed on `master`.
 - Frontend now pulls mpr-ui assets from the `@latest` CDN tag so releases stay aligned (GN-437).
 
 ### Fixed
+- Sync queue now coalesces per note and resolves payloads from the latest stored note to avoid duplicate ops and offline failures (GN-439).
 - Landing sign-in now sets mpr-ui auth base/login/logout/nonce attributes so nonce requests hit TAuth instead of the frontend origin (GN-433).
 - Runtime config now accepts a Google client ID override so local GSI origins can match the correct project (GN-438).
 - Updated the TAuth helper loader and harness to use `/tauth.js`, keeping Gravity aligned with current TAuth builds (GN-424).
@@ -57,6 +59,7 @@ and are grouped by the date the work landed on `master`.
 - Puppeteer sync persistence tests now ensure backend session cookies attach (with a request-interceptor fallback for file:// origins), stabilizing multi-iteration runs (GN-432).
 - Sync end-to-end coverage now waits for the authenticated shell and CodeMirror input before typing to avoid focus races (GN-434).
 - Expanded htmlView checkbox toggles now preserve viewport anchors and skip redundant re-renders to prevent drift (GN-435).
+- Runtime config now requires an explicit Google client ID so GIS matches the configured origin and the landing sign-in button renders (GN-438).
 
 ### Documentation
 - Folded `MIGRATION.md` into `ARCHITECTURE.md`, clarifying event contracts and module guidance (GN-54).

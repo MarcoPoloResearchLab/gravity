@@ -167,8 +167,8 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 - [x] [GN-437] (P1) Load mpr-ui assets from the `@latest` CDN tag to keep the frontend in sync with upstream releases.
   (Resolved by switching the frontend CDN links and test harness mirrors to `@latest`.)
 - [x] [GN-438] (P1) Allow runtime config to override the Google client ID so local dev origins can match the correct GSI project. (Resolved by requiring googleClientId in runtime config payloads/JSON, plumbing through the config builder, and updating tests.)
-- [ ] [GN-439] (P1) `sync.manager.test.js` fails during `make ci` with `offline` errors and duplicate sync operations (expected 1, observed 2) in the "coalesces repeated upserts" case; investigate and stabilize.
-- [ ] [GN-439] (P1) `QuotaExceededError` in sync queue persistence when localStorage fills; redesign persistence to avoid localStorage quotas and coalesce pending sync operations.
+- [x] [GN-439] (P1) `sync.manager.test.js` fails during `make ci` with `offline` errors and duplicate sync operations (expected 1, observed 2) in the "coalesces repeated upserts" case; investigate and stabilize. (Resolved by coalescing per-note operations, deferring payload hydration to flush time, and adding regression coverage.)
+- [x] [GN-439] (P1) `QuotaExceededError` in sync queue persistence when localStorage fills; redesign persistence to avoid localStorage quotas and coalesce pending sync operations. (Resolved by migrating notes/sync queue/sync metadata to IndexedDB with localStorage-only test mode and storage-full notifications.)
 
 
 ## Maintenance (428–499)
