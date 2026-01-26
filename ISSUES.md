@@ -169,6 +169,9 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
   (Resolved by loading mpr-ui via a static script tag, cloning auth elements from templates after runtime config, and applying auth attributes before mounting.)
 - [x] [GN-437] (P1) Load mpr-ui assets from the `@latest` CDN tag to keep the frontend in sync with upstream releases.
   (Resolved by switching the frontend CDN links and test harness mirrors to `@latest`.)
+- [x] [GN-438] (P1) Login button stays blank because runtime config does not supply the Google client ID used by GIS, so the origin/client pairing fails and the button never renders. (Resolved by requiring googleClientId in runtime config payloads and fixtures.)
+- [ ] [GN-439] (P1) `sync.manager.test.js` fails during `make ci` with `offline` errors and duplicate sync operations (expected 1, observed 2) in the "coalesces repeated upserts" case; investigate and stabilize.
+- [ ] [GN-439] (P1) `QuotaExceededError` in sync queue persistence when localStorage fills; redesign persistence to avoid localStorage quotas and coalesce pending sync operations.
 
 
 ## Maintenance (428–499)

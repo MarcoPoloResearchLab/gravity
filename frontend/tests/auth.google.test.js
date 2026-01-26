@@ -10,7 +10,11 @@ import {
 } from "../js/constants.js";
 import { createGoogleIdentityController, isGoogleIdentitySupportedOrigin } from "../js/core/auth.js";
 
-const appConfig = createAppConfig({ environment: ENVIRONMENT_DEVELOPMENT });
+const DEFAULT_GOOGLE_CLIENT_ID = "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com";
+const appConfig = createAppConfig({
+    environment: ENVIRONMENT_DEVELOPMENT,
+    googleClientId: DEFAULT_GOOGLE_CLIENT_ID
+});
 
 const SAMPLE_USER = {
     sub: "demo-user-123",
