@@ -6,7 +6,11 @@ import { ENVIRONMENT_DEVELOPMENT } from "../js/core/environmentConfig.js?build=2
 import { GravityStore, ERROR_INVALID_NOTES_COLLECTION } from "../js/core/store.js";
 import { ERROR_IMPORT_INVALID_PAYLOAD } from "../js/constants.js";
 
-const appConfig = createAppConfig({ environment: ENVIRONMENT_DEVELOPMENT });
+const DEFAULT_GOOGLE_CLIENT_ID = "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com";
+const appConfig = createAppConfig({
+    environment: ENVIRONMENT_DEVELOPMENT,
+    googleClientId: DEFAULT_GOOGLE_CLIENT_ID
+});
 
 const SAMPLE_TIMESTAMP = "2024-01-01T00:00:00.000Z";
 

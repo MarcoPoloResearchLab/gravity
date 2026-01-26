@@ -3,5 +3,6 @@
     "backendBaseUrl": "https://gravity-api.mprlab.com",
     "llmProxyUrl": "https://llm-proxy.mprlab.com/v1/gravity/classify",
     "authBaseUrl": "https://tauth-api.mprlab.com",
-    "authTenantId": "gravity"
+    "authTenantId": "gravity",
+    "googleClientId": "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com"
 }

@@ -3,5 +3,6 @@
     "backendBaseUrl": "http://localhost:8080",
     "llmProxyUrl": "http://computercat:8081/v1/gravity/classify",
     "authBaseUrl": "http://localhost:8082",
-    "authTenantId": "gravity"
+    "authTenantId": "gravity",
+    "googleClientId": "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com"
 }

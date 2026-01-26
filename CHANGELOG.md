@@ -24,6 +24,7 @@ and are grouped by the date the work landed on `master`.
 
 ### Fixed
 - Landing sign-in now sets mpr-ui auth base/login/logout/nonce attributes so nonce requests hit TAuth instead of the frontend origin (GN-433).
+- Runtime config now accepts a Google client ID override so local GSI origins can match the correct project (GN-438).
 - Updated the TAuth helper loader and harness to use `/tauth.js`, keeping Gravity aligned with current TAuth builds (GN-424).
 - Expanded edit-height locks now override CodeMirror auto sizing so expanded cards keep their height in edit mode (GN-425).
 - TAuth runtime config now forwards `authTenantId` into the loader/session bridge and drops the crossOrigin attribute so tauth.js loads cleanly in stricter CORS setups (GN-426).
@@ -54,6 +55,8 @@ and are grouped by the date the work landed on `master`.
 - Expand/collapse toggles now align to the full card width rather than the text column, with resize-aware positioning and mobile regression coverage (GN-307).
 - Clicking the card control column now finalizes inline editing without flickering back to markdown mode, covered by a regression targeting the GN-308 scenario (GN-308).
 - Puppeteer sync persistence tests now ensure backend session cookies attach (with a request-interceptor fallback for file:// origins), stabilizing multi-iteration runs (GN-432).
+- Sync end-to-end coverage now waits for the authenticated shell and CodeMirror input before typing to avoid focus races (GN-434).
+- Expanded htmlView checkbox toggles now preserve viewport anchors and skip redundant re-renders to prevent drift (GN-435).
 
 ### Documentation
 - Folded `MIGRATION.md` into `ARCHITECTURE.md`, clarifying event contracts and module guidance (GN-54).

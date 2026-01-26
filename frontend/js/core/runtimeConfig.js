@@ -13,7 +13,8 @@ const RUNTIME_CONFIG_KEYS = Object.freeze({
     BACKEND_BASE_URL: "backendBaseUrl",
     LLM_PROXY_URL: "llmProxyUrl",
     AUTH_BASE_URL: "authBaseUrl",
-    AUTH_TENANT_ID: "authTenantId"
+    AUTH_TENANT_ID: "authTenantId",
+    GOOGLE_CLIENT_ID: "googleClientId"
 });
 
 const TYPE_FUNCTION = "function";
@@ -138,7 +139,7 @@ async function fetchRuntimeConfig(fetchImplementation, resource) {
  * Validate and project the runtime config payload into known keys.
  * @param {unknown} payload
  * @param {"production" | "development"} environment
- * @returns {{ backendBaseUrl?: string, llmProxyUrl?: string, authBaseUrl?: string, authTenantId?: string }}
+ * @returns {{ backendBaseUrl?: string, llmProxyUrl?: string, authBaseUrl?: string, authTenantId?: string, googleClientId: string }}
  */
 function parseRuntimeConfigPayload(payload, environment) {
     if (!payload || typeof payload !== TYPE_OBJECT || Array.isArray(payload)) {
@@ -191,6 +192,14 @@ function parseRuntimeConfigPayload(payload, environment) {
         }
         overrides.authTenantId = authTenantId;
     }
+    if (!Object.prototype.hasOwnProperty.call(payload, RUNTIME_CONFIG_KEYS.GOOGLE_CLIENT_ID)) {
+        throw new Error(ERROR_MESSAGES.INVALID_PAYLOAD);
+    }
+    const googleClientId = /** @type {Record<string, unknown>} */ (payload)[RUNTIME_CONFIG_KEYS.GOOGLE_CLIENT_ID];
+    if (typeof googleClientId !== TYPE_STRING) {
+        throw new Error(ERROR_MESSAGES.INVALID_PAYLOAD);
+    }
+    overrides.googleClientId = googleClientId;
     return overrides;
 }
 
