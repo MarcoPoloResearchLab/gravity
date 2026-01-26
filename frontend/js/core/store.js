@@ -2,11 +2,21 @@
 
 import { STORAGE_KEY, STORAGE_KEY_USER_PREFIX } from "./config.js?build=2026-01-01T22:43:21Z";
 import { logging } from "../utils/logging.js?build=2026-01-01T22:43:21Z";
-import { ERROR_IMPORT_INVALID_PAYLOAD } from "../constants.js?build=2026-01-01T22:43:21Z";
+import { ERROR_IMPORT_INVALID_PAYLOAD, EVENT_NOTIFICATION_REQUEST, MESSAGE_STORAGE_FULL } from "../constants.js?build=2026-01-01T22:43:21Z";
 import { sanitizeAttachmentDictionary } from "./attachments.js?build=2026-01-01T22:43:21Z";
+import {
+    openStorageDb,
+    resolveStorageMode,
+    STORE_NOTES,
+    STORAGE_MODE_INDEXED,
+    STORAGE_MODE_LOCAL,
+    STORAGE_MODE_UNAVAILABLE
+} from "./storageDb.js?build=2026-01-01T22:43:21Z";
 
 const EMPTY_STRING = "";
 const STORAGE_KEY_BASE = STORAGE_KEY;
+const STORAGE_MODE = resolveStorageMode();
+const BROADCAST_CHANNEL_NAME = "gravity-notes-storage";
 const STORAGE_USER_PREFIX = (() => {
     const configured = typeof STORAGE_KEY_USER_PREFIX === "string"
         ? STORAGE_KEY_USER_PREFIX.trim()
@@ -15,6 +25,13 @@ const STORAGE_USER_PREFIX = (() => {
     return prefix.endsWith(":") ? prefix : `${prefix}:`;
 })();
 let activeStorageKey = STORAGE_KEY_BASE;
+const ERROR_MESSAGES = Object.freeze({
+    STORAGE_UNAVAILABLE: "storage.notes.unavailable",
+    STORAGE_NOT_READY: "storage.notes.not_ready",
+    STORAGE_READ_FAILED: "storage.notes.read_failed",
+    STORAGE_WRITE_FAILED: "storage.notes.write_failed",
+    STORAGE_DELETE_FAILED: "storage.notes.delete_failed"
+});
 const ERROR_INVALID_NOTE_RECORD = "gravity.invalid_note_record";
 export const ERROR_INVALID_NOTES_COLLECTION = "gravity.invalid_notes_collection";
 
@@ -22,28 +39,30 @@ export const ERROR_INVALID_NOTES_COLLECTION = "gravity.invalid_notes_collection"
 
 export const GravityStore = (() => {
     const debugEnabled = () => typeof globalThis !== "undefined" && globalThis.__debugSyncScenarios === true;
+    const notificationTarget = typeof globalThis !== "undefined" && globalThis.document
+        ? globalThis.document
+        : null;
+    const broadcastChannel = STORAGE_MODE === STORAGE_MODE_INDEXED ? createBroadcastChannel() : null;
+    const broadcastSourceId = broadcastChannel ? createBroadcastSourceId() : "";
+    let cachedRecords = [];
+    let cachedSerialized = "[]";
+    let hydratedStorageKey = null;
+    let persistChain = Promise.resolve();
+    let storageBlocked = false;
+    let storageNotificationSent = false;
 
     /**
      * @returns {NoteRecord[]}
      */
     function loadAllNotes() {
-        const storageKey = getActiveStorageKey();
-        const raw = localStorage.getItem(storageKey);
-        if (!raw) return [];
-        try {
-            const rawRecords = JSON.parse(raw);
-            if (!Array.isArray(rawRecords)) return [];
-            const normalized = [];
-            for (const rawRecord of rawRecords) {
-                const note = tryCreateNoteRecord(rawRecord);
-                if (note) {
-                    normalized.push(note);
-                }
-            }
-            return dedupeRecordsById(normalized);
-        } catch {
-            return [];
+        if (STORAGE_MODE === STORAGE_MODE_UNAVAILABLE) {
+            throw new Error(ERROR_MESSAGES.STORAGE_UNAVAILABLE);
         }
+        if (STORAGE_MODE === STORAGE_MODE_LOCAL) {
+            return loadAllNotesFromLocalStorage();
+        }
+        ensureHydrated();
+        return parseCachedRecords();
     }
 
     /**
@@ -53,6 +72,9 @@ export const GravityStore = (() => {
     function saveAllNotes(records) {
         if (!Array.isArray(records)) {
             throw new Error(ERROR_INVALID_NOTES_COLLECTION);
+        }
+        if (STORAGE_MODE === STORAGE_MODE_UNAVAILABLE) {
+            throw new Error(ERROR_MESSAGES.STORAGE_UNAVAILABLE);
         }
         const normalized = [];
         for (const record of records) {
@@ -72,7 +94,68 @@ export const GravityStore = (() => {
                 // ignore console failures
             }
         }
-        localStorage.setItem(storageKey, JSON.stringify(deduped));
+        if (STORAGE_MODE === STORAGE_MODE_LOCAL) {
+            persistNotesToLocalStorage(storageKey, deduped);
+            return;
+        }
+        ensureHydrated();
+        updateCache(deduped);
+        queuePersist(storageKey, deduped);
+    }
+
+    /**
+     * Initialize storage for the current scope.
+     * @returns {Promise<void>}
+     */
+    async function initialize() {
+        if (STORAGE_MODE === STORAGE_MODE_UNAVAILABLE) {
+            throw new Error(ERROR_MESSAGES.STORAGE_UNAVAILABLE);
+        }
+        if (STORAGE_MODE !== STORAGE_MODE_INDEXED) {
+            return;
+        }
+        await requestPersistentStorage();
+        await hydrateActiveScope();
+    }
+
+    /**
+     * Hydrate cached notes for the active storage scope.
+     * @returns {Promise<void>}
+     */
+    async function hydrateActiveScope() {
+        if (STORAGE_MODE === STORAGE_MODE_UNAVAILABLE) {
+            throw new Error(ERROR_MESSAGES.STORAGE_UNAVAILABLE);
+        }
+        if (STORAGE_MODE !== STORAGE_MODE_INDEXED) {
+            return;
+        }
+        const storageKey = getActiveStorageKey();
+        const records = await loadNotesFromIndexedDb(storageKey);
+        updateCache(records);
+        hydratedStorageKey = storageKey;
+    }
+
+    /**
+     * Subscribe to cross-tab updates for indexed storage.
+     * @param {(storageKey: string) => void} handler
+     * @returns {(() => void)|null}
+     */
+    function subscribeToChanges(handler) {
+        if (!broadcastChannel) {
+            return null;
+        }
+        const listener = (event) => {
+            const payload = event?.data ?? null;
+            if (!payload || payload.sourceId === broadcastSourceId) {
+                return;
+            }
+            if (typeof payload.storageKey !== "string") {
+                return;
+            }
+            handler(payload.storageKey);
+        };
+        broadcastChannel.addEventListener("message", listener);
+        return () => broadcastChannel.removeEventListener("message", listener);
     }
 
     /**
@@ -80,6 +163,10 @@ export const GravityStore = (() => {
      * @returns {string}
      */
     function exportNotes() {
+        if (STORAGE_MODE === STORAGE_MODE_INDEXED) {
+            ensureHydrated();
+            return cachedSerialized;
+        }
         const records = loadAllNotes();
         return JSON.stringify(records);
     }
@@ -242,7 +329,261 @@ export const GravityStore = (() => {
         return targetId;
     }
 
+    /**
+     * Set the active storage key according to the provided user identifier.
+     * @param {string|null|undefined} userId
+     * @returns {string}
+     */
+    function setUserScope(userId) {
+        const nextKey = isNonBlankString(userId) ? composeUserStorageKey(String(userId)) : STORAGE_KEY_BASE;
+        if (nextKey === activeStorageKey) {
+            return activeStorageKey;
+        }
+        activeStorageKey = nextKey;
+        if (STORAGE_MODE === STORAGE_MODE_INDEXED) {
+            hydratedStorageKey = null;
+            cachedRecords = [];
+            cachedSerialized = "[]";
+        }
+        return activeStorageKey;
+    }
+
+    function ensureHydrated() {
+        if (STORAGE_MODE !== STORAGE_MODE_INDEXED) {
+            return;
+        }
+        if (hydratedStorageKey !== activeStorageKey) {
+            throw new Error(ERROR_MESSAGES.STORAGE_NOT_READY);
+        }
+    }
+
+    /**
+     * @param {NoteRecord[]} records
+     * @returns {void}
+     */
+    function updateCache(records) {
+        cachedRecords = records;
+        cachedSerialized = JSON.stringify(records);
+    }
+
+    /**
+     * @returns {NoteRecord[]}
+     */
+    function parseCachedRecords() {
+        return cloneRecords(cachedRecords);
+    }
+
+    /**
+     * @param {string} storageKey
+     * @param {NoteRecord[]} records
+     * @returns {void}
+     */
+    function queuePersist(storageKey, records) {
+        if (storageBlocked) {
+            return;
+        }
+        persistChain = persistChain
+            .then(() => persistNotesToIndexedDb(storageKey, records))
+            .then(() => broadcastChange(storageKey))
+            .catch((error) => {
+                handleStorageFailure(error);
+            });
+    }
+
+    /**
+     * @param {string} storageKey
+     * @returns {Promise<NoteRecord[]>}
+     */
+    async function loadNotesFromIndexedDb(storageKey) {
+        const value = await readNotesValueFromIndexedDb(storageKey);
+        const records = sanitizePersistedRecords(value);
+        if (records.length > 0) {
+            return records;
+        }
+        const migrated = readNotesFromLocalStorage(storageKey);
+        if (migrated.length === 0) {
+            return [];
+        }
+        await persistNotesToIndexedDb(storageKey, migrated).catch((error) => {
+            logging.error("GravityStore migration failed", error);
+        });
+        removeNotesFromLocalStorage(storageKey);
+        return migrated;
+    }
+
+    /**
+     * @param {string} storageKey
+     * @returns {Promise<unknown>}
+     */
+    async function readNotesValueFromIndexedDb(storageKey) {
+        const db = await openStorageDb();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(STORE_NOTES, "readonly");
+            const store = transaction.objectStore(STORE_NOTES);
+            const request = store.get(storageKey);
+            request.onsuccess = () => {
+                resolve(request.result);
+            };
+            request.onerror = () => {
+                const message = request.error?.message ?? "unknown";
+                reject(new Error(`${ERROR_MESSAGES.STORAGE_READ_FAILED}: ${message}`));
+            };
+        });
+    }
+
+    /**
+     * @param {string} storageKey
+     * @param {NoteRecord[]} records
+     * @returns {Promise<void>}
+     */
+    async function persistNotesToIndexedDb(storageKey, records) {
+        const db = await openStorageDb();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(STORE_NOTES, "readwrite");
+            const store = transaction.objectStore(STORE_NOTES);
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => {
+                const message = transaction.error?.message ?? "unknown";
+                reject(new Error(`${ERROR_MESSAGES.STORAGE_WRITE_FAILED}: ${message}`));
+            };
+            if (records.length === 0) {
+                store.delete(storageKey);
+            } else {
+                store.put(records, storageKey);
+            }
+        });
+    }
+
+    function handleStorageFailure(error) {
+        if (storageNotificationSent) {
+            return;
+        }
+        storageNotificationSent = true;
+        storageBlocked = true;
+        logging.error("GravityStore persistence failed", error);
+        if (!notificationTarget) {
+            return;
+        }
+        const detail = { message: MESSAGE_STORAGE_FULL };
+        try {
+            const event = new CustomEvent(EVENT_NOTIFICATION_REQUEST, {
+                bubbles: true,
+                detail
+            });
+            notificationTarget.dispatchEvent(event);
+        } catch (dispatchError) {
+            logging.error(dispatchError);
+            try {
+                const fallbackEvent = new Event(EVENT_NOTIFICATION_REQUEST);
+                /** @type {any} */ (fallbackEvent).detail = detail;
+                notificationTarget.dispatchEvent(fallbackEvent);
+            } catch (fallbackError) {
+                logging.error(fallbackError);
+            }
+        }
+    }
+
+    /**
+     * @param {string} storageKey
+     * @returns {void}
+     */
+    function broadcastChange(storageKey) {
+        if (!broadcastChannel) {
+            return;
+        }
+        try {
+            broadcastChannel.postMessage({
+                storageKey,
+                sourceId: broadcastSourceId
+            });
+        } catch (error) {
+            logging.error(error);
+        }
+    }
+
+    /**
+     * @returns {Promise<void>}
+     */
+    async function requestPersistentStorage() {
+        if (typeof navigator === "undefined" || !navigator.storage || typeof navigator.storage.persist !== "function") {
+            return;
+        }
+        try {
+            await navigator.storage.persist();
+        } catch {
+            // ignore persistent storage failures
+        }
+    }
+
+    /**
+     * @returns {NoteRecord[]}
+     */
+    function loadAllNotesFromLocalStorage() {
+        return readNotesFromLocalStorage(getActiveStorageKey());
+    }
+
+    /**
+     * @param {string} storageKey
+     * @param {NoteRecord[]} records
+     * @returns {void}
+     */
+    function persistNotesToLocalStorage(storageKey, records) {
+        localStorage.setItem(storageKey, JSON.stringify(records));
+    }
+
+    /**
+     * @param {string} storageKey
+     * @returns {NoteRecord[]}
+     */
+    function readNotesFromLocalStorage(storageKey) {
+        if (typeof localStorage === "undefined") {
+            return [];
+        }
+        const raw = localStorage.getItem(storageKey);
+        if (!raw) {
+            return [];
+        }
+        try {
+            const rawRecords = JSON.parse(raw);
+            return sanitizePersistedRecords(rawRecords);
+        } catch {
+            return [];
+        }
+    }
+
+    /**
+     * @param {string} storageKey
+     * @returns {void}
+     */
+    function removeNotesFromLocalStorage(storageKey) {
+        if (typeof localStorage === "undefined") {
+            return;
+        }
+        localStorage.removeItem(storageKey);
+    }
+
+    /**
+     * @param {unknown} value
+     * @returns {NoteRecord[]}
+     */
+    function sanitizePersistedRecords(value) {
+        if (!Array.isArray(value)) {
+            return [];
+        }
+        const normalized = [];
+        for (const rawRecord of value) {
+            const note = tryCreateNoteRecord(rawRecord);
+            if (note) {
+                normalized.push(note);
+            }
+        }
+        return dedupeRecordsById(normalized);
+    }
+
 return Object.freeze({
+    initialize,
+    hydrateActiveScope,
+    subscribeToChanges,
     loadAllNotes,
     saveAllNotes,
     exportNotes,
@@ -290,20 +631,6 @@ function normalizeRecord(record) {
     const attachments = sanitizeAttachmentDictionary(baseRecord?.attachments || {});
     const pinned = baseRecord?.pinned === true;
     return { ...baseRecord, markdownText, attachments, pinned };
-}
-
-/**
- * Set the active storage key according to the provided user identifier.
- * @param {string|null|undefined} userId
- * @returns {string}
- */
-function setUserScope(userId) {
-    if (isNonBlankString(userId)) {
-        activeStorageKey = composeUserStorageKey(String(userId));
-    } else {
-        activeStorageKey = STORAGE_KEY_BASE;
-    }
-    return activeStorageKey;
 }
 
 /**
@@ -402,4 +729,40 @@ function canonicalizeForFingerprint(value) {
         return result;
     }
     return value ?? null;
+}
+
+/**
+ * @param {NoteRecord} record
+ * @returns {NoteRecord}
+ */
+function cloneRecord(record) {
+    if (typeof structuredClone === "function") {
+        return structuredClone(record);
+    }
+    return JSON.parse(JSON.stringify(record));
+}
+
+/**
+ * @param {NoteRecord[]} records
+ * @returns {NoteRecord[]}
+ */
+function cloneRecords(records) {
+    if (!Array.isArray(records)) {
+        return [];
+    }
+    return records.map(cloneRecord);
+}
+
+function createBroadcastChannel() {
+    if (typeof globalThis === "undefined" || typeof globalThis.BroadcastChannel !== "function") {
+        return null;
+    }
+    return new BroadcastChannel(BROADCAST_CHANNEL_NAME);
+}
+
+function createBroadcastSourceId() {
+    if (typeof globalThis !== "undefined" && typeof globalThis.crypto?.randomUUID === "function") {
+        return globalThis.crypto.randomUUID();
+    }
+    return `gravity-${Math.random().toString(36).slice(2)}`;
 }

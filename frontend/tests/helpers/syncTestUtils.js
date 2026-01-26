@@ -32,7 +32,11 @@ const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(TESTS_DIR, "..", "..");
 const DEFAULT_PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
 const DEFAULT_JWT_ISSUER = "https://accounts.google.com";
-const appConfig = createAppConfig({ environment: ENVIRONMENT_DEVELOPMENT });
+const DEFAULT_GOOGLE_CLIENT_ID = "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com";
+const appConfig = createAppConfig({
+    environment: ENVIRONMENT_DEVELOPMENT,
+    googleClientId: DEFAULT_GOOGLE_CLIENT_ID
+});
 const DEFAULT_JWT_AUDIENCE = appConfig.googleClientId;
 const EMPTY_STRING = "";
 const DEVELOPMENT_AUTH_BASE_URL = DEVELOPMENT_ENVIRONMENT_CONFIG.authBaseUrl;
@@ -78,7 +82,7 @@ export function buildUserStorageKey(userId) {
  * Prepare a new browser page configured for backend synchronization tests.
  * @param {import('puppeteer').Browser | import('puppeteer').BrowserContext} browser
  * @param {string} pageUrl
- * @param {{ backendBaseUrl: string, llmProxyUrl?: string, authBaseUrl?: string, authTenantId?: string, preserveLocalStorage?: boolean }} options
+ * @param {{ backendBaseUrl: string, llmProxyUrl?: string, authBaseUrl?: string, authTenantId?: string, googleClientId?: string, preserveLocalStorage?: boolean }} options
  * @returns {Promise<import('puppeteer').Page>}
  */
 export async function prepareFrontendPage(browser, pageUrl, options) {
@@ -87,10 +91,14 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
         llmProxyUrl = EMPTY_STRING,
         authBaseUrl = DEVELOPMENT_AUTH_BASE_URL,
         authTenantId = DEFAULT_AUTH_TENANT_ID,
+        googleClientId = appConfig.googleClientId,
         beforeNavigate,
         preserveLocalStorage = false
     } = options;
     const page = await browser.newPage();
+    await page.evaluateOnNewDocument(() => {
+        window.__gravityForceLocalStorage = true;
+    });
     if (process.env.GRAVITY_TEST_STREAM_LOGS === "1") {
         page.on("console", (message) => {
             const type = message.type?.().toUpperCase?.() ?? "LOG";
@@ -128,7 +136,8 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
             backendBaseUrl,
             llmProxyUrl,
             authBaseUrl,
-            authTenantId
+            authTenantId,
+            googleClientId
         }
     });
     await page.evaluateOnNewDocument((config) => {
@@ -146,7 +155,8 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
                     backendBaseUrl: config.backendBaseUrl,
                     llmProxyUrl: config.llmProxyUrl,
                     authBaseUrl: config.authBaseUrl,
-                    authTenantId: config.authTenantId
+                    authTenantId: config.authTenantId,
+                    googleClientId: config.googleClientId
                 };
                 return new Response(JSON.stringify(payload), {
                     status: 200,
@@ -160,7 +170,8 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
         backendBaseUrl,
         llmProxyUrl,
         authBaseUrl,
-        authTenantId
+        authTenantId,
+        googleClientId
     });
     await page.evaluateOnNewDocument((storageKey, shouldPreserve) => {
         const initialized = window.sessionStorage.getItem("__gravityTestInitialized") === "true";
@@ -233,6 +244,9 @@ export async function initializePuppeteerTest(pageUrl = DEFAULT_PAGE_URL, setupO
     const browser = await connectSharedBrowser();
     const context = await browser.createBrowserContext();
     const page = await context.newPage();
+    await page.evaluateOnNewDocument(() => {
+        window.__gravityForceLocalStorage = true;
+    });
     await installCdnMirrors(page);
     await attachImportAppModule(page);
     await injectTAuthStub(page);
@@ -241,7 +255,8 @@ export async function initializePuppeteerTest(pageUrl = DEFAULT_PAGE_URL, setupO
             backendBaseUrl: backend.baseUrl,
             llmProxyUrl: EMPTY_STRING,
             authBaseUrl: DEVELOPMENT_AUTH_BASE_URL,
-            authTenantId: DEFAULT_AUTH_TENANT_ID
+            authTenantId: DEFAULT_AUTH_TENANT_ID,
+            googleClientId: appConfig.googleClientId
         }
     };
     const mergedRuntimeOverrides = mergeRuntimeOverrides(baseRuntimeOverrides, setupOptions.runtimeConfig);

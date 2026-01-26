@@ -242,6 +242,9 @@ export async function createSharedPage(runtimeConfigOverrides = {}) {
     const browser = await connectSharedBrowser();
     const context = await browser.createBrowserContext();
     const page = await context.newPage();
+    await page.evaluateOnNewDocument(() => {
+        window.__gravityForceLocalStorage = true;
+    });
     if (process.env.GRAVITY_TEST_STREAM_LOGS === "1") {
         page.on("console", (message) => {
             const type = message.type?.().toUpperCase?.() ?? "LOG";

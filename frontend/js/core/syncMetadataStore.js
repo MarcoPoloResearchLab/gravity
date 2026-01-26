@@ -1,30 +1,83 @@
 // @ts-check
 
+import { EVENT_NOTIFICATION_REQUEST, MESSAGE_STORAGE_FULL } from "../constants.js?build=2026-01-01T22:43:21Z";
+import { logging } from "../utils/logging.js?build=2026-01-01T22:43:21Z";
+import {
+    openStorageDb,
+    resolveStorageMode,
+    STORE_SYNC_METADATA,
+    STORAGE_MODE_INDEXED,
+    STORAGE_MODE_LOCAL,
+    STORAGE_MODE_UNAVAILABLE
+} from "./storageDb.js?build=2026-01-01T22:43:21Z";
+
 /**
  * @typedef {{ clientEditSeq: number, serverEditSeq: number, serverVersion: number }} NoteMetadata
  */
+
+const ERROR_MESSAGES = Object.freeze({
+    STORAGE_UNAVAILABLE: "storage.sync_meta.unavailable",
+    STORAGE_READ_FAILED: "storage.sync_meta.read_failed",
+    STORAGE_WRITE_FAILED: "storage.sync_meta.write_failed"
+});
 
 /**
  * Create a store that persists per-note sync metadata.
  * @param {{ storage?: Storage, keyPrefix?: string }} [options]
  */
 export function createSyncMetadataStore(options = {}) {
-    const {
-        storage = getLocalStorage(),
-        keyPrefix = "gravitySyncMeta:"
-    } = options;
+    const storageMode = resolveStorageMode();
+    if (storageMode === STORAGE_MODE_UNAVAILABLE) {
+        throw new Error(ERROR_MESSAGES.STORAGE_UNAVAILABLE);
+    }
+
+    const notificationTarget = typeof globalThis !== "undefined" && globalThis.document
+        ? globalThis.document
+        : null;
+    const localStorage = storageMode === STORAGE_MODE_LOCAL
+        ? (options.storage ?? getLocalStorage())
+        : null;
+    const legacyStorage = getLocalStorage();
+    const keyPrefix = typeof options.keyPrefix === "string" && options.keyPrefix.length > 0
+        ? options.keyPrefix
+        : "gravitySyncMeta:";
+
+    const metadataCache = new Map();
+    let persistChain = Promise.resolve();
+    let storageBlocked = false;
+    let storageNotificationSent = false;
 
     return Object.freeze({
+        /**
+         * Hydrate metadata for a specific user identifier.
+         * @param {string} userId
+         * @returns {Promise<void>}
+         */
+        async hydrate(userId) {
+            if (storageMode !== STORAGE_MODE_INDEXED || !isNonEmptyString(userId)) {
+                return;
+            }
+            const storageKey = composeKey(keyPrefix, userId);
+            const metadata = await loadMetadataFromIndexedDb(storageKey);
+            metadataCache.set(userId, metadata);
+        },
+
         /**
          * Load metadata for a specific user identifier.
          * @param {string} userId
          * @returns {Record<string, NoteMetadata>}
          */
         load(userId) {
-            if (!storage || !isNonEmptyString(userId)) {
+            if (!isNonEmptyString(userId)) {
                 return {};
             }
-            const raw = storage.getItem(composeKey(keyPrefix, userId));
+            if (storageMode === STORAGE_MODE_INDEXED) {
+                return cloneMetadata(metadataCache.get(userId) ?? {});
+            }
+            if (!localStorage) {
+                return {};
+            }
+            const raw = localStorage.getItem(composeKey(keyPrefix, userId));
             if (typeof raw !== "string" || raw.length === 0) {
                 return {};
             }
@@ -43,14 +96,27 @@ export function createSyncMetadataStore(options = {}) {
          * @returns {void}
          */
         save(userId, metadata) {
-            if (!storage || !isNonEmptyString(userId)) {
+            if (!isNonEmptyString(userId)) {
+                return;
+            }
+            if (storageMode === STORAGE_MODE_INDEXED) {
+                if (!isPlainObject(metadata)) {
+                    metadataCache.delete(userId);
+                    queuePersist(composeKey(keyPrefix, userId), null);
+                    return;
+                }
+                metadataCache.set(userId, cloneMetadata(metadata));
+                queuePersist(composeKey(keyPrefix, userId), metadata);
+                return;
+            }
+            if (!localStorage) {
                 return;
             }
             if (!isPlainObject(metadata)) {
-                storage.removeItem(composeKey(keyPrefix, userId));
+                localStorage.removeItem(composeKey(keyPrefix, userId));
                 return;
             }
-            storage.setItem(composeKey(keyPrefix, userId), JSON.stringify(metadata));
+            localStorage.setItem(composeKey(keyPrefix, userId), JSON.stringify(metadata));
         },
 
         /**
@@ -59,12 +125,159 @@ export function createSyncMetadataStore(options = {}) {
          * @returns {void}
          */
         clear(userId) {
-            if (!storage || !isNonEmptyString(userId)) {
+            if (!isNonEmptyString(userId)) {
                 return;
             }
-            storage.removeItem(composeKey(keyPrefix, userId));
+            if (storageMode === STORAGE_MODE_INDEXED) {
+                metadataCache.delete(userId);
+                queuePersist(composeKey(keyPrefix, userId), null);
+                return;
+            }
+            if (!localStorage) {
+                return;
+            }
+            localStorage.removeItem(composeKey(keyPrefix, userId));
         }
     });
+
+    /**
+     * @param {string} storageKey
+     * @param {Record<string, NoteMetadata>|null} metadata
+     * @returns {void}
+     */
+    function queuePersist(storageKey, metadata) {
+        if (storageBlocked) {
+            return;
+        }
+        persistChain = persistChain
+            .then(() => persistMetadataToIndexedDb(storageKey, metadata))
+            .catch((error) => {
+                handleStorageFailure(error);
+            });
+    }
+
+    /**
+     * @param {string} storageKey
+     * @returns {Promise<Record<string, NoteMetadata>>}
+     */
+    async function loadMetadataFromIndexedDb(storageKey) {
+        const value = await readMetadataValueFromIndexedDb(storageKey);
+        if (isPlainObject(value)) {
+            return value;
+        }
+        const migrated = readMetadataFromLocalStorage(storageKey);
+        if (!isPlainObject(migrated)) {
+            return {};
+        }
+        await persistMetadataToIndexedDb(storageKey, migrated).catch((error) => {
+            logging.error("Sync metadata migration failed", error);
+        });
+        removeMetadataFromLocalStorage(storageKey);
+        return migrated;
+    }
+
+    /**
+     * @param {string} storageKey
+     * @param {Record<string, NoteMetadata>|null} metadata
+     * @returns {Promise<void>}
+     */
+    async function persistMetadataToIndexedDb(storageKey, metadata) {
+        const db = await openStorageDb();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(STORE_SYNC_METADATA, "readwrite");
+            const store = transaction.objectStore(STORE_SYNC_METADATA);
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => {
+                const message = transaction.error?.message ?? "unknown";
+                reject(new Error(`${ERROR_MESSAGES.STORAGE_WRITE_FAILED}: ${message}`));
+            };
+            if (!isPlainObject(metadata)) {
+                store.delete(storageKey);
+                return;
+            }
+            store.put(metadata, storageKey);
+        });
+    }
+
+    /**
+     * @param {string} storageKey
+     * @returns {Promise<unknown>}
+     */
+    async function readMetadataValueFromIndexedDb(storageKey) {
+        const db = await openStorageDb();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(STORE_SYNC_METADATA, "readonly");
+            const store = transaction.objectStore(STORE_SYNC_METADATA);
+            const request = store.get(storageKey);
+            request.onsuccess = () => {
+                resolve(request.result);
+            };
+            request.onerror = () => {
+                const message = request.error?.message ?? "unknown";
+                reject(new Error(`${ERROR_MESSAGES.STORAGE_READ_FAILED}: ${message}`));
+            };
+        });
+    }
+
+    /**
+     * @param {string} storageKey
+     * @returns {Record<string, NoteMetadata>}
+     */
+    function readMetadataFromLocalStorage(storageKey) {
+        if (!legacyStorage) {
+            return {};
+        }
+        const raw = legacyStorage.getItem(storageKey);
+        if (!raw) {
+            return {};
+        }
+        try {
+            const parsed = JSON.parse(raw);
+            return isPlainObject(parsed) ? parsed : {};
+        } catch {
+            return {};
+        }
+    }
+
+    /**
+     * @param {string} storageKey
+     * @returns {void}
+     */
+    function removeMetadataFromLocalStorage(storageKey) {
+        if (!legacyStorage) {
+            return;
+        }
+        legacyStorage.removeItem(storageKey);
+    }
+
+    function handleStorageFailure(error) {
+        if (storageNotificationSent) {
+            return;
+        }
+        storageNotificationSent = true;
+        storageBlocked = true;
+        logging.error("Sync metadata persistence failed", error);
+        if (!notificationTarget) {
+            return;
+        }
+        const detail = { message: MESSAGE_STORAGE_FULL };
+        try {
+            const event = new CustomEvent(EVENT_NOTIFICATION_REQUEST, {
+                bubbles: true,
+                detail
+            });
+            notificationTarget.dispatchEvent(event);
+        } catch (dispatchError) {
+            logging.error(dispatchError);
+            try {
+                const fallbackEvent = new Event(EVENT_NOTIFICATION_REQUEST);
+                /** @type {any} */ (fallbackEvent).detail = detail;
+                notificationTarget.dispatchEvent(fallbackEvent);
+            } catch (fallbackError) {
+                logging.error(fallbackError);
+            }
+        }
+    }
 }
 
 /**
@@ -100,4 +313,15 @@ function isNonEmptyString(value) {
  */
 function isPlainObject(value) {
     return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * @param {Record<string, NoteMetadata>} metadata
+ * @returns {Record<string, NoteMetadata>}
+ */
+function cloneMetadata(metadata) {
+    if (typeof structuredClone === "function") {
+        return structuredClone(metadata);
+    }
+    return JSON.parse(JSON.stringify(metadata));
 }
