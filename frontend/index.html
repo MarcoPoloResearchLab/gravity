@@ -2,7 +2,29 @@
 <html lang="en">
 <head>
     <script defer src="https://loopaware.mprlab.com/widget.js?site_id=d8c3d1c8-7968-43d0-8026-ee827ada7666"></script>
+    <script defer src="https://tauth.mprlab.com/tauth.js"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui-config.js"></script>
+    <script>
+        (function() {
+            if (!window.MPRUI || typeof window.MPRUI.applyYamlConfig !== "function") {
+                throw new Error("mpr_ui.config_loader_missing");
+            }
+            function loadMprUi() {
+                return new Promise((resolve, reject) => {
+                    const script = document.createElement("script");
+                    script.src = "https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.js";
+                    script.addEventListener("load", () => resolve(), { once: true });
+                    script.addEventListener("error", () => reject(new Error("mpr_ui.load_failed")), { once: true });
+                    document.head.appendChild(script);
+                });
+            }
+            const configUrl = typeof window.__mprUiConfigUrl === "string" && window.__mprUiConfigUrl.length > 0
+                ? window.__mprUiConfigUrl
+                : "/config.yaml";
+            window.__mprUiReady = window.MPRUI.applyYamlConfig({ configUrl }).then(loadMprUi);
+        })();
+    </script>
 
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -42,10 +64,7 @@
             <h1 class="landing-title" x-text="constants.LABEL_LANDING_TITLE">Notes that stay anchored.</h1>
             <p class="landing-description" x-text="constants.LABEL_LANDING_DESCRIPTION"></p>
             <div class="landing-actions">
-                <template id="landing-login-template">
-                    <mpr-login-button id="landing-login" class="landing-login" x-ref="landingLogin" data-test="landing-login"></mpr-login-button>
-                </template>
-                <div id="landing-login-slot"></div>
+                <mpr-login-button id="landing-login" class="landing-login" x-ref="landingLogin" data-test="landing-login"></mpr-login-button>
                 <p class="landing-hint" x-text="constants.LABEL_LANDING_SIGN_IN_HINT"></p>
             </div>
             <div class="landing-status" x-ref="landingStatus" data-test="landing-status" hidden></div>
@@ -92,10 +111,14 @@
                 </svg>
                 <span class="fullscreen-toggle__label" data-role="fullscreen-label" x-text="constants.LABEL_ENTER_FULL_SCREEN">Full Screen</span>
             </button>
-            <template id="user-menu-template">
-                <mpr-user id="app-user-menu" x-ref="userMenu" data-test="user-menu"></mpr-user>
-            </template>
-            <div id="user-menu-slot"></div>
+            <mpr-user
+                    id="app-user-menu"
+                    x-ref="userMenu"
+                    data-test="user-menu"
+                    display-mode="avatar-name"
+                    logout-url="/"
+                    logout-label="Sign out"
+            ></mpr-user>
         </div>
     </header>
 

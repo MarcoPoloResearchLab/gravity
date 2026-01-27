@@ -30,6 +30,12 @@ const AVATAR_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQ
 const AVATAR_PNG_BYTES = Buffer.from(AVATAR_PNG_BASE64, "base64");
 const DEFAULT_TEST_TENANT_ID = "gravity";
 const DEFAULT_GOOGLE_CLIENT_ID = "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com";
+const DEFAULT_AUTH_BUTTON_CONFIG = Object.freeze({
+    text: "signin_with",
+    size: "small",
+    theme: "outline",
+    shape: "circle"
+});
 const CDN_MIRRORS = Object.freeze([
     {
         pattern: /^https:\/\/cdn\.jsdelivr\.net\/npm\/alpinejs@3\.13\.5\/dist\/module\.esm\.js$/u,
@@ -62,6 +68,11 @@ const CDN_MIRRORS = Object.freeze([
         contentType: "application/javascript"
     },
     {
+        pattern: /^https:\/\/cdn\.jsdelivr\.net\/gh\/MarcoPoloResearchLab\/mpr-ui@latest\/mpr-ui-config\.js$/u,
+        filePath: path.join(REPO_ROOT, "tools", "mpr-ui", "mpr-ui-config.js"),
+        contentType: "application/javascript"
+    },
+    {
         pattern: /^https:\/\/cdn\.jsdelivr\.net\/gh\/MarcoPoloResearchLab\/mpr-ui@latest\/mpr-ui\.css$/u,
         filePath: path.join(REPO_ROOT, "tools", "mpr-ui", "mpr-ui.css"),
         contentType: "text/css"
@@ -75,6 +86,11 @@ const CDN_STUBS = Object.freeze([
     },
     {
         pattern: /^https:\/\/loopaware\.mprlab\.com\/widget\.js(?:\?.*)?$/u,
+        contentType: "application/javascript",
+        body: EMPTY_STRING
+    },
+    {
+        pattern: /^https:\/\/tauth\.mprlab\.com\/tauth\.js(?:\?.*)?$/u,
         contentType: "application/javascript",
         body: EMPTY_STRING
     },
@@ -393,8 +409,9 @@ export async function injectRuntimeConfig(page, overrides = {}) {
         development: resolveRuntimeConfigOverrides(page[RUNTIME_CONFIG_SYMBOL], "development"),
         production: resolveRuntimeConfigOverrides(page[RUNTIME_CONFIG_SYMBOL], "production")
     };
-    await page.evaluateOnNewDocument((config) => {
-        const configPattern = /\/data\/runtime\.config\.(development|production)\.json$/u;
+    await page.evaluateOnNewDocument((config, authButton) => {
+        const runtimeConfigPattern = /\/data\/runtime\.config\.(development|production)\.json$/u;
+        const yamlConfigPattern = /config\.yaml$/u;
         const originalFetch = window.fetch;
         window.fetch = async (input, init = {}) => {
             const requestUrl = typeof input === "string"
@@ -402,8 +419,36 @@ export async function injectRuntimeConfig(page, overrides = {}) {
                 : typeof input?.url === "string"
                     ? input.url
                     : "";
-            if (typeof requestUrl === "string" && configPattern.test(requestUrl)) {
-                const match = requestUrl.match(configPattern);
+            if (typeof requestUrl === "string" && yamlConfigPattern.test(requestUrl)) {
+                const origin = typeof window.location?.origin === "string" ? window.location.origin : "";
+                if (!origin) {
+                    throw new Error("config.yaml requires a window.location.origin");
+                }
+                const yaml = [
+                    "environments:",
+                    "  - description: \"Test\"",
+                    "    origins:",
+                    `      - \"${origin}\"`,
+                    "    auth:",
+                    `      tauthUrl: \"${config.development.authBaseUrl}\"`,
+                    `      googleClientId: \"${config.development.googleClientId}\"`,
+                    `      tenantId: \"${config.development.authTenantId}\"`,
+                    "      loginPath: \"/auth/google\"",
+                    "      logoutPath: \"/auth/logout\"",
+                    "      noncePath: \"/auth/nonce\"",
+                    "    authButton:",
+                    `      text: \"${authButton.text}\"`,
+                    `      size: \"${authButton.size}\"`,
+                    `      theme: \"${authButton.theme}\"`,
+                    `      shape: \"${authButton.shape}\"`
+                ].join("\n");
+                return new Response(yaml, {
+                    status: 200,
+                    headers: { "Content-Type": "text/yaml" }
+                });
+            }
+            if (typeof requestUrl === "string" && runtimeConfigPattern.test(requestUrl)) {
+                const match = requestUrl.match(runtimeConfigPattern);
                 const environment = match && match[1] ? match[1] : "development";
                 const payload = environment === "production" ? config.production : config.development;
                 return new Response(JSON.stringify(payload), {
@@ -434,7 +479,7 @@ export async function injectRuntimeConfig(page, overrides = {}) {
             [RUNTIME_CONFIG_KEYS.AUTH_TENANT_ID]: overridesByEnvironment.production.authTenantId,
             [RUNTIME_CONFIG_KEYS.GOOGLE_CLIENT_ID]: overridesByEnvironment.production.googleClientId
         }
-    });
+    }, DEFAULT_AUTH_BUTTON_CONFIG);
     await registerRequestInterceptor(page, (request) => {
         const url = request.url();
         if (TAUTH_SCRIPT_PATTERN.test(url)) {

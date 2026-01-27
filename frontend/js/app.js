@@ -11,8 +11,6 @@ import { initializeRuntimeConfig } from "./core/runtimeConfig.js?build=2026-01-0
 import { initializeAnalytics } from "./core/analytics.js?build=2026-01-01T22:43:21Z";
 import { createSyncManager } from "./core/syncManager.js?build=2026-01-01T22:43:21Z";
 import { createRealtimeSyncController } from "./core/realtimeSyncController.js?build=2026-01-01T22:43:21Z";
-import { ensureTAuthClientLoaded } from "./core/tauthClient.js?build=2026-01-01T22:43:21Z";
-import { ensureMprUiLoaded } from "./core/mprUiClient.js?build=2026-01-01T22:43:21Z";
 import { mountTopEditor } from "./ui/topEditor.js?build=2026-01-01T22:43:21Z";
 import {
     LABEL_APP_SUBTITLE,
@@ -24,8 +22,6 @@ import {
     LABEL_LANDING_DESCRIPTION,
     LABEL_LANDING_SIGN_IN_HINT,
     LABEL_LANDING_STATUS_LOADING,
-    LABEL_SIGN_IN_WITH_GOOGLE,
-    LABEL_SIGN_OUT,
     ERROR_NOTES_CONTAINER_NOT_FOUND,
     ERROR_AUTHENTICATION_GENERIC,
     EVENT_NOTE_CREATE,
@@ -68,16 +64,7 @@ const AUTH_STATE_AUTHENTICATED = "authenticated";
 const AUTH_STATE_UNAUTHENTICATED = "unauthenticated";
 const USER_MENU_ACTION_EXPORT = "export-notes";
 const USER_MENU_ACTION_IMPORT = "import-notes";
-const TAUTH_LOGIN_PATH = "/auth/google";
-const TAUTH_LOGOUT_PATH = "/auth/logout";
-const TAUTH_NONCE_PATH = "/auth/nonce";
 const TYPE_STRING = "string";
-const LANDING_LOGIN_ELEMENT_ID = "landing-login";
-const LANDING_LOGIN_TEMPLATE_ID = "landing-login-template";
-const LANDING_LOGIN_SLOT_ID = "landing-login-slot";
-const USER_MENU_ELEMENT_ID = "app-user-menu";
-const USER_MENU_TEMPLATE_ID = "user-menu-template";
-const USER_MENU_SLOT_ID = "user-menu-slot";
 
 const PROFILE_KEYS = Object.freeze({
     USER_ID: "user_id",
@@ -109,8 +96,7 @@ const AUTH_ERROR_MESSAGES = Object.freeze({
     MISSING_LOGOUT: "tauth.logout_missing",
     MPR_LOGIN_MISSING: "mpr_ui.login_button_missing",
     MPR_USER_MISSING: "mpr_ui.user_menu_missing",
-    MPR_LOGIN_MOUNT_FAILED: "mpr_ui.login_button_mount_failed",
-    MPR_USER_MOUNT_FAILED: "mpr_ui.user_menu_mount_failed",
+    MPR_UI_CONFIG_MISSING: "mpr_ui.config_missing",
     UNSUPPORTED: "gravity.unsupported_environment"
 });
 
@@ -155,21 +141,30 @@ bootstrapApplication().catch((error) => {
 async function bootstrapApplication() {
     const appConfig = await initializeRuntimeConfig();
     await GravityStore.initialize();
-    await ensureTAuthClientLoaded({
-        baseUrl: appConfig.authBaseUrl,
-        scriptUrl: appConfig.tauthScriptUrl,
-        tenantId: appConfig.authTenantId
-    });
+    await ensureMprUiReady();
     assertTAuthHelpersAvailable();
-    await ensureMprUiLoaded({ scriptUrl: appConfig.mprUiScriptUrl });
     assertAuthComponentsAvailable();
-    configureAuthElements(appConfig);
     initializeAnalytics({ config: appConfig });
     document.addEventListener("alpine:init", () => {
         Alpine.data("gravityApp", () => gravityApp(appConfig));
     });
     window.Alpine = Alpine;
     Alpine.start();
+}
+
+/**
+ * Ensure the mpr-ui config loader applied config and loaded the bundle.
+ * @returns {Promise<void>}
+ */
+async function ensureMprUiReady() {
+    if (typeof window === "undefined") {
+        throw new Error(AUTH_ERROR_MESSAGES.UNSUPPORTED);
+    }
+    const ready = window.__mprUiReady;
+    if (!ready || typeof ready.then !== "function") {
+        throw new Error(AUTH_ERROR_MESSAGES.MPR_UI_CONFIG_MISSING);
+    }
+    await ready;
 }
 
 /**
@@ -215,93 +210,7 @@ function assertAuthComponentsAvailable() {
     }
 }
 
-/**
- * Apply runtime auth configuration to mpr-ui elements.
- * @param {import("./core/config.js").AppConfig} appConfig
- * @returns {void}
- */
-function configureAuthElements(appConfig) {
-    if (typeof document === "undefined") {
-        return;
-    }
-    const loginButton = ensureAuthElementMounted(
-        LANDING_LOGIN_ELEMENT_ID,
-        LANDING_LOGIN_TEMPLATE_ID,
-        LANDING_LOGIN_SLOT_ID,
-        (loginButton) => {
-            loginButton.setAttribute("site-id", appConfig.googleClientId);
-            loginButton.setAttribute("tauth-tenant-id", appConfig.authTenantId);
-            loginButton.setAttribute("tauth-url", appConfig.authBaseUrl);
-            loginButton.setAttribute("tauth-login-path", TAUTH_LOGIN_PATH);
-            loginButton.setAttribute("tauth-logout-path", TAUTH_LOGOUT_PATH);
-            loginButton.setAttribute("tauth-nonce-path", TAUTH_NONCE_PATH);
-            loginButton.setAttribute("button-text", LABEL_SIGN_IN_WITH_GOOGLE);
-        }
-    );
-    if (!loginButton) {
-        throw new Error(AUTH_ERROR_MESSAGES.MPR_LOGIN_MOUNT_FAILED);
-    }
 
-    const userMenu = ensureAuthElementMounted(
-        USER_MENU_ELEMENT_ID,
-        USER_MENU_TEMPLATE_ID,
-        USER_MENU_SLOT_ID,
-        (userMenu) => {
-            userMenu.setAttribute("display-mode", "avatar-name");
-            userMenu.setAttribute("logout-url", resolveLogoutUrl());
-            userMenu.setAttribute("logout-label", LABEL_SIGN_OUT);
-            userMenu.setAttribute("tauth-tenant-id", appConfig.authTenantId);
-        }
-    );
-    if (!userMenu) {
-        throw new Error(AUTH_ERROR_MESSAGES.MPR_USER_MOUNT_FAILED);
-    }
-}
-
-/**
- * @param {string} elementId
- * @param {string} templateId
- * @param {string} slotId
- * @param {(element: HTMLElement) => void} applyAttributes
- * @returns {HTMLElement|null}
- */
-function ensureAuthElementMounted(elementId, templateId, slotId, applyAttributes) {
-    if (typeof document === "undefined") {
-        return null;
-    }
-    const existing = document.getElementById(elementId);
-    if (existing instanceof HTMLElement) {
-        applyAttributes(existing);
-        return existing;
-    }
-    const template = document.getElementById(templateId);
-    const slot = document.getElementById(slotId);
-    if (!(template instanceof HTMLTemplateElement) || !(slot instanceof HTMLElement)) {
-        return null;
-    }
-    const fragment = template.content.cloneNode(true);
-    const staged = fragment.querySelector(`#${elementId}`);
-    if (!(staged instanceof HTMLElement)) {
-        return null;
-    }
-    applyAttributes(staged);
-    slot.appendChild(fragment);
-    return staged;
-}
-
-/**
- * Resolve the redirect URL used after a TAuth logout.
- * @returns {string}
- */
-function resolveLogoutUrl() {
-    if (typeof window === "undefined") {
-        return "/";
-    }
-    if (window.location.protocol === "file:") {
-        return window.location.pathname || "/";
-    }
-    return window.location.href;
-}
 
 /**
  * Alpine root component that wires the Gravity Notes application.
