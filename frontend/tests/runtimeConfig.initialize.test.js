@@ -12,6 +12,7 @@ import {
 
 const TEST_LABELS = Object.freeze({
     APPLIES_REMOTE_CONFIG: "initializeRuntimeConfig applies remote payload when fetch succeeds",
+    REWRITES_LOOPBACK_HOSTS: "initializeRuntimeConfig rewrites loopback endpoints for non-loopback dev hosts",
     RETRIES_TRANSIENT_FAILURES: "initializeRuntimeConfig retries transient failures before succeeding",
     HANDLES_HTTP_FAILURE: "initializeRuntimeConfig rejects HTTP failures",
     HANDLES_ABORT_FAILURE: "initializeRuntimeConfig normalizes abort failures into timeout errors"
@@ -19,7 +20,8 @@ const TEST_LABELS = Object.freeze({
 
 const HOSTNAMES = Object.freeze({
     PRODUCTION: "gravity-notes.example.com",
-    DEVELOPMENT: "localhost"
+    DEVELOPMENT: "localhost",
+    REMOTE: "computercat.tyemirov.net"
 });
 
 const RUNTIME_PATHS = Object.freeze({
@@ -36,6 +38,7 @@ const REMOTE_ENDPOINTS = Object.freeze({
     BACKEND: "https://api.example.com/v1",
     LLM_PROXY: "https://llm.example.com/v1/classify",
     AUTH: "https://auth.example.com",
+    TAUTH_SCRIPT: "https://cdn.example.com/tauth.js",
     GOOGLE_CLIENT_ID: "test-client-id.apps.googleusercontent.com"
 });
 
@@ -74,6 +77,7 @@ test.describe(SUITE_LABELS.INITIALIZE_RUNTIME_CONFIG, () => {
                         backendBaseUrl: REMOTE_ENDPOINTS.BACKEND,
                         llmProxyUrl: REMOTE_ENDPOINTS.LLM_PROXY,
                         authBaseUrl: REMOTE_ENDPOINTS.AUTH,
+                        tauthScriptUrl: REMOTE_ENDPOINTS.TAUTH_SCRIPT,
                         authTenantId: REMOTE_AUTH_TENANT_ID,
                         googleClientId: REMOTE_ENDPOINTS.GOOGLE_CLIENT_ID
                     };
@@ -99,9 +103,37 @@ test.describe(SUITE_LABELS.INITIALIZE_RUNTIME_CONFIG, () => {
         assert.equal(appConfig.backendBaseUrl, REMOTE_ENDPOINTS.BACKEND);
         assert.equal(appConfig.llmProxyUrl, REMOTE_ENDPOINTS.LLM_PROXY);
         assert.equal(appConfig.authBaseUrl, REMOTE_ENDPOINTS.AUTH);
+        assert.equal(appConfig.tauthScriptUrl, REMOTE_ENDPOINTS.TAUTH_SCRIPT);
         assert.equal(appConfig.authTenantId, REMOTE_AUTH_TENANT_ID);
         assert.equal(appConfig.googleClientId, REMOTE_ENDPOINTS.GOOGLE_CLIENT_ID);
         assert.equal(errorNotifications.length, 0);
+    });
+
+    test(TEST_LABELS.REWRITES_LOOPBACK_HOSTS, async () => {
+        const fetchStub = async () => ({
+            ok: true,
+            status: 200,
+            async json() {
+                return {
+                    environment: ENVIRONMENT_DEVELOPMENT,
+                    backendBaseUrl: "http://localhost:8080",
+                    llmProxyUrl: "http://localhost:8081/v1/classify",
+                    authBaseUrl: "http://localhost:8082",
+                    tauthScriptUrl: "http://localhost:8082/tauth.js",
+                    googleClientId: REMOTE_ENDPOINTS.GOOGLE_CLIENT_ID
+                };
+            }
+        });
+
+        const appConfig = await initializeRuntimeConfig({
+            fetchImplementation: fetchStub,
+            location: { hostname: HOSTNAMES.REMOTE }
+        });
+
+        assert.equal(appConfig.backendBaseUrl, `http://${HOSTNAMES.REMOTE}:8080`);
+        assert.equal(appConfig.llmProxyUrl, `http://${HOSTNAMES.REMOTE}:8081/v1/classify`);
+        assert.equal(appConfig.authBaseUrl, `http://${HOSTNAMES.REMOTE}:8082`);
+        assert.equal(appConfig.tauthScriptUrl, `http://${HOSTNAMES.REMOTE}:8082/tauth.js`);
     });
 
     test(TEST_LABELS.RETRIES_TRANSIENT_FAILURES, async () => {

@@ -14,6 +14,7 @@ import {
 const BACKEND_URL_OVERRIDE = "https://api.example.com/v1/";
 const LLM_PROXY_OVERRIDE = "http://localhost:5001/api/classify";
 const AUTH_BASE_URL_OVERRIDE = "https://auth.example.com/service/";
+const TAUTH_SCRIPT_URL_OVERRIDE = "https://cdn.example.com/tauth.js";
 const AUTH_TENANT_OVERRIDE = " gravity ";
 const DEFAULT_GOOGLE_CLIENT_ID = "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com";
 const GOOGLE_CLIENT_ID_OVERRIDE = "custom-client.apps.googleusercontent.com";
@@ -24,6 +25,7 @@ const TEST_LABELS = Object.freeze({
     BACKEND_OVERRIDE: "createAppConfig respects injected backendBaseUrl",
     LLM_OVERRIDE: "createAppConfig respects injected llmProxyUrl",
     AUTH_BASE_OVERRIDE: "createAppConfig respects injected authBaseUrl",
+    TAUTH_SCRIPT_OVERRIDE: "createAppConfig respects injected tauthScriptUrl",
     AUTH_TENANT_OVERRIDE: "createAppConfig preserves injected authTenantId",
     GOOGLE_CLIENT_ID_OVERRIDE: "createAppConfig preserves injected googleClientId"
 });
@@ -38,6 +40,7 @@ test(TEST_LABELS.DEVELOPMENT_DEFAULTS, () => {
     assert.equal(appConfig.backendBaseUrl, DEVELOPMENT_ENVIRONMENT_CONFIG.backendBaseUrl);
     assert.equal(appConfig.llmProxyUrl, DEVELOPMENT_ENVIRONMENT_CONFIG.llmProxyUrl);
     assert.equal(appConfig.authBaseUrl, DEVELOPMENT_ENVIRONMENT_CONFIG.authBaseUrl);
+    assert.equal(appConfig.tauthScriptUrl, DEVELOPMENT_ENVIRONMENT_CONFIG.tauthScriptUrl);
     assert.equal(appConfig.authTenantId, DEVELOPMENT_ENVIRONMENT_CONFIG.authTenantId);
     assert.equal(appConfig.googleClientId, DEFAULT_GOOGLE_CLIENT_ID);
 });
@@ -80,10 +83,21 @@ test(TEST_LABELS.AUTH_BASE_OVERRIDE, () => {
         environment: ENVIRONMENT_PRODUCTION,
         backendBaseUrl: BACKEND_URL_OVERRIDE,
         authBaseUrl: AUTH_BASE_URL_OVERRIDE,
+        tauthScriptUrl: TAUTH_SCRIPT_URL_OVERRIDE,
         googleClientId: DEFAULT_GOOGLE_CLIENT_ID
     });
 
     assert.equal(appConfig.authBaseUrl, AUTH_BASE_URL_OVERRIDE);
+});
+
+test(TEST_LABELS.TAUTH_SCRIPT_OVERRIDE, () => {
+    const appConfig = createAppConfig({
+        environment: ENVIRONMENT_DEVELOPMENT,
+        tauthScriptUrl: TAUTH_SCRIPT_URL_OVERRIDE,
+        googleClientId: DEFAULT_GOOGLE_CLIENT_ID
+    });
+
+    assert.equal(appConfig.tauthScriptUrl, TAUTH_SCRIPT_URL_OVERRIDE);
 });
 
 test(TEST_LABELS.AUTH_TENANT_OVERRIDE, () => {
@@ -92,6 +106,7 @@ test(TEST_LABELS.AUTH_TENANT_OVERRIDE, () => {
         environment: ENVIRONMENT_PRODUCTION,
         backendBaseUrl: BACKEND_URL_OVERRIDE,
         authBaseUrl: AUTH_BASE_URL_OVERRIDE,
+        tauthScriptUrl: TAUTH_SCRIPT_URL_OVERRIDE,
         authTenantId: AUTH_TENANT_OVERRIDE,
         googleClientId: DEFAULT_GOOGLE_CLIENT_ID
     });

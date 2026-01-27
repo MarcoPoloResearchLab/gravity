@@ -13,6 +13,7 @@ const RUNTIME_CONFIG_KEYS = Object.freeze({
     BACKEND_BASE_URL: "backendBaseUrl",
     LLM_PROXY_URL: "llmProxyUrl",
     AUTH_BASE_URL: "authBaseUrl",
+    TAUTH_SCRIPT_URL: "tauthScriptUrl",
     AUTH_TENANT_ID: "authTenantId",
     GOOGLE_CLIENT_ID: "googleClientId"
 });
@@ -22,7 +23,7 @@ const TYPE_OBJECT = "object";
 const TYPE_STRING = "string";
 const TYPE_UNDEFINED = "undefined";
 
-const LOOPBACK_HOSTNAMES = Object.freeze(["localhost", "127.0.0.1", "[::1]"]);
+const LOOPBACK_HOSTNAMES = Object.freeze(["localhost", "127.0.0.1", "[::1]", "::1"]);
 
 const DEVELOPMENT_TLDS = Object.freeze([".local", ".test"]);
 
@@ -139,7 +140,7 @@ async function fetchRuntimeConfig(fetchImplementation, resource) {
  * Validate and project the runtime config payload into known keys.
  * @param {unknown} payload
  * @param {"production" | "development"} environment
- * @returns {{ backendBaseUrl?: string, llmProxyUrl?: string, authBaseUrl?: string, authTenantId?: string, googleClientId: string }}
+ * @returns {{ backendBaseUrl?: string, llmProxyUrl?: string, authBaseUrl?: string, tauthScriptUrl?: string, authTenantId?: string, googleClientId: string }}
  */
 function parseRuntimeConfigPayload(payload, environment) {
     if (!payload || typeof payload !== TYPE_OBJECT || Array.isArray(payload)) {
@@ -185,6 +186,13 @@ function parseRuntimeConfigPayload(payload, environment) {
         }
         overrides.authBaseUrl = authBaseUrl;
     }
+    if (Object.prototype.hasOwnProperty.call(payload, RUNTIME_CONFIG_KEYS.TAUTH_SCRIPT_URL)) {
+        const tauthScriptUrl = /** @type {Record<string, unknown>} */ (payload)[RUNTIME_CONFIG_KEYS.TAUTH_SCRIPT_URL];
+        if (typeof tauthScriptUrl !== TYPE_STRING) {
+            throw new Error(ERROR_MESSAGES.INVALID_PAYLOAD);
+        }
+        overrides.tauthScriptUrl = tauthScriptUrl;
+    }
     if (Object.prototype.hasOwnProperty.call(payload, RUNTIME_CONFIG_KEYS.AUTH_TENANT_ID)) {
         const authTenantId = /** @type {Record<string, unknown>} */ (payload)[RUNTIME_CONFIG_KEYS.AUTH_TENANT_ID];
         if (typeof authTenantId !== TYPE_STRING) {
@@ -201,6 +209,75 @@ function parseRuntimeConfigPayload(payload, environment) {
     }
     overrides.googleClientId = googleClientId;
     return overrides;
+}
+
+/**
+ * @param {string} hostname
+ * @returns {boolean}
+ */
+function isLoopbackHostname(hostname) {
+    if (typeof hostname !== TYPE_STRING) {
+        return false;
+    }
+    const normalized = hostname.trim().toLowerCase();
+    if (normalized.length === 0) {
+        return false;
+    }
+    return LOOPBACK_HOSTNAMES.includes(normalized);
+}
+
+/**
+ * @param {string} urlValue
+ * @param {string} targetHostname
+ * @returns {string}
+ */
+function rewriteLoopbackUrl(urlValue, targetHostname) {
+    const parsedUrl = new URL(urlValue);
+    if (!isLoopbackHostname(parsedUrl.hostname)) {
+        return urlValue;
+    }
+    const keepTrailingSlash = urlValue.endsWith("/") || parsedUrl.pathname !== "/";
+    parsedUrl.hostname = targetHostname;
+    const rewrittenUrl = parsedUrl.toString();
+    if (!keepTrailingSlash && rewrittenUrl.endsWith("/")) {
+        return rewrittenUrl.slice(0, -1);
+    }
+    return rewrittenUrl;
+}
+
+/**
+ * @param {import("./config.js").AppConfig} appConfig
+ * @param {Location|undefined} runtimeLocation
+ * @returns {import("./config.js").AppConfig}
+ */
+function applyRuntimeHostOverrides(appConfig, runtimeLocation) {
+    if (appConfig.environment !== ENVIRONMENT_LABELS.DEVELOPMENT) {
+        return appConfig;
+    }
+    if (!runtimeLocation || typeof runtimeLocation.hostname !== TYPE_STRING) {
+        return appConfig;
+    }
+    const runtimeHostname = runtimeLocation.hostname.trim().toLowerCase();
+    if (!runtimeHostname || isLoopbackHostname(runtimeHostname)) {
+        return appConfig;
+    }
+    const backendBaseUrl = rewriteLoopbackUrl(appConfig.backendBaseUrl, runtimeHostname);
+    const authBaseUrl = rewriteLoopbackUrl(appConfig.authBaseUrl, runtimeHostname);
+    const llmProxyUrl = rewriteLoopbackUrl(appConfig.llmProxyUrl, runtimeHostname);
+    const tauthScriptUrl = rewriteLoopbackUrl(appConfig.tauthScriptUrl, runtimeHostname);
+    if (backendBaseUrl === appConfig.backendBaseUrl
+        && authBaseUrl === appConfig.authBaseUrl
+        && llmProxyUrl === appConfig.llmProxyUrl
+        && tauthScriptUrl === appConfig.tauthScriptUrl) {
+        return appConfig;
+    }
+    return Object.freeze({
+        ...appConfig,
+        backendBaseUrl,
+        authBaseUrl,
+        llmProxyUrl,
+        tauthScriptUrl
+    });
 }
 
 /**
@@ -247,10 +324,11 @@ export async function initializeRuntimeConfig(options = {}) {
         }
         const payload = await response.json();
         const overrides = parseRuntimeConfigPayload(payload, environment);
-        return createAppConfig({
+        const appConfig = createAppConfig({
             environment,
             ...overrides
         });
+        return applyRuntimeHostOverrides(appConfig, location);
     } catch (error) {
         if (typeof options.onError === TYPE_FUNCTION) {
             options.onError(error);

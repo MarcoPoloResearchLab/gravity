@@ -143,6 +143,7 @@ async function bootstrapApplication() {
     await GravityStore.initialize();
     await ensureTAuthClientLoaded({
         baseUrl: appConfig.authBaseUrl,
+        scriptUrl: appConfig.tauthScriptUrl,
         tenantId: appConfig.authTenantId
     }).catch((error) => {
         logging.error("TAuth client failed to load", error);

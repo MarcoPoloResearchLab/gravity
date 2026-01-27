@@ -169,6 +169,10 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 - [x] [GN-438] (P1) Allow runtime config to override the Google client ID so local dev origins can match the correct GSI project. (Resolved by requiring googleClientId in runtime config payloads/JSON, plumbing through the config builder, and updating tests.)
 - [x] [GN-439] (P1) `sync.manager.test.js` fails during `make ci` with `offline` errors and duplicate sync operations (expected 1, observed 2) in the "coalesces repeated upserts" case; investigate and stabilize. (Resolved by coalescing per-note operations, deferring payload hydration to flush time, and adding regression coverage.)
 - [x] [GN-439] (P1) `QuotaExceededError` in sync queue persistence when localStorage fills; redesign persistence to avoid localStorage quotas and coalesce pending sync operations. (Resolved by migrating notes/sync queue/sync metadata to IndexedDB with localStorage-only test mode and storage-full notifications.)
+- [x] [GN-440] (P1) Local auth fails when TAuth tenant origin/cookie domain drift from the runtime-configured localhost URLs, causing tauth.js/nonce requests to miss or fail CORS. (Resolved by rewriting loopback runtime endpoints for non-loopback dev hosts and refreshing TAuth env defaults for localhost.)
+- [x] [GN-441] (P1) Dev auth fails on computercat.tyemirov.net because gHTTP still serves only the frontend and runtime config points to localhost; proxy backend/TAuth through gHTTP HTTPS and update dev config/env defaults. (Resolved by adding gHTTP HTTPS env config + proxy routes, updating compose and runtime config defaults for computercat, and documenting the new dev stack.)
+- [ ] [GN-442] (P1) Load tauth.js from the CDN (not via gHTTP), remove the /tauth.js proxy route, and wire the runtime config/test harness to use a dedicated tauthScriptUrl for the helper.
+- [x] [GN-443] (P1) Keep `.env*` files untracked and rename example env files to `env.*.example` with updated setup docs.
 
 
 ## Maintenance (428–499)

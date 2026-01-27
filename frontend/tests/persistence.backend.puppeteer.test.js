@@ -64,6 +64,7 @@ test.describe("Backend sync integration", () => {
         deadlineSignal.addEventListener("abort", abortHandler, { once: true });
 
         const backendUrl = backendContext.baseUrl;
+        const tauthScriptUrl = new URL("/tauth.js", backendUrl).toString();
         browserConnection = await connectSharedBrowser();
         context = await browserConnection.createBrowserContext();
         let harnessHandle = null;
@@ -71,6 +72,7 @@ test.describe("Backend sync integration", () => {
             backendBaseUrl: backendUrl,
             llmProxyUrl: backendUrl,
             authBaseUrl: backendUrl,
+            tauthScriptUrl,
             beforeNavigate: async (targetPage) => {
                 harnessHandle = await installTAuthHarness(targetPage, {
                     baseUrl: backendUrl,

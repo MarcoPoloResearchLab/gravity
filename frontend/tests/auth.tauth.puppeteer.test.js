@@ -134,9 +134,11 @@ async function bootstrapTAuthEnvironment() {
     const browser = await connectSharedBrowser();
     const context = await browser.createBrowserContext();
     let tauthHarnessHandle = null;
+    const tauthScriptUrl = new URL("/tauth.js", backend.baseUrl).toString();
     const page = await prepareFrontendPage(context, PAGE_URL, {
         backendBaseUrl: backend.baseUrl,
         authBaseUrl: backend.baseUrl,
+        tauthScriptUrl,
         beforeNavigate: async (targetPage) => {
             tauthHarnessHandle = await installTAuthHarness(targetPage, {
                 baseUrl: backend.baseUrl,

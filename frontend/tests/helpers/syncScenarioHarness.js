@@ -68,10 +68,12 @@ export async function createSyncScenarioHarness(options = {}) {
         const context = sessionOptions.context ?? await browser.createBrowserContext();
         const ownsContext = !sessionOptions.context;
         let harnessHandle = null;
+        const tauthScriptUrl = new URL("/tauth.js", backend.baseUrl).toString();
         const page = await prepareFrontendPage(context, pageUrl, {
             backendBaseUrl: backend.baseUrl,
             llmProxyUrl: "",
             authBaseUrl: backend.baseUrl,
+            tauthScriptUrl,
             preserveLocalStorage: sessionOptions.preserveLocalStorage === true,
             beforeNavigate: async (targetPage) => {
                 harnessHandle = await installTAuthHarness(targetPage, {

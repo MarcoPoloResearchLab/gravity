@@ -66,10 +66,12 @@ test.describe("UI sync integration", () => {
             iterationSuffix = 1;
         }
         const userId = `ui-sync-user-${iterationSuffix}`;
+        const tauthScriptUrl = new URL("/tauth.js", backendContext.baseUrl).toString();
         const page = await prepareFrontendPage(context, PAGE_URL, {
             backendBaseUrl: backendContext.baseUrl,
             llmProxyUrl: "",
             authBaseUrl: backendContext.baseUrl,
+            tauthScriptUrl,
             beforeNavigate: async (targetPage) => {
                 await installTAuthHarness(targetPage, {
                     baseUrl: backendContext.baseUrl,

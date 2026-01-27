@@ -208,10 +208,12 @@ test.describe("Realtime synchronization", () => {
 async function bootstrapRealtimeSession(context, backend, userId, options = {}) {
     const beforeAuth = typeof options?.beforeAuth === "function" ? options.beforeAuth : null;
     let harnessHandle = null;
+    const tauthScriptUrl = new URL("/tauth.js", backend.baseUrl).toString();
     const page = await prepareFrontendPage(context, PAGE_URL, {
         backendBaseUrl: backend.baseUrl,
         llmProxyUrl: "",
         authBaseUrl: backend.baseUrl,
+        tauthScriptUrl,
         beforeNavigate: async (targetPage) => {
             harnessHandle = await installTAuthHarness(targetPage, {
                 baseUrl: backend.baseUrl,

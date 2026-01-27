@@ -57,29 +57,32 @@ Developers and curious tinkerers can find project structure, dependencies, and r
 
 ## Local Stack (Gravity + TAuth)
 
-Run the full application locally (frontend, backend, and the new TAuth service) via Docker:
+Run the full application locally (frontend, backend, TAuth, and the gHTTP reverse proxy) via Docker:
 
 1. Copy the environment files and customize secrets as needed:
-   - `cp .env.gravity.example .env.gravity`
-   - `cp .env.tauth.example .env.tauth`
+   - `cp env.gravity.example .env.gravity`
+   - `cp env.tauth.example .env.tauth`
+   - `cp env.ghttp.example .env.ghttp`
 
    Keep `GRAVITY_TAUTH_SIGNING_SECRET` in sync with `APP_JWT_SIGNING_KEY` so Gravity and TAuth agree on JWT signatures.
 
-2. Start the stack with the development profile (local backend build): `docker compose --profile dev up --build`
+2. Add TLS certificates for `computercat.tyemirov.net` and update `.env.ghttp` with the paths (the compose file mounts `./certs` at `/certs` inside the container).
+
+3. Start the stack with the development profile (local backend build): `docker compose --profile dev up --build`
 
    Switch to the docker profile (`docker compose --profile docker up`) to run everything from prebuilt GHCR images.
 
 The compose file exposes:
 
-- Frontend static assets at `http://localhost:8000`
-- Gravity backend API at `http://localhost:8080`
-- TAuth (nonce + Google exchange + `tauth.js`) at `http://localhost:8082`
+- Frontend + proxied API at `https://computercat.tyemirov.net:4443` (gHTTP terminates TLS and proxies `/notes`, `/auth`, and `/api` to the backend/TAuth containers)
+- Gravity backend API at `http://localhost:8080` (container port published for direct access)
+- TAuth (nonce + Google exchange) at `http://localhost:8082` (container port published for direct access)
 
-Runtime configuration files under `frontend/data/` now include `authBaseUrl`, so the browser can discover which TAuth origin to contact for `/auth/nonce`, `/auth/google`, and `/auth/logout` once the frontend wiring lands. Update `frontend/data/runtime.config.production.json` if your deployment uses a different TAuth hostname.
+Runtime configuration files under `frontend/data/` include `authBaseUrl` and `tauthScriptUrl`, so the browser can discover which TAuth origin to contact for `/auth/nonce`, `/auth/google`, and `/auth/logout` and which CDN host serves `tauth.js`. Update `frontend/data/runtime.config.production.json` if your deployment uses a different TAuth hostname or script CDN, and update `frontend/data/runtime.config.development.json` if you run dev on a different HTTPS origin.
 
 ### Authentication Contract
 
-- Gravity no longer exchanges Google credentials itself. The browser loads `https://<tauth-origin>/tauth.js`, fetches a nonce from `/auth/nonce`, and lets TAuth exchange the Google credential at `/auth/google`.
+- Gravity no longer exchanges Google credentials itself. The browser loads `tauth.js` from the configured CDN (`tauthScriptUrl`), fetches a nonce from `/auth/nonce`, and lets TAuth exchange the Google credential at `/auth/google`.
 - TAuth mints two cookies: `app_session` (short-lived HS256 JWT) and `app_refresh` (long-lived refresh token). Every request from the UI includes `app_session` automatically, so the Gravity backend validates the JWT using `GRAVITY_TAUTH_SIGNING_SECRET` and the fixed `tauth` issuer. No bearer tokens or local storage is used.
 - To keep the multi-tenant TAuth flow working, the backend’s CORS preflight now whitelists the `X-TAuth-Tenant` header (in addition to `Authorization`, `Content-Type`, etc.), so browsers can send the tenant hint while relying on cookie authentication.
 - When a request returns `401`, the browser calls `/auth/refresh` on the TAuth origin; a fresh `app_session` cookie is minted and the original request is retried.
