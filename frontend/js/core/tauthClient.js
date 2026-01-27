@@ -18,6 +18,8 @@ const ERROR_MESSAGES = Object.freeze({
     MISSING_DOCUMENT: "tauth_client.missing_document",
     MISSING_BASE_URL: "tauth_client.missing_base_url",
     MISSING_SCRIPT_URL: "tauth_client.missing_script_url",
+    INVALID_SCRIPT_URL: "tauth_client.invalid_script_url",
+    INVALID_SCRIPT_ORIGIN: "tauth_client.invalid_script_origin",
     INVALID_TENANT_ID: "tauth_client.invalid_tenant_id",
     LOAD_FAILED: "tauth-client-load-failed"
 });
@@ -59,7 +61,18 @@ export async function ensureTAuthClientLoaded(options) {
         throw new Error(ERROR_MESSAGES.INVALID_TENANT_ID);
     }
 
-    const scriptUrl = new URL(scriptSource, authBaseUrl);
+    let scriptUrl;
+    try {
+        scriptUrl = new URL(scriptSource);
+    } catch {
+        throw new Error(ERROR_MESSAGES.INVALID_SCRIPT_URL);
+    }
+    if (scriptUrl.protocol !== "http:" && scriptUrl.protocol !== "https:") {
+        throw new Error(ERROR_MESSAGES.INVALID_SCRIPT_URL);
+    }
+    if (typeof window !== TYPE_UNDEFINED && window.location && scriptUrl.origin === window.location.origin) {
+        throw new Error(ERROR_MESSAGES.INVALID_SCRIPT_ORIGIN);
+    }
     if (typeof APP_BUILD_ID === TYPE_STRING && APP_BUILD_ID.length > 0) {
         scriptUrl.searchParams.set("build", APP_BUILD_ID);
     }

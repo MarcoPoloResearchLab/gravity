@@ -74,7 +74,7 @@ Run the full application locally (frontend, backend, TAuth, and the gHTTP revers
 
 The compose file exposes:
 
-- Frontend + proxied API at `https://computercat.tyemirov.net:4443` (gHTTP terminates TLS and proxies `/notes`, `/auth`, and `/api` to the backend/TAuth containers)
+- Frontend + proxied API at `https://computercat.tyemirov.net:4443` (gHTTP terminates TLS and proxies `/notes`, `/auth`, `/me`, and `/api` to the backend/TAuth containers)
 - Gravity backend API at `http://localhost:8080` (container port published for direct access)
 - TAuth (nonce + Google exchange) at `http://localhost:8082` (container port published for direct access)
 

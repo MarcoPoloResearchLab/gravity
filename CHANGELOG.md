@@ -27,7 +27,7 @@ and are grouped by the date the work landed on `master`.
 - Frontend now pulls mpr-ui assets from the `@latest` CDN tag so releases stay aligned (GN-437).
 
 ### Fixed
-- TAuth helper now loads from a dedicated CDN URL via `tauthScriptUrl`, and gHTTP no longer proxies `/tauth.js` in the dev stack (GN-442).
+- TAuth helper now loads from a dedicated CDN URL via `tauthScriptUrl`, and gHTTP no longer proxies `/tauth.js` while proxying `/me` to TAuth for session checks in the dev stack (GN-442).
 - Dev docker compose now serves Gravity over HTTPS at computercat.tyemirov.net:4443 via gHTTP proxies for backend/TAuth endpoints, with updated dev runtime config and env templates (GN-441).
 - Normalized development runtime config endpoints to swap loopback hosts for the active dev hostname and refreshed the TAuth env example for localhost defaults (GN-440).
 - Sync queue now coalesces per note and resolves payloads from the latest stored note to avoid duplicate ops and offline failures (GN-439).

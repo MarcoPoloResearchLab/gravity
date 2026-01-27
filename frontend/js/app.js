@@ -112,6 +112,8 @@ const AUTH_ERROR_MESSAGES = Object.freeze({
     GOOGLE_PREINIT_CALLBACK: "google.preinit_callback_invoked",
     MPR_LOGIN_MISSING: "mpr_ui.login_button_missing",
     MPR_USER_MISSING: "mpr_ui.user_menu_missing",
+    MPR_LOGIN_MOUNT_FAILED: "mpr_ui.login_button_mount_failed",
+    MPR_USER_MOUNT_FAILED: "mpr_ui.user_menu_mount_failed",
     UNSUPPORTED: "gravity.unsupported_environment"
 });
 const GOOGLE_IDENTITY_TIMEOUT_MS = 5000;
@@ -276,7 +278,7 @@ function configureAuthElements(appConfig) {
     if (typeof document === "undefined") {
         return;
     }
-    ensureAuthElementMounted(
+    const loginButton = ensureAuthElementMounted(
         LANDING_LOGIN_ELEMENT_ID,
         LANDING_LOGIN_TEMPLATE_ID,
         LANDING_LOGIN_SLOT_ID,
@@ -294,8 +296,11 @@ function configureAuthElements(appConfig) {
             loginButton.setAttribute("button-text", LABEL_SIGN_IN_WITH_GOOGLE);
         }
     );
+    if (!loginButton) {
+        throw new Error(AUTH_ERROR_MESSAGES.MPR_LOGIN_MOUNT_FAILED);
+    }
 
-    ensureAuthElementMounted(
+    const userMenu = ensureAuthElementMounted(
         USER_MENU_ELEMENT_ID,
         USER_MENU_TEMPLATE_ID,
         USER_MENU_SLOT_ID,
@@ -306,6 +311,9 @@ function configureAuthElements(appConfig) {
             userMenu.setAttribute("tauth-tenant-id", appConfig.authTenantId);
         }
     );
+    if (!userMenu) {
+        throw new Error(AUTH_ERROR_MESSAGES.MPR_USER_MOUNT_FAILED);
+    }
 }
 
 /**
@@ -677,12 +685,12 @@ function gravityApp(appConfig) {
             if (this.authState !== AUTH_STATE_LOADING) {
                 return;
             }
-            if (typeof window === "undefined" || typeof window.getCurrentUser !== "function") {
-                void this.handleAuthUnauthenticated();
-                return;
+            if (typeof window === "undefined") {
+                throw new Error(AUTH_ERROR_MESSAGES.UNSUPPORTED);
             }
+            const getCurrentUser = requireFunction(window.getCurrentUser, AUTH_ERROR_MESSAGES.MISSING_CURRENT_USER);
             try {
-                const profile = await window.getCurrentUser();
+                const profile = await getCurrentUser();
                 if (this.authState !== AUTH_STATE_LOADING) {
                     return;
                 }
@@ -692,6 +700,7 @@ function gravityApp(appConfig) {
                 }
             } catch (error) {
                 logging.error("Auth bootstrap failed", error);
+                throw error;
             }
             if (this.authState === AUTH_STATE_LOADING) {
                 void this.handleAuthUnauthenticated();
