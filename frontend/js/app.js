@@ -107,17 +107,12 @@ const AUTH_ERROR_MESSAGES = Object.freeze({
     MISSING_EXCHANGE: "tauth.exchangeGoogleCredential_missing",
     MISSING_CURRENT_USER: "tauth.getCurrentUser_missing",
     MISSING_LOGOUT: "tauth.logout_missing",
-    GOOGLE_IDENTITY_MISSING: "google.identity_missing",
-    GOOGLE_NONCE_INVALID: "google.nonce_invalid",
-    GOOGLE_PREINIT_CALLBACK: "google.preinit_callback_invoked",
     MPR_LOGIN_MISSING: "mpr_ui.login_button_missing",
     MPR_USER_MISSING: "mpr_ui.user_menu_missing",
     MPR_LOGIN_MOUNT_FAILED: "mpr_ui.login_button_mount_failed",
     MPR_USER_MOUNT_FAILED: "mpr_ui.user_menu_mount_failed",
     UNSUPPORTED: "gravity.unsupported_environment"
 });
-const GOOGLE_IDENTITY_TIMEOUT_MS = 5000;
-const GOOGLE_IDENTITY_POLL_INTERVAL_MS = 50;
 
 /**
  * @param {string} targetUrl
@@ -165,8 +160,7 @@ async function bootstrapApplication() {
         scriptUrl: appConfig.tauthScriptUrl,
         tenantId: appConfig.authTenantId
     });
-    await initializeAuthClient(appConfig);
-    await initializeGoogleIdentity(appConfig);
+    assertTAuthHelpersAvailable();
     await ensureMprUiLoaded({ scriptUrl: appConfig.mprUiScriptUrl });
     assertAuthComponentsAvailable();
     configureAuthElements(appConfig);
@@ -179,66 +173,18 @@ async function bootstrapApplication() {
 }
 
 /**
- * Ensure required TAuth helpers exist and prime the runtime configuration.
- * @param {import("./core/config.js").AppConfig} appConfig
- * @returns {Promise<void>}
+ * Ensure required TAuth helpers exist before mpr-ui boots.
+ * @returns {void}
  */
-async function initializeAuthClient(appConfig) {
+function assertTAuthHelpersAvailable() {
     if (typeof window === "undefined") {
         throw new Error(AUTH_ERROR_MESSAGES.UNSUPPORTED);
     }
-    const initAuthClient = requireFunction(window.initAuthClient, AUTH_ERROR_MESSAGES.MISSING_INIT);
+    requireFunction(window.initAuthClient, AUTH_ERROR_MESSAGES.MISSING_INIT);
     requireFunction(window.requestNonce, AUTH_ERROR_MESSAGES.MISSING_REQUEST_NONCE);
     requireFunction(window.exchangeGoogleCredential, AUTH_ERROR_MESSAGES.MISSING_EXCHANGE);
     requireFunction(window.getCurrentUser, AUTH_ERROR_MESSAGES.MISSING_CURRENT_USER);
     requireFunction(window.logout, AUTH_ERROR_MESSAGES.MISSING_LOGOUT);
-    await initAuthClient({
-        baseUrl: appConfig.authBaseUrl,
-        tenantId: appConfig.authTenantId,
-        onAuthenticated: () => {},
-        onUnauthenticated: () => {}
-    });
-}
-
-/**
- * Ensure Google Identity Services is initialized before rendering the login button.
- * @param {import("./core/config.js").AppConfig} appConfig
- * @returns {Promise<void>}
- */
-async function initializeGoogleIdentity(appConfig) {
-    if (typeof window === "undefined") {
-        throw new Error(AUTH_ERROR_MESSAGES.UNSUPPORTED);
-    }
-    const googleIdentity = await waitForGoogleIdentity();
-    const requestNonce = requireFunction(window.requestNonce, AUTH_ERROR_MESSAGES.MISSING_REQUEST_NONCE);
-    const nonceToken = await requestNonce();
-    if (typeof nonceToken !== "string" || nonceToken.trim().length === 0) {
-        throw new Error(AUTH_ERROR_MESSAGES.GOOGLE_NONCE_INVALID);
-    }
-    googleIdentity.initialize({
-        client_id: appConfig.googleClientId,
-        nonce: nonceToken,
-        callback: () => {
-            throw new Error(AUTH_ERROR_MESSAGES.GOOGLE_PREINIT_CALLBACK);
-        }
-    });
-}
-
-/**
- * Wait for Google Identity Services to be available.
- * @returns {{ initialize: (options: { client_id: string, nonce?: string, callback: (payload: unknown) => void }) => void }}
- */
-async function waitForGoogleIdentity() {
-    const deadline = Date.now() + GOOGLE_IDENTITY_TIMEOUT_MS;
-    while (Date.now() < deadline) {
-        const google = window.google;
-        const identity = google?.accounts?.id;
-        if (identity && typeof identity.initialize === "function") {
-            return identity;
-        }
-        await new Promise((resolve) => setTimeout(resolve, GOOGLE_IDENTITY_POLL_INTERVAL_MS));
-    }
-    throw new Error(AUTH_ERROR_MESSAGES.GOOGLE_IDENTITY_MISSING);
 }
 
 /**
@@ -289,10 +235,6 @@ function configureAuthElements(appConfig) {
             loginButton.setAttribute("tauth-login-path", TAUTH_LOGIN_PATH);
             loginButton.setAttribute("tauth-logout-path", TAUTH_LOGOUT_PATH);
             loginButton.setAttribute("tauth-nonce-path", TAUTH_NONCE_PATH);
-            loginButton.setAttribute("base-url", appConfig.authBaseUrl);
-            loginButton.setAttribute("login-path", TAUTH_LOGIN_PATH);
-            loginButton.setAttribute("logout-path", TAUTH_LOGOUT_PATH);
-            loginButton.setAttribute("nonce-path", TAUTH_NONCE_PATH);
             loginButton.setAttribute("button-text", LABEL_SIGN_IN_WITH_GOOGLE);
         }
     );
