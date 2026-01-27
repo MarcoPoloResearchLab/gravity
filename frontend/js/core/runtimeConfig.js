@@ -14,6 +14,7 @@ const RUNTIME_CONFIG_KEYS = Object.freeze({
     LLM_PROXY_URL: "llmProxyUrl",
     AUTH_BASE_URL: "authBaseUrl",
     TAUTH_SCRIPT_URL: "tauthScriptUrl",
+    MPR_UI_SCRIPT_URL: "mprUiScriptUrl",
     AUTH_TENANT_ID: "authTenantId",
     GOOGLE_CLIENT_ID: "googleClientId"
 });
@@ -140,7 +141,7 @@ async function fetchRuntimeConfig(fetchImplementation, resource) {
  * Validate and project the runtime config payload into known keys.
  * @param {unknown} payload
  * @param {"production" | "development"} environment
- * @returns {{ backendBaseUrl?: string, llmProxyUrl?: string, authBaseUrl?: string, tauthScriptUrl?: string, authTenantId?: string, googleClientId: string }}
+ * @returns {{ backendBaseUrl?: string, llmProxyUrl?: string, authBaseUrl?: string, tauthScriptUrl?: string, mprUiScriptUrl?: string, authTenantId?: string, googleClientId: string }}
  */
 function parseRuntimeConfigPayload(payload, environment) {
     if (!payload || typeof payload !== TYPE_OBJECT || Array.isArray(payload)) {
@@ -192,6 +193,13 @@ function parseRuntimeConfigPayload(payload, environment) {
             throw new Error(ERROR_MESSAGES.INVALID_PAYLOAD);
         }
         overrides.tauthScriptUrl = tauthScriptUrl;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, RUNTIME_CONFIG_KEYS.MPR_UI_SCRIPT_URL)) {
+        const mprUiScriptUrl = /** @type {Record<string, unknown>} */ (payload)[RUNTIME_CONFIG_KEYS.MPR_UI_SCRIPT_URL];
+        if (typeof mprUiScriptUrl !== TYPE_STRING) {
+            throw new Error(ERROR_MESSAGES.INVALID_PAYLOAD);
+        }
+        overrides.mprUiScriptUrl = mprUiScriptUrl;
     }
     if (Object.prototype.hasOwnProperty.call(payload, RUNTIME_CONFIG_KEYS.AUTH_TENANT_ID)) {
         const authTenantId = /** @type {Record<string, unknown>} */ (payload)[RUNTIME_CONFIG_KEYS.AUTH_TENANT_ID];
@@ -265,10 +273,12 @@ function applyRuntimeHostOverrides(appConfig, runtimeLocation) {
     const authBaseUrl = rewriteLoopbackUrl(appConfig.authBaseUrl, runtimeHostname);
     const llmProxyUrl = rewriteLoopbackUrl(appConfig.llmProxyUrl, runtimeHostname);
     const tauthScriptUrl = rewriteLoopbackUrl(appConfig.tauthScriptUrl, runtimeHostname);
+    const mprUiScriptUrl = rewriteLoopbackUrl(appConfig.mprUiScriptUrl, runtimeHostname);
     if (backendBaseUrl === appConfig.backendBaseUrl
         && authBaseUrl === appConfig.authBaseUrl
         && llmProxyUrl === appConfig.llmProxyUrl
-        && tauthScriptUrl === appConfig.tauthScriptUrl) {
+        && tauthScriptUrl === appConfig.tauthScriptUrl
+        && mprUiScriptUrl === appConfig.mprUiScriptUrl) {
         return appConfig;
     }
     return Object.freeze({
@@ -276,7 +286,8 @@ function applyRuntimeHostOverrides(appConfig, runtimeLocation) {
         backendBaseUrl,
         authBaseUrl,
         llmProxyUrl,
-        tauthScriptUrl
+        tauthScriptUrl,
+        mprUiScriptUrl
     });
 }
 

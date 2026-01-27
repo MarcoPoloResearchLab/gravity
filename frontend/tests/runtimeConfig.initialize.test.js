@@ -39,6 +39,7 @@ const REMOTE_ENDPOINTS = Object.freeze({
     LLM_PROXY: "https://llm.example.com/v1/classify",
     AUTH: "https://auth.example.com",
     TAUTH_SCRIPT: "https://cdn.example.com/tauth.js",
+    MPR_UI_SCRIPT: "https://cdn.example.com/mpr-ui.js",
     GOOGLE_CLIENT_ID: "test-client-id.apps.googleusercontent.com"
 });
 
@@ -78,6 +79,7 @@ test.describe(SUITE_LABELS.INITIALIZE_RUNTIME_CONFIG, () => {
                         llmProxyUrl: REMOTE_ENDPOINTS.LLM_PROXY,
                         authBaseUrl: REMOTE_ENDPOINTS.AUTH,
                         tauthScriptUrl: REMOTE_ENDPOINTS.TAUTH_SCRIPT,
+                        mprUiScriptUrl: REMOTE_ENDPOINTS.MPR_UI_SCRIPT,
                         authTenantId: REMOTE_AUTH_TENANT_ID,
                         googleClientId: REMOTE_ENDPOINTS.GOOGLE_CLIENT_ID
                     };
@@ -104,6 +106,7 @@ test.describe(SUITE_LABELS.INITIALIZE_RUNTIME_CONFIG, () => {
         assert.equal(appConfig.llmProxyUrl, REMOTE_ENDPOINTS.LLM_PROXY);
         assert.equal(appConfig.authBaseUrl, REMOTE_ENDPOINTS.AUTH);
         assert.equal(appConfig.tauthScriptUrl, REMOTE_ENDPOINTS.TAUTH_SCRIPT);
+        assert.equal(appConfig.mprUiScriptUrl, REMOTE_ENDPOINTS.MPR_UI_SCRIPT);
         assert.equal(appConfig.authTenantId, REMOTE_AUTH_TENANT_ID);
         assert.equal(appConfig.googleClientId, REMOTE_ENDPOINTS.GOOGLE_CLIENT_ID);
         assert.equal(errorNotifications.length, 0);
@@ -120,6 +123,7 @@ test.describe(SUITE_LABELS.INITIALIZE_RUNTIME_CONFIG, () => {
                     llmProxyUrl: "http://localhost:8081/v1/classify",
                     authBaseUrl: "http://localhost:8082",
                     tauthScriptUrl: "http://localhost:8082/tauth.js",
+                    mprUiScriptUrl: "http://localhost:8083/mpr-ui.js",
                     googleClientId: REMOTE_ENDPOINTS.GOOGLE_CLIENT_ID
                 };
             }
@@ -134,6 +138,7 @@ test.describe(SUITE_LABELS.INITIALIZE_RUNTIME_CONFIG, () => {
         assert.equal(appConfig.llmProxyUrl, `http://${HOSTNAMES.REMOTE}:8081/v1/classify`);
         assert.equal(appConfig.authBaseUrl, `http://${HOSTNAMES.REMOTE}:8082`);
         assert.equal(appConfig.tauthScriptUrl, `http://${HOSTNAMES.REMOTE}:8082/tauth.js`);
+        assert.equal(appConfig.mprUiScriptUrl, `http://${HOSTNAMES.REMOTE}:8083/mpr-ui.js`);
     });
 
     test(TEST_LABELS.RETRIES_TRANSIENT_FAILURES, async () => {

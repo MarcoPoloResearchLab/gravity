@@ -173,6 +173,7 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 - [x] [GN-441] (P1) Dev auth fails on computercat.tyemirov.net because gHTTP still serves only the frontend and runtime config points to localhost; proxy backend/TAuth through gHTTP HTTPS and update dev config/env defaults. (Resolved by adding gHTTP HTTPS env config + proxy routes, updating compose and runtime config defaults for computercat, and documenting the new dev stack.)
 - [ ] [GN-442] (P1) Load tauth.js from the CDN (not via gHTTP), remove the /tauth.js proxy route, and wire the runtime config/test harness to use a dedicated tauthScriptUrl for the helper.
 - [x] [GN-443] (P1) Keep `.env*` files untracked and rename example env files to `env.*.example` with updated setup docs.
+- [x] [GN-444] (P1) Ensure the mpr-ui login component always registers by loading the bundle from a runtime-configured `mprUiScriptUrl` after tauth.js.
 
 
 ## Maintenance (428–499)

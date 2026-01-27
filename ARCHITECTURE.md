@@ -76,7 +76,7 @@ EasyMDE produces markdown, marked renders it to HTML, and DOMPurify sanitises th
 - `GravityStore` persists notes in IndexedDB for offline-first behaviour; reconciliation applies backend snapshots.
 - `createNoteRecord` validates note identifiers/markdown before writes so malformed payloads never hit storage.
 - `GravityStore.setUserScope(userId)` switches the storage namespace so each Google account receives an isolated notebook.
-- Runtime configuration loads from environment-specific JSON files under `data/`, selected according to the active hostname. Each profile now surfaces `authBaseUrl` (API origin) plus `tauthScriptUrl` (CDN host) so the frontend knows where to call `/auth/*` and where to load `tauth.js`.
+- Runtime configuration loads from environment-specific JSON files under `data/`, selected according to the active hostname. Each profile now surfaces `authBaseUrl` (API origin), `tauthScriptUrl` (TAuth CDN host), and `mprUiScriptUrl` (mpr-ui CDN host) so the frontend knows where to call `/auth/*` and where to load `tauth.js` + the auth UI bundle.
 - Authentication flows through Google Identity Services + TAuth: the browser loads `tauth.js` from `tauthScriptUrl`, fetches a nonce from `/auth/nonce`, exchanges Google credentials at `/auth/google`, and refreshes the session via `/auth/refresh`. The frontend never sends Google tokens to the Gravity backend; every API request simply carries the `app_session` cookie minted by TAuth and validated locally via HS256.
 - The backend records a canonical user table (`user_identities`) so each `(provider, subject)` pair (for example `google:1234567890`) maps to a stable Gravity `user_id`. That allows multiple login providers to point at the same notebook without rewriting note rows.
 
@@ -140,7 +140,8 @@ Profiles live under `frontend/data/runtime.config.<environment>.json` and are se
   "environment": "development",
   "backendBaseUrl": "http://localhost:8080",
   "llmProxyUrl": "http://localhost:8081/v1/gravity/classify",
-  "tauthScriptUrl": "https://tauth.mprlab.com/tauth.js"
+  "tauthScriptUrl": "https://tauth.mprlab.com/tauth.js",
+  "mprUiScriptUrl": "https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.js"
 }
 ```
 
@@ -150,7 +151,8 @@ Profiles live under `frontend/data/runtime.config.<environment>.json` and are se
   "environment": "production",
   "backendBaseUrl": "https://gravity-api.mprlab.com",
   "llmProxyUrl": "https://llm-proxy.mprlab.com/v1/gravity/classify",
-  "tauthScriptUrl": "https://tauth.mprlab.com/tauth.js"
+  "tauthScriptUrl": "https://tauth.mprlab.com/tauth.js",
+  "mprUiScriptUrl": "https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.js"
 }
 ```
 

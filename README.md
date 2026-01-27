@@ -78,7 +78,7 @@ The compose file exposes:
 - Gravity backend API at `http://localhost:8080` (container port published for direct access)
 - TAuth (nonce + Google exchange) at `http://localhost:8082` (container port published for direct access)
 
-Runtime configuration files under `frontend/data/` include `authBaseUrl` and `tauthScriptUrl`, so the browser can discover which TAuth origin to contact for `/auth/nonce`, `/auth/google`, and `/auth/logout` and which CDN host serves `tauth.js`. Update `frontend/data/runtime.config.production.json` if your deployment uses a different TAuth hostname or script CDN, and update `frontend/data/runtime.config.development.json` if you run dev on a different HTTPS origin.
+Runtime configuration files under `frontend/data/` include `authBaseUrl`, `tauthScriptUrl`, and `mprUiScriptUrl`, so the browser can discover which TAuth origin to contact for `/auth/nonce`, `/auth/google`, and `/auth/logout`, which CDN host serves `tauth.js`, and which CDN host serves the `mpr-ui` bundle. Update `frontend/data/runtime.config.production.json` if your deployment uses different auth or CDN hosts, and update `frontend/data/runtime.config.development.json` if you run dev on a different HTTPS origin.
 
 ### Authentication Contract
 

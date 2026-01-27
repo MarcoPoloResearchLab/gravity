@@ -20,6 +20,7 @@ and are grouped by the date the work landed on `master`.
 - Centralized environment config defaults and reused them across runtime config and test harnesses (GN-427).
 - Runtime config now returns a frozen app config and callers pass it explicitly instead of shared globals (GN-427).
 - Environment example files now live at `env.*.example`, keeping `.env*` files untracked while preserving copy-ready templates (GN-443).
+- mpr-ui now loads from a runtime-configured script URL (`mprUiScriptUrl`) after tauth.js so login components always register (GN-444).
 - Signed-out visitors now see a landing page with a Google sign-in button; the Gravity interface requires authentication (GN-126).
 - mpr-ui now loads from a static script tag and auth components mount after runtime config so attributes are applied before initialization (GN-436).
 - Frontend now pulls mpr-ui assets from the `@latest` CDN tag so releases stay aligned (GN-437).

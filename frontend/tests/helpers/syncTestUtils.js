@@ -41,6 +41,7 @@ const DEFAULT_JWT_AUDIENCE = appConfig.googleClientId;
 const EMPTY_STRING = "";
 const DEVELOPMENT_AUTH_BASE_URL = DEVELOPMENT_ENVIRONMENT_CONFIG.authBaseUrl;
 const DEVELOPMENT_TAUTH_SCRIPT_URL = DEVELOPMENT_ENVIRONMENT_CONFIG.tauthScriptUrl;
+const DEVELOPMENT_MPR_UI_SCRIPT_URL = DEVELOPMENT_ENVIRONMENT_CONFIG.mprUiScriptUrl;
 const DEFAULT_AUTH_TENANT_ID = DEVELOPMENT_ENVIRONMENT_CONFIG.authTenantId || "gravity";
 const TAUTH_PROFILE_STORAGE_KEY = "__gravityTestAuthProfile";
 const STATIC_SERVER_HOST = "127.0.0.1";
@@ -83,7 +84,7 @@ export function buildUserStorageKey(userId) {
  * Prepare a new browser page configured for backend synchronization tests.
  * @param {import('puppeteer').Browser | import('puppeteer').BrowserContext} browser
  * @param {string} pageUrl
- * @param {{ backendBaseUrl: string, llmProxyUrl?: string, authBaseUrl?: string, tauthScriptUrl?: string, authTenantId?: string, googleClientId?: string, preserveLocalStorage?: boolean }} options
+ * @param {{ backendBaseUrl: string, llmProxyUrl?: string, authBaseUrl?: string, tauthScriptUrl?: string, mprUiScriptUrl?: string, authTenantId?: string, googleClientId?: string, preserveLocalStorage?: boolean }} options
  * @returns {Promise<import('puppeteer').Page>}
  */
 export async function prepareFrontendPage(browser, pageUrl, options) {
@@ -92,6 +93,7 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
         llmProxyUrl = EMPTY_STRING,
         authBaseUrl = DEVELOPMENT_AUTH_BASE_URL,
         tauthScriptUrl = DEVELOPMENT_TAUTH_SCRIPT_URL,
+        mprUiScriptUrl = DEVELOPMENT_MPR_UI_SCRIPT_URL,
         authTenantId = DEFAULT_AUTH_TENANT_ID,
         googleClientId = appConfig.googleClientId,
         beforeNavigate,
@@ -139,6 +141,7 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
             llmProxyUrl,
             authBaseUrl,
             tauthScriptUrl,
+            mprUiScriptUrl,
             authTenantId,
             googleClientId
         }
@@ -159,6 +162,7 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
                     llmProxyUrl: config.llmProxyUrl,
                     authBaseUrl: config.authBaseUrl,
                     tauthScriptUrl: config.tauthScriptUrl,
+                    mprUiScriptUrl: config.mprUiScriptUrl,
                     authTenantId: config.authTenantId,
                     googleClientId: config.googleClientId
                 };
@@ -175,6 +179,7 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
         llmProxyUrl,
         authBaseUrl,
         tauthScriptUrl,
+        mprUiScriptUrl,
         authTenantId,
         googleClientId
     });
@@ -261,6 +266,7 @@ export async function initializePuppeteerTest(pageUrl = DEFAULT_PAGE_URL, setupO
             llmProxyUrl: EMPTY_STRING,
             authBaseUrl: DEVELOPMENT_AUTH_BASE_URL,
             tauthScriptUrl: DEVELOPMENT_TAUTH_SCRIPT_URL,
+            mprUiScriptUrl: DEVELOPMENT_MPR_UI_SCRIPT_URL,
             authTenantId: DEFAULT_AUTH_TENANT_ID,
             googleClientId: appConfig.googleClientId
         }

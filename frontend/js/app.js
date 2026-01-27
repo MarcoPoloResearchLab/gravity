@@ -12,6 +12,7 @@ import { initializeAnalytics } from "./core/analytics.js?build=2026-01-01T22:43:
 import { createSyncManager } from "./core/syncManager.js?build=2026-01-01T22:43:21Z";
 import { createRealtimeSyncController } from "./core/realtimeSyncController.js?build=2026-01-01T22:43:21Z";
 import { ensureTAuthClientLoaded } from "./core/tauthClient.js?build=2026-01-01T22:43:21Z";
+import { ensureMprUiLoaded } from "./core/mprUiClient.js?build=2026-01-01T22:43:21Z";
 import { mountTopEditor } from "./ui/topEditor.js?build=2026-01-01T22:43:21Z";
 import {
     LABEL_APP_SUBTITLE,
@@ -147,6 +148,11 @@ async function bootstrapApplication() {
         tenantId: appConfig.authTenantId
     }).catch((error) => {
         logging.error("TAuth client failed to load", error);
+    });
+    await ensureMprUiLoaded({
+        scriptUrl: appConfig.mprUiScriptUrl
+    }).catch((error) => {
+        logging.error("mpr-ui failed to load", error);
     });
     configureAuthElements(appConfig);
     initializeAnalytics({ config: appConfig });
