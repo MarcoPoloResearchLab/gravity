@@ -7,9 +7,6 @@
     <script src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui-config.js"></script>
     <script>
         (function() {
-            if (!window.MPRUI || typeof window.MPRUI.applyYamlConfig !== "function") {
-                throw new Error("mpr_ui.config_loader_missing");
-            }
             function loadMprUi() {
                 return new Promise((resolve, reject) => {
                     const script = document.createElement("script");
@@ -19,10 +16,70 @@
                     document.head.appendChild(script);
                 });
             }
-            const configUrl = typeof window.__mprUiConfigUrl === "string" && window.__mprUiConfigUrl.length > 0
-                ? window.__mprUiConfigUrl
-                : "/config.yaml";
-            window.__mprUiReady = window.MPRUI.applyYamlConfig({ configUrl }).then(loadMprUi);
+
+            function primeNonce() {
+                if (typeof window.requestNonce !== "function") {
+                    throw new Error("tauth.requestNonce_missing");
+                }
+                const originalRequest = window.requestNonce.bind(window);
+                let cachedNonce = null;
+                let inFlightPromise = null;
+                window.requestNonce = async () => {
+                    if (cachedNonce) {
+                        const value = cachedNonce;
+                        cachedNonce = null;
+                        return value;
+                    }
+                    if (inFlightPromise) {
+                        const value = await inFlightPromise;
+                        if (cachedNonce) {
+                            const cachedValue = cachedNonce;
+                            cachedNonce = null;
+                            return cachedValue;
+                        }
+                        return value;
+                    }
+                    return originalRequest();
+                };
+                inFlightPromise = originalRequest().then((nonce) => {
+                    cachedNonce = nonce;
+                    return nonce;
+                });
+                return inFlightPromise;
+            }
+
+            function initializeAuth(runtimeConfig) {
+                if (!runtimeConfig || !runtimeConfig.auth) {
+                    throw new Error("mpr_ui.config_missing");
+                }
+                if (typeof window.initAuthClient !== "function") {
+                    throw new Error("tauth.initAuthClient_missing");
+                }
+                return Promise.resolve(window.initAuthClient({
+                    baseUrl: runtimeConfig.auth.tauthUrl,
+                    tenantId: runtimeConfig.auth.tenantId,
+                    onAuthenticated: () => {},
+                    onUnauthenticated: () => {}
+                })).then(primeNonce);
+            }
+
+            function start() {
+                if (!window.MPRUI || typeof window.MPRUI.applyYamlConfig !== "function") {
+                    throw new Error("mpr_ui.config_loader_missing");
+                }
+                const configUrl = typeof window.__mprUiConfigUrl === "string" && window.__mprUiConfigUrl.length > 0
+                    ? window.__mprUiConfigUrl
+                    : "/config.yaml";
+                window.__mprUiReady = window.MPRUI.applyYamlConfig({ configUrl })
+                    .then((runtimeConfig) => initializeAuth(runtimeConfig).then(() => runtimeConfig))
+                    .then(loadMprUi);
+            }
+
+            if (document.readyState === "loading") {
+                document.addEventListener("DOMContentLoaded", start, { once: true });
+            } else {
+                start();
+            }
         })();
     </script>
 
