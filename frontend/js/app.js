@@ -101,6 +101,21 @@ const PROFILE_AVATAR_KEYS = Object.freeze([
 ]);
 
 const NOTIFICATION_DEFAULT_DURATION_MS = 3000;
+const AUTH_ERROR_MESSAGES = Object.freeze({
+    MISSING_INIT: "tauth.initAuthClient_missing",
+    MISSING_REQUEST_NONCE: "tauth.requestNonce_missing",
+    MISSING_EXCHANGE: "tauth.exchangeGoogleCredential_missing",
+    MISSING_CURRENT_USER: "tauth.getCurrentUser_missing",
+    MISSING_LOGOUT: "tauth.logout_missing",
+    GOOGLE_IDENTITY_MISSING: "google.identity_missing",
+    GOOGLE_NONCE_INVALID: "google.nonce_invalid",
+    GOOGLE_PREINIT_CALLBACK: "google.preinit_callback_invoked",
+    MPR_LOGIN_MISSING: "mpr_ui.login_button_missing",
+    MPR_USER_MISSING: "mpr_ui.user_menu_missing",
+    UNSUPPORTED: "gravity.unsupported_environment"
+});
+const GOOGLE_IDENTITY_TIMEOUT_MS = 5000;
+const GOOGLE_IDENTITY_POLL_INTERVAL_MS = 50;
 
 /**
  * @param {string} targetUrl
@@ -137,6 +152,7 @@ async function clearAssetCaches() {
 
 bootstrapApplication().catch((error) => {
     logging.error("Failed to bootstrap Gravity Notes", error);
+    throw error;
 });
 
 async function bootstrapApplication() {
@@ -146,14 +162,11 @@ async function bootstrapApplication() {
         baseUrl: appConfig.authBaseUrl,
         scriptUrl: appConfig.tauthScriptUrl,
         tenantId: appConfig.authTenantId
-    }).catch((error) => {
-        logging.error("TAuth client failed to load", error);
     });
-    await ensureMprUiLoaded({
-        scriptUrl: appConfig.mprUiScriptUrl
-    }).catch((error) => {
-        logging.error("mpr-ui failed to load", error);
-    });
+    await initializeAuthClient(appConfig);
+    await initializeGoogleIdentity(appConfig);
+    await ensureMprUiLoaded({ scriptUrl: appConfig.mprUiScriptUrl });
+    assertAuthComponentsAvailable();
     configureAuthElements(appConfig);
     initializeAnalytics({ config: appConfig });
     document.addEventListener("alpine:init", () => {
@@ -161,6 +174,97 @@ async function bootstrapApplication() {
     });
     window.Alpine = Alpine;
     Alpine.start();
+}
+
+/**
+ * Ensure required TAuth helpers exist and prime the runtime configuration.
+ * @param {import("./core/config.js").AppConfig} appConfig
+ * @returns {Promise<void>}
+ */
+async function initializeAuthClient(appConfig) {
+    if (typeof window === "undefined") {
+        throw new Error(AUTH_ERROR_MESSAGES.UNSUPPORTED);
+    }
+    const initAuthClient = requireFunction(window.initAuthClient, AUTH_ERROR_MESSAGES.MISSING_INIT);
+    requireFunction(window.requestNonce, AUTH_ERROR_MESSAGES.MISSING_REQUEST_NONCE);
+    requireFunction(window.exchangeGoogleCredential, AUTH_ERROR_MESSAGES.MISSING_EXCHANGE);
+    requireFunction(window.getCurrentUser, AUTH_ERROR_MESSAGES.MISSING_CURRENT_USER);
+    requireFunction(window.logout, AUTH_ERROR_MESSAGES.MISSING_LOGOUT);
+    await initAuthClient({
+        baseUrl: appConfig.authBaseUrl,
+        tenantId: appConfig.authTenantId,
+        onAuthenticated: () => {},
+        onUnauthenticated: () => {}
+    });
+}
+
+/**
+ * Ensure Google Identity Services is initialized before rendering the login button.
+ * @param {import("./core/config.js").AppConfig} appConfig
+ * @returns {Promise<void>}
+ */
+async function initializeGoogleIdentity(appConfig) {
+    if (typeof window === "undefined") {
+        throw new Error(AUTH_ERROR_MESSAGES.UNSUPPORTED);
+    }
+    const googleIdentity = await waitForGoogleIdentity();
+    const requestNonce = requireFunction(window.requestNonce, AUTH_ERROR_MESSAGES.MISSING_REQUEST_NONCE);
+    const nonceToken = await requestNonce();
+    if (typeof nonceToken !== "string" || nonceToken.trim().length === 0) {
+        throw new Error(AUTH_ERROR_MESSAGES.GOOGLE_NONCE_INVALID);
+    }
+    googleIdentity.initialize({
+        client_id: appConfig.googleClientId,
+        nonce: nonceToken,
+        callback: () => {
+            throw new Error(AUTH_ERROR_MESSAGES.GOOGLE_PREINIT_CALLBACK);
+        }
+    });
+}
+
+/**
+ * Wait for Google Identity Services to be available.
+ * @returns {{ initialize: (options: { client_id: string, nonce?: string, callback: (payload: unknown) => void }) => void }}
+ */
+async function waitForGoogleIdentity() {
+    const deadline = Date.now() + GOOGLE_IDENTITY_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+        const google = window.google;
+        const identity = google?.accounts?.id;
+        if (identity && typeof identity.initialize === "function") {
+            return identity;
+        }
+        await new Promise((resolve) => setTimeout(resolve, GOOGLE_IDENTITY_POLL_INTERVAL_MS));
+    }
+    throw new Error(AUTH_ERROR_MESSAGES.GOOGLE_IDENTITY_MISSING);
+}
+
+/**
+ * @param {unknown} candidate
+ * @param {string} errorMessage
+ * @returns {Function}
+ */
+function requireFunction(candidate, errorMessage) {
+    if (typeof candidate !== "function") {
+        throw new Error(errorMessage);
+    }
+    return candidate;
+}
+
+/**
+ * Ensure mpr-ui custom elements are registered before use.
+ * @returns {void}
+ */
+function assertAuthComponentsAvailable() {
+    if (typeof window === "undefined" || typeof window.customElements === "undefined") {
+        throw new Error(AUTH_ERROR_MESSAGES.UNSUPPORTED);
+    }
+    if (!window.customElements.get("mpr-login-button")) {
+        throw new Error(AUTH_ERROR_MESSAGES.MPR_LOGIN_MISSING);
+    }
+    if (!window.customElements.get("mpr-user")) {
+        throw new Error(AUTH_ERROR_MESSAGES.MPR_USER_MISSING);
+    }
 }
 
 /**

@@ -174,6 +174,7 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 - [ ] [GN-442] (P1) Load tauth.js from the CDN (not via gHTTP), remove the /tauth.js proxy route, and wire the runtime config/test harness to use a dedicated tauthScriptUrl for the helper.
 - [x] [GN-443] (P1) Keep `.env*` files untracked and rename example env files to `env.*.example` with updated setup docs.
 - [x] [GN-444] (P1) Ensure the mpr-ui login component always registers by loading the bundle from a runtime-configured `mprUiScriptUrl` after tauth.js.
+- [x] [GN-445] (P1) Make auth boot strict (no fallbacks) and pre-initialize GIS before rendering the mpr-ui login button to avoid GSI warnings.
 
 
 ## Maintenance (428–499)
