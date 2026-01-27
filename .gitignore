@@ -13,7 +13,6 @@ tools/
 # Managed by gix gitignore workflow
 .env
 .env.*
-!.env.*.example
 .DS_Store
 qodana.yaml
 bin/

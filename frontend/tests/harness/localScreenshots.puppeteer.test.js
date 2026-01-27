@@ -1,3 +1,5 @@
+// @ts-check
+
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -6,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import { createSharedPage } from "../helpers/browserHarness.js";
+import { startTestBackend } from "../helpers/backendHarness.js";
 import {
     captureElementScreenshot,
     clearScreenshotTestOverrides,
@@ -15,11 +18,13 @@ import {
     withScreenshotCapture
 } from "../helpers/screenshotArtifacts.js";
 import { readRuntimeContext } from "../helpers/runtimeContext.js";
+import { signInTestUser } from "../helpers/syncTestUtils.js";
 
 const CURRENT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(CURRENT_DIR, "..", "..");
 const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
 const TMP_PREFIX = "gravity-screenshots-";
+const TEST_USER_ID = "local-screenshots-user";
 
 test("captures local screenshot artifacts for puppeteer-driven areas", async (t) => {
     const runtimeContext = readRuntimeContext();
@@ -52,9 +57,11 @@ test("captures local screenshot artifacts for puppeteer-driven areas", async (t)
             const directory = getScreenshotArtifactsDirectory();
             assert.ok(directory, "expected screenshot artifacts directory to be defined");
 
+            const backend = await startTestBackend();
             const { page, teardown } = await createSharedPage();
             try {
                 await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
+                await signInTestUser(page, backend, TEST_USER_ID);
                 await page.waitForSelector(".app-header");
 
                 const savedPath = await captureElementScreenshot(page, {
@@ -68,6 +75,7 @@ test("captures local screenshot artifacts for puppeteer-driven areas", async (t)
                 assert.ok(stats.size > 0, "expected screenshot artifact to contain data");
             } finally {
                 await teardown();
+                await backend.close();
             }
         });
     } finally {

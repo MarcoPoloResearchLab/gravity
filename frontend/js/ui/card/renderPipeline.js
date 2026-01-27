@@ -135,8 +135,8 @@ export function persistCardState(card, notesContainer, markdownText, options = {
     }
 
     const storedViewportAnchor = getCardAnchor(card);
-    const viewportAnchor = bubbleToTop && card.classList.contains("editing-in-place")
-        ? storedViewportAnchor ?? captureViewportAnchor(card)
+    const viewportAnchor = card.classList.contains("editing-in-place")
+        ? captureViewportAnchor(card) ?? storedViewportAnchor
         : storedViewportAnchor;
 
     const timestamp = nowIso();
@@ -287,7 +287,8 @@ export function lockEditingSurfaceHeight(card, measurements) {
             }
         }
         const resolvedContentHeight = contentHeight > 0 ? contentHeight : 0;
-        const targetCardHeight = resolvedContentHeight > 0 ? resolvedContentHeight + verticalPadding : normalizedCardHeight;
+        const contentDerivedCardHeight = resolvedContentHeight > 0 ? resolvedContentHeight + verticalPadding : 0;
+        const targetCardHeight = Math.max(normalizedCardHeight, contentDerivedCardHeight);
         card.style.setProperty("--note-expanded-edit-height", `${targetCardHeight}px`);
         card.style.minHeight = `${targetCardHeight}px`;
         card.style.maxHeight = "";

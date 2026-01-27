@@ -1,17 +1,19 @@
+// @ts-check
+
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { createAppConfig } from "../js/core/config.js?build=2026-01-01T22:43:21Z";
-import { ENVIRONMENT_DEVELOPMENT } from "../js/core/environmentConfig.js?build=2026-01-01T22:43:21Z";
 import { createSharedPage, waitForAppHydration, flushAlpineQueues } from "./helpers/browserHarness.js";
-
-const appConfig = createAppConfig({ environment: ENVIRONMENT_DEVELOPMENT });
+import { startTestBackend } from "./helpers/backendHarness.js";
+import { buildUserStorageKey, seedNotes, signInTestUser, waitForPendingOperations } from "./helpers/syncTestUtils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+const TEST_USER_ID = "htmlview-checkmark-user";
+const STORAGE_KEY = buildUserStorageKey(TEST_USER_ID);
 
 const CHECKLIST_NOTE_ID = "htmlView-checklist-primary";
 const CHECKLIST_MARKDOWN = [
@@ -41,7 +43,8 @@ test.describe("Checklist htmlView interactions", () => {
         const { page, teardown } = await openChecklistPage(initialRecords);
         try {
             const cardSelector = `.markdown-block[data-note-id="${CHECKLIST_NOTE_ID}"]`;
-            await page.waitForSelector(cardSelector);
+            const cardHandle = await page.$(cardSelector);
+            assert.ok(cardHandle, "expected checklist card to render");
 
             const checkboxSelector = `${cardSelector} .note-html-view input[data-task-index="0"]`;
             await page.click(checkboxSelector);
@@ -64,7 +67,7 @@ test.describe("Checklist htmlView interactions", () => {
                 } catch {
                     return false;
                 }
-            }, { timeout: 2000 }, { storageKey: appConfig.storageKey, noteId: CHECKLIST_NOTE_ID });
+            }, { timeout: 2000 }, { storageKey: STORAGE_KEY, noteId: CHECKLIST_NOTE_ID });
             const interimMarkdown = await page.evaluate((config) => {
                 const raw = window.localStorage.getItem(config.storageKey);
                 if (!raw) {
@@ -79,13 +82,14 @@ test.describe("Checklist htmlView interactions", () => {
                 } catch {
                     return null;
                 }
-            }, { storageKey: appConfig.storageKey, noteId: CHECKLIST_NOTE_ID });
+            }, { storageKey: STORAGE_KEY, noteId: CHECKLIST_NOTE_ID });
             assert.ok(typeof interimMarkdown === "string" && interimMarkdown.includes("- [x] Track first task"));
 
-            const summary = await snapshotStorage(page, appConfig.storageKey);
+            const summary = await snapshotStorage(page, STORAGE_KEY);
             assert.equal(summary.totalRecords, 1, "exactly one record persists after toggling");
             assert.equal(summary.noteOccurrences[CHECKLIST_NOTE_ID], 1, "note identifier remains unique");
 
+            await waitForPendingOperations(page);
             await page.reload({ waitUntil: "domcontentloaded" });
             await page.waitForSelector(cardSelector);
             const renderedCount = await page.$$eval(cardSelector, (nodes) => nodes.length);
@@ -141,11 +145,11 @@ test.describe("Checklist htmlView interactions", () => {
                     return false;
                 }
             }, { timeout: 2000 }, {
-                storageKey: appConfig.storageKey,
+                storageKey: STORAGE_KEY,
                 firstId: CHECKLIST_NOTE_ID,
                 secondId: SECOND_NOTE_ID
             });
-            const summary = await snapshotStorage(page, appConfig.storageKey);
+            const summary = await snapshotStorage(page, STORAGE_KEY);
             assert.equal(summary.totalRecords, 2, "two records remain after rapid toggles");
             assert.equal(summary.noteOccurrences[CHECKLIST_NOTE_ID], 1, "primary note stays unique");
             assert.equal(summary.noteOccurrences[SECOND_NOTE_ID], 1, "secondary note stays unique");
@@ -217,7 +221,7 @@ test.describe("Checklist htmlView interactions", () => {
                     }
                 });
                 root.dispatchEvent(event);
-            }, { storageKey: appConfig.storageKey, noteId: CHECKLIST_NOTE_ID });
+            }, { storageKey: STORAGE_KEY, noteId: CHECKLIST_NOTE_ID });
 
             await page.waitForFunction((selector) => {
                 return document.querySelectorAll(selector).length === 1;
@@ -306,28 +310,104 @@ test.describe("Checklist htmlView interactions", () => {
 });
 
 async function openChecklistPage(records) {
+    const backend = await startTestBackend();
     const { page, teardown } = await createSharedPage({
         development: {
             llmProxyUrl: ""
         }
     });
-    const serialized = JSON.stringify(Array.isArray(records) ? records : []);
-    await page.evaluateOnNewDocument((storageKey, payload) => {
-        window.sessionStorage.setItem("__gravityTestInitialized", "true");
-        window.localStorage.clear();
-        if (typeof payload === "string" && payload.length > 0) {
-            window.localStorage.setItem(storageKey, payload);
+    await page.evaluateOnNewDocument(() => {
+        if (typeof window === "undefined" || !window.sessionStorage || !window.localStorage) {
+            return;
         }
-    }, appConfig.storageKey, serialized);
+        const initialized = window.sessionStorage.getItem("__gravityTestInitialized") === "true";
+        if (!initialized) {
+            window.localStorage.clear();
+            window.sessionStorage.setItem("__gravityTestInitialized", "true");
+        }
+    });
 
     await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
     await waitForAppHydration(page);
     await flushAlpineQueues(page);
+    await signInTestUser(page, backend, TEST_USER_ID, { waitForSyncManager: false });
+    await page.waitForFunction(() => document.body?.dataset?.authState === "authenticated");
+    await page.evaluate(() => {
+        const root = document.querySelector("[x-data]");
+        if (!root) {
+            return;
+        }
+        const alpineComponent = (() => {
+            const legacy = /** @type {{ $data?: Record<string, any> }} */ (/** @type {any} */ (root).__x ?? null);
+            if (legacy && typeof legacy.$data === "object") {
+                return legacy.$data;
+            }
+            const alpine = typeof window !== "undefined" ? /** @type {{ $data?: (el: Element) => any }} */ (window.Alpine ?? null) : null;
+            if (alpine && typeof alpine.$data === "function") {
+                const scoped = alpine.$data(root);
+                if (scoped && typeof scoped === "object") {
+                    return scoped;
+                }
+            }
+            const stack = /** @type {Array<Record<string, any>>|undefined} */ (/** @type {any} */ (root)._x_dataStack);
+            if (Array.isArray(stack) && stack.length > 0) {
+                const candidate = stack[stack.length - 1];
+                if (candidate && typeof candidate === "object") {
+                    return candidate;
+                }
+            }
+            return null;
+        })();
+        if (alpineComponent && typeof alpineComponent.syncIntervalHandle === "number") {
+            clearInterval(alpineComponent.syncIntervalHandle);
+            alpineComponent.syncIntervalHandle = null;
+        }
+    });
     await page.waitForSelector("#top-editor .markdown-editor");
     if (Array.isArray(records) && records.length > 0) {
-        await page.waitForSelector(".markdown-block[data-note-id]");
+        await seedNotes(page, records, TEST_USER_ID);
+        await page.evaluate((seeded) => {
+            const root = document.querySelector("[x-data]");
+            if (!root) {
+                return;
+            }
+            const alpineComponent = (() => {
+                const legacy = /** @type {{ $data?: Record<string, any> }} */ (/** @type {any} */ (root).__x ?? null);
+                if (legacy && typeof legacy.$data === "object") {
+                    return legacy.$data;
+                }
+                const alpine = typeof window !== "undefined" ? /** @type {{ $data?: (el: Element) => any }} */ (window.Alpine ?? null) : null;
+                if (alpine && typeof alpine.$data === "function") {
+                    const scoped = alpine.$data(root);
+                    if (scoped && typeof scoped === "object") {
+                        return scoped;
+                    }
+                }
+                const stack = /** @type {Array<Record<string, any>>|undefined} */ (/** @type {any} */ (root)._x_dataStack);
+                if (Array.isArray(stack) && stack.length > 0) {
+                    const candidate = stack[stack.length - 1];
+                    if (candidate && typeof candidate === "object") {
+                        return candidate;
+                    }
+                }
+                return null;
+            })();
+            const syncManager = alpineComponent?.syncManager;
+            if (!syncManager || typeof syncManager.recordLocalUpsert !== "function") {
+                return;
+            }
+            seeded.forEach((record) => {
+                syncManager.recordLocalUpsert(record);
+            });
+        }, records);
     }
-    return { page, teardown };
+    return {
+        page,
+        teardown: async () => {
+            await teardown();
+            await backend.close();
+        }
+    };
 }
 
 function buildNoteRecord({

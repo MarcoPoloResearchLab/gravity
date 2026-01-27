@@ -19,6 +19,7 @@ let sharedLaunchContext = null;
 const CURRENT_FILE = fileURLToPath(import.meta.url);
 const HELPERS_ROOT = path.dirname(CURRENT_FILE);
 const TESTS_ROOT = path.resolve(HELPERS_ROOT, "..");
+const REPO_ROOT = path.resolve(TESTS_ROOT, "..", "..");
 const CDN_FIXTURES_ROOT = path.resolve(TESTS_ROOT, "fixtures", "cdn");
 const CONFIG_ROUTE_PATTERN = /\/data\/runtime\.config\.(development|production)\.json$/u;
 const EMPTY_STRING = "";
@@ -27,6 +28,8 @@ const CDN_LOG_PREFIX = "[cdn mirror] missing";
 const GOOGLE_GSI_STUB = "window.google=window.google||{accounts:{id:{initialize(){},prompt(){},renderButton(){}}}};";
 const AVATAR_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=";
 const AVATAR_PNG_BYTES = Buffer.from(AVATAR_PNG_BASE64, "base64");
+const DEFAULT_TEST_TENANT_ID = "gravity";
+const DEFAULT_GOOGLE_CLIENT_ID = "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com";
 const CDN_MIRRORS = Object.freeze([
     {
         pattern: /^https:\/\/cdn\.jsdelivr\.net\/npm\/alpinejs@3\.13\.5\/dist\/module\.esm\.js$/u,
@@ -52,6 +55,16 @@ const CDN_MIRRORS = Object.freeze([
         pattern: /^https:\/\/cdn\.jsdelivr\.net\/npm\/easymde@2\.19\.0\/dist\/easymde\.min\.css$/u,
         filePath: path.join(CDN_FIXTURES_ROOT, "jsdelivr", "npm", "easymde@2.19.0", "dist", "easymde.min.css"),
         contentType: "text/css"
+    },
+    {
+        pattern: /^https:\/\/cdn\.jsdelivr\.net\/gh\/MarcoPoloResearchLab\/mpr-ui@latest\/mpr-ui\.js$/u,
+        filePath: path.join(REPO_ROOT, "tools", "mpr-ui", "mpr-ui.js"),
+        contentType: "application/javascript"
+    },
+    {
+        pattern: /^https:\/\/cdn\.jsdelivr\.net\/gh\/MarcoPoloResearchLab\/mpr-ui@latest\/mpr-ui\.css$/u,
+        filePath: path.join(REPO_ROOT, "tools", "mpr-ui", "mpr-ui.css"),
+        contentType: "text/css"
     }
 ]);
 const CDN_STUBS = Object.freeze([
@@ -76,13 +89,19 @@ const RUNTIME_CONFIG_KEYS = Object.freeze({
     BACKEND_BASE_URL: "backendBaseUrl",
     LLM_PROXY_URL: "llmProxyUrl",
     AUTH_BASE_URL: "authBaseUrl",
-    AUTH_TENANT_ID: "authTenantId"
+    TAUTH_SCRIPT_URL: "tauthScriptUrl",
+    MPR_UI_SCRIPT_URL: "mprUiScriptUrl",
+    AUTH_TENANT_ID: "authTenantId",
+    GOOGLE_CLIENT_ID: "googleClientId"
 });
 const TEST_RUNTIME_CONFIG = Object.freeze({
     backendBaseUrl: DEVELOPMENT_ENVIRONMENT_CONFIG.backendBaseUrl,
     llmProxyUrl: EMPTY_STRING,
     authBaseUrl: DEVELOPMENT_ENVIRONMENT_CONFIG.authBaseUrl,
-    authTenantId: DEVELOPMENT_ENVIRONMENT_CONFIG.authTenantId
+    tauthScriptUrl: DEVELOPMENT_ENVIRONMENT_CONFIG.tauthScriptUrl,
+    mprUiScriptUrl: DEVELOPMENT_ENVIRONMENT_CONFIG.mprUiScriptUrl,
+    authTenantId: DEFAULT_TEST_TENANT_ID,
+    googleClientId: DEFAULT_GOOGLE_CLIENT_ID
 });
 const CDN_INTERCEPTOR_SYMBOL = Symbol("gravityCdnInterceptor");
 const RUNTIME_CONFIG_SYMBOL = Symbol("gravityRuntimeConfigOverrides");
@@ -91,31 +110,72 @@ const REQUEST_HANDLERS_SYMBOL = Symbol("gravityRequestHandlers");
 const REQUEST_INTERCEPTION_READY_SYMBOL = Symbol("gravityRequestInterceptionReady");
 const REQUEST_HANDLER_REGISTRY_SYMBOL = Symbol("gravityRequestHandlerRegistry");
 const TAUTH_STUB_NONCE = "tauth-stub-nonce";
-const TAUTH_SCRIPT_PATTERN = /\/tauth\.js$/u;
+const TAUTH_SCRIPT_PATTERN = /\/tauth\.js(?:\?.*)?$/u;
 const TAUTH_STUB_KEYS = Object.freeze({
     OPTIONS: "__tauthStubOptions",
+    PROFILE: "__tauthStubProfile",
     INIT: "initAuthClient",
     REQUEST_NONCE: "requestNonce",
     EXCHANGE_CREDENTIAL: "exchangeGoogleCredential",
     LOGOUT: "logout",
+    GET_CURRENT_USER: "getCurrentUser",
     ON_AUTHENTICATED: "onAuthenticated",
     ON_UNAUTHENTICATED: "onUnauthenticated"
 });
 const TAUTH_STUB_SCRIPT = [
     "(() => {",
     `  const OPTIONS_KEY = "${TAUTH_STUB_KEYS.OPTIONS}";`,
+    `  const PROFILE_KEY = "${TAUTH_STUB_KEYS.PROFILE}";`,
+    "  const PROFILE_STORAGE_KEY = \"__gravityTestAuthProfile\";",
     `  const NONCE = "${TAUTH_STUB_NONCE}";`,
     "  const win = window;",
+    "  const loadStoredProfile = () => {",
+    "    try {",
+    "      const raw = win.sessionStorage?.getItem(PROFILE_STORAGE_KEY);",
+    "      if (!raw) return null;",
+    "      return JSON.parse(raw);",
+    "    } catch {",
+    "      return null;",
+    "    }",
+    "  };",
+    "  const persistProfile = (profile) => {",
+    "    try {",
+    "      if (!win.sessionStorage) return;",
+    "      if (!profile) {",
+    "        win.sessionStorage.removeItem(PROFILE_STORAGE_KEY);",
+    "        return;",
+    "      }",
+    "      win.sessionStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));",
+    "    } catch {",
+    "      // ignore storage errors",
+    "    }",
+    "  };",
+    "  const storedProfile = loadStoredProfile();",
+    "  if (storedProfile) {",
+    "    win[PROFILE_KEY] = storedProfile;",
+    "  }",
     "  win.initAuthClient = async (options) => {",
     "    win[OPTIONS_KEY] = options ?? null;",
+    "    const profile = win[PROFILE_KEY] ?? null;",
+    "    if (profile) {",
+    "      persistProfile(profile);",
+    "    }",
+    "    const authenticated = profile && options && typeof options.onAuthenticated === \"function\" ? options.onAuthenticated : null;",
     "    const handler = options && typeof options.onUnauthenticated === \"function\" ? options.onUnauthenticated : null;",
+    "    if (authenticated) {",
+    "      authenticated(profile);",
+    "      return;",
+    "    }",
     "    if (handler) {",
     "      handler();",
     "    }",
     "  };",
+    "  win.getCurrentUser = async () => win[PROFILE_KEY] ?? null;",
     "  win.requestNonce = async () => NONCE;",
     "  win.exchangeGoogleCredential = async () => {};",
     "  win.logout = async () => {",
+    "    win[PROFILE_KEY] = null;",
+    "    persistProfile(null);",
     "    const options = win[OPTIONS_KEY];",
     "    const handler = options && typeof options.onUnauthenticated === \"function\" ? options.onUnauthenticated : null;",
     "    if (handler) {",
@@ -186,6 +246,9 @@ export async function createSharedPage(runtimeConfigOverrides = {}) {
     const browser = await connectSharedBrowser();
     const context = await browser.createBrowserContext();
     const page = await context.newPage();
+    await page.evaluateOnNewDocument(() => {
+        window.__gravityForceLocalStorage = true;
+    });
     if (process.env.GRAVITY_TEST_STREAM_LOGS === "1") {
         page.on("console", (message) => {
             const type = message.type?.().toUpperCase?.() ?? "LOG";
@@ -204,7 +267,8 @@ export async function createSharedPage(runtimeConfigOverrides = {}) {
     await installCdnMirrors(page);
     await attachImportAppModule(page);
     await injectTAuthStub(page);
-    await injectRuntimeConfig(page, runtimeConfigOverrides);
+    const resolvedOverrides = applyRuntimeContextOverrides(runtimeConfigOverrides);
+    await injectRuntimeConfig(page, resolvedOverrides);
     const teardown = async () => {
         await page.close().catch(() => {});
         await context.close().catch(() => {});
@@ -292,8 +356,12 @@ export async function injectTAuthStub(page) {
         if (typeof windowRef[stubConfig.EXCHANGE_CREDENTIAL] !== "function") {
             windowRef[stubConfig.EXCHANGE_CREDENTIAL] = async () => {};
         }
+        if (typeof windowRef[stubConfig.GET_CURRENT_USER] !== "function") {
+            windowRef[stubConfig.GET_CURRENT_USER] = async () => windowRef[stubConfig.PROFILE] ?? null;
+        }
         if (typeof windowRef[stubConfig.LOGOUT] !== "function") {
             windowRef[stubConfig.LOGOUT] = async () => {
+                windowRef[stubConfig.PROFILE] = null;
                 const options = windowRef[stubConfig.OPTIONS];
                 const handler = options && typeof options[stubConfig.ON_UNAUTHENTICATED] === "function"
                     ? options[stubConfig.ON_UNAUTHENTICATED]
@@ -351,14 +419,20 @@ export async function injectRuntimeConfig(page, overrides = {}) {
             [RUNTIME_CONFIG_KEYS.BACKEND_BASE_URL]: overridesByEnvironment.development.backendBaseUrl,
             [RUNTIME_CONFIG_KEYS.LLM_PROXY_URL]: overridesByEnvironment.development.llmProxyUrl,
             [RUNTIME_CONFIG_KEYS.AUTH_BASE_URL]: overridesByEnvironment.development.authBaseUrl,
-            [RUNTIME_CONFIG_KEYS.AUTH_TENANT_ID]: overridesByEnvironment.development.authTenantId
+            [RUNTIME_CONFIG_KEYS.TAUTH_SCRIPT_URL]: overridesByEnvironment.development.tauthScriptUrl,
+            [RUNTIME_CONFIG_KEYS.MPR_UI_SCRIPT_URL]: overridesByEnvironment.development.mprUiScriptUrl,
+            [RUNTIME_CONFIG_KEYS.AUTH_TENANT_ID]: overridesByEnvironment.development.authTenantId,
+            [RUNTIME_CONFIG_KEYS.GOOGLE_CLIENT_ID]: overridesByEnvironment.development.googleClientId
         },
         production: {
             [RUNTIME_CONFIG_KEYS.ENVIRONMENT]: "production",
             [RUNTIME_CONFIG_KEYS.BACKEND_BASE_URL]: overridesByEnvironment.production.backendBaseUrl,
             [RUNTIME_CONFIG_KEYS.LLM_PROXY_URL]: overridesByEnvironment.production.llmProxyUrl,
             [RUNTIME_CONFIG_KEYS.AUTH_BASE_URL]: overridesByEnvironment.production.authBaseUrl,
-            [RUNTIME_CONFIG_KEYS.AUTH_TENANT_ID]: overridesByEnvironment.production.authTenantId
+            [RUNTIME_CONFIG_KEYS.TAUTH_SCRIPT_URL]: overridesByEnvironment.production.tauthScriptUrl,
+            [RUNTIME_CONFIG_KEYS.MPR_UI_SCRIPT_URL]: overridesByEnvironment.production.mprUiScriptUrl,
+            [RUNTIME_CONFIG_KEYS.AUTH_TENANT_ID]: overridesByEnvironment.production.authTenantId,
+            [RUNTIME_CONFIG_KEYS.GOOGLE_CLIENT_ID]: overridesByEnvironment.production.googleClientId
         }
     });
     await registerRequestInterceptor(page, (request) => {
@@ -382,7 +456,10 @@ export async function injectRuntimeConfig(page, overrides = {}) {
             [RUNTIME_CONFIG_KEYS.BACKEND_BASE_URL]: resolvedOverrides.backendBaseUrl,
             [RUNTIME_CONFIG_KEYS.LLM_PROXY_URL]: resolvedOverrides.llmProxyUrl,
             [RUNTIME_CONFIG_KEYS.AUTH_BASE_URL]: resolvedOverrides.authBaseUrl,
-            [RUNTIME_CONFIG_KEYS.AUTH_TENANT_ID]: resolvedOverrides.authTenantId
+            [RUNTIME_CONFIG_KEYS.TAUTH_SCRIPT_URL]: resolvedOverrides.tauthScriptUrl,
+            [RUNTIME_CONFIG_KEYS.MPR_UI_SCRIPT_URL]: resolvedOverrides.mprUiScriptUrl,
+            [RUNTIME_CONFIG_KEYS.AUTH_TENANT_ID]: resolvedOverrides.authTenantId,
+            [RUNTIME_CONFIG_KEYS.GOOGLE_CLIENT_ID]: resolvedOverrides.googleClientId
         });
         request.respond({ status: 200, contentType: "application/json", body }).catch(() => {});
         return true;
@@ -518,7 +595,7 @@ function isThenable(value) {
 /**
  * @param {Record<string, any>} overrides
  * @param {"development" | "production"} environment
- * @returns {{ backendBaseUrl: string, llmProxyUrl: string }}
+ * @returns {{ backendBaseUrl: string, llmProxyUrl: string, authBaseUrl: string, tauthScriptUrl: string, mprUiScriptUrl: string, authTenantId: string, googleClientId: string }}
  */
 function resolveRuntimeConfigOverrides(overrides, environment) {
     if (!overrides || typeof overrides !== "object") {
@@ -530,11 +607,61 @@ function resolveRuntimeConfigOverrides(overrides, environment) {
     const backendBaseUrl = normalizeTestUrl(scoped?.backendBaseUrl ?? overrides.backendBaseUrl ?? TEST_RUNTIME_CONFIG.backendBaseUrl);
     const llmProxyUrl = normalizeTestUrl(scoped?.llmProxyUrl ?? overrides.llmProxyUrl ?? TEST_RUNTIME_CONFIG.llmProxyUrl, true);
     const authBaseUrl = normalizeTestUrl(scoped?.authBaseUrl ?? overrides.authBaseUrl ?? TEST_RUNTIME_CONFIG.authBaseUrl, true);
+    const tauthScriptUrl = normalizeTestUrl(scoped?.tauthScriptUrl ?? overrides.tauthScriptUrl ?? TEST_RUNTIME_CONFIG.tauthScriptUrl);
+    const mprUiScriptUrl = normalizeTestUrl(scoped?.mprUiScriptUrl ?? overrides.mprUiScriptUrl ?? TEST_RUNTIME_CONFIG.mprUiScriptUrl);
     const authTenantIdCandidate = scoped?.authTenantId ?? overrides.authTenantId ?? TEST_RUNTIME_CONFIG.authTenantId;
     const authTenantId = typeof authTenantIdCandidate === "string"
         ? authTenantIdCandidate
         : TEST_RUNTIME_CONFIG.authTenantId;
-    return { backendBaseUrl, llmProxyUrl, authBaseUrl, authTenantId };
+    const googleClientIdCandidate = scoped?.googleClientId ?? overrides.googleClientId ?? TEST_RUNTIME_CONFIG.googleClientId;
+    const googleClientId = typeof googleClientIdCandidate === "string"
+        ? googleClientIdCandidate
+        : TEST_RUNTIME_CONFIG.googleClientId;
+    return { backendBaseUrl, llmProxyUrl, authBaseUrl, tauthScriptUrl, mprUiScriptUrl, authTenantId, googleClientId };
+}
+
+/**
+ * Merge runtime context defaults into the provided overrides.
+ * @param {Record<string, any>} overrides
+ * @returns {Record<string, any>}
+ */
+function applyRuntimeContextOverrides(overrides) {
+    const resolvedOverrides = overrides && typeof overrides === "object" ? { ...overrides } : {};
+    const runtimeBackendBaseUrl = readRuntimeBackendBaseUrl();
+    if (!runtimeBackendBaseUrl) {
+        return resolvedOverrides;
+    }
+    const hasTopLevelOverride = Object.prototype.hasOwnProperty.call(resolvedOverrides, "backendBaseUrl");
+    const scopedDevelopment = resolvedOverrides.development;
+    const hasDevOverride = scopedDevelopment
+        && typeof scopedDevelopment === "object"
+        && Object.prototype.hasOwnProperty.call(scopedDevelopment, "backendBaseUrl");
+    if (hasTopLevelOverride || hasDevOverride) {
+        return resolvedOverrides;
+    }
+    return {
+        ...resolvedOverrides,
+        backendBaseUrl: runtimeBackendBaseUrl
+    };
+}
+
+/**
+ * @returns {string}
+ */
+function readRuntimeBackendBaseUrl() {
+    try {
+        const context = readRuntimeContext();
+        const baseUrl = context?.backend?.baseUrl;
+        return typeof baseUrl === "string" && baseUrl.length > 0 ? baseUrl : EMPTY_STRING;
+    } catch (error) {
+        if (error && typeof error === "object" && "message" in error) {
+            const message = /** @type {{ message?: string }} */ (error).message;
+            if (typeof message === "string" && message.startsWith("Runtime context unavailable")) {
+                return EMPTY_STRING;
+            }
+        }
+        throw error;
+    }
 }
 
 /**
