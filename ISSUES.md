@@ -175,6 +175,7 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 - [x] [GN-443] (P1) Keep `.env*` files untracked and rename example env files to `env.*.example` with updated setup docs.
 - [x] [GN-444] (P1) Ensure the mpr-ui login component always registers by loading the bundle from a runtime-configured `mprUiScriptUrl` after tauth.js.
 - [x] [GN-445] (P1) Make auth boot strict (no fallbacks) and pre-initialize GIS before rendering the mpr-ui login button to avoid GSI warnings.
+- [ ] [GN-446] (P1) Adopt the mpr-ui config.yaml loader for auth wiring so login buttons render from declarative config and tauth.js only loads from the CDN.
 
 
 ## Maintenance (428–499)

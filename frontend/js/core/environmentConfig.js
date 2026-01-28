@@ -7,7 +7,7 @@ export const DEVELOPMENT_BACKEND_BASE_URL = "https://computercat.tyemirov.net:44
 export const DEVELOPMENT_LLM_PROXY_URL = "http://computercat:8081/v1/gravity/classify";
 export const DEVELOPMENT_AUTH_BASE_URL = "https://computercat.tyemirov.net:4443";
 export const DEVELOPMENT_TAUTH_SCRIPT_URL = "https://tauth.mprlab.com/tauth.js";
-export const DEVELOPMENT_MPR_UI_SCRIPT_URL = "https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.js";
+export const DEVELOPMENT_MPR_UI_SCRIPT_URL = "https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@v3.6.2/mpr-ui.js";
 export const DEVELOPMENT_AUTH_TENANT_ID = "";
 
 // Production URLs are loaded from runtime.config.production.json - no hardcoded fallbacks

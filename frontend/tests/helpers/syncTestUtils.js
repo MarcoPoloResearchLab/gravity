@@ -146,43 +146,6 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
             googleClientId
         }
     });
-    await page.evaluateOnNewDocument((config) => {
-        const targetPattern = /\/data\/runtime\.config\.(development|production)\.json$/;
-        const originalFetch = window.fetch;
-        window.fetch = async (input, init = {}) => {
-            const requestUrl = typeof input === "string"
-                ? input
-                : typeof input?.url === "string"
-                    ? input.url
-                    : "";
-            if (typeof requestUrl === "string" && targetPattern.test(requestUrl)) {
-                const payload = {
-                    environment: config.environment ?? "development",
-                    backendBaseUrl: config.backendBaseUrl,
-                    llmProxyUrl: config.llmProxyUrl,
-                    authBaseUrl: config.authBaseUrl,
-                    tauthScriptUrl: config.tauthScriptUrl,
-                    mprUiScriptUrl: config.mprUiScriptUrl,
-                    authTenantId: config.authTenantId,
-                    googleClientId: config.googleClientId
-                };
-                return new Response(JSON.stringify(payload), {
-                    status: 200,
-                    headers: { "Content-Type": "application/json" }
-                });
-            }
-            return originalFetch.call(window, input, init);
-        };
-    }, {
-        environment: "development",
-        backendBaseUrl,
-        llmProxyUrl,
-        authBaseUrl,
-        tauthScriptUrl,
-        mprUiScriptUrl,
-        authTenantId,
-        googleClientId
-    });
     await page.evaluateOnNewDocument((storageKey, shouldPreserve) => {
         const initialized = window.sessionStorage.getItem("__gravityTestInitialized") === "true";
         if (!initialized) {

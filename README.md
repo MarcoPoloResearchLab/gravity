@@ -78,11 +78,11 @@ The compose file exposes:
 - Gravity backend API at `http://localhost:8080` (container port published for direct access)
 - TAuth (nonce + Google exchange) at `http://localhost:8082` (container port published for direct access)
 
-Runtime configuration files under `frontend/data/` include `authBaseUrl`, `tauthScriptUrl`, and `mprUiScriptUrl`, so the browser can discover which TAuth origin to contact for `/auth/nonce`, `/auth/google`, and `/auth/logout`, which CDN host serves `tauth.js`, and which CDN host serves the `mpr-ui` bundle. Update `frontend/data/runtime.config.production.json` if your deployment uses different auth or CDN hosts, and update `frontend/data/runtime.config.development.json` if you run dev on a different HTTPS origin.
+Auth settings now live in `frontend/config.yaml`, which maps each allowed `window.location.origin` to its TAuth base URL, Google client ID, tenant ID, and `/auth/*` paths (plus optional login button styling). Update `frontend/config.yaml` whenever origins or auth settings change. Runtime configuration files under `frontend/data/` remain the source of truth for backend and LLM proxy endpoints; update `frontend/data/runtime.config.production.json` and `frontend/data/runtime.config.development.json` when those API hosts change.
 
 ### Authentication Contract
 
-- Gravity no longer exchanges Google credentials itself. The browser loads `tauth.js` from the configured CDN (`tauthScriptUrl`), fetches a nonce from `/auth/nonce`, and lets TAuth exchange the Google credential at `/auth/google`.
+- Gravity no longer exchanges Google credentials itself. The browser loads `tauth.js` from the TAuth CDN, applies `frontend/config.yaml` to discover the TAuth base URL, fetches a nonce from `/auth/nonce`, and lets TAuth exchange the Google credential at `/auth/google`.
 - TAuth mints two cookies: `app_session` (short-lived HS256 JWT) and `app_refresh` (long-lived refresh token). Every request from the UI includes `app_session` automatically, so the Gravity backend validates the JWT using `GRAVITY_TAUTH_SIGNING_SECRET` and the fixed `tauth` issuer. No bearer tokens or local storage is used.
 - To keep the multi-tenant TAuth flow working, the backend’s CORS preflight now whitelists the `X-TAuth-Tenant` header (in addition to `Authorization`, `Content-Type`, etc.), so browsers can send the tenant hint while relying on cookie authentication.
 - When a request returns `401`, the browser calls `/auth/refresh` on the TAuth origin; a fresh `app_session` cookie is minted and the original request is retried.

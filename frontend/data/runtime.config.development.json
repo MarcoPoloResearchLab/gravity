@@ -4,7 +4,7 @@
     "llmProxyUrl": "http://computercat:8081/v1/gravity/classify",
     "authBaseUrl": "https://computercat.tyemirov.net:4443",
     "tauthScriptUrl": "https://tauth.mprlab.com/tauth.js",
-    "mprUiScriptUrl": "https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.js",
+    "mprUiScriptUrl": "https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@v3.6.2/mpr-ui.js",
     "authTenantId": "gravity",
     "googleClientId": "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com"
 }
