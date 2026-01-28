@@ -63,17 +63,17 @@ const CDN_MIRRORS = Object.freeze([
         contentType: "text/css"
     },
     {
-        pattern: /^https:\/\/cdn\.jsdelivr\.net\/gh\/MarcoPoloResearchLab\/mpr-ui@latest\/mpr-ui\.js$/u,
+        pattern: /^https:\/\/cdn\.jsdelivr\.net\/gh\/MarcoPoloResearchLab\/mpr-ui@v3.6.2\/mpr-ui\.js$/u,
         filePath: path.join(REPO_ROOT, "tools", "mpr-ui", "mpr-ui.js"),
         contentType: "application/javascript"
     },
     {
-        pattern: /^https:\/\/cdn\.jsdelivr\.net\/gh\/MarcoPoloResearchLab\/mpr-ui@latest\/mpr-ui-config\.js$/u,
+        pattern: /^https:\/\/cdn\.jsdelivr\.net\/gh\/MarcoPoloResearchLab\/mpr-ui@v3.6.2\/mpr-ui-config\.js$/u,
         filePath: path.join(REPO_ROOT, "tools", "mpr-ui", "mpr-ui-config.js"),
         contentType: "application/javascript"
     },
     {
-        pattern: /^https:\/\/cdn\.jsdelivr\.net\/gh\/MarcoPoloResearchLab\/mpr-ui@latest\/mpr-ui\.css$/u,
+        pattern: /^https:\/\/cdn\.jsdelivr\.net\/gh\/MarcoPoloResearchLab\/mpr-ui@v3.6.2\/mpr-ui\.css$/u,
         filePath: path.join(REPO_ROOT, "tools", "mpr-ui", "mpr-ui.css"),
         contentType: "text/css"
     }

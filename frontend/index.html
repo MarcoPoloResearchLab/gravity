@@ -3,64 +3,18 @@
 <head>
     <script defer src="https://loopaware.mprlab.com/widget.js?site_id=d8c3d1c8-7968-43d0-8026-ee827ada7666"></script>
     <script defer src="https://tauth.mprlab.com/tauth.js"></script>
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <script src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui-config.js"></script>
+    <!-- GSI loaded dynamically by mpr-ui to avoid timing issues with <mpr-login-button> -->
+    <script src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@v3.6.2/mpr-ui-config.js"></script>
     <script>
         (function() {
             function loadMprUi() {
                 return new Promise((resolve, reject) => {
                     const script = document.createElement("script");
-                    script.src = "https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.js";
+                    script.src = "https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@v3.6.2/mpr-ui.js";
                     script.addEventListener("load", () => resolve(), { once: true });
                     script.addEventListener("error", () => reject(new Error("mpr_ui.load_failed")), { once: true });
                     document.head.appendChild(script);
                 });
-            }
-
-            function primeNonce() {
-                if (typeof window.requestNonce !== "function") {
-                    throw new Error("tauth.requestNonce_missing");
-                }
-                const originalRequest = window.requestNonce.bind(window);
-                let cachedNonce = null;
-                let inFlightPromise = null;
-                window.requestNonce = async () => {
-                    if (cachedNonce) {
-                        const value = cachedNonce;
-                        cachedNonce = null;
-                        return value;
-                    }
-                    if (inFlightPromise) {
-                        const value = await inFlightPromise;
-                        if (cachedNonce) {
-                            const cachedValue = cachedNonce;
-                            cachedNonce = null;
-                            return cachedValue;
-                        }
-                        return value;
-                    }
-                    return originalRequest();
-                };
-                inFlightPromise = originalRequest().then((nonce) => {
-                    cachedNonce = nonce;
-                    return nonce;
-                });
-                return inFlightPromise;
-            }
-
-            function initializeAuth(runtimeConfig) {
-                if (!runtimeConfig || !runtimeConfig.auth) {
-                    throw new Error("mpr_ui.config_missing");
-                }
-                if (typeof window.initAuthClient !== "function") {
-                    throw new Error("tauth.initAuthClient_missing");
-                }
-                return Promise.resolve(window.initAuthClient({
-                    baseUrl: runtimeConfig.auth.tauthUrl,
-                    tenantId: runtimeConfig.auth.tenantId,
-                    onAuthenticated: () => {},
-                    onUnauthenticated: () => {}
-                })).then(primeNonce);
             }
 
             function start() {
@@ -71,7 +25,6 @@
                     ? window.__mprUiConfigUrl
                     : "/config.yaml";
                 window.__mprUiReady = window.MPRUI.applyYamlConfig({ configUrl })
-                    .then((runtimeConfig) => initializeAuth(runtimeConfig).then(() => runtimeConfig))
                     .then(loadMprUi);
             }
 
@@ -110,7 +63,7 @@
     <script src="https://cdn.jsdelivr.net/npm/easymde@2.19.0/dist/easymde.min.js"></script>
 
     <!-- Styles -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@v3.6.2/mpr-ui.css"/>
     <link rel="stylesheet" href="./styles.css?build=2026-01-01T22:43:21Z"/>
 </head>
 <body x-data="gravityApp()" data-auth-state="loading">
