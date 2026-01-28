@@ -231,6 +231,10 @@ function gravityApp(appConfig) {
         importInput: /** @type {HTMLInputElement|null} */ (null),
         authUser: /** @type {{ id: string, email: string|null, name: string|null, pictureUrl: string|null }|null} */ (null),
         pendingSignInUserId: /** @type {string|null} */ (null),
+        /** @type {Promise<void>} */
+        authOperationChain: Promise.resolve(),
+        /** @type {number} */
+        authOperationId: 0,
         syncManager: /** @type {ReturnType<typeof createSyncManager>|null} */ (null),
         realtimeSync: /** @type {{ connect(params: { baseUrl: string }): void, disconnect(): void, dispose(): void }|null} */ (null),
         syncIntervalHandle: /** @type {number|null} */ (null),
@@ -430,7 +434,7 @@ function gravityApp(appConfig) {
             }
         },
 
-        async handleAuthAuthenticated(profile) {
+        handleAuthAuthenticated(profile) {
             const normalizedUser = normalizeAuthProfile(profile);
             if (!normalizedUser || !normalizedUser.id) {
                 this.setLandingStatus(ERROR_AUTHENTICATION_GENERIC, "error");
@@ -440,74 +444,116 @@ function gravityApp(appConfig) {
             if (this.authUser?.id === normalizedUser.id || this.pendingSignInUserId === normalizedUser.id) {
                 return;
             }
+
+            const operationId = ++this.authOperationId;
             this.pendingSignInUserId = normalizedUser.id;
 
-            const applySignedInState = () => {
-                this.authUser = normalizedUser;
-                this.clearLandingStatus();
-                this.setAuthState(AUTH_STATE_AUTHENTICATED);
-                this.initializeNotes();
-                this.realtimeSync?.connect({
-                    baseUrl: appConfig.backendBaseUrl
-                });
-                if (typeof window !== "undefined" && this.syncIntervalHandle === null) {
-                    this.syncIntervalHandle = window.setInterval(() => {
-                        void this.syncManager?.synchronize({ flushQueue: false });
-                    }, 3000);
+            const runOperation = async () => {
+                const applySignedInState = () => {
+                    if (this.authOperationId !== operationId) {
+                        return;
+                    }
+                    this.authUser = normalizedUser;
+                    this.clearLandingStatus();
+                    this.setAuthState(AUTH_STATE_AUTHENTICATED);
+                    this.initializeNotes();
+                    this.realtimeSync?.connect({
+                        baseUrl: appConfig.backendBaseUrl
+                    });
+                    if (typeof window !== "undefined" && this.syncIntervalHandle === null) {
+                        this.syncIntervalHandle = window.setInterval(() => {
+                            void this.syncManager?.synchronize({ flushQueue: false });
+                        }, 3000);
+                    }
+                };
+
+                const applySignedOutState = async () => {
+                    if (this.authOperationId !== operationId) {
+                        return;
+                    }
+                    this.authUser = null;
+                    this.setAuthState(AUTH_STATE_UNAUTHENTICATED);
+                    GravityStore.setUserScope(null);
+                    await GravityStore.hydrateActiveScope();
+                    if (this.authOperationId !== operationId) {
+                        return;
+                    }
+                    this.initializeNotes();
+                    this.syncManager?.handleSignOut();
+                    this.realtimeSync?.disconnect();
+                };
+
+                try {
+                    GravityStore.setUserScope(normalizedUser.id);
+                    await GravityStore.hydrateActiveScope();
+                    if (this.authOperationId !== operationId) {
+                        return;
+                    }
+                    const result = this.syncManager && typeof this.syncManager.handleSignIn === "function"
+                        ? await this.syncManager.handleSignIn({ userId: normalizedUser.id })
+                        : { authenticated: true, queueFlushed: false, snapshotApplied: false };
+                    if (this.authOperationId !== operationId) {
+                        return;
+                    }
+                    if (!result?.authenticated) {
+                        await applySignedOutState();
+                        if (this.authOperationId === operationId) {
+                            this.setLandingStatus(ERROR_AUTHENTICATION_GENERIC, "error");
+                        }
+                        return;
+                    }
+                    applySignedInState();
+                } catch (error) {
+                    logging.error(error);
+                    await applySignedOutState();
+                    if (this.authOperationId === operationId) {
+                        this.setLandingStatus(ERROR_AUTHENTICATION_GENERIC, "error");
+                    }
+                } finally {
+                    if (this.pendingSignInUserId === normalizedUser.id) {
+                        this.pendingSignInUserId = null;
+                    }
                 }
             };
 
-            const applySignedOutState = async () => {
+            const operation = this.authOperationChain
+                .then(runOperation)
+                .catch((error) => logging.error("Auth operation failed", error));
+            this.authOperationChain = operation;
+            return operation;
+        },
+
+        handleAuthUnauthenticated() {
+            const operationId = ++this.authOperationId;
+
+            const runOperation = async () => {
                 this.authUser = null;
+                this.pendingSignInUserId = null;
                 this.setAuthState(AUTH_STATE_UNAUTHENTICATED);
+                const statusElement = this.landingStatus;
+                const shouldPreserveError = Boolean(statusElement && statusElement.dataset.status === "error");
+                if (!shouldPreserveError) {
+                    this.clearLandingStatus();
+                }
                 GravityStore.setUserScope(null);
                 await GravityStore.hydrateActiveScope();
+                if (this.authOperationId !== operationId) {
+                    return;
+                }
                 this.initializeNotes();
                 this.syncManager?.handleSignOut();
                 this.realtimeSync?.disconnect();
+                if (typeof window !== "undefined" && this.syncIntervalHandle !== null) {
+                    window.clearInterval(this.syncIntervalHandle);
+                    this.syncIntervalHandle = null;
+                }
             };
 
-            try {
-                GravityStore.setUserScope(normalizedUser.id);
-                await GravityStore.hydrateActiveScope();
-                const result = this.syncManager && typeof this.syncManager.handleSignIn === "function"
-                    ? await this.syncManager.handleSignIn({ userId: normalizedUser.id })
-                    : { authenticated: true, queueFlushed: false, snapshotApplied: false };
-                if (!result?.authenticated) {
-                    await applySignedOutState();
-                    this.setLandingStatus(ERROR_AUTHENTICATION_GENERIC, "error");
-                    return;
-                }
-                applySignedInState();
-            } catch (error) {
-                logging.error(error);
-                await applySignedOutState();
-                this.setLandingStatus(ERROR_AUTHENTICATION_GENERIC, "error");
-            } finally {
-                if (this.pendingSignInUserId === normalizedUser.id) {
-                    this.pendingSignInUserId = null;
-                }
-            }
-        },
-
-        async handleAuthUnauthenticated() {
-            this.authUser = null;
-            this.pendingSignInUserId = null;
-            this.setAuthState(AUTH_STATE_UNAUTHENTICATED);
-            const statusElement = this.landingStatus;
-            const shouldPreserveError = Boolean(statusElement && statusElement.dataset.status === "error");
-            if (!shouldPreserveError) {
-                this.clearLandingStatus();
-            }
-            GravityStore.setUserScope(null);
-            await GravityStore.hydrateActiveScope();
-            this.initializeNotes();
-            this.syncManager?.handleSignOut();
-            this.realtimeSync?.disconnect();
-            if (typeof window !== "undefined" && this.syncIntervalHandle !== null) {
-                window.clearInterval(this.syncIntervalHandle);
-                this.syncIntervalHandle = null;
-            }
+            const operation = this.authOperationChain
+                .then(runOperation)
+                .catch((error) => logging.error("Auth operation failed", error));
+            this.authOperationChain = operation;
+            return operation;
         },
 
         handleAuthError(detail) {
