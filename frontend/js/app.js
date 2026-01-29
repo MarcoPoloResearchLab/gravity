@@ -47,6 +47,7 @@ import { showSaveFeedback } from "./ui/saveFeedback.js?build=2026-01-01T22:43:21
 import { initializeFullScreenToggle } from "./ui/fullScreenToggle.js?build=2026-01-01T22:43:21Z";
 import { initializeVersionRefresh } from "./utils/versionRefresh.js?build=2026-01-01T22:43:21Z";
 import { logging } from "./utils/logging.js?build=2026-01-01T22:43:21Z";
+import { normalizeProfileForApp } from "./utils/profileNormalization.js?build=2026-01-01T22:43:21Z";
 
 const CONSTANTS_VIEW_MODEL = Object.freeze({
     LABEL_APP_SUBTITLE,
@@ -62,31 +63,9 @@ const CONSTANTS_VIEW_MODEL = Object.freeze({
 const AUTH_STATE_LOADING = "loading";
 const AUTH_STATE_AUTHENTICATED = "authenticated";
 const AUTH_STATE_UNAUTHENTICATED = "unauthenticated";
+const LANDING_PAGE_URL = "/";
 const USER_MENU_ACTION_EXPORT = "export-notes";
 const USER_MENU_ACTION_IMPORT = "import-notes";
-const TYPE_STRING = "string";
-
-const PROFILE_KEYS = Object.freeze({
-    USER_ID: "user_id",
-    USER_EMAIL: "user_email",
-    DISPLAY: "display",
-    USER_DISPLAY: "user_display",
-    USER_DISPLAY_NAME: "user_display_name",
-    AVATAR_URL: "avatar_url",
-    USER_AVATAR_URL: "user_avatar_url"
-});
-
-const PROFILE_NAME_KEYS = Object.freeze([
-    PROFILE_KEYS.DISPLAY,
-    PROFILE_KEYS.USER_DISPLAY,
-    PROFILE_KEYS.USER_DISPLAY_NAME
-]);
-
-const PROFILE_AVATAR_KEYS = Object.freeze([
-    PROFILE_KEYS.AVATAR_URL,
-    PROFILE_KEYS.USER_AVATAR_URL
-]);
-
 const NOTIFICATION_DEFAULT_DURATION_MS = 3000;
 const AUTH_ERROR_MESSAGES = Object.freeze({
     MISSING_INIT: "tauth.initAuthClient_missing",
@@ -243,9 +222,10 @@ function gravityApp(appConfig) {
         versionRefreshController: /** @type {{ dispose(): void, checkNow(): Promise<{ reloaded: boolean, remoteVersion: string|null }> }|null} */ (null),
 
         init() {
-            this.landingView = this.$refs.landingView ?? document.querySelector("[data-test=\"landing\"]");
-            this.landingStatus = this.$refs.landingStatus ?? document.querySelector("[data-test=\"landing-status\"]");
-            this.landingLogin = this.$refs.landingLogin ?? document.querySelector("[data-test=\"landing-login\"]");
+            // In the separated page architecture, landing elements don't exist in app.html
+            this.landingView = null;
+            this.landingStatus = null;
+            this.landingLogin = null;
             this.appShell = this.$refs.appShell ?? document.querySelector("[data-test=\"app-shell\"]");
             this.userMenu = this.$refs.userMenu ?? document.querySelector("[data-test=\"user-menu\"]");
 
@@ -364,29 +344,23 @@ function gravityApp(appConfig) {
 
         setAuthState(nextState) {
             this.authState = nextState;
-            const landing = this.landingView;
-            const shell = this.appShell;
-            if (nextState === AUTH_STATE_AUTHENTICATED) {
-                if (landing) {
-                    landing.hidden = true;
-                    landing.setAttribute("aria-hidden", "true");
-                }
-                if (shell) {
-                    shell.hidden = false;
-                    shell.setAttribute("aria-hidden", "false");
-                }
-            } else {
-                if (landing) {
-                    landing.hidden = false;
-                    landing.setAttribute("aria-hidden", "false");
-                }
-                if (shell) {
-                    shell.hidden = true;
-                    shell.setAttribute("aria-hidden", "true");
-                }
-            }
             if (typeof document !== "undefined") {
                 document.body.dataset.authState = nextState;
+            }
+            // In the separated page architecture, app.html is for authenticated users only.
+            // Redirect to landing page if unauthenticated.
+            if (nextState === AUTH_STATE_UNAUTHENTICATED) {
+                this.redirectToLanding();
+            }
+        },
+
+        /**
+         * Redirect to the landing page for unauthenticated users.
+         * @returns {void}
+         */
+        redirectToLanding() {
+            if (typeof window !== "undefined") {
+                window.location.href = LANDING_PAGE_URL;
             }
         },
 
@@ -435,7 +409,7 @@ function gravityApp(appConfig) {
         },
 
         handleAuthAuthenticated(profile) {
-            const normalizedUser = normalizeAuthProfile(profile);
+            const normalizedUser = normalizeProfileForApp(profile);
             if (!normalizedUser || !normalizedUser.id) {
                 this.setLandingStatus(ERROR_AUTHENTICATION_GENERIC, "error");
                 this.setAuthState(AUTH_STATE_UNAUTHENTICATED);
@@ -529,18 +503,14 @@ function gravityApp(appConfig) {
             const runOperation = async () => {
                 this.authUser = null;
                 this.pendingSignInUserId = null;
+                // In the separated page architecture, setAuthState will redirect to landing
                 this.setAuthState(AUTH_STATE_UNAUTHENTICATED);
-                const statusElement = this.landingStatus;
-                const shouldPreserveError = Boolean(statusElement && statusElement.dataset.status === "error");
-                if (!shouldPreserveError) {
-                    this.clearLandingStatus();
-                }
+                // The following code may not execute due to redirect, but kept for completeness
                 GravityStore.setUserScope(null);
                 await GravityStore.hydrateActiveScope();
                 if (this.authOperationId !== operationId) {
                     return;
                 }
-                this.initializeNotes();
                 this.syncManager?.handleSignOut();
                 this.realtimeSync?.disconnect();
                 if (typeof window !== "undefined" && this.syncIntervalHandle !== null) {
@@ -560,12 +530,11 @@ function gravityApp(appConfig) {
             if (this.authState === AUTH_STATE_AUTHENTICATED) {
                 return;
             }
-            const errorMessage = ERROR_AUTHENTICATION_GENERIC;
             if (detail?.code) {
                 logging.warn("Auth error reported by mpr-ui", detail);
             }
+            // In the separated page architecture, redirect to landing on auth error
             this.setAuthState(AUTH_STATE_UNAUTHENTICATED);
-            this.setLandingStatus(errorMessage, "error");
         },
 
         handleAuthSignOutRequest(reason = "manual") {
@@ -1073,35 +1042,3 @@ function hashString(value) {
     return hash;
 }
 
-/**
- * Normalize an auth profile payload into the Gravity auth shape.
- * @param {unknown} profile
- * @returns {{ id: string|null, email: string|null, name: string|null, pictureUrl: string|null }|null}
- */
-function normalizeAuthProfile(profile) {
-    if (!profile || typeof profile !== "object") {
-        return null;
-    }
-    const record = /** @type {Record<string, unknown>} */ (profile);
-    return {
-        id: typeof record[PROFILE_KEYS.USER_ID] === TYPE_STRING ? record[PROFILE_KEYS.USER_ID] : null,
-        email: typeof record[PROFILE_KEYS.USER_EMAIL] === TYPE_STRING ? record[PROFILE_KEYS.USER_EMAIL] : null,
-        name: selectProfileString(record, PROFILE_NAME_KEYS),
-        pictureUrl: selectProfileString(record, PROFILE_AVATAR_KEYS)
-    };
-}
-
-/**
- * @param {Record<string, unknown>} profile
- * @param {string[]} keys
- * @returns {string|null}
- */
-function selectProfileString(profile, keys) {
-    for (const key of keys) {
-        const value = profile[key];
-        if (typeof value === TYPE_STRING && value.trim().length > 0) {
-            return value;
-        }
-    }
-    return null;
-}

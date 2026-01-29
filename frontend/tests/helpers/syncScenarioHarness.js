@@ -11,7 +11,8 @@ import {
     waitForPendingOperations,
     waitForSyncManagerUser,
     waitForTAuthSession,
-    exchangeTAuthCredential
+    exchangeTAuthCredential,
+    attachBackendSessionCookie
 } from "./syncTestUtils.js";
 import { installTAuthHarness } from "./tauthHarness.js";
 import { connectSharedBrowser, registerRequestInterceptor } from "./browserHarness.js";
@@ -19,7 +20,7 @@ import { startTestBackend, waitForBackendNote } from "./backendHarness.js";
 
 const HELPERS_ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(HELPERS_ROOT, "..", "..");
-const DEFAULT_PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+const DEFAULT_PAGE_URL = `file://${path.join(PROJECT_ROOT, "app.html")}`;
 
 /**
  * @typedef {{ page: import("puppeteer").Page, context: import("puppeteer").BrowserContext, userId: string, signIn: () => Promise<void>, close: () => Promise<void> }} SyncScenarioSession
@@ -76,11 +77,14 @@ export async function createSyncScenarioHarness(options = {}) {
             tauthScriptUrl,
             preserveLocalStorage: sessionOptions.preserveLocalStorage === true,
             beforeNavigate: async (targetPage) => {
+                // Install TAuth harness FIRST so it has priority over session cookie interceptor.
                 harnessHandle = await installTAuthHarness(targetPage, {
                     baseUrl: backend.baseUrl,
                     cookieName: backend.cookieName,
                     mintSessionToken: backend.createSessionToken
                 });
+                // Attach session cookie to prevent redirect to landing page.
+                await attachBackendSessionCookie(targetPage, backend, userId);
                 if (typeof sessionOptions.beforeNavigate === "function") {
                     await sessionOptions.beforeNavigate(targetPage);
                 }
@@ -365,10 +369,10 @@ async function signInViaTAuth(page, userId) {
         pictureUrl: "https://example.com/avatar.png"
     });
     await exchangeTAuthCredential(page, credential);
-    await page.waitForFunction(() => {
-        return Boolean(window.__tauthHarnessEvents && window.__tauthHarnessEvents.authenticatedCount >= 1);
-    }, { timeout: 10000 });
-    await waitForSyncManagerUser(page, userId);
+    // Note: We don't wait for authenticatedCount because mpr-ui's callback
+    // may not fire when using dynamic userId. waitForSyncManagerUser verifies
+    // the authentication completed by checking the sync manager state.
+    await waitForSyncManagerUser(page, userId, 5000);
 }
 
 function createIdFactory(defaultPrefix) {

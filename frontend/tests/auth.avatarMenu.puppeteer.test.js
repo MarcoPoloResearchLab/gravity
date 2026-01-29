@@ -7,13 +7,13 @@ import test from "node:test";
 
 import {
     EVENT_MPR_AUTH_UNAUTHENTICATED,
+    EVENT_MPR_AUTH_AUTHENTICATED,
     LABEL_EXPORT_NOTES,
     LABEL_IMPORT_NOTES,
     LABEL_SIGN_OUT
 } from "../js/constants.js";
 import {
     initializePuppeteerTest,
-    dispatchSignIn,
     attachBackendSessionCookie,
     waitForSyncManagerUser,
     resetToSignedOut
@@ -21,7 +21,8 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+// Avatar menu is in app.html in the new page-separation architecture
+const PAGE_URL = `file://${path.join(PROJECT_ROOT, "app.html")}`;
 const USER_MENU_TIMEOUT_MS = 8000;
 
 /**
@@ -80,11 +81,13 @@ if (!puppeteerAvailable) {
 
             const { page, backend } = harness;
 
+            // Reset to signed out state - this navigates to landing page in the new architecture
             await resetToSignedOut(page);
 
             assert.equal(LABEL_EXPORT_NOTES, "Export Notes");
             assert.equal(LABEL_IMPORT_NOTES, "Import Notes");
 
+            // Verify we're on the landing page
             await page.waitForSelector("[data-test=\"landing-login\"]");
             const landingVisible = await page.evaluate(() => {
                 const landing = document.querySelector("[data-test=\"landing\"]");
@@ -92,9 +95,37 @@ if (!puppeteerAvailable) {
             });
             assert.equal(landingVisible, true);
 
+            // Sign in - this will trigger redirect to app.html in the new architecture
             await attachBackendSessionCookie(page, backend, "avatar-menu-user");
-            const credential = backend.tokenFactory("avatar-menu-user");
-            await dispatchSignIn(page, credential, "avatar-menu-user");
+
+            // On landing page, dispatch auth event directly (landing page has mpr-login-button, not mpr-user)
+            // Set up navigation wait before dispatching sign-in event
+            const navigationPromise = page.waitForNavigation({ waitUntil: "domcontentloaded" });
+            await page.evaluate((eventName) => {
+                const profile = {
+                    user_id: "avatar-menu-user",
+                    user_email: "avatar-menu-user@example.com",
+                    display: "Avatar Menu User",
+                    name: "Avatar Menu User",
+                    given_name: "Avatar",
+                    avatar_url: "https://example.com/avatar.png"
+                };
+                // Store profile in sessionStorage for mpr-ui
+                try {
+                    window.sessionStorage.setItem("__gravityTestAuthProfile", JSON.stringify(profile));
+                } catch {
+                    // ignore storage errors
+                }
+                const event = new CustomEvent(eventName, {
+                    detail: { profile },
+                    bubbles: true
+                });
+                document.body.dispatchEvent(event);
+            }, EVENT_MPR_AUTH_AUTHENTICATED);
+            await navigationPromise;
+
+            // Now we should be on app.html
+            await page.waitForSelector("[data-test=\"app-shell\"]");
             await waitForSyncManagerUser(page, "avatar-menu-user", USER_MENU_TIMEOUT_MS);
 
             await page.waitForSelector("[data-test=\"app-shell\"]:not([hidden])");
@@ -120,6 +151,8 @@ if (!puppeteerAvailable) {
             const logoutLabel = await page.$eval("mpr-user [data-mpr-user=\"logout\"]", (element) => element.textContent?.trim() ?? "");
             assert.equal(logoutLabel, LABEL_SIGN_OUT);
 
+            // Sign out - this will trigger redirect to landing page in the new architecture
+            const signOutNavigationPromise = page.waitForNavigation({ waitUntil: "domcontentloaded" });
             await page.evaluate((eventName) => {
                 const root = document.querySelector("body");
                 if (!root) return;
@@ -128,7 +161,9 @@ if (!puppeteerAvailable) {
                     bubbles: true
                 }));
             }, EVENT_MPR_AUTH_UNAUTHENTICATED);
+            await signOutNavigationPromise;
 
+            // Now we should be back on the landing page
             await page.waitForSelector("[data-test=\"landing\"]:not([hidden])");
         });
     });

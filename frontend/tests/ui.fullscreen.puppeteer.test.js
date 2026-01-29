@@ -8,11 +8,11 @@ import test from "node:test";
 import { LABEL_ENTER_FULL_SCREEN, LABEL_EXIT_FULL_SCREEN } from "../js/constants.js";
 import { createSharedPage } from "./helpers/browserHarness.js";
 import { startTestBackend } from "./helpers/backendHarness.js";
-import { signInTestUser } from "./helpers/syncTestUtils.js";
+import { attachBackendSessionCookie, resolvePageUrl, signInTestUser } from "./helpers/syncTestUtils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+const PAGE_URL = `file://${path.join(PROJECT_ROOT, "app.html")}`;
 const FULLSCREEN_TOGGLE_SELECTOR = '[data-test="fullscreen-toggle"]';
 const TEST_USER_ID = "fullscreen-user";
 
@@ -68,7 +68,10 @@ test.describe("GN-204 header full-screen toggle", () => {
                 };
             });
 
-            await page.goto(PAGE_URL);
+            // Set session cookie BEFORE navigation to prevent redirect to landing page
+            await attachBackendSessionCookie(page, backend, TEST_USER_ID);
+            const resolvedUrl = await resolvePageUrl(PAGE_URL);
+            await page.goto(resolvedUrl, { waitUntil: "domcontentloaded" });
             await signInTestUser(page, backend, TEST_USER_ID);
             await page.waitForSelector(FULLSCREEN_TOGGLE_SELECTOR, { timeout: 3000 });
             await page.evaluate((selector) => {

@@ -36,6 +36,85 @@ const DEFAULT_AUTH_BUTTON_CONFIG = Object.freeze({
     theme: "outline",
     shape: "circle"
 });
+const TAUTH_STUB_NONCE = "tauth-stub-nonce";
+const TAUTH_SCRIPT_PATTERN = /\/tauth\.js(?:\?.*)?$/u;
+const TAUTH_STUB_KEYS = Object.freeze({
+    OPTIONS: "__tauthStubOptions",
+    PROFILE: "__tauthStubProfile",
+    INIT: "initAuthClient",
+    REQUEST_NONCE: "requestNonce",
+    EXCHANGE_CREDENTIAL: "exchangeGoogleCredential",
+    LOGOUT: "logout",
+    GET_CURRENT_USER: "getCurrentUser",
+    ON_AUTHENTICATED: "onAuthenticated",
+    ON_UNAUTHENTICATED: "onUnauthenticated"
+});
+const TAUTH_STUB_SCRIPT = [
+    "(() => {",
+    `  const OPTIONS_KEY = "${TAUTH_STUB_KEYS.OPTIONS}";`,
+    `  const PROFILE_KEY = "${TAUTH_STUB_KEYS.PROFILE}";`,
+    "  const PROFILE_STORAGE_KEY = \"__gravityTestAuthProfile\";",
+    `  const NONCE = "${TAUTH_STUB_NONCE}";`,
+    "  const win = window;",
+    "  const loadStoredProfile = () => {",
+    "    try {",
+    "      const raw = win.sessionStorage?.getItem(PROFILE_STORAGE_KEY);",
+    "      if (!raw) return null;",
+    "      return JSON.parse(raw);",
+    "    } catch {",
+    "      return null;",
+    "    }",
+    "  };",
+    "  const persistProfile = (profile) => {",
+    "    try {",
+    "      if (!win.sessionStorage) return;",
+    "      if (!profile) {",
+    "        win.sessionStorage.removeItem(PROFILE_STORAGE_KEY);",
+    "        return;",
+    "      }",
+    "      win.sessionStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));",
+    "    } catch {",
+    "      // ignore storage errors",
+    "    }",
+    "  };",
+    "  const storedProfile = loadStoredProfile();",
+    "  if (storedProfile) {",
+    "    win[PROFILE_KEY] = storedProfile;",
+    "  } else if (!win[PROFILE_KEY]) {",
+    "    // No stored profile and no evaluateOnNewDocument profile - start unauthenticated",
+    "    win[PROFILE_KEY] = null;",
+    "  }",
+    "  // Preserve existing profile from evaluateOnNewDocument if no storage override",
+    "  win.initAuthClient = async (options) => {",
+    "    win[OPTIONS_KEY] = options ?? null;",
+    "    const profile = win[PROFILE_KEY] ?? null;",
+    "    if (profile) {",
+    "      persistProfile(profile);",
+    "    }",
+    "    const authenticated = profile && options && typeof options.onAuthenticated === \"function\" ? options.onAuthenticated : null;",
+    "    const handler = options && typeof options.onUnauthenticated === \"function\" ? options.onUnauthenticated : null;",
+    "    if (authenticated) {",
+    "      authenticated(profile);",
+    "      return;",
+    "    }",
+    "    if (handler) {",
+    "      handler();",
+    "    }",
+    "  };",
+    "  win.getCurrentUser = async () => win[PROFILE_KEY] ?? null;",
+    "  win.requestNonce = async () => NONCE;",
+    "  win.exchangeGoogleCredential = async () => {};",
+    "  win.logout = async () => {",
+    "    win[PROFILE_KEY] = null;",
+    "    persistProfile(null);",
+    "    const options = win[OPTIONS_KEY];",
+    "    const handler = options && typeof options.onUnauthenticated === \"function\" ? options.onUnauthenticated : null;",
+    "    if (handler) {",
+    "      handler();",
+    "    }",
+    "  };",
+    "})();"
+].join("\n");
 const CDN_MIRRORS = Object.freeze([
     {
         pattern: /^https:\/\/cdn\.jsdelivr\.net\/npm\/alpinejs@3\.13\.5\/dist\/module\.esm\.js$/u,
@@ -92,7 +171,7 @@ const CDN_STUBS = Object.freeze([
     {
         pattern: /^https:\/\/tauth\.mprlab\.com\/tauth\.js(?:\?.*)?$/u,
         contentType: "application/javascript",
-        body: EMPTY_STRING
+        body: TAUTH_STUB_SCRIPT
     },
     {
         pattern: /^https:\/\/example\.com\/avatar\.png$/u,
@@ -125,81 +204,6 @@ const RUNTIME_CONFIG_HANDLER_SYMBOL = Symbol("gravityRuntimeConfigHandler");
 const REQUEST_HANDLERS_SYMBOL = Symbol("gravityRequestHandlers");
 const REQUEST_INTERCEPTION_READY_SYMBOL = Symbol("gravityRequestInterceptionReady");
 const REQUEST_HANDLER_REGISTRY_SYMBOL = Symbol("gravityRequestHandlerRegistry");
-const TAUTH_STUB_NONCE = "tauth-stub-nonce";
-const TAUTH_SCRIPT_PATTERN = /\/tauth\.js(?:\?.*)?$/u;
-const TAUTH_STUB_KEYS = Object.freeze({
-    OPTIONS: "__tauthStubOptions",
-    PROFILE: "__tauthStubProfile",
-    INIT: "initAuthClient",
-    REQUEST_NONCE: "requestNonce",
-    EXCHANGE_CREDENTIAL: "exchangeGoogleCredential",
-    LOGOUT: "logout",
-    GET_CURRENT_USER: "getCurrentUser",
-    ON_AUTHENTICATED: "onAuthenticated",
-    ON_UNAUTHENTICATED: "onUnauthenticated"
-});
-const TAUTH_STUB_SCRIPT = [
-    "(() => {",
-    `  const OPTIONS_KEY = "${TAUTH_STUB_KEYS.OPTIONS}";`,
-    `  const PROFILE_KEY = "${TAUTH_STUB_KEYS.PROFILE}";`,
-    "  const PROFILE_STORAGE_KEY = \"__gravityTestAuthProfile\";",
-    `  const NONCE = "${TAUTH_STUB_NONCE}";`,
-    "  const win = window;",
-    "  const loadStoredProfile = () => {",
-    "    try {",
-    "      const raw = win.sessionStorage?.getItem(PROFILE_STORAGE_KEY);",
-    "      if (!raw) return null;",
-    "      return JSON.parse(raw);",
-    "    } catch {",
-    "      return null;",
-    "    }",
-    "  };",
-    "  const persistProfile = (profile) => {",
-    "    try {",
-    "      if (!win.sessionStorage) return;",
-    "      if (!profile) {",
-    "        win.sessionStorage.removeItem(PROFILE_STORAGE_KEY);",
-    "        return;",
-    "      }",
-    "      win.sessionStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));",
-    "    } catch {",
-    "      // ignore storage errors",
-    "    }",
-    "  };",
-    "  const storedProfile = loadStoredProfile();",
-    "  if (storedProfile) {",
-    "    win[PROFILE_KEY] = storedProfile;",
-    "  }",
-    "  win.initAuthClient = async (options) => {",
-    "    win[OPTIONS_KEY] = options ?? null;",
-    "    const profile = win[PROFILE_KEY] ?? null;",
-    "    if (profile) {",
-    "      persistProfile(profile);",
-    "    }",
-    "    const authenticated = profile && options && typeof options.onAuthenticated === \"function\" ? options.onAuthenticated : null;",
-    "    const handler = options && typeof options.onUnauthenticated === \"function\" ? options.onUnauthenticated : null;",
-    "    if (authenticated) {",
-    "      authenticated(profile);",
-    "      return;",
-    "    }",
-    "    if (handler) {",
-    "      handler();",
-    "    }",
-    "  };",
-    "  win.getCurrentUser = async () => win[PROFILE_KEY] ?? null;",
-    "  win.requestNonce = async () => NONCE;",
-    "  win.exchangeGoogleCredential = async () => {};",
-    "  win.logout = async () => {",
-    "    win[PROFILE_KEY] = null;",
-    "    persistProfile(null);",
-    "    const options = win[OPTIONS_KEY];",
-    "    const handler = options && typeof options.onUnauthenticated === \"function\" ? options.onUnauthenticated : null;",
-    "    if (handler) {",
-    "      handler();",
-    "    }",
-    "  };",
-    "})();"
-].join("\n");
 
 /**
  * Launch the shared Puppeteer browser for the entire test run.
@@ -306,6 +310,11 @@ export async function installCdnMirrors(page) {
     page[CDN_INTERCEPTOR_SYMBOL] = controller;
     controller.add((request) => {
         const url = request.url();
+        // Debug: log if this is a tauth request
+        if (process.env.DEBUG_TAUTH_HARNESS === "1" && url.includes("tauth")) {
+            // eslint-disable-next-line no-console
+            console.log(`[cdn-mirrors] checking tauth URL: ${url}`);
+        }
         const mirror = CDN_MIRRORS.find((entry) => entry.pattern.test(url));
         if (mirror) {
             fs.readFile(mirror.filePath)
@@ -331,6 +340,10 @@ export async function installCdnMirrors(page) {
         }
         const stub = CDN_STUBS.find((entry) => entry.pattern.test(url));
         if (stub) {
+            if (process.env.DEBUG_TAUTH_HARNESS === "1" && url.includes("tauth")) {
+                // eslint-disable-next-line no-console
+                console.log(`[cdn-stubs] INTERCEPTING tauth.js: ${url}`);
+            }
             request.respond({
                 status: 200,
                 contentType: stub.contentType,
@@ -355,14 +368,62 @@ export async function installCdnMirrors(page) {
 export async function injectTAuthStub(page) {
     await page.evaluateOnNewDocument((stubConfig) => {
         const windowRef = /** @type {any} */ (window);
+        // Set a default test profile so the app starts authenticated.
+        // Tests can override this by setting a different profile or signing out.
+        const defaultProfile = {
+            user_id: "test-user",
+            user_email: "test@example.com",
+            display: "Test User",
+            avatar_url: "https://example.com/avatar.png"
+        };
+        // Check if a test has requested forced sign-out state (persists across navigation)
+        const forceSignOutKey = "__gravityTestForceSignOut";
+        const isForceSignedOut = (() => {
+            try {
+                return windowRef.sessionStorage?.getItem(forceSignOutKey) === "true";
+            } catch {
+                return false;
+            }
+        })();
+        // Always set the profile unless explicitly cleared by a previous test
+        // Use a marker to detect if this is a fresh context
+        if (!windowRef.__gravityTestStubInitialized) {
+            // If force signed out, don't set the default profile
+            if (isForceSignedOut) {
+                windowRef[stubConfig.PROFILE] = null;
+            } else {
+                windowRef[stubConfig.PROFILE] = defaultProfile;
+                // Also persist to sessionStorage so the CDN stub's TAUTH_STUB_SCRIPT uses it
+                try {
+                    const storageKey = stubConfig.STORAGE_KEY;
+                    if (storageKey && typeof windowRef.sessionStorage?.setItem === "function") {
+                        windowRef.sessionStorage.setItem(storageKey, JSON.stringify(defaultProfile));
+                    }
+                } catch {
+                    // Ignore storage errors
+                }
+            }
+            windowRef.__gravityTestStubInitialized = true;
+        }
         if (typeof windowRef[stubConfig.INIT] !== "function") {
             windowRef[stubConfig.INIT] = async (options) => {
                 windowRef[stubConfig.OPTIONS] = options ?? null;
-                const handler = options && typeof options[stubConfig.ON_UNAUTHENTICATED] === "function"
-                    ? options[stubConfig.ON_UNAUTHENTICATED]
-                    : null;
-                if (handler) {
-                    handler();
+                // Check if we have a profile and call the appropriate handler
+                const profile = windowRef[stubConfig.PROFILE];
+                if (profile) {
+                    const authHandler = options && typeof options[stubConfig.ON_AUTHENTICATED] === "function"
+                        ? options[stubConfig.ON_AUTHENTICATED]
+                        : null;
+                    if (authHandler) {
+                        authHandler(profile);
+                    }
+                } else {
+                    const unauthHandler = options && typeof options[stubConfig.ON_UNAUTHENTICATED] === "function"
+                        ? options[stubConfig.ON_UNAUTHENTICATED]
+                        : null;
+                    if (unauthHandler) {
+                        unauthHandler();
+                    }
                 }
             };
         }
@@ -378,6 +439,15 @@ export async function injectTAuthStub(page) {
         if (typeof windowRef[stubConfig.LOGOUT] !== "function") {
             windowRef[stubConfig.LOGOUT] = async () => {
                 windowRef[stubConfig.PROFILE] = null;
+                // Also clear from sessionStorage
+                try {
+                    const storageKey = stubConfig.STORAGE_KEY;
+                    if (storageKey && typeof windowRef.sessionStorage?.removeItem === "function") {
+                        windowRef.sessionStorage.removeItem(storageKey);
+                    }
+                } catch {
+                    // Ignore storage errors
+                }
                 const options = windowRef[stubConfig.OPTIONS];
                 const handler = options && typeof options[stubConfig.ON_UNAUTHENTICATED] === "function"
                     ? options[stubConfig.ON_UNAUTHENTICATED]
@@ -389,7 +459,8 @@ export async function injectTAuthStub(page) {
         }
     }, {
         ...TAUTH_STUB_KEYS,
-        NONCE: TAUTH_STUB_NONCE
+        NONCE: TAUTH_STUB_NONCE,
+        STORAGE_KEY: "__gravityTestAuthProfile"
     });
 }
 
@@ -566,6 +637,12 @@ async function ensureRequestInterception(page) {
             await page.setRequestInterception(true);
             page.on("request", async (request) => {
                 const currentHandlers = Array.isArray(page[REQUEST_HANDLERS_SYMBOL]) ? page[REQUEST_HANDLERS_SYMBOL] : [];
+                // Debug: log handler count for tauth.mprlab.com requests
+                const requestUrl = request.url();
+                if (process.env.DEBUG_TAUTH_HARNESS === "1" && requestUrl.includes("tauth.mprlab.com")) {
+                    // eslint-disable-next-line no-console
+                    console.log(`[request-handler] tauth.js request, handler count: ${currentHandlers.length}, disabled: ${currentHandlers.filter(h => h?.disabled).length}`);
+                }
                 for (const entry of currentHandlers) {
                     if (!entry || entry.disabled) {
                         continue;

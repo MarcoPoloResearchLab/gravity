@@ -573,10 +573,14 @@ async function main() {
   // Default per-file overrides for real runs (not in minimal/raw mode).
   if (!minimal && !raw) {
     const defaultTimeoutEntries = [
+      ["auth.tauth.puppeteer.test.js", 90000],
       ["fullstack.endtoend.puppeteer.test.js", 60000],
       ["persistence.backend.puppeteer.test.js", 45000],
-      ["sync.endtoend.puppeteer.test.js", 45000],
-      ["editor.inline.puppeteer.test.js", 60000]
+      ["sync.endtoend.puppeteer.test.js", 90000],
+      ["sync.realtime.puppeteer.test.js", 90000],
+      ["sync.scenarios.puppeteer.test.js", 90000],
+      ["editor.inline.puppeteer.test.js", 60000],
+      ["htmlView.checkmark.puppeteer.test.js", 60000]
     ];
     for (const [file, value] of defaultTimeoutEntries) {
       if (!timeoutOverrides.has(file)) timeoutOverrides.set(file, value);

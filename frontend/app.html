@@ -196,34 +196,81 @@
     />
     <title>Gravity Notes</title>
 
+    <!-- Markdown renderer -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+
+    <!-- HTML sanitizer -->
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
+
+    <!-- Markdown editor -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde@2.19.0/dist/easymde.min.css"/>
+    <script src="https://cdn.jsdelivr.net/npm/easymde@2.19.0/dist/easymde.min.js"></script>
+
     <!-- Styles -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@v3.6.2/mpr-ui.css"/>
     <link rel="stylesheet" href="./styles.css?build=2026-01-01T22:43:21Z"/>
 </head>
-<body data-page="landing">
-<section class="landing" data-test="landing">
-    <div class="landing-shell">
-        <div class="landing-copy">
-            <div class="landing-kicker">Gravity Notes</div>
-            <h1 class="landing-title">Notes that stay anchored.</h1>
-            <p class="landing-description">Markdown-first notes with inline editing and a no-jump grid. Sign in to sync your notebook.</p>
-            <div class="landing-actions">
-                <mpr-login-button id="landing-login" class="landing-login" data-test="landing-login"></mpr-login-button>
-                <p class="landing-hint">Sign in with Google to open your notebook.</p>
-            </div>
-            <div class="landing-status" data-test="landing-status" hidden></div>
+<body x-data="gravityApp()" data-page="app" data-auth-state="loading">
+<div class="app-shell" data-test="app-shell">
+    <header class="app-header">
+        <div class="app-branding">
+            <h1 class="app-title" x-text="constants.LABEL_APP_TITLE">Gravity Notes</h1>
+            <div class="app-subtitle" x-text="constants.LABEL_APP_SUBTITLE">Append anywhere &middot; Bubble to top &middot; Auto-organize</div>
         </div>
-        <div class="landing-visual" aria-hidden="true">
-            <div class="landing-card landing-card--primary"></div>
-            <div class="landing-card landing-card--secondary"></div>
-            <div class="landing-card landing-card--tertiary"></div>
+        <div class="app-auth">
+            <button
+                    class="fullscreen-toggle"
+                    type="button"
+                    x-ref="fullScreenToggle"
+                    data-test="fullscreen-toggle"
+                    data-fullscreen-state="enter"
+                    aria-pressed="false"
+                    aria-label=""
+                    title=""
+            >
+                <svg class="fullscreen-toggle__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <g class="fullscreen-toggle__enter">
+                        <path class="fullscreen-toggle__stroke" d="M6 18 L18 6"/>
+                        <path class="fullscreen-toggle__stroke" d="M6 12 L6 18 L12 18"/>
+                        <path class="fullscreen-toggle__stroke" d="M18 12 L18 6 L12 6"/>
+                    </g>
+                    <g class="fullscreen-toggle__exit">
+                        <path class="fullscreen-toggle__stroke" d="M6 6 L18 18"/>
+                        <path class="fullscreen-toggle__stroke" d="M7.5 5 L6 6 L5 7.5"/>
+                        <path class="fullscreen-toggle__stroke" d="M19 16.5 L18 18 L16.5 19"/>
+                    </g>
+                </svg>
+                <span class="fullscreen-toggle__label" data-role="fullscreen-label" x-text="constants.LABEL_ENTER_FULL_SCREEN">Full Screen</span>
+            </button>
+            <mpr-user
+                    id="app-user-menu"
+                    x-ref="userMenu"
+                    data-test="user-menu"
+                    display-mode="avatar-name"
+                    logout-url="/"
+                    logout-label="Sign out"
+            ></mpr-user>
         </div>
-    </div>
-    <footer class="landing-footer">
+    </header>
+
+    <button id="export-notes-button" class="app-hidden-button" type="button" x-ref="exportButton" hidden></button>
+    <button id="import-notes-button" class="app-hidden-button" type="button" x-ref="importButton" hidden></button>
+    <input id="import-notes-input" x-ref="importInput" type="file" hidden />
+
+    <!-- Structural, always-empty editor (never persisted) -->
+    <section id="top-editor"></section>
+
+    <!-- Persisted notes list -->
+    <main id="notes-container" x-ref="notesContainer" class="block-container"></main>
+
+    <div id="editor-toast" class="toast" aria-live="polite" hidden></div>
+    <div id="editor-save-status" class="sr-only" aria-live="polite"></div>
+
+    <footer class="app-footer">
         <a class="app-legal-link" href="/privacy">Privacy &bull; Terms</a>
     </footer>
-</section>
+</div>
 
-<script type="module" src="./js/landing.js?build=2026-01-01T22:43:21Z"></script>
+<script type="module" src="./js/app.js?build=2026-01-01T22:43:21Z"></script>
 </body>
 </html>

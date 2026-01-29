@@ -5,14 +5,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { createSharedPage, waitForAppHydration, flushAlpineQueues } from "./helpers/browserHarness.js";
+import { connectSharedBrowser, flushAlpineQueues } from "./helpers/browserHarness.js";
 import { startTestBackend } from "./helpers/backendHarness.js";
-import { seedNotes, signInTestUser } from "./helpers/syncTestUtils.js";
+import { seedNotes, signInTestUser, attachBackendSessionCookie, prepareFrontendPage } from "./helpers/syncTestUtils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
-const TEST_USER_ID = "ui-style-user";
+const PAGE_URL = `file://${path.join(PROJECT_ROOT, "app.html")}`;
+// Use "test-user" to match the default profile set by injectTAuthStub
+const TEST_USER_ID = "test-user";
 
 const NOTE_ID = "ui-style-fixture";
 const NOTE_MARKDOWN = [
@@ -268,10 +269,8 @@ async function withPreparedPage(callback, options = {}) {
 async function preparePage(options = {}) {
     const { viewport } = options;
     const backend = await startTestBackend();
-    const { page, teardown } = await createSharedPage();
-    if (viewport && typeof page.setViewport === "function") {
-        await page.setViewport(viewport);
-    }
+    const browser = await connectSharedBrowser();
+    const context = await browser.createBrowserContext();
     const records = [
         buildNoteRecord({ noteId: NOTE_ID, markdownText: NOTE_MARKDOWN }),
         ...Array.from({ length: 12 }, (_, index) => buildNoteRecord({
@@ -279,23 +278,34 @@ async function preparePage(options = {}) {
             markdownText: FILLER_NOTE_MARKDOWN
         }))
     ];
-    await page.evaluateOnNewDocument(() => {
-        window.sessionStorage.setItem("__gravityTestInitialized", "true");
-        window.localStorage.clear();
-        window.__gravityForceMarkdownEditor = true;
+    const page = await prepareFrontendPage(context, PAGE_URL, {
+        backendBaseUrl: backend.baseUrl,
+        llmProxyUrl: "",
+        beforeNavigate: async (targetPage) => {
+            if (viewport && typeof targetPage.setViewport === "function") {
+                await targetPage.setViewport(viewport);
+            }
+            await targetPage.evaluateOnNewDocument(() => {
+                window.sessionStorage.setItem("__gravityTestInitialized", "true");
+                window.localStorage.clear();
+                window.__gravityForceMarkdownEditor = true;
+            });
+            // Set up session cookie BEFORE navigation to prevent redirect to landing page
+            await attachBackendSessionCookie(targetPage, backend, TEST_USER_ID);
+        }
     });
-    await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
-    await waitForAppHydration(page);
     await flushAlpineQueues(page);
     await signInTestUser(page, backend, TEST_USER_ID);
     await seedNotes(page, records, TEST_USER_ID);
-    await page.waitForSelector(".markdown-block.top-editor");
+    await page.waitForSelector(".markdown-block.top-editor", { timeout: 5000 });
     const cardSelector = `.markdown-block[data-note-id="${NOTE_ID}"]`;
-    await page.waitForSelector(cardSelector);
+    await page.waitForSelector(cardSelector, { timeout: 5000 });
     return {
         page,
         teardown: async () => {
-            await teardown();
+            await page.close().catch(() => {});
+            await context.close().catch(() => {});
+            browser.disconnect();
             await backend.close();
         },
         cardSelector

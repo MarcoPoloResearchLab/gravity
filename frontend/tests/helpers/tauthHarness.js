@@ -27,6 +27,9 @@ const DEFAULT_REFRESH_COOKIE = "app_refresh";
  *   triggerNonceMismatch(): void
  * }>}
  */
+/** Pattern to match ANY tauth.js URL - intercept all to prevent CDN stubs from overwriting harness */
+const TAUTH_SCRIPT_PATTERN = /\/tauth\.js(?:\?.*)?$/u;
+
 export async function installTAuthHarness(page, options) {
     const baseUrl = normalizeBaseUrl(options.baseUrl ?? DEFAULT_TAUTH_BASE_URL);
     if (!baseUrl) {
@@ -37,7 +40,19 @@ export async function installTAuthHarness(page, options) {
     const mintSessionToken = typeof options.mintSessionToken === "function"
         ? options.mintSessionToken
         : () => "";
-    const initialProfile = options.initialProfile ?? null;
+    // Provide a default test profile to prevent redirect on app.html load.
+    // Tests can override by providing initialProfile: null explicitly.
+    const defaultTestProfile = {
+        user_id: "test-harness-user",
+        user_email: "test-harness@example.com",
+        display: "Test Harness User",
+        name: "Test Harness User",
+        given_name: "Test",
+        avatar_url: "https://example.com/avatar.png",
+        user_display: "Test Harness User",
+        user_avatar_url: "https://example.com/avatar.png"
+    };
+    const initialProfile = options.initialProfile === null ? null : (options.initialProfile ?? defaultTestProfile);
 
     const state = {
         baseUrl,
@@ -50,13 +65,59 @@ export async function installTAuthHarness(page, options) {
         }
     };
 
+    // Inject the harness stub script via evaluateOnNewDocument to ensure it runs
+    // BEFORE any network-loaded scripts (including tauth.js from CDN).
+    // This is more reliable than request interception because it doesn't depend
+    // on handler ordering with other interceptors.
+    // Note: We use a function wrapper around eval() because evaluateOnNewDocument
+    // with raw strings can have issues with certain JS constructs.
+    const stubScript = buildAuthClientStub(state.profile, baseUrl);
+    await page.evaluateOnNewDocument((scriptText) => {
+        // eslint-disable-next-line no-eval
+        eval(scriptText);
+    }, stubScript);
+    if (process.env.DEBUG_TAUTH_HARNESS === "1") {
+        // eslint-disable-next-line no-console
+        console.log(`[tauth-harness] Injected harness stub via evaluateOnNewDocument`);
+    }
+
     const controller = await createRequestInterceptorController(page);
+    if (process.env.DEBUG_TAUTH_HARNESS === "1") {
+        // eslint-disable-next-line no-console
+        console.log(`[tauth-harness] INSTALLING harness handler for baseUrl=${baseUrl}`);
+    }
     controller.add(async (request) => {
-        if (!request.url().startsWith(baseUrl)) {
+        const requestUrl = request.url();
+        // Debug: log all requests seen by this handler
+        if (process.env.DEBUG_TAUTH_HARNESS === "1") {
+            // eslint-disable-next-line no-console
+            console.log(`[tauth-harness] checking: ${requestUrl}`);
+        }
+        // Intercept ALL tauth.js requests and respond with a no-op script.
+        // The harness already injected its functions via evaluateOnNewDocument,
+        // so we need to prevent ANY tauth.js (CDN or backend) from overwriting
+        // our harness functions.
+        if (TAUTH_SCRIPT_PATTERN.test(requestUrl)) {
+            if (process.env.DEBUG_TAUTH_HARNESS === "1") {
+                // eslint-disable-next-line no-console
+                console.log(`[tauth-harness] INTERCEPTING tauth.js request: ${requestUrl}`);
+            }
+            request.respond({
+                status: 200,
+                contentType: "application/javascript",
+                body: "// TAuth harness: no-op - functions already injected via evaluateOnNewDocument"
+            }).catch(() => {});
+            return true;
+        }
+        if (!requestUrl.startsWith(baseUrl)) {
             return false;
         }
         const method = request.method().toUpperCase();
         const path = resolvePath(request.url(), baseUrl);
+        if (process.env.DEBUG_TAUTH_HARNESS === "1") {
+            // eslint-disable-next-line no-console
+            console.log(`[tauth-harness] MATCHED: method=${method}, path=${path}`);
+        }
         state.requests.push({ method, path });
         const corsHeaders = buildCorsHeaders(request);
         if (method === "OPTIONS") {
@@ -72,20 +133,13 @@ export async function installTAuthHarness(page, options) {
             }).catch(() => {});
             return true;
         }
-        if (method === "GET" && path === "/tauth.js") {
-            const scriptBody = buildAuthClientStub(state.profile);
-            request.respond({
-                status: 200,
-                contentType: "application/javascript",
-                headers: {
-                    "Access-Control-Allow-Origin": "*"
-                },
-                body: scriptBody
-            }).catch(() => {});
-            return true;
-        }
+        // Note: /tauth.js interception removed - harness stub is injected via evaluateOnNewDocument
         if (method === "POST" && path === "/auth/nonce") {
             state.pendingNonce = `tauth-nonce-${++state.nonceCounter}`;
+            if (process.env.DEBUG_TAUTH_HARNESS === "1") {
+                // eslint-disable-next-line no-console
+                console.log(`[tauth-harness] RESPONDING to /auth/nonce with nonce=${state.pendingNonce}`);
+            }
             respondJson(request, 200, { nonce: state.pendingNonce }, corsHeaders);
             return true;
         }
@@ -93,7 +147,15 @@ export async function installTAuthHarness(page, options) {
             const payload = safeParseRequestBody(request);
             const credential = typeof payload.google_id_token === "string" ? payload.google_id_token : "";
             const nonceToken = typeof payload.nonce_token === "string" ? payload.nonce_token : "";
+            if (process.env.DEBUG_TAUTH_HARNESS === "1") {
+                // eslint-disable-next-line no-console
+                console.log(`[tauth-harness] /auth/google: credential=${credential ? "present" : "missing"}, nonceToken=${nonceToken || "missing"}, pendingNonce=${state.pendingNonce || "missing"}`);
+            }
             if (!credential || !nonceToken || nonceToken !== state.pendingNonce) {
+                if (process.env.DEBUG_TAUTH_HARNESS === "1") {
+                    // eslint-disable-next-line no-console
+                    console.log(`[tauth-harness] /auth/google REJECTED: invalid_nonce`);
+                }
                 respondJson(request, 400, { error: "invalid_nonce" }, corsHeaders);
                 state.pendingNonce = null;
                 return true;
@@ -108,6 +170,10 @@ export async function installTAuthHarness(page, options) {
             const profile = deriveProfileFromCredential(credential);
             state.profile = profile;
             const sessionToken = mintSessionToken(profile.user_id);
+            if (process.env.DEBUG_TAUTH_HARNESS === "1") {
+                // eslint-disable-next-line no-console
+                console.log(`[tauth-harness] /auth/google SUCCESS: userId=${profile.user_id}`);
+            }
             respondJson(
                 request,
                 200,
@@ -132,6 +198,10 @@ export async function installTAuthHarness(page, options) {
             return true;
         }
         if (method === "POST" && path === "/auth/refresh") {
+            if (process.env.DEBUG_TAUTH_HARNESS === "1") {
+                // eslint-disable-next-line no-console
+                console.log(`[tauth-harness] /auth/refresh: state.profile=${state.profile ? state.profile.user_id : 'null'}`);
+            }
             if (state.profile) {
                 const sessionToken = mintSessionToken(state.profile.user_id);
                 respondJson(
@@ -211,10 +281,23 @@ export async function installTAuthHarness(page, options) {
 
 function notifyAuthenticated(page, profile) {
     void page.evaluate((value) => {
-        if (typeof window === "undefined" || !window.__tauthHarness) {
+        if (typeof window === "undefined") {
             return;
         }
-        window.__tauthHarness.emitAuthenticated(value);
+        // Call harness callback if available
+        if (window.__tauthHarness) {
+            window.__tauthHarness.emitAuthenticated(value);
+        }
+        // Dispatch mpr-ui event for app integration
+        const eventName = "mpr-ui:auth:authenticated";
+        const event = new CustomEvent(eventName, {
+            detail: { profile: value },
+            bubbles: true
+        });
+        const root = document.querySelector("[x-data]") || document.body;
+        if (root) {
+            root.dispatchEvent(event);
+        }
     }, profile).catch((error) => {
         console.error("[tauthHarness] emitAuthenticated failed", error);
     });
@@ -347,8 +430,9 @@ function buildSetCookieHeaders(entries) {
     });
 }
 
-function buildAuthClientStub(profile) {
+function buildAuthClientStub(profile, baseUrl) {
     const serializedProfile = JSON.stringify(profile ?? null);
+    const serializedBaseUrl = JSON.stringify(baseUrl ?? "");
     return `
         (function() {
             if (!window.__tauthHarnessEvents) {
@@ -357,7 +441,7 @@ function buildAuthClientStub(profile) {
             const TENANT_HEADER_NAME = "X-TAuth-Tenant";
             const harness = {
                 profile: ${serializedProfile},
-                options: null,
+                options: { baseUrl: ${serializedBaseUrl} },
                 emitAuthenticated(value) {
                     this.profile = value;
                     if (this.options && typeof this.options.onAuthenticated === "function") {
