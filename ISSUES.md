@@ -160,9 +160,32 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
   (Resolved by verifying backend session cookies attach in Puppeteer and falling back to injecting Cookie headers per backend request when file:// origins reject setCookie; multi-iteration frontend suites now stay stable.)
 - [x] [GN-433] Landing auth error because the login button is configured with tauth-* attributes instead of mpr-ui base/login/logout/nonce attributes, causing /auth/nonce to hit the frontend origin and fail. (Resolved by wiring the base/login/logout/nonce attributes alongside tauth fields so the mpr-ui login button uses TAuth endpoints.)
 - [ ] [GN-434] (P2) `sync.endtoend.puppeteer.test.js` timed out waiting for `.markdown-block:not(.top-editor)[data-note-id]` during baseline `make test` runs; investigate the flake.
+  Observed again during GN-438 `make test`; rerun passed.
 - [ ] [GN-435] (P2) `htmlView.checkmark.puppeteer.test.js` intermittently fails the anchored-card assertion during `make ci` (observed ~28px drift).
 - [x] [GN-436] (P1) Simplify mpr-ui loading by including the bundle in `frontend/index.html` and mounting auth components with runtime-configured attributes before initialization.
   (Resolved by loading mpr-ui via a static script tag, cloning auth elements from templates after runtime config, and applying auth attributes before mounting.)
+- [x] [GN-437] (P1) Load mpr-ui assets from the `@latest` CDN tag to keep the frontend in sync with upstream releases.
+  (Resolved by switching the frontend CDN links and test harness mirrors to `@latest`.)
+- [x] [GN-438] (P1) Allow runtime config to override the Google client ID so local dev origins can match the correct GSI project. (Resolved by requiring googleClientId in runtime config payloads/JSON, plumbing through the config builder, and updating tests.)
+- [x] [GN-439] (P1) `sync.manager.test.js` fails during `make ci` with `offline` errors and duplicate sync operations (expected 1, observed 2) in the "coalesces repeated upserts" case; investigate and stabilize. (Resolved by coalescing per-note operations, deferring payload hydration to flush time, and adding regression coverage.)
+- [x] [GN-439] (P1) `QuotaExceededError` in sync queue persistence when localStorage fills; redesign persistence to avoid localStorage quotas and coalesce pending sync operations. (Resolved by migrating notes/sync queue/sync metadata to IndexedDB with localStorage-only test mode and storage-full notifications.)
+- [x] [GN-440] (P1) Local auth fails when TAuth tenant origin/cookie domain drift from the runtime-configured localhost URLs, causing tauth.js/nonce requests to miss or fail CORS. (Resolved by rewriting loopback runtime endpoints for non-loopback dev hosts and refreshing TAuth env defaults for localhost.)
+- [x] [GN-441] (P1) Dev auth fails on computercat.tyemirov.net because gHTTP still serves only the frontend and runtime config points to localhost; proxy backend/TAuth through gHTTP HTTPS and update dev config/env defaults. (Resolved by adding gHTTP HTTPS env config + proxy routes, updating compose and runtime config defaults for computercat, and documenting the new dev stack.)
+- [x] [GN-442] (P1) Load tauth.js from the CDN (not via gHTTP), remove the /tauth.js proxy route, and wire the runtime config/test harness to use a dedicated tauthScriptUrl for the helper. (Resolved by enforcing absolute CDN tauth.js URLs and proxying /me through gHTTP so auth boot hits TAuth.)
+- [x] [GN-443] (P1) Keep `.env*` files untracked and rename example env files to `env.*.example` with updated setup docs.
+- [x] [GN-444] (P1) Ensure the mpr-ui login component always registers by loading the bundle from a runtime-configured `mprUiScriptUrl` after tauth.js.
+- [x] [GN-445] (P1) Make auth boot strict (no fallbacks) and pre-initialize GIS before rendering the mpr-ui login button to avoid GSI warnings.
+- [ ] [GN-446] (P1) Adopt the mpr-ui config.yaml loader for auth wiring so login buttons render from declarative config and tauth.js only loads from the CDN.
+- [x] [GN-447] (P1) Auth boot loop and missing avatar after login when TAuth init resolves late.
+  Resolved by waiting for TAuth init callbacks before dispatching auth state, aligning landing/app redirects, and adding Playwright E2E coverage for login → app user menu rendering.
+- [x] [GN-448] (P0) Enter full screen menu item should appear before Sign out in the user menu.
+  (Resolved by adding the full screen action to the mpr-user menu items ahead of logout, wiring the menu action to the full screen toggle, and extending avatar menu coverage to assert ordering.)
+- [x] [GN-449] (P0) Enter full screen must be a user menu item before Sign out (regression reported again).
+  (Resolved by removing the standalone fullscreen button, keeping the menu item before Sign out, and adding Playwright coverage for menu toggling + absence of the standalone control.)
+- [x] [GN-450] (P1) CI fails because the Playwright login test reads mpr-ui assets from the gitignored tools folder.
+  (Resolved by removing local mpr-ui fixtures in the test harness, waiting for mpr-ui config application in landing tests, and propagating nonce error codes through the auth wrapper; make test/lint/ci pass.)
+- [x] [GN-451] (P1) Fail fast on CI test runs after the first failure while keeping local runs exhaustive.
+  (Resolved by enabling CI-only fail-fast behavior in the test harness with immediate error output.)
 
 
 ## Maintenance (428–499)

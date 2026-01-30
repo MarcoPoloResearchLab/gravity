@@ -13,14 +13,15 @@ import {
     extractSyncDebugState,
     waitForTAuthSession,
     composeTestCredential,
-    exchangeTAuthCredential
+    exchangeTAuthCredential,
+    attachBackendSessionCookie
 } from "./helpers/syncTestUtils.js";
 import { connectSharedBrowser } from "./helpers/browserHarness.js";
 import { installTAuthHarness } from "./helpers/tauthHarness.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+const PAGE_URL = `file://${path.join(PROJECT_ROOT, "app.html")}`;
 
 test.describe("Realtime synchronization", () => {
     test("note updates propagate across sessions", { timeout: 60000 }, async () => {
@@ -208,16 +209,21 @@ test.describe("Realtime synchronization", () => {
 async function bootstrapRealtimeSession(context, backend, userId, options = {}) {
     const beforeAuth = typeof options?.beforeAuth === "function" ? options.beforeAuth : null;
     let harnessHandle = null;
+    const tauthScriptUrl = new URL("/tauth.js", backend.baseUrl).toString();
     const page = await prepareFrontendPage(context, PAGE_URL, {
         backendBaseUrl: backend.baseUrl,
         llmProxyUrl: "",
         authBaseUrl: backend.baseUrl,
+        tauthScriptUrl,
         beforeNavigate: async (targetPage) => {
+            // Install TAuth harness FIRST so it has priority over session cookie interceptor.
             harnessHandle = await installTAuthHarness(targetPage, {
                 baseUrl: backend.baseUrl,
                 cookieName: backend.cookieName,
                 mintSessionToken: backend.createSessionToken
             });
+            // Attach session cookie to prevent redirect to landing page.
+            await attachBackendSessionCookie(targetPage, backend, userId);
         }
     });
     if (beforeAuth) {
@@ -232,12 +238,12 @@ async function bootstrapRealtimeSession(context, backend, userId, options = {}) 
     });
     await exchangeTAuthCredential(page, credential);
     if (harnessHandle) {
-        await waitForHarnessRequest(harnessHandle, "/auth/google");
+        await waitForHarnessRequest(harnessHandle, "/auth/google", 5000);
     }
-    await page.waitForFunction(() => {
-        return Boolean(window.__tauthHarnessEvents && window.__tauthHarnessEvents.authenticatedCount >= 1);
-    }, { timeout: 10000 });
-    await waitForSyncManagerUser(page, userId);
+    // Note: We don't wait for authenticatedCount because mpr-ui's callback
+    // may not fire when using dynamic userId. waitForSyncManagerUser verifies
+    // the authentication completed by checking the sync manager state.
+    await waitForSyncManagerUser(page, userId, 5000);
     return { page, harnessHandle };
 }
 

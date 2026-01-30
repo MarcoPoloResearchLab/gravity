@@ -93,14 +93,14 @@ export function createSyncManager(options) {
                 operationId: generateUUID(),
                 noteId,
                 operation: "upsert",
-                payload: cloneRecord(record),
+                payload: null,
                 updatedAtSeconds: isoToSeconds(record.updatedAtIso, clock),
                 createdAtSeconds: isoToSeconds(record.createdAtIso, clock),
                 clientTimeSeconds: isoToSeconds(record.lastActivityIso, clock),
                 clientEditSeq: nextEditSeq
             });
 
-            state.queue.push(operation);
+            upsertPendingOperation(operation);
             persistState();
             void flushQueue();
         },
@@ -134,7 +134,7 @@ export function createSyncManager(options) {
                 clientEditSeq: nextEditSeq
             });
 
-            state.queue.push(operation);
+            upsertPendingOperation(operation);
             persistState();
             void flushQueue();
         },
@@ -155,6 +155,12 @@ export function createSyncManager(options) {
                 } catch {
                     // ignore console failures
                 }
+            }
+            if (typeof metadataStore.hydrate === "function") {
+                await metadataStore.hydrate(params.userId);
+            }
+            if (typeof queueStore.hydrate === "function") {
+                await queueStore.hydrate(params.userId);
             }
             const loadedMetadata = metadataStore.load(params.userId);
             const loadedQueue = queueStore.load(params.userId);
@@ -260,6 +266,19 @@ export function createSyncManager(options) {
         }
     }
 
+    /**
+     * @param {PendingOperation} operation
+     * @returns {void}
+     */
+    function upsertPendingOperation(operation) {
+        const existingIndex = state.queue.findIndex((entry) => isPendingOperation(entry) && entry.noteId === operation.noteId);
+        if (existingIndex >= 0) {
+            state.queue[existingIndex] = operation;
+            return;
+        }
+        state.queue.push(operation);
+    }
+
     function collectConflictNoteIds() {
         const conflictNotes = new Set();
         for (const operation of state.queue) {
@@ -306,11 +325,11 @@ export function createSyncManager(options) {
             const nextSeq = metadata.clientEditSeq + 1;
             metadata.clientEditSeq = nextSeq;
             state.metadata[record.noteId] = metadata;
-            state.queue.push(buildPendingOperation({
+            upsertPendingOperation(buildPendingOperation({
                 operationId: generateUUID(),
                 noteId: record.noteId,
                 operation: "upsert",
-                payload: cloneRecord(record),
+                payload: null,
                 updatedAtSeconds: isoToSeconds(record.updatedAtIso, clock),
                 createdAtSeconds: isoToSeconds(record.createdAtIso, clock),
                 clientTimeSeconds: isoToSeconds(record.lastActivityIso, clock),
@@ -607,8 +626,26 @@ export function createSyncManager(options) {
             client_time_s: operation.clientTimeSeconds,
             created_at_s: operation.createdAtSeconds,
             updated_at_s: operation.updatedAtSeconds,
-            payload: operation.payload
+            payload: resolveOperationPayload(operation)
         };
+    }
+
+    /**
+     * @param {PendingOperation} operation
+     * @returns {unknown}
+     */
+    function resolveOperationPayload(operation) {
+        if (operation.payload !== null && typeof operation.payload !== "undefined") {
+            return operation.payload;
+        }
+        if (operation.operation === "delete") {
+            return operation.payload ?? null;
+        }
+        const record = GravityStore.getById(operation.noteId);
+        if (!record) {
+            throw new Error(`sync.payload.missing: ${operation.noteId}`);
+        }
+        return cloneRecord(record);
     }
 
     function dispatchSnapshotEvent(records, source) {
@@ -677,7 +714,7 @@ function assertBaseUrl(value) {
 }
 
 /**
- * @param {{ operationId: string, noteId: string, operation: "upsert"|"delete", payload: unknown, clientEditSeq: number, updatedAtSeconds: number, createdAtSeconds: number, clientTimeSeconds: number }} options
+ * @param {{ operationId: string, noteId: string, operation: "upsert"|"delete", payload?: unknown|null, clientEditSeq: number, updatedAtSeconds: number, createdAtSeconds: number, clientTimeSeconds: number }} options
  * @returns {PendingOperation}
  */
 function buildPendingOperation(options) {

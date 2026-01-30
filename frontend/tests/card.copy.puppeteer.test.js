@@ -8,11 +8,11 @@ import test from "node:test";
 import { CLIPBOARD_MIME_NOTE } from "../js/constants.js";
 import { connectSharedBrowser } from "./helpers/browserHarness.js";
 import { startTestBackend } from "./helpers/backendHarness.js";
-import { buildUserStorageKey, prepareFrontendPage, signInTestUser } from "./helpers/syncTestUtils.js";
+import { attachBackendSessionCookie, buildUserStorageKey, prepareFrontendPage, signInTestUser } from "./helpers/syncTestUtils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+const PAGE_URL = `file://${path.join(PROJECT_ROOT, "app.html")}`;
 
 const VIEW_MODE_NOTE_ID = "copy-htmlView-fixture";
 const VIEW_MODE_MARKDOWN = "HtmlView **bold** payload.";
@@ -108,8 +108,10 @@ async function prepareClipboardPage({ records, userId }) {
     const storageKey = buildUserStorageKey(userId);
     const page = await prepareFrontendPage(context, PAGE_URL, {
         backendBaseUrl: backend.baseUrl,
-        beforeNavigate: (targetPage) => {
-            return targetPage.evaluateOnNewDocument((payloadKey, payload) => {
+        beforeNavigate: async (targetPage) => {
+            // Set session cookie BEFORE navigation to prevent redirect to landing page
+            await attachBackendSessionCookie(targetPage, backend, userId);
+            await targetPage.evaluateOnNewDocument((payloadKey, payload) => {
                 window.sessionStorage.setItem("__gravityTestInitialized", "true");
                 window.localStorage.clear();
                 window.localStorage.setItem(payloadKey, payload);
