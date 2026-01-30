@@ -63,7 +63,7 @@ test.describe("Page Separation Architecture", () => {
         test("landing.js exists and redirects to app on auth", async () => {
             const js = await fs.readFile(path.join(PROJECT_ROOT, "js", "landing.js"), "utf-8");
             assert.ok(js.includes('/app.html'), "landing.js should redirect to /app.html");
-            assert.ok(js.includes('mpr-ui:auth:authenticated'), "landing.js should listen for auth event");
+            assert.ok(js.includes("addEventListener(EVENT_MPR_AUTH_AUTHENTICATED"), "landing.js should listen for auth event");
         });
     });
 

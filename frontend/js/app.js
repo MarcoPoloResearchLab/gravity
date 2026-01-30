@@ -8,6 +8,12 @@ import { createAttachmentSignature } from "./ui/card/renderPipeline.js?build=202
 import { initializeImportExport } from "./ui/importExport.js?build=2026-01-01T22:43:21Z";
 import { GravityStore } from "./core/store.js?build=2026-01-01T22:43:21Z";
 import { initializeRuntimeConfig } from "./core/runtimeConfig.js?build=2026-01-01T22:43:21Z";
+import {
+    bootstrapTauthSession,
+    canNavigate,
+    ensureAuthReady,
+    waitForMprUiReadyPromise
+} from "./core/authBootstrap.js?build=2026-01-01T22:43:21Z";
 import { initializeAnalytics } from "./core/analytics.js?build=2026-01-01T22:43:21Z";
 import { createSyncManager } from "./core/syncManager.js?build=2026-01-01T22:43:21Z";
 import { createRealtimeSyncController } from "./core/realtimeSyncController.js?build=2026-01-01T22:43:21Z";
@@ -67,17 +73,6 @@ const LANDING_PAGE_URL = "/";
 const USER_MENU_ACTION_EXPORT = "export-notes";
 const USER_MENU_ACTION_IMPORT = "import-notes";
 const NOTIFICATION_DEFAULT_DURATION_MS = 3000;
-const AUTH_ERROR_MESSAGES = Object.freeze({
-    MISSING_INIT: "tauth.initAuthClient_missing",
-    MISSING_REQUEST_NONCE: "tauth.requestNonce_missing",
-    MISSING_EXCHANGE: "tauth.exchangeGoogleCredential_missing",
-    MISSING_CURRENT_USER: "tauth.getCurrentUser_missing",
-    MISSING_LOGOUT: "tauth.logout_missing",
-    MPR_LOGIN_MISSING: "mpr_ui.login_button_missing",
-    MPR_USER_MISSING: "mpr_ui.user_menu_missing",
-    MPR_UI_CONFIG_MISSING: "mpr_ui.config_missing",
-    UNSUPPORTED: "gravity.unsupported_environment"
-});
 
 /**
  * @param {string} targetUrl
@@ -100,6 +95,22 @@ function buildCacheBustedUrl(targetUrl, buildId) {
     }
 }
 
+/**
+ * @param {string} eventName
+ * @param {Record<string, unknown>} detail
+ * @returns {void}
+ */
+function dispatchMprAuthEvent(eventName, detail) {
+    if (typeof document === "undefined") {
+        return;
+    }
+    const target = document.body ?? document;
+    if (!target || typeof target.dispatchEvent !== "function") {
+        return;
+    }
+    target.dispatchEvent(new CustomEvent(eventName, { detail, bubbles: true }));
+}
+
 async function clearAssetCaches() {
     if (typeof window === "undefined" || typeof caches === "undefined") {
         return;
@@ -112,17 +123,20 @@ async function clearAssetCaches() {
     }
 }
 
-bootstrapApplication().catch((error) => {
+startApplication().catch((error) => {
     logging.error("Failed to bootstrap Gravity Notes", error);
     throw error;
 });
 
+async function startApplication() {
+    await waitForMprUiReadyPromise();
+    await bootstrapApplication();
+}
+
 async function bootstrapApplication() {
     const appConfig = await initializeRuntimeConfig();
     await GravityStore.initialize();
-    await ensureMprUiReady();
-    assertTAuthHelpersAvailable();
-    assertAuthComponentsAvailable();
+    await ensureAuthReady();
     initializeAnalytics({ config: appConfig });
     document.addEventListener("alpine:init", () => {
         Alpine.data("gravityApp", () => gravityApp(appConfig));
@@ -130,66 +144,6 @@ async function bootstrapApplication() {
     window.Alpine = Alpine;
     Alpine.start();
 }
-
-/**
- * Ensure the mpr-ui config loader applied config and loaded the bundle.
- * @returns {Promise<void>}
- */
-async function ensureMprUiReady() {
-    if (typeof window === "undefined") {
-        throw new Error(AUTH_ERROR_MESSAGES.UNSUPPORTED);
-    }
-    const ready = window.__mprUiReady;
-    if (!ready || typeof ready.then !== "function") {
-        throw new Error(AUTH_ERROR_MESSAGES.MPR_UI_CONFIG_MISSING);
-    }
-    await ready;
-}
-
-/**
- * Ensure required TAuth helpers exist before mpr-ui boots.
- * @returns {void}
- */
-function assertTAuthHelpersAvailable() {
-    if (typeof window === "undefined") {
-        throw new Error(AUTH_ERROR_MESSAGES.UNSUPPORTED);
-    }
-    requireFunction(window.initAuthClient, AUTH_ERROR_MESSAGES.MISSING_INIT);
-    requireFunction(window.requestNonce, AUTH_ERROR_MESSAGES.MISSING_REQUEST_NONCE);
-    requireFunction(window.exchangeGoogleCredential, AUTH_ERROR_MESSAGES.MISSING_EXCHANGE);
-    requireFunction(window.getCurrentUser, AUTH_ERROR_MESSAGES.MISSING_CURRENT_USER);
-    requireFunction(window.logout, AUTH_ERROR_MESSAGES.MISSING_LOGOUT);
-}
-
-/**
- * @param {unknown} candidate
- * @param {string} errorMessage
- * @returns {Function}
- */
-function requireFunction(candidate, errorMessage) {
-    if (typeof candidate !== "function") {
-        throw new Error(errorMessage);
-    }
-    return candidate;
-}
-
-/**
- * Ensure mpr-ui custom elements are registered before use.
- * @returns {void}
- */
-function assertAuthComponentsAvailable() {
-    if (typeof window === "undefined" || typeof window.customElements === "undefined") {
-        throw new Error(AUTH_ERROR_MESSAGES.UNSUPPORTED);
-    }
-    if (!window.customElements.get("mpr-login-button")) {
-        throw new Error(AUTH_ERROR_MESSAGES.MPR_LOGIN_MISSING);
-    }
-    if (!window.customElements.get("mpr-user")) {
-        throw new Error(AUTH_ERROR_MESSAGES.MPR_USER_MISSING);
-    }
-}
-
-
 
 /**
  * Alpine root component that wires the Gravity Notes application.
@@ -210,6 +164,7 @@ function gravityApp(appConfig) {
         importInput: /** @type {HTMLInputElement|null} */ (null),
         authUser: /** @type {{ id: string, email: string|null, name: string|null, pictureUrl: string|null }|null} */ (null),
         pendingSignInUserId: /** @type {string|null} */ (null),
+        authBootstrapInProgress: false,
         /** @type {Promise<void>} */
         authOperationChain: Promise.resolve(),
         /** @type {number} */
@@ -359,7 +314,7 @@ function gravityApp(appConfig) {
          * @returns {void}
          */
         redirectToLanding() {
-            if (typeof window !== "undefined") {
+            if (typeof window !== "undefined" && canNavigate(window.location)) {
                 window.location.href = LANDING_PAGE_URL;
             }
         },
@@ -551,25 +506,27 @@ function gravityApp(appConfig) {
             if (this.authState !== AUTH_STATE_LOADING) {
                 return;
             }
-            if (typeof window === "undefined") {
-                throw new Error(AUTH_ERROR_MESSAGES.UNSUPPORTED);
+            if (this.authBootstrapInProgress) {
+                return;
             }
-            const getCurrentUser = requireFunction(window.getCurrentUser, AUTH_ERROR_MESSAGES.MISSING_CURRENT_USER);
+            this.authBootstrapInProgress = true;
             try {
-                const profile = await getCurrentUser();
+                await ensureAuthReady();
+                const session = await bootstrapTauthSession(appConfig);
                 if (this.authState !== AUTH_STATE_LOADING) {
                     return;
                 }
-                if (profile) {
-                    await this.handleAuthAuthenticated(profile);
+                if (session.profile) {
+                    dispatchMprAuthEvent(EVENT_MPR_AUTH_AUTHENTICATED, { profile: session.profile });
                     return;
                 }
+                dispatchMprAuthEvent(EVENT_MPR_AUTH_UNAUTHENTICATED, { profile: null });
+                return;
             } catch (error) {
                 logging.error("Auth bootstrap failed", error);
                 throw error;
-            }
-            if (this.authState === AUTH_STATE_LOADING) {
-                void this.handleAuthUnauthenticated();
+            } finally {
+                this.authBootstrapInProgress = false;
             }
         },
 
@@ -1041,4 +998,3 @@ function hashString(value) {
     }
     return hash;
 }
-

@@ -176,6 +176,8 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 - [x] [GN-444] (P1) Ensure the mpr-ui login component always registers by loading the bundle from a runtime-configured `mprUiScriptUrl` after tauth.js.
 - [x] [GN-445] (P1) Make auth boot strict (no fallbacks) and pre-initialize GIS before rendering the mpr-ui login button to avoid GSI warnings.
 - [ ] [GN-446] (P1) Adopt the mpr-ui config.yaml loader for auth wiring so login buttons render from declarative config and tauth.js only loads from the CDN.
+- [x] [GN-447] (P1) Auth boot loop and missing avatar after login when TAuth init resolves late.
+  Resolved by waiting for TAuth init callbacks before dispatching auth state, aligning landing/app redirects, and adding Playwright E2E coverage for login → app user menu rendering.
 
 
 ## Maintenance (428–499)

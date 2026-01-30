@@ -1,28 +1,32 @@
 // @ts-check
 
+import {
+    ERROR_AUTHENTICATION_GENERIC,
+    EVENT_MPR_AUTH_AUTHENTICATED,
+    EVENT_MPR_AUTH_ERROR
+} from "./constants.js?build=2026-01-01T22:43:21Z";
+import {
+    canNavigate,
+    ensureAuthReady
+} from "./core/authBootstrap.js?build=2026-01-01T22:43:21Z";
+import { logging } from "./utils/logging.js?build=2026-01-01T22:43:21Z";
+
 /**
  * Landing page auth handler.
  * Redirects to /app.html on successful authentication.
  * Checks for existing session on load and redirects if already authenticated.
  */
 
-const EVENT_MPR_AUTH_AUTHENTICATED = "mpr-ui:auth:authenticated";
-const EVENT_MPR_AUTH_ERROR = "mpr-ui:auth:error";
-const AUTH_CHECK_ENDPOINT = "/me";
 const AUTHENTICATED_REDIRECT = "/app.html";
-const ERROR_AUTHENTICATION_GENERIC = "Authentication error";
 
 /**
  * Initialize the landing page auth handling.
  * @returns {void}
  */
 function initializeLandingAuth() {
-    // Listen for successful authentication from mpr-ui
     document.body.addEventListener(EVENT_MPR_AUTH_AUTHENTICATED, handleAuthenticated);
     document.body.addEventListener(EVENT_MPR_AUTH_ERROR, handleAuthError);
-
-    // Check for existing session on page load
-    checkExistingSession();
+    void bootstrapExistingSession();
 }
 
 /**
@@ -47,7 +51,6 @@ function handleAuthenticated(event) {
         return;
     }
 
-    // Successfully authenticated, redirect to app
     redirectToApp();
 }
 
@@ -59,26 +62,20 @@ function handleAuthenticated(event) {
 function handleAuthError(event) {
     const detail = /** @type {{ message?: string, code?: string }} */ (event?.detail ?? {});
     if (detail?.code) {
-        // eslint-disable-next-line no-console
-        console.warn("Auth error reported by mpr-ui", detail);
+        logging.warn("Auth error reported by mpr-ui", detail);
     }
     showError(ERROR_AUTHENTICATION_GENERIC);
 }
 
 /**
- * Check for existing session and redirect if authenticated.
+ * Check for existing session after mpr-ui + tauth are ready.
  * @returns {Promise<void>}
  */
-async function checkExistingSession() {
+async function bootstrapExistingSession() {
     try {
-        const response = await fetch(AUTH_CHECK_ENDPOINT, { credentials: "include" });
-        if (response.ok) {
-            redirectToApp();
-        }
+        await ensureAuthReady();
     } catch (error) {
-        // Stay on landing page if check fails
-        // eslint-disable-next-line no-console
-        console.warn("Session check failed", error);
+        logging.warn("Landing auth bootstrap failed", error);
     }
 }
 
@@ -88,12 +85,8 @@ async function checkExistingSession() {
  * @returns {void}
  */
 function redirectToApp() {
-    if (typeof window !== "undefined") {
-        const protocol = window.location.protocol;
-        // Only redirect on HTTP/HTTPS, not file:// URLs (used in tests)
-        if (protocol === "http:" || protocol === "https:") {
-            window.location.href = AUTHENTICATED_REDIRECT;
-        }
+    if (typeof window !== "undefined" && canNavigate(window.location)) {
+        window.location.href = AUTHENTICATED_REDIRECT;
     }
 }
 
