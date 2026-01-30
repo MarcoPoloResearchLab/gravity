@@ -1,0 +1,31 @@
+environments:
+  - description: "Gravity Notes Development"
+    origins:
+      - "https://computercat.tyemirov.net:4443"
+    auth:
+      tauthUrl: "https://computercat.tyemirov.net:4443"
+      googleClientId: "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com"
+      tenantId: "gravity"
+      loginPath: "/auth/google"
+      logoutPath: "/auth/logout"
+      noncePath: "/auth/nonce"
+    authButton:
+      text: "signin_with"
+      size: "small"
+      theme: "outline"
+      shape: "circle"
+  - description: "Gravity Notes Production"
+    origins:
+      - "https://gravity.mprlab.com"
+    auth:
+      tauthUrl: "https://tauth-api.mprlab.com"
+      googleClientId: "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com"
+      tenantId: "gravity"
+      loginPath: "/auth/google"
+      logoutPath: "/auth/logout"
+      noncePath: "/auth/nonce"
+    authButton:
+      text: "signin_with"
+      size: "small"
+      theme: "outline"
+      shape: "circle"

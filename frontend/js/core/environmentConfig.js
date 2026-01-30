@@ -3,9 +3,11 @@
 export const ENVIRONMENT_PRODUCTION = "production";
 export const ENVIRONMENT_DEVELOPMENT = "development";
 
-export const DEVELOPMENT_BACKEND_BASE_URL = "http://localhost:8080";
+export const DEVELOPMENT_BACKEND_BASE_URL = "https://computercat.tyemirov.net:4443";
 export const DEVELOPMENT_LLM_PROXY_URL = "http://computercat:8081/v1/gravity/classify";
-export const DEVELOPMENT_AUTH_BASE_URL = "http://localhost:8082";
+export const DEVELOPMENT_AUTH_BASE_URL = "https://computercat.tyemirov.net:4443";
+export const DEVELOPMENT_TAUTH_SCRIPT_URL = "https://tauth.mprlab.com/tauth.js";
+export const DEVELOPMENT_MPR_UI_SCRIPT_URL = "https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@v3.6.2/mpr-ui.js";
 export const DEVELOPMENT_AUTH_TENANT_ID = "";
 
 // Production URLs are loaded from runtime.config.production.json - no hardcoded fallbacks
@@ -13,6 +15,8 @@ export const PRODUCTION_ENVIRONMENT_CONFIG = Object.freeze({
     backendBaseUrl: "",
     llmProxyUrl: "",
     authBaseUrl: "",
+    tauthScriptUrl: "",
+    mprUiScriptUrl: "",
     authTenantId: ""
 });
 
@@ -20,6 +24,8 @@ export const DEVELOPMENT_ENVIRONMENT_CONFIG = Object.freeze({
     backendBaseUrl: DEVELOPMENT_BACKEND_BASE_URL,
     llmProxyUrl: DEVELOPMENT_LLM_PROXY_URL,
     authBaseUrl: DEVELOPMENT_AUTH_BASE_URL,
+    tauthScriptUrl: DEVELOPMENT_TAUTH_SCRIPT_URL,
+    mprUiScriptUrl: DEVELOPMENT_MPR_UI_SCRIPT_URL,
     authTenantId: DEVELOPMENT_AUTH_TENANT_ID
 });
 
