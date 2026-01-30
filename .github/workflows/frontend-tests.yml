@@ -40,6 +40,10 @@ jobs:
         run: npx puppeteer browsers install chrome
         working-directory: frontend
 
+      - name: Install Playwright browsers
+        run: npx playwright install chromium
+        working-directory: frontend
+
       - name: Run tests
         run: npm test -- --fail-fast
         working-directory: frontend
