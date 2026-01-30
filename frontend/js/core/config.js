@@ -11,6 +11,8 @@ const ERROR_MESSAGES = Object.freeze({
     INVALID_BACKEND_BASE_URL: "app_config.invalid_backend_base_url",
     INVALID_LLM_PROXY_URL: "app_config.invalid_llm_proxy_url",
     INVALID_AUTH_BASE_URL: "app_config.invalid_auth_base_url",
+    INVALID_TAUTH_SCRIPT_URL: "app_config.invalid_tauth_script_url",
+    INVALID_MPR_UI_SCRIPT_URL: "app_config.invalid_mpr_ui_script_url",
     INVALID_AUTH_TENANT_ID: "app_config.invalid_auth_tenant_id",
     INVALID_GOOGLE_CLIENT_ID: "app_config.invalid_google_client_id"
 });
@@ -35,6 +37,8 @@ export const STATIC_APP_CONFIG = Object.freeze({
  *   backendBaseUrl: string,
  *   llmProxyUrl: string,
  *   authBaseUrl: string,
+ *   tauthScriptUrl: string,
+ *   mprUiScriptUrl: string,
  *   authTenantId: string,
  *   timezone: string,
  *   classificationTimeoutMs: number,
@@ -51,6 +55,8 @@ export const STATIC_APP_CONFIG = Object.freeze({
  *   backendBaseUrl?: string,
  *   llmProxyUrl?: string,
  *   authBaseUrl?: string,
+ *   tauthScriptUrl?: string,
+ *   mprUiScriptUrl?: string,
  *   authTenantId?: string,
  *   googleClientId: string
  * }} RuntimeConfigInput
@@ -96,6 +102,22 @@ export function createAppConfig(config) {
         ERROR_MESSAGES.INVALID_AUTH_BASE_URL,
         hasAuthBaseUrl
     );
+    const hasTauthScriptUrl = Object.prototype.hasOwnProperty.call(config, "tauthScriptUrl");
+    const tauthScriptUrl = resolveConfigValue(
+        config.tauthScriptUrl,
+        environmentDefaults.tauthScriptUrl,
+        false,
+        ERROR_MESSAGES.INVALID_TAUTH_SCRIPT_URL,
+        hasTauthScriptUrl
+    );
+    const hasMprUiScriptUrl = Object.prototype.hasOwnProperty.call(config, "mprUiScriptUrl");
+    const mprUiScriptUrl = resolveConfigValue(
+        config.mprUiScriptUrl,
+        environmentDefaults.mprUiScriptUrl,
+        false,
+        ERROR_MESSAGES.INVALID_MPR_UI_SCRIPT_URL,
+        hasMprUiScriptUrl
+    );
     const hasAuthTenantId = Object.prototype.hasOwnProperty.call(config, "authTenantId");
     const authTenantId = resolveConfigValue(
         config.authTenantId,
@@ -119,6 +141,8 @@ export function createAppConfig(config) {
         backendBaseUrl,
         llmProxyUrl,
         authBaseUrl,
+        tauthScriptUrl,
+        mprUiScriptUrl,
         authTenantId,
         googleClientId
     });

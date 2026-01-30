@@ -19,11 +19,17 @@ and are grouped by the date the work landed on `master`.
 - TAuth session now delegates nonce issuance and credential exchange to auth-client helpers instead of local fetches (GN-423).
 - Centralized environment config defaults and reused them across runtime config and test harnesses (GN-427).
 - Runtime config now returns a frozen app config and callers pass it explicitly instead of shared globals (GN-427).
+- Environment example files now live at `env.*.example`, keeping `.env*` files untracked while preserving copy-ready templates (GN-443).
+- mpr-ui now loads from a runtime-configured script URL (`mprUiScriptUrl`) after tauth.js so login components always register (GN-444).
+- Auth boot now fails fast when required helpers/components are missing and pre-initializes Google Identity Services before rendering the login button to avoid GSI warnings (GN-445).
 - Signed-out visitors now see a landing page with a Google sign-in button; the Gravity interface requires authentication (GN-126).
 - mpr-ui now loads from a static script tag and auth components mount after runtime config so attributes are applied before initialization (GN-436).
 - Frontend now pulls mpr-ui assets from the `@latest` CDN tag so releases stay aligned (GN-437).
 
 ### Fixed
+- TAuth helper now loads from a dedicated CDN URL via `tauthScriptUrl`, and gHTTP no longer proxies `/tauth.js` while proxying `/me` to TAuth for session checks in the dev stack (GN-442).
+- Dev docker compose now serves Gravity over HTTPS at computercat.tyemirov.net:4443 via gHTTP proxies for backend/TAuth endpoints, with updated dev runtime config and env templates (GN-441).
+- Normalized development runtime config endpoints to swap loopback hosts for the active dev hostname and refreshed the TAuth env example for localhost defaults (GN-440).
 - Sync queue now coalesces per note and resolves payloads from the latest stored note to avoid duplicate ops and offline failures (GN-439).
 - Landing sign-in now sets mpr-ui auth base/login/logout/nonce attributes so nonce requests hit TAuth instead of the frontend origin (GN-433).
 - Runtime config now accepts a Google client ID override so local GSI origins can match the correct project (GN-438).

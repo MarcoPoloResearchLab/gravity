@@ -9,12 +9,12 @@ import { decodePng } from "./helpers/png.js";
 
 import { connectSharedBrowser } from "./helpers/browserHarness.js";
 import { startTestBackend } from "./helpers/backendHarness.js";
-import { buildUserStorageKey, dispatchNoteCreate, prepareFrontendPage, signInTestUser } from "./helpers/syncTestUtils.js";
+import { attachBackendSessionCookie, buildUserStorageKey, dispatchNoteCreate, prepareFrontendPage, signInTestUser } from "./helpers/syncTestUtils.js";
 import { saveScreenshotArtifact, withScreenshotCapture } from "./helpers/screenshotArtifacts.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+const PAGE_URL = `file://${path.join(PROJECT_ROOT, "app.html")}`;
 
 const GN58_NOTE_ID = "gn58-duplicate-htmlView";
 const TEST_USER_ID = "duplicate-render-user";
@@ -218,8 +218,10 @@ async function openPageWithRecords(records) {
     const storageKey = buildUserStorageKey(TEST_USER_ID);
     const page = await prepareFrontendPage(context, PAGE_URL, {
         backendBaseUrl: backend.baseUrl,
-        beforeNavigate: (targetPage) => {
-            return targetPage.evaluateOnNewDocument((payloadKey) => {
+        beforeNavigate: async (targetPage) => {
+            // Set session cookie BEFORE navigation to prevent redirect to landing page
+            await attachBackendSessionCookie(targetPage, backend, TEST_USER_ID);
+            await targetPage.evaluateOnNewDocument((payloadKey) => {
                 window.__gravityForceMarkdownEditor = true;
                 window.localStorage.clear();
                 window.localStorage.setItem(payloadKey, "[]");

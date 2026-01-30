@@ -18,11 +18,12 @@ import {
     withScreenshotCapture
 } from "../helpers/screenshotArtifacts.js";
 import { readRuntimeContext } from "../helpers/runtimeContext.js";
-import { signInTestUser } from "../helpers/syncTestUtils.js";
+import { attachBackendSessionCookie, resolvePageUrl, signInTestUser } from "../helpers/syncTestUtils.js";
 
 const CURRENT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(CURRENT_DIR, "..", "..");
-const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+// Use app.html in the new page-separation architecture
+const PAGE_URL = `file://${path.join(PROJECT_ROOT, "app.html")}`;
 const TMP_PREFIX = "gravity-screenshots-";
 const TEST_USER_ID = "local-screenshots-user";
 
@@ -60,7 +61,10 @@ test("captures local screenshot artifacts for puppeteer-driven areas", async (t)
             const backend = await startTestBackend();
             const { page, teardown } = await createSharedPage();
             try {
-                await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
+                // Set session cookie BEFORE navigation to prevent redirect to landing page
+                await attachBackendSessionCookie(page, backend, TEST_USER_ID);
+                const resolvedUrl = await resolvePageUrl(PAGE_URL);
+                await page.goto(resolvedUrl, { waitUntil: "domcontentloaded" });
                 await signInTestUser(page, backend, TEST_USER_ID);
                 await page.waitForSelector(".app-header");
 

@@ -7,12 +7,12 @@ import test from "node:test";
 
 import { createSharedPage, waitForAppHydration, flushAlpineQueues } from "./helpers/browserHarness.js";
 import { startTestBackend } from "./helpers/backendHarness.js";
-import { buildUserStorageKey, signInTestUser } from "./helpers/syncTestUtils.js";
+import { attachBackendSessionCookie, buildUserStorageKey, resolvePageUrl, signInTestUser } from "./helpers/syncTestUtils.js";
 import { STORAGE_KEY, STORAGE_KEY_USER_PREFIX } from "../js/core/config.js?build=2026-01-01T22:43:21Z";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+const PAGE_URL = `file://${path.join(PROJECT_ROOT, "app.html")}`;
 const TEST_USER_ID_BASE = "editor-inline-user";
 
 const NOTE_ID = "inline-fixture";
@@ -2886,7 +2886,10 @@ async function applyBackquoteWrap(page, cardSelector, selectionText) {
 }
 
 async function bootstrapInlinePage(page, backend, userId) {
-    await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
+    // Set session cookie BEFORE navigation to prevent redirect to landing page
+    await attachBackendSessionCookie(page, backend, userId);
+    const resolvedUrl = await resolvePageUrl(PAGE_URL);
+    await page.goto(resolvedUrl, { waitUntil: "domcontentloaded" });
     await waitForAppHydration(page);
     await flushAlpineQueues(page);
     await signInTestUser(page, backend, userId, { waitForSyncManager: false });
