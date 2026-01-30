@@ -24,6 +24,7 @@ import {
     LABEL_EXPORT_NOTES,
     LABEL_IMPORT_NOTES,
     LABEL_ENTER_FULL_SCREEN,
+    LABEL_EXIT_FULL_SCREEN,
     LABEL_LANDING_TITLE,
     LABEL_LANDING_DESCRIPTION,
     LABEL_LANDING_SIGN_IN_HINT,
@@ -50,7 +51,11 @@ import {
 import { initializeKeyboardShortcutsModal } from "./ui/keyboardShortcutsModal.js?build=2026-01-01T22:43:21Z";
 import { initializeNotesState } from "./ui/notesState.js?build=2026-01-01T22:43:21Z";
 import { showSaveFeedback } from "./ui/saveFeedback.js?build=2026-01-01T22:43:21Z";
-import { initializeFullScreenToggle } from "./ui/fullScreenToggle.js?build=2026-01-01T22:43:21Z";
+import {
+    isElementFullScreen,
+    isFullScreenSupported,
+    performFullScreenToggle
+} from "./ui/fullScreenToggle.js?build=2026-01-01T22:43:21Z";
 import { initializeVersionRefresh } from "./utils/versionRefresh.js?build=2026-01-01T22:43:21Z";
 import { logging } from "./utils/logging.js?build=2026-01-01T22:43:21Z";
 import { normalizeProfileForApp } from "./utils/profileNormalization.js?build=2026-01-01T22:43:21Z";
@@ -72,6 +77,7 @@ const AUTH_STATE_UNAUTHENTICATED = "unauthenticated";
 const LANDING_PAGE_URL = "/";
 const USER_MENU_ACTION_EXPORT = "export-notes";
 const USER_MENU_ACTION_IMPORT = "import-notes";
+const USER_MENU_ACTION_FULLSCREEN = "toggle-fullscreen";
 const NOTIFICATION_DEFAULT_DURATION_MS = 3000;
 
 /**
@@ -173,7 +179,6 @@ function gravityApp(appConfig) {
         realtimeSync: /** @type {{ connect(params: { baseUrl: string }): void, disconnect(): void, dispose(): void }|null} */ (null),
         syncIntervalHandle: /** @type {number|null} */ (null),
         lastRenderedSignature: /** @type {string|null} */ (null),
-        fullScreenToggleController: /** @type {{ dispose(): void }|null} */ (null),
         versionRefreshController: /** @type {{ dispose(): void, checkNow(): Promise<{ reloaded: boolean, remoteVersion: string|null }> }|null} */ (null),
 
         init() {
@@ -192,15 +197,14 @@ function gravityApp(appConfig) {
             this.exportButton = /** @type {HTMLButtonElement|null} */ (this.$refs.exportButton ?? document.getElementById("export-notes-button"));
             this.importButton = /** @type {HTMLButtonElement|null} */ (this.$refs.importButton ?? document.getElementById("import-notes-button"));
             this.importInput = /** @type {HTMLInputElement|null} */ (this.$refs.importInput ?? document.getElementById("import-notes-input"));
-            const fullScreenButton = /** @type {HTMLButtonElement|null} */ (this.$refs.fullScreenToggle ?? document.querySelector('[data-test="fullscreen-toggle"]'));
-
-            this.fullScreenToggleController = initializeFullScreenToggle({
-                button: fullScreenButton,
-                targetElement: document.documentElement ?? null,
-                notify: (message) => {
-                    this.emitNotification(message);
-                }
-            });
+            if (typeof document !== "undefined") {
+                const fullScreenEvents = ["fullscreenchange", "webkitfullscreenchange", "mozfullscreenchange", "MSFullscreenChange"];
+                fullScreenEvents.forEach((eventName) => {
+                    document.addEventListener(eventName, () => {
+                        this.updateUserMenuItems();
+                    });
+                });
+            }
 
             this.configureMarked();
             this.registerEventBridges();
@@ -350,6 +354,13 @@ function gravityApp(appConfig) {
                 { label: LABEL_EXPORT_NOTES, action: USER_MENU_ACTION_EXPORT },
                 { label: LABEL_IMPORT_NOTES, action: USER_MENU_ACTION_IMPORT }
             ];
+            const fullScreenTarget = typeof document !== "undefined" ? document.documentElement : null;
+            if (fullScreenTarget instanceof HTMLElement && isFullScreenSupported(fullScreenTarget)) {
+                const label = isElementFullScreen(fullScreenTarget)
+                    ? LABEL_EXIT_FULL_SCREEN
+                    : LABEL_ENTER_FULL_SCREEN;
+                items.push({ label, action: USER_MENU_ACTION_FULLSCREEN });
+            }
             menu.setAttribute("menu-items", JSON.stringify(items));
         },
 
@@ -360,6 +371,15 @@ function gravityApp(appConfig) {
             }
             if (action === USER_MENU_ACTION_IMPORT) {
                 this.importButton?.click();
+                return;
+            }
+            if (action === USER_MENU_ACTION_FULLSCREEN) {
+                void performFullScreenToggle({
+                    targetElement: typeof document !== "undefined" ? document.documentElement : null,
+                    notify: (message) => {
+                        this.emitNotification(message);
+                    }
+                });
             }
         },
 

@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
+import { LABEL_ENTER_FULL_SCREEN, LABEL_EXIT_FULL_SCREEN } from "../js/constants.js";
 import { resolvePageUrl } from "./helpers/syncTestUtils.js";
 
 const CURRENT_FILE = fileURLToPath(import.meta.url);
@@ -194,6 +195,62 @@ const GOOGLE_GSI_STUB_SCRIPT = [
     "})();"
 ].join("\n");
 
+const FULLSCREEN_STUB_SCRIPT = [
+    "(() => {",
+    "  const counters = { enterCalls: 0, exitCalls: 0, lastMethod: \"\", requestOverride: false, exitOverride: false };",
+    "  let fullscreenElement = null;",
+    "  const update = (element, method) => {",
+    "    fullscreenElement = element;",
+    "    if (element) {",
+    "      counters.enterCalls += 1;",
+    "    } else {",
+    "      counters.exitCalls += 1;",
+    "    }",
+    "    counters.lastMethod = method;",
+    "    const eventName = method === \"webkit\" ? \"webkitfullscreenchange\" : \"fullscreenchange\";",
+    "    document.dispatchEvent(new Event(eventName));",
+    "  };",
+    "  const defineElementGetter = (target, prop) => {",
+    "    try {",
+    "      Object.defineProperty(target, prop, { configurable: true, get: () => fullscreenElement });",
+    "      return true;",
+    "    } catch {",
+    "      return false;",
+    "    }",
+    "  };",
+    "  defineElementGetter(document, \"fullscreenElement\");",
+    "  defineElementGetter(document, \"webkitFullscreenElement\");",
+    "  defineElementGetter(Document.prototype, \"fullscreenElement\");",
+    "  defineElementGetter(Document.prototype, \"webkitFullscreenElement\");",
+    "  const elementProto = Element.prototype;",
+    "  try {",
+    "    Object.defineProperty(elementProto, \"requestFullscreen\", { configurable: true, value: undefined });",
+    "    counters.requestOverride = true;",
+    "  } catch {}",
+    "  if (!counters.requestOverride) {",
+    "    elementProto.requestFullscreen = async function requestFullscreen() {",
+    "      update(this, \"standard\");",
+    "    };",
+    "  }",
+    "  elementProto.webkitRequestFullscreen = async function webkitRequestFullscreen() {",
+    "    update(this, \"webkit\");",
+    "  };",
+    "  try {",
+    "    Object.defineProperty(document, \"exitFullscreen\", { configurable: true, value: undefined });",
+    "    counters.exitOverride = true;",
+    "  } catch {}",
+    "  if (!counters.exitOverride) {",
+    "    document.exitFullscreen = async function exitFullscreen() {",
+    "      update(null, \"standard\");",
+    "    };",
+    "  }",
+    "  document.webkitExitFullscreen = async function webkitExitFullscreen() {",
+    "    update(null, \"webkit\");",
+    "  };",
+    "  window.__gravityFullscreenCounters = counters;",
+    "})();"
+].join("\n");
+
 async function readFixture(filePath) {
     return fs.readFile(filePath, "utf-8");
 }
@@ -259,6 +316,170 @@ async function readAuthState(page) {
     });
 }
 
+/**
+ * @param {import("playwright").Page} page
+ * @param {string} landingUrl
+ * @returns {Promise<void>}
+ */
+async function loginToApp(page, landingUrl) {
+    await page.goto(landingUrl, { waitUntil: "domcontentloaded" });
+    await page.waitForSelector("mpr-login-button", { timeout: WAIT_TIMEOUT_MS });
+    await page.waitForSelector("[data-test=google-signin]", { timeout: WAIT_TIMEOUT_MS });
+    const navigationPromise = page.waitForURL(/\/app\.html$/, { timeout: WAIT_TIMEOUT_MS });
+    await page.click("[data-test=google-signin]");
+    await navigationPromise;
+    await page.waitForSelector("[data-test=app-shell]", { timeout: WAIT_TIMEOUT_MS });
+    await page.waitForSelector("mpr-user[data-mpr-user-status=\"authenticated\"]", { timeout: WAIT_TIMEOUT_MS });
+    await page.waitForSelector("mpr-user [data-mpr-user=\"trigger\"]", { timeout: WAIT_TIMEOUT_MS });
+}
+
+/**
+ * @param {{ initScript?: string }} options
+ * @returns {Promise<{ browser: import("playwright").Browser, context: import("playwright").BrowserContext, page: import("playwright").Page, landingUrl: string, origin: string, state: { invalidMeRequest: boolean }, teardown: () => Promise<void> }>}
+ */
+async function createPlaywrightHarness(options = {}) {
+    const landingUrl = await resolvePageUrl(LANDING_FILE_URL);
+    const origin = new URL(landingUrl).origin;
+    const runtimeConfigBody = buildRuntimeConfig(origin);
+    const configYamlBody = buildConfigYaml(origin);
+
+    const [mprUiSource, mprUiConfigSource, mprUiCssSource] = await Promise.all([
+        readFixture(MPR_UI_JS_PATH),
+        readFixture(MPR_UI_CONFIG_PATH),
+        readFixture(MPR_UI_CSS_PATH)
+    ]);
+
+    const browser = await chromiumBrowser.launch();
+    const context = await browser.newContext();
+    if (options.initScript) {
+        await context.addInitScript(options.initScript);
+    }
+    const page = await context.newPage();
+
+    const registerRoute = async (urlPattern, handler) => {
+        await page.route(urlPattern, handler);
+    };
+    const state = { invalidMeRequest: false };
+
+    await registerRoute(`${origin}/data/runtime.config.development.json`, (route) => {
+        route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: runtimeConfigBody
+        }).catch(() => {});
+    });
+    await registerRoute(`${origin}/config.yaml`, (route) => {
+        route.fulfill({
+            status: 200,
+            contentType: "text/yaml",
+            body: configYamlBody
+        }).catch(() => {});
+    });
+    await registerRoute(MPR_UI_CONFIG_URL, (route) => {
+        route.fulfill({
+            status: 200,
+            contentType: "application/javascript",
+            body: mprUiConfigSource
+        }).catch(() => {});
+    });
+    await registerRoute(MPR_UI_SCRIPT_URL, (route) => {
+        route.fulfill({
+            status: 200,
+            contentType: "application/javascript",
+            body: mprUiSource
+        }).catch(() => {});
+    });
+    await registerRoute(MPR_UI_CSS_URL, (route) => {
+        route.fulfill({
+            status: 200,
+            contentType: "text/css",
+            body: mprUiCssSource
+        }).catch(() => {});
+    });
+    await registerRoute(TAUTH_SCRIPT_URL, (route) => {
+        route.fulfill({
+            status: 200,
+            contentType: "application/javascript",
+            body: TAUTH_STUB_SCRIPT
+        }).catch(() => {});
+    });
+    await registerRoute(GOOGLE_GSI_URL, (route) => {
+        route.fulfill({
+            status: 200,
+            contentType: "application/javascript",
+            body: GOOGLE_GSI_STUB_SCRIPT
+        }).catch(() => {});
+    });
+    await registerRoute(new RegExp(`^${escapeForRegExp(LOOPAWARE_URL)}(\\?.*)?$`, "u"), (route) => {
+        route.fulfill({
+            status: 200,
+            contentType: "application/javascript",
+            body: ""
+        }).catch(() => {});
+    });
+    await registerRoute(`${origin}/me`, (route) => {
+        const headers = route.request().headers();
+        const tenantHeader = headers["x-tauth-tenant"];
+        if (!tenantHeader) {
+            state.invalidMeRequest = true;
+        }
+        const cookieHeader = headers["cookie"] ?? "";
+        const authenticated = cookieHeader.includes("app_session=");
+        route.fulfill({
+            status: authenticated ? 200 : 403,
+            contentType: "application/json",
+            body: authenticated ? JSON.stringify({ userId: TEST_USER_ID }) : JSON.stringify({ error: "unauthorized" })
+        }).catch(() => {});
+    });
+    await registerRoute(`${origin}/notes`, (route) => {
+        route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: NOTES_RESPONSE
+        }).catch(() => {});
+    });
+    await registerRoute(`${origin}/notes/sync`, (route) => {
+        route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: SYNC_RESPONSE
+        }).catch(() => {});
+    });
+    await registerRoute(`${origin}/auth/nonce`, (route) => {
+        route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ nonce: "playwright-nonce" })
+        }).catch(() => {});
+    });
+    await registerRoute(`${origin}/auth/google`, (route) => {
+        route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+                user_id: TEST_USER_ID,
+                user_email: TEST_USER_EMAIL,
+                display: TEST_USER_DISPLAY,
+                avatar_url: TEST_USER_AVATAR_URL
+            })
+        }).catch(() => {});
+    });
+    await registerRoute(`${origin}/auth/logout`, (route) => {
+        route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ ok: true })
+        }).catch(() => {});
+    });
+
+    const teardown = async () => {
+        await context.close().catch(() => {});
+        await browser.close().catch(() => {});
+    };
+
+    return { browser, context, page, landingUrl, origin, state, teardown };
+}
+
 let playwrightAvailable = true;
 let chromiumBrowser = null;
 try {
@@ -275,160 +496,83 @@ if (!playwrightAvailable) {
 } else {
     test.describe("Landing login E2E (Playwright)", { timeout: TEST_TIMEOUT_MS }, () => {
         test("clicking login renders user menu without redirect loop", async () => {
-            const landingUrl = await resolvePageUrl(LANDING_FILE_URL);
-            const origin = new URL(landingUrl).origin;
-            const runtimeConfigBody = buildRuntimeConfig(origin);
-            const configYamlBody = buildConfigYaml(origin);
-
-            const [mprUiSource, mprUiConfigSource, mprUiCssSource] = await Promise.all([
-                readFixture(MPR_UI_JS_PATH),
-                readFixture(MPR_UI_CONFIG_PATH),
-                readFixture(MPR_UI_CSS_PATH)
-            ]);
-
-            const browser = await chromiumBrowser.launch();
-            const context = await browser.newContext();
-            const page = await context.newPage();
-
-            const registerRoute = async (urlPattern, handler) => {
-                await page.route(urlPattern, handler);
-            };
-            let invalidMeRequest = false;
-
-            await registerRoute(`${origin}/data/runtime.config.development.json`, (route) => {
-                route.fulfill({
-                    status: 200,
-                    contentType: "application/json",
-                    body: runtimeConfigBody
-                }).catch(() => {});
-            });
-            await registerRoute(`${origin}/config.yaml`, (route) => {
-                route.fulfill({
-                    status: 200,
-                    contentType: "text/yaml",
-                    body: configYamlBody
-                }).catch(() => {});
-            });
-            await registerRoute(MPR_UI_CONFIG_URL, (route) => {
-                route.fulfill({
-                    status: 200,
-                    contentType: "application/javascript",
-                    body: mprUiConfigSource
-                }).catch(() => {});
-            });
-            await registerRoute(MPR_UI_SCRIPT_URL, (route) => {
-                route.fulfill({
-                    status: 200,
-                    contentType: "application/javascript",
-                    body: mprUiSource
-                }).catch(() => {});
-            });
-            await registerRoute(MPR_UI_CSS_URL, (route) => {
-                route.fulfill({
-                    status: 200,
-                    contentType: "text/css",
-                    body: mprUiCssSource
-                }).catch(() => {});
-            });
-            await registerRoute(TAUTH_SCRIPT_URL, (route) => {
-                route.fulfill({
-                    status: 200,
-                    contentType: "application/javascript",
-                    body: TAUTH_STUB_SCRIPT
-                }).catch(() => {});
-            });
-            await registerRoute(GOOGLE_GSI_URL, (route) => {
-                route.fulfill({
-                    status: 200,
-                    contentType: "application/javascript",
-                    body: GOOGLE_GSI_STUB_SCRIPT
-                }).catch(() => {});
-            });
-            await registerRoute(new RegExp(`^${escapeForRegExp(LOOPAWARE_URL)}(\\?.*)?$`, "u"), (route) => {
-                route.fulfill({
-                    status: 200,
-                    contentType: "application/javascript",
-                    body: ""
-                }).catch(() => {});
-            });
-            await registerRoute(`${origin}/me`, (route) => {
-                const headers = route.request().headers();
-                const tenantHeader = headers["x-tauth-tenant"];
-                if (!tenantHeader) {
-                    invalidMeRequest = true;
-                }
-                const cookieHeader = headers["cookie"] ?? "";
-                const authenticated = cookieHeader.includes("app_session=");
-                route.fulfill({
-                    status: authenticated ? 200 : 403,
-                    contentType: "application/json",
-                    body: authenticated ? JSON.stringify({ userId: TEST_USER_ID }) : JSON.stringify({ error: "unauthorized" })
-                }).catch(() => {});
-            });
-            await registerRoute(`${origin}/notes`, (route) => {
-                route.fulfill({
-                    status: 200,
-                    contentType: "application/json",
-                    body: NOTES_RESPONSE
-                }).catch(() => {});
-            });
-            await registerRoute(`${origin}/notes/sync`, (route) => {
-                route.fulfill({
-                    status: 200,
-                    contentType: "application/json",
-                    body: SYNC_RESPONSE
-                }).catch(() => {});
-            });
-            await registerRoute(`${origin}/auth/nonce`, (route) => {
-                route.fulfill({
-                    status: 200,
-                    contentType: "application/json",
-                    body: JSON.stringify({ nonce: "playwright-nonce" })
-                }).catch(() => {});
-            });
-            await registerRoute(`${origin}/auth/google`, (route) => {
-                route.fulfill({
-                    status: 200,
-                    contentType: "application/json",
-                    body: JSON.stringify({
-                        user_id: TEST_USER_ID,
-                        user_email: TEST_USER_EMAIL,
-                        display: TEST_USER_DISPLAY,
-                        avatar_url: TEST_USER_AVATAR_URL
-                    })
-                }).catch(() => {});
-            });
-            await registerRoute(`${origin}/auth/logout`, (route) => {
-                route.fulfill({
-                    status: 200,
-                    contentType: "application/json",
-                    body: JSON.stringify({ ok: true })
-                }).catch(() => {});
-            });
-
+            const { page, landingUrl, state, teardown } = await createPlaywrightHarness();
             try {
-                await page.goto(landingUrl, { waitUntil: "domcontentloaded" });
-                await page.waitForSelector("mpr-login-button", { timeout: WAIT_TIMEOUT_MS });
-                await page.waitForSelector("[data-test=google-signin]", { timeout: WAIT_TIMEOUT_MS });
-
-                const navigationPromise = page.waitForURL(/\/app\.html$/, { timeout: WAIT_TIMEOUT_MS });
-                await page.click("[data-test=google-signin]");
-                await navigationPromise;
-
-                await page.waitForSelector("[data-test=app-shell]", { timeout: WAIT_TIMEOUT_MS });
-                await page.waitForSelector("mpr-user[data-mpr-user-status=\"authenticated\"]", { timeout: WAIT_TIMEOUT_MS });
-                await page.waitForSelector("mpr-user [data-mpr-user=\"trigger\"]", { timeout: WAIT_TIMEOUT_MS });
-
+                await loginToApp(page, landingUrl);
                 await page.waitForTimeout(750);
-                assert.equal(invalidMeRequest, false, "Expected /me requests to include X-TAuth-Tenant header");
+                assert.equal(state.invalidMeRequest, false, "Expected /me requests to include X-TAuth-Tenant header");
                 assert.ok(page.url().includes("/app.html"), "Expected to remain on app.html after login");
             } catch (error) {
                 const debugState = await readAuthState(page).catch(() => null);
                 const errorMessage = error instanceof Error ? error.message : String(error);
                 throw new Error(`Playwright auth flow failed: ${errorMessage}; state=${JSON.stringify(debugState)}`, { cause: error });
             } finally {
-                await context.close().catch(() => {});
-                await browser.close().catch(() => {});
+                await teardown();
+            }
+        });
+
+        test("fullscreen menu item replaces standalone button and toggles state", async () => {
+            const { page, landingUrl, teardown } = await createPlaywrightHarness({ initScript: FULLSCREEN_STUB_SCRIPT });
+            try {
+                await loginToApp(page, landingUrl);
+                const standaloneButton = await page.$("[data-test=\"fullscreen-toggle\"]");
+                assert.equal(standaloneButton, null, "Standalone fullscreen button should be removed");
+
+                await page.click("mpr-user [data-mpr-user=\"trigger\"]");
+                await page.waitForSelector("mpr-user [data-mpr-user=\"menu-item\"][data-mpr-user-action=\"toggle-fullscreen\"]", {
+                    timeout: WAIT_TIMEOUT_MS
+                });
+                const enterLabel = await page.$eval(
+                    "mpr-user [data-mpr-user=\"menu-item\"][data-mpr-user-action=\"toggle-fullscreen\"]",
+                    (element) => element.textContent?.trim() ?? ""
+                );
+                assert.equal(enterLabel, LABEL_ENTER_FULL_SCREEN);
+
+                await page.click("mpr-user [data-mpr-user=\"menu-item\"][data-mpr-user-action=\"toggle-fullscreen\"]");
+                await page.click("mpr-user [data-mpr-user=\"trigger\"]");
+                await page.waitForFunction(({ selector, label }) => {
+                    const element = document.querySelector(selector);
+                    return element && element.textContent?.trim() === label;
+                }, {
+                    selector: "mpr-user [data-mpr-user=\"menu-item\"][data-mpr-user-action=\"toggle-fullscreen\"]",
+                    label: LABEL_EXIT_FULL_SCREEN
+                });
+
+                const countersAfterEnter = await page.evaluate(() => window.__gravityFullscreenCounters ?? null);
+                assert.ok(countersAfterEnter && countersAfterEnter.enterCalls >= 1, "Expected fullscreen enter to be invoked");
+                if (countersAfterEnter && countersAfterEnter.requestOverride) {
+                    assert.equal(
+                        countersAfterEnter.lastMethod,
+                        "webkit",
+                        "Expected webkit fullscreen enter when standard API is unavailable"
+                    );
+                }
+
+                await page.click("mpr-user [data-mpr-user=\"menu-item\"][data-mpr-user-action=\"toggle-fullscreen\"]");
+                await page.click("mpr-user [data-mpr-user=\"trigger\"]");
+                await page.waitForFunction(({ selector, label }) => {
+                    const element = document.querySelector(selector);
+                    return element && element.textContent?.trim() === label;
+                }, {
+                    selector: "mpr-user [data-mpr-user=\"menu-item\"][data-mpr-user-action=\"toggle-fullscreen\"]",
+                    label: LABEL_ENTER_FULL_SCREEN
+                });
+
+                const countersAfterExit = await page.evaluate(() => window.__gravityFullscreenCounters ?? null);
+                assert.ok(countersAfterExit && countersAfterExit.exitCalls >= 1, "Expected fullscreen exit to be invoked");
+                if (countersAfterExit && countersAfterExit.exitOverride) {
+                    assert.equal(
+                        countersAfterExit.lastMethod,
+                        "webkit",
+                        "Expected webkit fullscreen exit when standard API is unavailable"
+                    );
+                }
+            } catch (error) {
+                const debugState = await readAuthState(page).catch(() => null);
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                throw new Error(`Playwright fullscreen menu failed: ${errorMessage}; state=${JSON.stringify(debugState)}`, { cause: error });
+            } finally {
+                await teardown();
             }
         });
     });

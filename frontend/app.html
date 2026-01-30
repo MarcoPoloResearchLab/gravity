@@ -218,30 +218,6 @@
             <div class="app-subtitle" x-text="constants.LABEL_APP_SUBTITLE">Append anywhere &middot; Bubble to top &middot; Auto-organize</div>
         </div>
         <div class="app-auth">
-            <button
-                    class="fullscreen-toggle"
-                    type="button"
-                    x-ref="fullScreenToggle"
-                    data-test="fullscreen-toggle"
-                    data-fullscreen-state="enter"
-                    aria-pressed="false"
-                    aria-label=""
-                    title=""
-            >
-                <svg class="fullscreen-toggle__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                    <g class="fullscreen-toggle__enter">
-                        <path class="fullscreen-toggle__stroke" d="M6 18 L18 6"/>
-                        <path class="fullscreen-toggle__stroke" d="M6 12 L6 18 L12 18"/>
-                        <path class="fullscreen-toggle__stroke" d="M18 12 L18 6 L12 6"/>
-                    </g>
-                    <g class="fullscreen-toggle__exit">
-                        <path class="fullscreen-toggle__stroke" d="M6 6 L18 18"/>
-                        <path class="fullscreen-toggle__stroke" d="M7.5 5 L6 6 L5 7.5"/>
-                        <path class="fullscreen-toggle__stroke" d="M19 16.5 L18 18 L16.5 19"/>
-                    </g>
-                </svg>
-                <span class="fullscreen-toggle__label" data-role="fullscreen-label" x-text="constants.LABEL_ENTER_FULL_SCREEN">Full Screen</span>
-            </button>
             <mpr-user
                     id="app-user-menu"
                     x-ref="userMenu"

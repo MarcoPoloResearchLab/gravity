@@ -1,133 +1,48 @@
 // @ts-check
 
-import {
-    LABEL_ENTER_FULL_SCREEN,
-    LABEL_EXIT_FULL_SCREEN,
-    MESSAGE_FULLSCREEN_TOGGLE_FAILED
-} from "../constants.js?build=2026-01-01T22:43:21Z";
+import { MESSAGE_FULLSCREEN_TOGGLE_FAILED } from "../constants.js?build=2026-01-01T22:43:21Z";
 import { logging } from "../utils/logging.js?build=2026-01-01T22:43:21Z";
-
-const FULLSCREEN_CHANGE_EVENT = "fullscreenchange";
-const STATE_ENTER = "enter";
-const STATE_EXIT = "exit";
 
 /**
  * @typedef {{
- *   button: HTMLButtonElement | null,
  *   targetElement?: HTMLElement | null,
  *   notify?: (message: string) => void
- * }} FullScreenToggleOptions
+ * }} FullScreenToggleActionOptions
  */
 
 /**
- * Initialize the full-screen toggle control.
- * @param {FullScreenToggleOptions} options
- * @returns {{ dispose(): void }}
+ * Toggle full screen on the provided element (or document root), with standard error handling.
+ * @param {FullScreenToggleActionOptions} options
+ * @returns {Promise<void>}
  */
-export function initializeFullScreenToggle(options) {
-    const { button, targetElement = document?.documentElement ?? null, notify } = options ?? {};
-
-    if (!(button instanceof HTMLButtonElement)) {
-        return createNoopController();
+export async function performFullScreenToggle(options) {
+    const target = options?.targetElement ?? document?.documentElement ?? null;
+    if (!(target instanceof HTMLElement)) {
+        logging.error("Failed to toggle full screen state", new Error("Full screen target unavailable."));
+        if (typeof options?.notify === "function") {
+            options.notify(MESSAGE_FULLSCREEN_TOGGLE_FAILED);
+        }
+        return;
     }
-    const fullScreenTarget = targetElement instanceof HTMLElement ? targetElement : document.documentElement;
-    if (!(fullScreenTarget instanceof HTMLElement)) {
-        return createNoopController();
+    try {
+        if (isElementFullScreen(target)) {
+            await exitFullScreen();
+        } else {
+            await requestFullScreen(target);
+        }
+    } catch (error) {
+        logging.error("Failed to toggle full screen state", error);
+        if (typeof options?.notify === "function") {
+            options.notify(MESSAGE_FULLSCREEN_TOGGLE_FAILED);
+        }
     }
-    if (!isFullScreenSupported(fullScreenTarget)) {
-        hideButton(button);
-        return createNoopController();
-    }
-
-    let disposed = false;
-    const labelElement = button.querySelector("[data-role=\"fullscreen-label\"]");
-
-    button.hidden = false;
-    button.removeAttribute("aria-hidden");
-    button.type = "button";
-    button.dataset.fullscreenState = STATE_ENTER;
-
-    const updateAppearance = () => {
-        if (disposed) {
-            return;
-        }
-        const isFullScreen = isElementFullScreen(fullScreenTarget);
-        const nextLabel = isFullScreen ? LABEL_EXIT_FULL_SCREEN : LABEL_ENTER_FULL_SCREEN;
-        button.dataset.fullscreenState = isFullScreen ? STATE_EXIT : STATE_ENTER;
-        button.setAttribute("aria-label", nextLabel);
-        button.setAttribute("title", nextLabel);
-        button.setAttribute("aria-pressed", isFullScreen ? "true" : "false");
-        if (labelElement instanceof HTMLElement) {
-            labelElement.textContent = nextLabel;
-        }
-    };
-
-    const handleFullScreenChange = () => {
-        updateAppearance();
-    };
-
-    const handleClick = async (event) => {
-        event.preventDefault();
-        if (disposed) {
-            return;
-        }
-        try {
-            if (isElementFullScreen(fullScreenTarget)) {
-                await exitFullScreen();
-            } else {
-                await requestFullScreen(fullScreenTarget);
-            }
-        } catch (error) {
-            logging.error("Failed to toggle full screen state", error);
-            if (typeof notify === "function") {
-                notify(MESSAGE_FULLSCREEN_TOGGLE_FAILED);
-            }
-        }
-    };
-
-    button.addEventListener("click", handleClick);
-    document.addEventListener(FULLSCREEN_CHANGE_EVENT, handleFullScreenChange);
-    updateAppearance();
-
-    return {
-        dispose() {
-            if (disposed) {
-                return;
-            }
-            disposed = true;
-            document.removeEventListener(FULLSCREEN_CHANGE_EVENT, handleFullScreenChange);
-            button.removeEventListener("click", handleClick);
-        }
-    };
-}
-
-/**
- * @returns {{ dispose(): void }}
- */
-function createNoopController() {
-    return Object.freeze({
-        dispose() {
-            // noop
-        }
-    });
-}
-
-/**
- * @param {HTMLButtonElement} button
- * @returns {void}
- */
-function hideButton(button) {
-    button.hidden = true;
-    button.setAttribute("aria-hidden", "true");
-    button.dataset.fullscreenState = STATE_ENTER;
-    button.setAttribute("aria-pressed", "false");
 }
 
 /**
  * @param {HTMLElement} element
  * @returns {boolean}
  */
-function isFullScreenSupported(element) {
+export function isFullScreenSupported(element) {
     if (typeof document === "undefined") {
         return false;
     }
@@ -212,7 +127,7 @@ function exitFullScreen() {
  * @param {HTMLElement} element
  * @returns {boolean}
  */
-function isElementFullScreen(element) {
+export function isElementFullScreen(element) {
     if (typeof document === "undefined") {
         return false;
     }

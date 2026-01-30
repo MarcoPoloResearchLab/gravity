@@ -10,6 +10,7 @@ import {
     EVENT_MPR_AUTH_AUTHENTICATED,
     LABEL_EXPORT_NOTES,
     LABEL_IMPORT_NOTES,
+    LABEL_ENTER_FULL_SCREEN,
     LABEL_SIGN_OUT
 } from "../js/constants.js";
 import {
@@ -139,17 +140,49 @@ if (!puppeteerAvailable) {
             await page.click("mpr-user [data-mpr-user=\"trigger\"]");
             await page.waitForSelector("mpr-user[data-mpr-user-open=\"true\"] [data-mpr-user=\"menu\"]");
 
-            const visibleItems = await page.$$eval("mpr-user [data-mpr-user=\"menu-item\"]", (elements) => {
-                return elements.map((element) => element.textContent?.trim() ?? "").filter((text) => text.length > 0);
-            });
-
-            assert.deepEqual(visibleItems, [
-                LABEL_EXPORT_NOTES,
-                LABEL_IMPORT_NOTES
+            const [visibleItems, fullScreenSupported] = await Promise.all([
+                page.$$eval("mpr-user [data-mpr-user=\"menu-item\"]", (elements) => {
+                    return elements.map((element) => element.textContent?.trim() ?? "").filter((text) => text.length > 0);
+                }),
+                page.evaluate(() => {
+                    const element = document.documentElement;
+                    if (!element) {
+                        return false;
+                    }
+                    const candidate = /** @type {HTMLElement & {
+                        webkitRequestFullscreen?: () => Promise<void> | void,
+                        mozRequestFullScreen?: () => Promise<void> | void,
+                        msRequestFullscreen?: () => Promise<void> | void
+                    }} */ (element);
+                    return typeof element.requestFullscreen === "function"
+                        || typeof candidate.webkitRequestFullscreen === "function"
+                        || typeof candidate.mozRequestFullScreen === "function"
+                        || typeof candidate.msRequestFullscreen === "function";
+                })
             ]);
+
+            const expectedItems = [LABEL_EXPORT_NOTES, LABEL_IMPORT_NOTES];
+            if (fullScreenSupported) {
+                expectedItems.push(LABEL_ENTER_FULL_SCREEN);
+            }
+            assert.deepEqual(visibleItems, expectedItems);
 
             const logoutLabel = await page.$eval("mpr-user [data-mpr-user=\"logout\"]", (element) => element.textContent?.trim() ?? "");
             assert.equal(logoutLabel, LABEL_SIGN_OUT);
+            if (fullScreenSupported) {
+                const menuOrder = await page.$$eval("mpr-user [data-mpr-user=\"menu\"] > [data-mpr-user]", (elements) => {
+                    return elements
+                        .map((element) => ({
+                            role: element.getAttribute("data-mpr-user"),
+                            label: element.textContent?.trim() ?? ""
+                        }))
+                        .filter((entry) => entry.role === "menu-item" || entry.role === "logout");
+                });
+                const fullScreenIndex = menuOrder.findIndex((entry) => entry.label === LABEL_ENTER_FULL_SCREEN);
+                const logoutIndex = menuOrder.findIndex((entry) => entry.role === "logout");
+                assert.ok(fullScreenIndex >= 0, "expected Enter full screen item in the user menu");
+                assert.ok(logoutIndex > fullScreenIndex, "expected Sign out to appear after Enter full screen");
+            }
 
             // Sign out - this will trigger redirect to landing page in the new architecture
             const signOutNavigationPromise = page.waitForNavigation({ waitUntil: "domcontentloaded" });

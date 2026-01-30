@@ -178,6 +178,10 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 - [ ] [GN-446] (P1) Adopt the mpr-ui config.yaml loader for auth wiring so login buttons render from declarative config and tauth.js only loads from the CDN.
 - [x] [GN-447] (P1) Auth boot loop and missing avatar after login when TAuth init resolves late.
   Resolved by waiting for TAuth init callbacks before dispatching auth state, aligning landing/app redirects, and adding Playwright E2E coverage for login → app user menu rendering.
+- [x] [GN-448] (P0) Enter full screen menu item should appear before Sign out in the user menu.
+  (Resolved by adding the full screen action to the mpr-user menu items ahead of logout, wiring the menu action to the full screen toggle, and extending avatar menu coverage to assert ordering.)
+- [x] [GN-449] (P0) Enter full screen must be a user menu item before Sign out (regression reported again).
+  (Resolved by removing the standalone fullscreen button, keeping the menu item before Sign out, and adding Playwright coverage for menu toggling + absence of the standalone control.)
 
 
 ## Maintenance (428–499)
