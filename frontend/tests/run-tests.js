@@ -589,6 +589,7 @@ async function main() {
   if (!minimal && !raw) {
     const defaultTimeoutEntries = [
       ["auth.tauth.puppeteer.test.js", 90000],
+      ["auth.login.puppeteer.test.js", 60000],
       ["fullstack.endtoend.puppeteer.test.js", 60000],
       ["persistence.backend.puppeteer.test.js", 45000],
       ["sync.endtoend.puppeteer.test.js", 90000],

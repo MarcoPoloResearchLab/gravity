@@ -8,7 +8,6 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "playwright": "^1.50.1",
     "pngjs": "^7.0.0",
     "puppeteer": "^23.6.1",
     "typescript": "^5.9.3"
