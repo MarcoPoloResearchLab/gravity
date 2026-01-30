@@ -74,6 +74,14 @@ if (!puppeteerAvailable) {
                 }
                 return Boolean(registry.get("mpr-login-button"));
             }, { timeout: 10000 });
+            await page.waitForFunction((selector, expectedUrl) => {
+                const element = document.querySelector(selector);
+                if (!element) {
+                    return false;
+                }
+                const tauthUrl = element.getAttribute("tauth-url");
+                return Boolean(tauthUrl && tauthUrl === expectedUrl);
+            }, { timeout: 10000 }, "[data-test=\"landing-login\"]", CUSTOM_AUTH_BASE_URL);
 
             const teardown = async () => {
                 await page.close().catch(() => {});

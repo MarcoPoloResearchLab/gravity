@@ -151,18 +151,18 @@ export async function installTAuthHarness(page, options) {
                 // eslint-disable-next-line no-console
                 console.log(`[tauth-harness] /auth/google: credential=${credential ? "present" : "missing"}, nonceToken=${nonceToken || "missing"}, pendingNonce=${state.pendingNonce || "missing"}`);
             }
+            if (state.behavior.failNextNonceExchange && credential && nonceToken) {
+                state.behavior.failNextNonceExchange = false;
+                respondJson(request, 400, { error: "nonce_mismatch" }, corsHeaders);
+                state.pendingNonce = null;
+                return true;
+            }
             if (!credential || !nonceToken || nonceToken !== state.pendingNonce) {
                 if (process.env.DEBUG_TAUTH_HARNESS === "1") {
                     // eslint-disable-next-line no-console
                     console.log(`[tauth-harness] /auth/google REJECTED: invalid_nonce`);
                 }
                 respondJson(request, 400, { error: "invalid_nonce" }, corsHeaders);
-                state.pendingNonce = null;
-                return true;
-            }
-            if (state.behavior.failNextNonceExchange) {
-                state.behavior.failNextNonceExchange = false;
-                respondJson(request, 400, { error: "nonce_mismatch" }, corsHeaders);
                 state.pendingNonce = null;
                 return true;
             }

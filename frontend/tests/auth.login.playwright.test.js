@@ -1,7 +1,6 @@
 // @ts-check
 
 import assert from "node:assert/strict";
-import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -12,19 +11,12 @@ import { resolvePageUrl } from "./helpers/syncTestUtils.js";
 const CURRENT_FILE = fileURLToPath(import.meta.url);
 const TESTS_ROOT = path.dirname(CURRENT_FILE);
 const PROJECT_ROOT = path.resolve(TESTS_ROOT, "..");
-const REPO_ROOT = path.resolve(PROJECT_ROOT, "..");
 const LANDING_FILE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
-
-const MPR_UI_JS_PATH = path.join(REPO_ROOT, "tools", "mpr-ui", "mpr-ui.js");
-const MPR_UI_CONFIG_PATH = path.join(REPO_ROOT, "tools", "mpr-ui", "mpr-ui-config.js");
-const MPR_UI_CSS_PATH = path.join(REPO_ROOT, "tools", "mpr-ui", "mpr-ui.css");
 
 const TAUTH_SCRIPT_URL = "https://tauth.mprlab.com/tauth.js";
 const GOOGLE_GSI_URL = "https://accounts.google.com/gsi/client";
 const LOOPAWARE_URL = "https://loopaware.mprlab.com/widget.js";
 const MPR_UI_SCRIPT_URL = "https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@v3.6.2/mpr-ui.js";
-const MPR_UI_CONFIG_URL = "https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@v3.6.2/mpr-ui-config.js";
-const MPR_UI_CSS_URL = "https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@v3.6.2/mpr-ui.css";
 
 const TEST_USER_ID = "playwright-user";
 const TEST_USER_EMAIL = "playwright-user@example.com";
@@ -251,10 +243,6 @@ const FULLSCREEN_STUB_SCRIPT = [
     "})();"
 ].join("\n");
 
-async function readFixture(filePath) {
-    return fs.readFile(filePath, "utf-8");
-}
-
 /**
  * @param {string} value
  * @returns {string}
@@ -343,12 +331,6 @@ async function createPlaywrightHarness(options = {}) {
     const runtimeConfigBody = buildRuntimeConfig(origin);
     const configYamlBody = buildConfigYaml(origin);
 
-    const [mprUiSource, mprUiConfigSource, mprUiCssSource] = await Promise.all([
-        readFixture(MPR_UI_JS_PATH),
-        readFixture(MPR_UI_CONFIG_PATH),
-        readFixture(MPR_UI_CSS_PATH)
-    ]);
-
     const browser = await chromiumBrowser.launch();
     const context = await browser.newContext();
     if (options.initScript) {
@@ -373,27 +355,6 @@ async function createPlaywrightHarness(options = {}) {
             status: 200,
             contentType: "text/yaml",
             body: configYamlBody
-        }).catch(() => {});
-    });
-    await registerRoute(MPR_UI_CONFIG_URL, (route) => {
-        route.fulfill({
-            status: 200,
-            contentType: "application/javascript",
-            body: mprUiConfigSource
-        }).catch(() => {});
-    });
-    await registerRoute(MPR_UI_SCRIPT_URL, (route) => {
-        route.fulfill({
-            status: 200,
-            contentType: "application/javascript",
-            body: mprUiSource
-        }).catch(() => {});
-    });
-    await registerRoute(MPR_UI_CSS_URL, (route) => {
-        route.fulfill({
-            status: 200,
-            contentType: "text/css",
-            body: mprUiCssSource
         }).catch(() => {});
     });
     await registerRoute(TAUTH_SCRIPT_URL, (route) => {

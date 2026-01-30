@@ -182,6 +182,8 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
   (Resolved by adding the full screen action to the mpr-user menu items ahead of logout, wiring the menu action to the full screen toggle, and extending avatar menu coverage to assert ordering.)
 - [x] [GN-449] (P0) Enter full screen must be a user menu item before Sign out (regression reported again).
   (Resolved by removing the standalone fullscreen button, keeping the menu item before Sign out, and adding Playwright coverage for menu toggling + absence of the standalone control.)
+- [x] [GN-450] (P1) CI fails because the Playwright login test reads mpr-ui assets from the gitignored tools folder.
+  (Resolved by removing local mpr-ui fixtures in the test harness, waiting for mpr-ui config application in landing tests, and propagating nonce error codes through the auth wrapper; make test/lint/ci pass.)
 
 
 ## Maintenance (428–499)

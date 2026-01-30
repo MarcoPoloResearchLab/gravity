@@ -19,7 +19,6 @@ let sharedLaunchContext = null;
 const CURRENT_FILE = fileURLToPath(import.meta.url);
 const HELPERS_ROOT = path.dirname(CURRENT_FILE);
 const TESTS_ROOT = path.resolve(HELPERS_ROOT, "..");
-const REPO_ROOT = path.resolve(TESTS_ROOT, "..", "..");
 const CDN_FIXTURES_ROOT = path.resolve(TESTS_ROOT, "fixtures", "cdn");
 const CONFIG_ROUTE_PATTERN = /\/data\/runtime\.config\.(development|production)\.json$/u;
 const EMPTY_STRING = "";
@@ -139,21 +138,6 @@ const CDN_MIRRORS = Object.freeze([
     {
         pattern: /^https:\/\/cdn\.jsdelivr\.net\/npm\/easymde@2\.19\.0\/dist\/easymde\.min\.css$/u,
         filePath: path.join(CDN_FIXTURES_ROOT, "jsdelivr", "npm", "easymde@2.19.0", "dist", "easymde.min.css"),
-        contentType: "text/css"
-    },
-    {
-        pattern: /^https:\/\/cdn\.jsdelivr\.net\/gh\/MarcoPoloResearchLab\/mpr-ui@v3.6.2\/mpr-ui\.js$/u,
-        filePath: path.join(REPO_ROOT, "tools", "mpr-ui", "mpr-ui.js"),
-        contentType: "application/javascript"
-    },
-    {
-        pattern: /^https:\/\/cdn\.jsdelivr\.net\/gh\/MarcoPoloResearchLab\/mpr-ui@v3.6.2\/mpr-ui-config\.js$/u,
-        filePath: path.join(REPO_ROOT, "tools", "mpr-ui", "mpr-ui-config.js"),
-        contentType: "application/javascript"
-    },
-    {
-        pattern: /^https:\/\/cdn\.jsdelivr\.net\/gh\/MarcoPoloResearchLab\/mpr-ui@v3.6.2\/mpr-ui\.css$/u,
-        filePath: path.join(REPO_ROOT, "tools", "mpr-ui", "mpr-ui.css"),
         contentType: "text/css"
     }
 ]);
