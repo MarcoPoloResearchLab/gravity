@@ -20,7 +20,7 @@ import { connectSharedBrowser } from "./helpers/browserHarness.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+const PAGE_URL = `file://${path.join(PROJECT_ROOT, "app.html")}`;
 
 test.describe("Full stack integration", () => {
     /** @type {{ baseUrl: string, tokenFactory: (userId: string) => string, createSessionToken: (userId: string) => string, cookieName: string, close: () => Promise<void> } | null} */
@@ -58,10 +58,13 @@ test.describe("Full stack integration", () => {
 
         const page = await prepareFrontendPage(context, PAGE_URL, {
             backendBaseUrl: backendContext.baseUrl,
-            llmProxyUrl: ""
+            llmProxyUrl: "",
+            beforeNavigate: async (targetPage) => {
+                // Set session cookie BEFORE navigation to prevent redirect to landing page
+                await attachBackendSessionCookie(targetPage, backendContext, userId);
+            }
         });
         try {
-            await attachBackendSessionCookie(page, backendContext, userId);
             await dispatchSignIn(page, credential, userId);
             await waitForSyncManagerUser(page, userId);
 

@@ -7,11 +7,11 @@ import test from "node:test";
 
 import { createSharedPage } from "./helpers/browserHarness.js";
 import { startTestBackend } from "./helpers/backendHarness.js";
-import { seedNotes, signInTestUser } from "./helpers/syncTestUtils.js";
+import { attachBackendSessionCookie, resolvePageUrl, seedNotes, signInTestUser } from "./helpers/syncTestUtils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+const PAGE_URL = `file://${path.join(PROJECT_ROOT, "app.html")}`;
 const TEST_USER_ID = "htmlview-expansion-user";
 
 const FIRST_NOTE_ID = "gn71-primary";
@@ -270,7 +270,10 @@ async function openPageWithRecords(records) {
         window.__gravityForceMarkdownEditor = true;
         window.localStorage.clear();
     });
-    await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
+    // Set session cookie BEFORE navigation to prevent redirect to landing page
+    await attachBackendSessionCookie(page, backend, TEST_USER_ID);
+    const resolvedUrl = await resolvePageUrl(PAGE_URL);
+    await page.goto(resolvedUrl, { waitUntil: "domcontentloaded" });
     await signInTestUser(page, backend, TEST_USER_ID);
     if (Array.isArray(records) && records.length > 0) {
         await seedNotes(page, records, TEST_USER_ID);
