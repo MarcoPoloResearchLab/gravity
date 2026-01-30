@@ -330,6 +330,7 @@ globalThis.__gravityRuntimeContext = Object.freeze(context);
  *   iterations?: number,
  *   seed?: string,
  *   randomize?: boolean,
+ *   failFast?: boolean,
  *   stress?: boolean,
  *   passthroughArgs: string[]
  * }}
@@ -343,6 +344,7 @@ function parseCommandLineArguments(argv) {
     iterations: undefined,
     seed: undefined,
     randomize: undefined,
+    failFast: undefined,
     stress: undefined,
     passthroughArgs: []
   };
@@ -396,6 +398,14 @@ function parseCommandLineArguments(argv) {
       parsed.randomize = false;
       continue;
     }
+    if (argument === "--fail-fast") {
+      parsed.failFast = true;
+      continue;
+    }
+    if (argument === "--no-fail-fast") {
+      parsed.failFast = false;
+      continue;
+    }
     if (argument === "--stress") {
       parsed.iterations = Math.max(parsed.iterations ?? 0, 10);
       parsed.stress = true;
@@ -434,7 +444,11 @@ async function main() {
 
   const runtimeOptions = await loadRuntimeOptions();
   const isCiEnvironment = process.env.CI === "true";
-  const failFast = typeof runtimeOptions.failFast === "boolean" ? runtimeOptions.failFast : isCiEnvironment;
+  const failFast = typeof cliArguments.failFast === "boolean"
+    ? cliArguments.failFast
+    : typeof runtimeOptions.failFast === "boolean"
+      ? runtimeOptions.failFast
+      : false;
 
   /** @type {{ policy?: string, allowlist?: string[] }} */
   const mergedScreenshotConfig = {};
