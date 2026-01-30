@@ -253,4 +253,73 @@ test.describe("SyncManager", () => {
         assert.equal(typeof notifications[0].message, "string");
         assert.equal(notifications[0].message.length > 0, true);
     });
+
+    test("coalesces repeated upserts and syncs the latest payload", async () => {
+        const operationsHandled = [];
+        let shouldFail = true;
+        let uuidIndex = 0;
+        const backendClient = {
+            async syncOperations({ operations }) {
+                if (shouldFail) {
+                    throw new Error("offline");
+                }
+                operationsHandled.push(operations);
+                return {
+                    results: operations.map((operation) => ({
+                        note_id: operation.note_id,
+                        accepted: true,
+                        version: 1,
+                        updated_at_s: operation.updated_at_s,
+                        last_writer_edit_seq: operation.client_edit_seq,
+                        is_deleted: operation.operation === "delete",
+                        payload: operation.payload
+                    }))
+                };
+            },
+            async fetchSnapshot() {
+                return { notes: [] };
+            }
+        };
+
+        const syncManager = createSyncManager({
+            backendClient,
+            clock: () => new Date("2023-11-14T21:00:00.000Z"),
+            randomUUID: () => `operation-${uuidIndex += 1}`
+        });
+
+        const signInResult = await syncManager.handleSignIn({ userId: "user-coalesce" });
+        assert.equal(signInResult.authenticated, true);
+
+        const firstRecord = {
+            noteId: "note-coalesce",
+            markdownText: "First draft",
+            createdAtIso: "2023-11-14T20:59:00.000Z",
+            updatedAtIso: "2023-11-14T20:59:00.000Z",
+            lastActivityIso: "2023-11-14T20:59:00.000Z"
+        };
+        GravityStore.upsertNonEmpty(firstRecord);
+        syncManager.recordLocalUpsert(firstRecord);
+
+        const updatedRecord = {
+            ...firstRecord,
+            markdownText: "Second draft",
+            updatedAtIso: "2023-11-14T21:01:00.000Z",
+            lastActivityIso: "2023-11-14T21:01:00.000Z"
+        };
+        GravityStore.upsertNonEmpty(updatedRecord);
+        syncManager.recordLocalUpsert(updatedRecord);
+
+        const debugState = syncManager.getDebugState();
+        assert.equal(debugState.pendingOperations.length, 1);
+        assert.equal(debugState.pendingOperations[0].noteId, "note-coalesce");
+        assert.equal(debugState.pendingOperations[0].payload, null);
+
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        shouldFail = false;
+        const syncResult = await syncManager.synchronize();
+        assert.equal(syncResult.queueFlushed, true);
+        assert.equal(operationsHandled.length, 1);
+        assert.equal(operationsHandled[0].length, 1);
+        assert.equal(operationsHandled[0][0].payload.markdownText, "Second draft");
+    });
 });

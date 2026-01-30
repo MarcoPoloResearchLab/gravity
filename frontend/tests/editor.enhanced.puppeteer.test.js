@@ -7,11 +7,11 @@ import test from "node:test";
 
 import { createSharedPage } from "./helpers/browserHarness.js";
 import { startTestBackend } from "./helpers/backendHarness.js";
-import { buildUserStorageKey, signInTestUser } from "./helpers/syncTestUtils.js";
+import { attachBackendSessionCookie, buildUserStorageKey, resolvePageUrl, signInTestUser } from "./helpers/syncTestUtils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+const PAGE_URL = `file://${path.join(PROJECT_ROOT, "app.html")}`;
 const TEST_USER_ID = "editor-enhanced-user";
 const STORAGE_KEY = buildUserStorageKey(TEST_USER_ID);
 
@@ -379,7 +379,10 @@ async function openEnhancedPage() {
         window.localStorage.clear();
         window.localStorage.setItem(storageKey, JSON.stringify([]));
     }, storageKey);
-    await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
+    // Set session cookie BEFORE navigation to prevent redirect to landing page
+    await attachBackendSessionCookie(page, backend, TEST_USER_ID);
+    const resolvedUrl = await resolvePageUrl(PAGE_URL);
+    await page.goto(resolvedUrl, { waitUntil: "domcontentloaded" });
     await page.waitForSelector("#top-editor .CodeMirror");
     await signInTestUser(page, backend, TEST_USER_ID, { waitForSyncManager: false });
     return {

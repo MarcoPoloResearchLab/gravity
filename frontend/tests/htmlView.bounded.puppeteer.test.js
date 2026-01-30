@@ -7,11 +7,11 @@ import test from "node:test";
 
 import { createSharedPage, waitForAppHydration, flushAlpineQueues } from "./helpers/browserHarness.js";
 import { startTestBackend } from "./helpers/backendHarness.js";
-import { seedNotes, signInTestUser } from "./helpers/syncTestUtils.js";
+import { attachBackendSessionCookie, resolvePageUrl, seedNotes, signInTestUser } from "./helpers/syncTestUtils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+const PAGE_URL = `file://${path.join(PROJECT_ROOT, "app.html")}`;
 const TEST_USER_ID = "htmlview-bounded-user";
 
 const SHORT_NOTE_ID = "htmlView-short-note";
@@ -505,7 +505,10 @@ async function openHtmlViewHarness(records) {
             llmProxyUrl: ""
         }
     });
-    await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
+    // Set session cookie BEFORE navigation to prevent redirect to landing page
+    await attachBackendSessionCookie(page, backend, TEST_USER_ID);
+    const resolvedUrl = await resolvePageUrl(PAGE_URL);
+    await page.goto(resolvedUrl, { waitUntil: "domcontentloaded" });
     await waitForAppHydration(page);
     await flushAlpineQueues(page);
     await page.waitForSelector("#top-editor .markdown-editor");

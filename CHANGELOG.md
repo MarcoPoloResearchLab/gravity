@@ -13,15 +13,26 @@ and are grouped by the date the work landed on `master`.
 - Background version watcher polls a manifest and reloads the app when a new deploy ships so browsers never run stale code (GN-206).
 
 ### Changed
+- Frontend persistence now uses IndexedDB with a localStorage migration and BroadcastChannel refreshes (GN-439).
 - Full-screen toggle now lives inside the avatar menu with updated exit icon strokes and a text label (GN-207).
 - Auth header now shows only the signed-in display name to avoid exposing email addresses (GN-208).
 - TAuth session now delegates nonce issuance and credential exchange to auth-client helpers instead of local fetches (GN-423).
 - Centralized environment config defaults and reused them across runtime config and test harnesses (GN-427).
 - Runtime config now returns a frozen app config and callers pass it explicitly instead of shared globals (GN-427).
+- Environment example files now live at `env.*.example`, keeping `.env*` files untracked while preserving copy-ready templates (GN-443).
+- mpr-ui now loads from a runtime-configured script URL (`mprUiScriptUrl`) after tauth.js so login components always register (GN-444).
+- Auth boot now fails fast when required helpers/components are missing and pre-initializes Google Identity Services before rendering the login button to avoid GSI warnings (GN-445).
 - Signed-out visitors now see a landing page with a Google sign-in button; the Gravity interface requires authentication (GN-126).
+- mpr-ui now loads from a static script tag and auth components mount after runtime config so attributes are applied before initialization (GN-436).
+- Frontend now pulls mpr-ui assets from the `@latest` CDN tag so releases stay aligned (GN-437).
 
 ### Fixed
+- TAuth helper now loads from a dedicated CDN URL via `tauthScriptUrl`, and gHTTP no longer proxies `/tauth.js` while proxying `/me` to TAuth for session checks in the dev stack (GN-442).
+- Dev docker compose now serves Gravity over HTTPS at computercat.tyemirov.net:4443 via gHTTP proxies for backend/TAuth endpoints, with updated dev runtime config and env templates (GN-441).
+- Normalized development runtime config endpoints to swap loopback hosts for the active dev hostname and refreshed the TAuth env example for localhost defaults (GN-440).
+- Sync queue now coalesces per note and resolves payloads from the latest stored note to avoid duplicate ops and offline failures (GN-439).
 - Landing sign-in now sets mpr-ui auth base/login/logout/nonce attributes so nonce requests hit TAuth instead of the frontend origin (GN-433).
+- Runtime config now accepts a Google client ID override so local GSI origins can match the correct project (GN-438).
 - Updated the TAuth helper loader and harness to use `/tauth.js`, keeping Gravity aligned with current TAuth builds (GN-424).
 - Expanded edit-height locks now override CodeMirror auto sizing so expanded cards keep their height in edit mode (GN-425).
 - TAuth runtime config now forwards `authTenantId` into the loader/session bridge and drops the crossOrigin attribute so tauth.js loads cleanly in stricter CORS setups (GN-426).
@@ -52,6 +63,9 @@ and are grouped by the date the work landed on `master`.
 - Expand/collapse toggles now align to the full card width rather than the text column, with resize-aware positioning and mobile regression coverage (GN-307).
 - Clicking the card control column now finalizes inline editing without flickering back to markdown mode, covered by a regression targeting the GN-308 scenario (GN-308).
 - Puppeteer sync persistence tests now ensure backend session cookies attach (with a request-interceptor fallback for file:// origins), stabilizing multi-iteration runs (GN-432).
+- Sync end-to-end coverage now waits for the authenticated shell and CodeMirror input before typing to avoid focus races (GN-434).
+- Expanded htmlView checkbox toggles now preserve viewport anchors and skip redundant re-renders to prevent drift (GN-435).
+- Runtime config now requires an explicit Google client ID so GIS matches the configured origin and the landing sign-in button renders (GN-438).
 
 ### Documentation
 - Folded `MIGRATION.md` into `ARCHITECTURE.md`, clarifying event contracts and module guidance (GN-54).

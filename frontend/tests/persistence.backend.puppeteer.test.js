@@ -10,7 +10,8 @@ import {
     dispatchNoteCreate,
     waitForTAuthSession,
     composeTestCredential,
-    exchangeTAuthCredential
+    exchangeTAuthCredential,
+    attachBackendSessionCookie
 } from "./helpers/syncTestUtils.js";
 import {
     startTestBackend,
@@ -20,7 +21,7 @@ import { connectSharedBrowser } from "./helpers/browserHarness.js";
 import { installTAuthHarness } from "./helpers/tauthHarness.js";
 
 const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
-const PAGE_URL = `file://${path.join(REPO_ROOT, "index.html")}`;
+const PAGE_URL = `file://${path.join(REPO_ROOT, "app.html")}`;
 
 const TEST_USER_ID = "integration-sync-user";
 const GLOBAL_TIMEOUT_MS = 30000;
@@ -64,6 +65,7 @@ test.describe("Backend sync integration", () => {
         deadlineSignal.addEventListener("abort", abortHandler, { once: true });
 
         const backendUrl = backendContext.baseUrl;
+        const tauthScriptUrl = new URL("/tauth.js", backendUrl).toString();
         browserConnection = await connectSharedBrowser();
         context = await browserConnection.createBrowserContext();
         let harnessHandle = null;
@@ -71,12 +73,16 @@ test.describe("Backend sync integration", () => {
             backendBaseUrl: backendUrl,
             llmProxyUrl: backendUrl,
             authBaseUrl: backendUrl,
+            tauthScriptUrl,
             beforeNavigate: async (targetPage) => {
+                // Install TAuth harness FIRST so it has priority over session cookie interceptor.
                 harnessHandle = await installTAuthHarness(targetPage, {
                     baseUrl: backendUrl,
                     cookieName: backendContext.cookieName,
                     mintSessionToken: backendContext.createSessionToken
                 });
+                // Attach session cookie to prevent redirect to landing page.
+                await attachBackendSessionCookie(targetPage, backendContext, TEST_USER_ID);
             }
         }));
         page.on("console", (message) => {
