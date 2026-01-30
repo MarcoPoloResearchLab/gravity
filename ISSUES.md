@@ -184,6 +184,8 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
   (Resolved by removing the standalone fullscreen button, keeping the menu item before Sign out, and adding Playwright coverage for menu toggling + absence of the standalone control.)
 - [x] [GN-450] (P1) CI fails because the Playwright login test reads mpr-ui assets from the gitignored tools folder.
   (Resolved by removing local mpr-ui fixtures in the test harness, waiting for mpr-ui config application in landing tests, and propagating nonce error codes through the auth wrapper; make test/lint/ci pass.)
+- [x] [GN-451] (P1) Fail fast on CI test runs after the first failure while keeping local runs exhaustive.
+  (Resolved by enabling CI-only fail-fast behavior in the test harness with immediate error output.)
 
 
 ## Maintenance (428–499)

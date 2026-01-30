@@ -46,8 +46,13 @@ if (!puppeteerAvailable) {
             await installCdnMirrors(page);
             await attachImportAppModule(page);
 
-            // Clear the default test profile so landing page doesn't redirect to app.html
+            // Force sign-out so the landing page doesn't redirect to app.html
             await page.evaluateOnNewDocument(() => {
+                try {
+                    window.sessionStorage?.setItem("__gravityTestForceSignOut", "true");
+                } catch {
+                    // Ignore storage errors
+                }
                 window.__tauthStubProfile = null;
             });
             await injectTAuthStub(page);
@@ -74,13 +79,27 @@ if (!puppeteerAvailable) {
                 }
                 return Boolean(registry.get("mpr-login-button"));
             }, { timeout: 10000 });
-            await page.waitForFunction((selector, expectedUrl) => {
+            const attributesHandle = await page.waitForFunction((selector, expectedUrl) => {
                 const element = document.querySelector(selector);
                 if (!element) {
-                    return false;
+                    return null;
                 }
                 const tauthUrl = element.getAttribute("tauth-url");
-                return Boolean(tauthUrl && tauthUrl === expectedUrl);
+                const loginPath = element.getAttribute("tauth-login-path");
+                const logoutPath = element.getAttribute("tauth-logout-path");
+                const noncePath = element.getAttribute("tauth-nonce-path");
+                if (!tauthUrl || !loginPath || !logoutPath || !noncePath) {
+                    return null;
+                }
+                if (tauthUrl !== expectedUrl) {
+                    return null;
+                }
+                return {
+                    tauthUrl,
+                    loginPath,
+                    logoutPath,
+                    noncePath
+                };
             }, { timeout: 10000 }, "[data-test=\"landing-login\"]", CUSTOM_AUTH_BASE_URL);
 
             const teardown = async () => {
@@ -91,16 +110,7 @@ if (!puppeteerAvailable) {
             };
 
             try {
-                await page.waitForSelector("[data-test=\"landing-login\"]");
-                const attributes = await page.$eval("[data-test=\"landing-login\"]", (element) => {
-                    return {
-                        tauthUrl: element.getAttribute("tauth-url"),
-                        loginPath: element.getAttribute("tauth-login-path"),
-                        logoutPath: element.getAttribute("tauth-logout-path"),
-                        noncePath: element.getAttribute("tauth-nonce-path")
-                    };
-                });
-
+                const attributes = await attributesHandle.jsonValue();
                 assert.equal(attributes.tauthUrl, CUSTOM_AUTH_BASE_URL);
                 assert.equal(attributes.loginPath, "/auth/google");
                 assert.equal(attributes.logoutPath, "/auth/logout");

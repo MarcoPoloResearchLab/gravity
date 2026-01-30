@@ -434,6 +434,7 @@ async function main() {
 
   const runtimeOptions = await loadRuntimeOptions();
   const isCiEnvironment = process.env.CI === "true";
+  const failFast = typeof runtimeOptions.failFast === "boolean" ? runtimeOptions.failFast : isCiEnvironment;
 
   /** @type {{ policy?: string, allowlist?: string[] }} */
   const mergedScreenshotConfig = {};
@@ -664,6 +665,7 @@ async function main() {
   let passCount = 0;
   let failCount = 0;
   let timeoutCount = 0;
+  let failFastTriggered = false;
 
   try {
     for (let iterationIndex = 0; iterationIndex < iterationCount; iterationIndex += 1) {
@@ -799,6 +801,11 @@ async function main() {
             timeoutCount += 1;
             const timeoutMessage = `${cliColors.symbols.timeout} ${cliColors.yellow(`Timed out after ${formatDuration(effectiveTimeout)}`)}`;
             console.error(`  ${timeoutMessage}`);
+            if (failFast && !failFastTriggered) {
+              failFastTriggered = true;
+              console.error(`  ${cliColors.red("Fail-fast enabled; stopping after first failure.")}`);
+              break;
+            }
             continue;
           }
           if (result.exitCode !== 0) {
@@ -818,6 +825,11 @@ async function main() {
                 console.error(stdoutOutput);
               }
             }
+            if (failFast && !failFastTriggered) {
+              failFastTriggered = true;
+              console.error(`  ${cliColors.red("Fail-fast enabled; stopping after first failure.")}`);
+              break;
+            }
           } else {
             passCount += 1;
             const durationLabel = cliColors.dim(`(${formatDuration(result.durationMs)})`);
@@ -826,6 +838,12 @@ async function main() {
         } finally {
           await disposeRuntimeModule();
         }
+        if (failFastTriggered) {
+          break;
+        }
+      }
+      if (failFastTriggered) {
+        break;
       }
       } finally {
         if (backendHandle) {
