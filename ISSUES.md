@@ -175,6 +175,17 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 - [x] [GN-443] (P1) Keep `.env*` files untracked and rename example env files to `env.*.example` with updated setup docs.
 - [x] [GN-444] (P1) Ensure the mpr-ui login component always registers by loading the bundle from a runtime-configured `mprUiScriptUrl` after tauth.js.
 - [x] [GN-445] (P1) Make auth boot strict (no fallbacks) and pre-initialize GIS before rendering the mpr-ui login button to avoid GSI warnings.
+- [ ] [GN-446] (P1) Adopt the mpr-ui config.yaml loader for auth wiring so login buttons render from declarative config and tauth.js only loads from the CDN.
+- [x] [GN-447] (P1) Auth boot loop and missing avatar after login when TAuth init resolves late.
+  Resolved by waiting for TAuth init callbacks before dispatching auth state, aligning landing/app redirects, and adding Playwright E2E coverage for login → app user menu rendering.
+- [x] [GN-448] (P0) Enter full screen menu item should appear before Sign out in the user menu.
+  (Resolved by adding the full screen action to the mpr-user menu items ahead of logout, wiring the menu action to the full screen toggle, and extending avatar menu coverage to assert ordering.)
+- [x] [GN-449] (P0) Enter full screen must be a user menu item before Sign out (regression reported again).
+  (Resolved by removing the standalone fullscreen button, keeping the menu item before Sign out, and adding Playwright coverage for menu toggling + absence of the standalone control.)
+- [x] [GN-450] (P1) CI fails because the Playwright login test reads mpr-ui assets from the gitignored tools folder.
+  (Resolved by removing local mpr-ui fixtures in the test harness, waiting for mpr-ui config application in landing tests, and propagating nonce error codes through the auth wrapper; make test/lint/ci pass.)
+- [x] [GN-451] (P1) Fail fast on CI test runs after the first failure while keeping local runs exhaustive.
+  (Resolved by enabling CI-only fail-fast behavior in the test harness with immediate error output.)
 
 
 ## Maintenance (428–499)

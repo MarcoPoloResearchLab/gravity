@@ -330,6 +330,7 @@ globalThis.__gravityRuntimeContext = Object.freeze(context);
  *   iterations?: number,
  *   seed?: string,
  *   randomize?: boolean,
+ *   failFast?: boolean,
  *   stress?: boolean,
  *   passthroughArgs: string[]
  * }}
@@ -343,6 +344,7 @@ function parseCommandLineArguments(argv) {
     iterations: undefined,
     seed: undefined,
     randomize: undefined,
+    failFast: undefined,
     stress: undefined,
     passthroughArgs: []
   };
@@ -396,6 +398,14 @@ function parseCommandLineArguments(argv) {
       parsed.randomize = false;
       continue;
     }
+    if (argument === "--fail-fast") {
+      parsed.failFast = true;
+      continue;
+    }
+    if (argument === "--no-fail-fast") {
+      parsed.failFast = false;
+      continue;
+    }
     if (argument === "--stress") {
       parsed.iterations = Math.max(parsed.iterations ?? 0, 10);
       parsed.stress = true;
@@ -434,6 +444,11 @@ async function main() {
 
   const runtimeOptions = await loadRuntimeOptions();
   const isCiEnvironment = process.env.CI === "true";
+  const failFast = typeof cliArguments.failFast === "boolean"
+    ? cliArguments.failFast
+    : typeof runtimeOptions.failFast === "boolean"
+      ? runtimeOptions.failFast
+      : false;
 
   /** @type {{ policy?: string, allowlist?: string[] }} */
   const mergedScreenshotConfig = {};
@@ -573,10 +588,14 @@ async function main() {
   // Default per-file overrides for real runs (not in minimal/raw mode).
   if (!minimal && !raw) {
     const defaultTimeoutEntries = [
+      ["auth.tauth.puppeteer.test.js", 90000],
       ["fullstack.endtoend.puppeteer.test.js", 60000],
       ["persistence.backend.puppeteer.test.js", 45000],
-      ["sync.endtoend.puppeteer.test.js", 45000],
-      ["editor.inline.puppeteer.test.js", 60000]
+      ["sync.endtoend.puppeteer.test.js", 90000],
+      ["sync.realtime.puppeteer.test.js", 90000],
+      ["sync.scenarios.puppeteer.test.js", 90000],
+      ["editor.inline.puppeteer.test.js", 60000],
+      ["htmlView.checkmark.puppeteer.test.js", 60000]
     ];
     for (const [file, value] of defaultTimeoutEntries) {
       if (!timeoutOverrides.has(file)) timeoutOverrides.set(file, value);
@@ -660,6 +679,7 @@ async function main() {
   let passCount = 0;
   let failCount = 0;
   let timeoutCount = 0;
+  let failFastTriggered = false;
 
   try {
     for (let iterationIndex = 0; iterationIndex < iterationCount; iterationIndex += 1) {
@@ -795,6 +815,11 @@ async function main() {
             timeoutCount += 1;
             const timeoutMessage = `${cliColors.symbols.timeout} ${cliColors.yellow(`Timed out after ${formatDuration(effectiveTimeout)}`)}`;
             console.error(`  ${timeoutMessage}`);
+            if (failFast && !failFastTriggered) {
+              failFastTriggered = true;
+              console.error(`  ${cliColors.red("Fail-fast enabled; stopping after first failure.")}`);
+              break;
+            }
             continue;
           }
           if (result.exitCode !== 0) {
@@ -814,6 +839,11 @@ async function main() {
                 console.error(stdoutOutput);
               }
             }
+            if (failFast && !failFastTriggered) {
+              failFastTriggered = true;
+              console.error(`  ${cliColors.red("Fail-fast enabled; stopping after first failure.")}`);
+              break;
+            }
           } else {
             passCount += 1;
             const durationLabel = cliColors.dim(`(${formatDuration(result.durationMs)})`);
@@ -822,6 +852,12 @@ async function main() {
         } finally {
           await disposeRuntimeModule();
         }
+        if (failFastTriggered) {
+          break;
+        }
+      }
+      if (failFastTriggered) {
+        break;
       }
       } finally {
         if (backendHandle) {

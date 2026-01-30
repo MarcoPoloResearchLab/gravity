@@ -7,11 +7,11 @@ import test from "node:test";
 
 import { createSharedPage, waitForAppHydration, flushAlpineQueues } from "./helpers/browserHarness.js";
 import { startTestBackend } from "./helpers/backendHarness.js";
-import { buildUserStorageKey, seedNotes, signInTestUser, waitForPendingOperations } from "./helpers/syncTestUtils.js";
+import { attachBackendSessionCookie, buildUserStorageKey, resolvePageUrl, seedNotes, signInTestUser, waitForPendingOperations } from "./helpers/syncTestUtils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+const PAGE_URL = `file://${path.join(PROJECT_ROOT, "app.html")}`;
 const TEST_USER_ID = "htmlview-checkmark-user";
 const STORAGE_KEY = buildUserStorageKey(TEST_USER_ID);
 
@@ -313,7 +313,9 @@ async function openChecklistPage(records) {
     const backend = await startTestBackend();
     const { page, teardown } = await createSharedPage({
         development: {
-            llmProxyUrl: ""
+            llmProxyUrl: "",
+            backendBaseUrl: backend.baseUrl,
+            authBaseUrl: backend.baseUrl
         }
     });
     await page.evaluateOnNewDocument(() => {
@@ -327,7 +329,10 @@ async function openChecklistPage(records) {
         }
     });
 
-    await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
+    // Set session cookie BEFORE navigation to prevent redirect to landing page
+    await attachBackendSessionCookie(page, backend, TEST_USER_ID);
+    const resolvedUrl = await resolvePageUrl(PAGE_URL);
+    await page.goto(resolvedUrl, { waitUntil: "domcontentloaded" });
     await waitForAppHydration(page);
     await flushAlpineQueues(page);
     await signInTestUser(page, backend, TEST_USER_ID, { waitForSyncManager: false });

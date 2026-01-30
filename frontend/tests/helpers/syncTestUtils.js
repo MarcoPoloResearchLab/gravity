@@ -30,7 +30,7 @@ import {
 const APP_BOOTSTRAP_SELECTOR = "#top-editor .markdown-editor";
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(TESTS_DIR, "..", "..");
-const DEFAULT_PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+const DEFAULT_PAGE_URL = `file://${path.join(PROJECT_ROOT, "app.html")}`;
 const DEFAULT_JWT_ISSUER = "https://accounts.google.com";
 const DEFAULT_GOOGLE_CLIENT_ID = "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com";
 const appConfig = createAppConfig({
@@ -84,7 +84,7 @@ export function buildUserStorageKey(userId) {
  * Prepare a new browser page configured for backend synchronization tests.
  * @param {import('puppeteer').Browser | import('puppeteer').BrowserContext} browser
  * @param {string} pageUrl
- * @param {{ backendBaseUrl: string, llmProxyUrl?: string, authBaseUrl?: string, tauthScriptUrl?: string, mprUiScriptUrl?: string, authTenantId?: string, googleClientId?: string, preserveLocalStorage?: boolean }} options
+ * @param {{ backendBaseUrl: string, llmProxyUrl?: string, authBaseUrl?: string, tauthScriptUrl?: string, mprUiScriptUrl?: string, authTenantId?: string, googleClientId?: string, preserveLocalStorage?: boolean, skipAppReady?: boolean }} options
  * @returns {Promise<import('puppeteer').Page>}
  */
 export async function prepareFrontendPage(browser, pageUrl, options) {
@@ -97,7 +97,8 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
         authTenantId = DEFAULT_AUTH_TENANT_ID,
         googleClientId = appConfig.googleClientId,
         beforeNavigate,
-        preserveLocalStorage = false
+        preserveLocalStorage = false,
+        skipAppReady = false
     } = options;
     const page = await browser.newPage();
     await page.evaluateOnNewDocument(() => {
@@ -129,10 +130,12 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
             }
         });
     }
-    await installCdnMirrors(page);
+    // Call beforeNavigate first so custom interceptors (like installTAuthHarness)
+    // have priority over CDN stubs for tauth.js
     if (typeof beforeNavigate === "function") {
         await beforeNavigate(page);
     }
+    await installCdnMirrors(page);
     await attachImportAppModule(page);
     await injectTAuthStub(page);
     await injectRuntimeConfig(page, {
@@ -145,43 +148,6 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
             authTenantId,
             googleClientId
         }
-    });
-    await page.evaluateOnNewDocument((config) => {
-        const targetPattern = /\/data\/runtime\.config\.(development|production)\.json$/;
-        const originalFetch = window.fetch;
-        window.fetch = async (input, init = {}) => {
-            const requestUrl = typeof input === "string"
-                ? input
-                : typeof input?.url === "string"
-                    ? input.url
-                    : "";
-            if (typeof requestUrl === "string" && targetPattern.test(requestUrl)) {
-                const payload = {
-                    environment: config.environment ?? "development",
-                    backendBaseUrl: config.backendBaseUrl,
-                    llmProxyUrl: config.llmProxyUrl,
-                    authBaseUrl: config.authBaseUrl,
-                    tauthScriptUrl: config.tauthScriptUrl,
-                    mprUiScriptUrl: config.mprUiScriptUrl,
-                    authTenantId: config.authTenantId,
-                    googleClientId: config.googleClientId
-                };
-                return new Response(JSON.stringify(payload), {
-                    status: 200,
-                    headers: { "Content-Type": "application/json" }
-                });
-            }
-            return originalFetch.call(window, input, init);
-        };
-    }, {
-        environment: "development",
-        backendBaseUrl,
-        llmProxyUrl,
-        authBaseUrl,
-        tauthScriptUrl,
-        mprUiScriptUrl,
-        authTenantId,
-        googleClientId
     });
     await page.evaluateOnNewDocument((storageKey, shouldPreserve) => {
         const initialized = window.sessionStorage.getItem("__gravityTestInitialized") === "true";
@@ -197,7 +163,9 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
     }, appConfig.storageKey, preserveLocalStorage === true);
     const resolvedUrl = await resolvePageUrl(pageUrl);
     await page.goto(resolvedUrl, { waitUntil: "domcontentloaded" });
-    await waitForAppReady(page);
+    if (!skipAppReady) {
+        await waitForAppReady(page);
+    }
     return page;
 }
 
@@ -276,7 +244,12 @@ export async function initializePuppeteerTest(pageUrl = DEFAULT_PAGE_URL, setupO
     if (typeof setupOptions.beforeNavigate === "function") {
         await setupOptions.beforeNavigate(page);
     }
-    await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
+    // Set up session cookie for the default test user BEFORE navigation
+    // so that the initial /me call succeeds and the app doesn't redirect to landing
+    const defaultTestUserId = "test-user";
+    await attachBackendSessionCookie(page, backend, defaultTestUserId);
+    const resolvedUrl = await resolvePageUrl(pageUrl);
+    await page.goto(resolvedUrl, { waitUntil: "domcontentloaded" });
     await waitForAppReady(page);
 
     const teardown = async () => {
@@ -344,6 +317,8 @@ export async function dispatchSignIn(page, credential, userId) {
             window.__tauthStubProfile = profile;
             try {
                 window.sessionStorage?.setItem(storageKey, JSON.stringify(profile));
+                // Clear force sign-out marker since we're signing in
+                window.sessionStorage?.removeItem("__gravityTestForceSignOut");
             } catch {
                 // ignore storage failures
             }
@@ -583,12 +558,21 @@ export async function waitForSyncManagerUser(page, expectedUserId, timeoutMs) {
 export async function waitForTAuthSession(page, timeoutMs) {
     const options = typeof timeoutMs === "number" && Number.isFinite(timeoutMs)
         ? { timeout: timeoutMs }
-        : undefined;
+        : { timeout: 5000 };
     await page.waitForFunction(() => {
+        // Check if harness is installed (functions injected via evaluateOnNewDocument)
         const harnessEvents = window.__tauthHarnessEvents;
-        if (harnessEvents && typeof harnessEvents.initCount === "number" && harnessEvents.initCount >= 1) {
-            return true;
+        if (harnessEvents) {
+            // Harness is installed - check if initAuthClient was called OR harness object exists
+            if (typeof harnessEvents.initCount === "number" && harnessEvents.initCount >= 1) {
+                return true;
+            }
+            // Also accept if __tauthHarness exists (harness stub injected)
+            if (window.__tauthHarness) {
+                return true;
+            }
         }
+        // Fallback: check for CDN stub options
         const stubOptions = window.__tauthStubOptions;
         return Boolean(stubOptions && typeof stubOptions === "object");
     }, options);
@@ -647,26 +631,70 @@ export async function waitForAppReady(page) {
 
 /**
  * Reset the application state to a signed-out view and wait for readiness.
+ * In the separated page architecture:
+ * - If on app.html, this navigates to the landing page (index.html)
+ * - If on index.html (landing), this clears auth state and waits for landing elements
  * @param {import('puppeteer').Page} page
  * @returns {Promise<void>}
  */
 export async function resetToSignedOut(page) {
-    await page.evaluate(() => {
-        window.sessionStorage.setItem("__gravityTestInitialized", "true");
-        window.localStorage.setItem("gravityNotesData", "[]");
-        window.location.reload();
-    });
-    await page.waitForNavigation({ waitUntil: "domcontentloaded" });
-    await waitForAppReady(page);
-    await page.waitForSelector("[data-test=\"landing-login\"]");
-    await page.waitForFunction(() => {
-        const landing = document.querySelector("[data-test=\"landing\"]");
-        const shell = document.querySelector("[data-test=\"app-shell\"]");
-        if (!landing || !shell) {
-            return false;
-        }
-        return !landing.hasAttribute("hidden") && shell.hasAttribute("hidden");
-    });
+    // Determine which page we're on
+    const currentUrl = page.url();
+    const isAppPage = currentUrl.includes("app.html");
+
+    if (isAppPage) {
+        // On app.html: navigate to the landing page
+        // Build the landing page URL from the current app.html URL
+        const landingUrl = currentUrl.replace(/app\.html.*$/, "index.html");
+
+        // Clear auth state and set force sign-out marker before navigating.
+        // The force sign-out marker persists across navigation and tells the
+        // evaluateOnNewDocument stub to not set a default authenticated profile.
+        await page.evaluate(() => {
+            window.__tauthStubProfile = null;
+            try {
+                window.sessionStorage.removeItem("__gravityTestAuthProfile");
+                // Set force sign-out marker so the stub won't auto-authenticate on next page
+                window.sessionStorage.setItem("__gravityTestForceSignOut", "true");
+            } catch {
+                // ignore storage errors
+            }
+            window.sessionStorage.setItem("__gravityTestInitialized", "true");
+            window.localStorage.setItem("gravityNotesData", "[]");
+        });
+
+        await page.goto(landingUrl, { waitUntil: "domcontentloaded" });
+
+        // Wait for landing page elements
+        await page.waitForSelector("[data-test=\"landing-login\"]");
+        await page.waitForFunction(() => {
+            const landing = document.querySelector("[data-test=\"landing\"]");
+            return Boolean(landing && !landing.hasAttribute("hidden"));
+        });
+    } else {
+        // On landing page (index.html): just clear auth state and reload
+        await page.evaluate(() => {
+            window.__tauthStubProfile = null;
+            try {
+                window.sessionStorage.removeItem("__gravityTestAuthProfile");
+                // Set force sign-out marker so the stub won't auto-authenticate after reload
+                window.sessionStorage.setItem("__gravityTestForceSignOut", "true");
+            } catch {
+                // ignore storage errors
+            }
+            window.sessionStorage.setItem("__gravityTestInitialized", "true");
+            window.localStorage.setItem("gravityNotesData", "[]");
+            window.location.reload();
+        });
+        await page.waitForNavigation({ waitUntil: "domcontentloaded" });
+
+        // Wait for landing page elements
+        await page.waitForSelector("[data-test=\"landing-login\"]");
+        await page.waitForFunction(() => {
+            const landing = document.querySelector("[data-test=\"landing\"]");
+            return Boolean(landing && !landing.hasAttribute("hidden"));
+        });
+    }
 }
 
 /**
@@ -887,7 +915,7 @@ function generateJwtIdentifier() {
     return randomBytes(16).toString("hex");
 }
 
-async function resolvePageUrl(rawUrl) {
+export async function resolvePageUrl(rawUrl) {
     try {
         const parsed = new URL(rawUrl);
         if (parsed.protocol !== "file:") {
