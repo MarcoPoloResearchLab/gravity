@@ -186,6 +186,8 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
   (Resolved by removing local mpr-ui fixtures in the test harness, waiting for mpr-ui config application in landing tests, and propagating nonce error codes through the auth wrapper; make test/lint/ci pass.)
 - [x] [GN-451] (P1) Fail fast on CI test runs after the first failure while keeping local runs exhaustive.
   (Resolved by enabling CI-only fail-fast behavior in the test harness with immediate error output.)
+- [x] [GN-452] (P1) Landing page should redirect to app when a valid session exists even if mpr-ui does not emit auth events on load.
+  (Resolved by bootstrapping the TAuth session during landing startup and adding a landing E2E test that stubs mpr-ui.)
 
 
 ## Maintenance (428–499)

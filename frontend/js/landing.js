@@ -7,8 +7,10 @@ import {
 } from "./constants.js?build=2026-01-01T22:43:21Z";
 import {
     canNavigate,
-    ensureAuthReady
+    ensureAuthReady,
+    bootstrapTauthSession
 } from "./core/authBootstrap.js?build=2026-01-01T22:43:21Z";
+import { initializeRuntimeConfig } from "./core/runtimeConfig.js?build=2026-01-01T22:43:21Z";
 import { logging } from "./utils/logging.js?build=2026-01-01T22:43:21Z";
 
 /**
@@ -74,6 +76,11 @@ function handleAuthError(event) {
 async function bootstrapExistingSession() {
     try {
         await ensureAuthReady();
+        const appConfig = await initializeRuntimeConfig();
+        const session = await bootstrapTauthSession(appConfig);
+        if (session?.profile) {
+            dispatchMprAuthEvent(EVENT_MPR_AUTH_AUTHENTICATED, { profile: session.profile });
+        }
     } catch (error) {
         logging.warn("Landing auth bootstrap failed", error);
     }
@@ -88,6 +95,23 @@ function redirectToApp() {
     if (typeof window !== "undefined" && canNavigate(window.location)) {
         window.location.href = AUTHENTICATED_REDIRECT;
     }
+}
+
+/**
+ * Dispatch an mpr-ui auth event to the document body.
+ * @param {string} eventName
+ * @param {Record<string, unknown>} detail
+ * @returns {void}
+ */
+function dispatchMprAuthEvent(eventName, detail) {
+    if (typeof document === "undefined") {
+        return;
+    }
+    const target = document.body ?? document;
+    if (!target || typeof target.dispatchEvent !== "function") {
+        return;
+    }
+    target.dispatchEvent(new CustomEvent(eventName, { detail, bubbles: true }));
 }
 
 /**

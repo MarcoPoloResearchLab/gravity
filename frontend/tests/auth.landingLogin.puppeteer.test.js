@@ -10,7 +10,8 @@ import {
     installCdnMirrors,
     injectTAuthStub,
     injectRuntimeConfig,
-    attachImportAppModule
+    attachImportAppModule,
+    registerRequestInterceptor
 } from "./helpers/browserHarness.js";
 import { startTestBackend } from "./helpers/backendHarness.js";
 import { resolvePageUrl } from "./helpers/syncTestUtils.js";
@@ -19,6 +20,19 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const LANDING_PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
 const CUSTOM_AUTH_BASE_URL = "http://localhost:58081";
+const MPR_UI_SCRIPT_PATTERN = /\/mpr-ui\.js(?:\?.*)?$/u;
+const MPR_UI_STUB_SCRIPT = [
+    "(() => {",
+    "  class MprLoginButton extends HTMLElement {}",
+    "  class MprUser extends HTMLElement {}",
+    "  if (window.customElements && !window.customElements.get(\"mpr-login-button\")) {",
+    "    window.customElements.define(\"mpr-login-button\", MprLoginButton);",
+    "  }",
+    "  if (window.customElements && !window.customElements.get(\"mpr-user\")) {",
+    "    window.customElements.define(\"mpr-user\", MprUser);",
+    "  }",
+    "})();"
+].join("\n");
 
 let puppeteerAvailable = true;
 try {
@@ -115,6 +129,58 @@ if (!puppeteerAvailable) {
                 assert.equal(attributes.loginPath, "/auth/google");
                 assert.equal(attributes.logoutPath, "/auth/logout");
                 assert.equal(attributes.noncePath, "/auth/nonce");
+            } finally {
+                await teardown();
+            }
+        });
+
+        test("redirects to app when session exists without relying on mpr-ui auth events", async () => {
+            const backend = await startTestBackend();
+            const browser = await connectSharedBrowser();
+            const context = await browser.createBrowserContext();
+            const page = await context.newPage();
+
+            await page.evaluateOnNewDocument(() => {
+                window.__gravityForceLocalStorage = true;
+            });
+            await installCdnMirrors(page);
+            await attachImportAppModule(page);
+            await injectTAuthStub(page);
+            await injectRuntimeConfig(page, {
+                development: {
+                    backendBaseUrl: backend.baseUrl,
+                    authBaseUrl: CUSTOM_AUTH_BASE_URL,
+                    authTenantId: "gravity",
+                    googleClientId: "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com"
+                }
+            });
+
+            const removeInterceptor = await registerRequestInterceptor(page, (request) => {
+                if (!MPR_UI_SCRIPT_PATTERN.test(request.url())) {
+                    return false;
+                }
+                request.respond({
+                    status: 200,
+                    contentType: "application/javascript",
+                    body: MPR_UI_STUB_SCRIPT,
+                    headers: { "Access-Control-Allow-Origin": "*" }
+                }).catch(() => {});
+                return true;
+            });
+
+            const teardown = async () => {
+                removeInterceptor();
+                await page.close().catch(() => {});
+                await context.close().catch(() => {});
+                browser.disconnect();
+                await backend.close();
+            };
+
+            try {
+                const resolvedUrl = await resolvePageUrl(LANDING_PAGE_URL);
+                await page.goto(resolvedUrl, { waitUntil: "domcontentloaded" });
+                await page.waitForFunction(() => window.location.pathname.endsWith("/app.html"), { timeout: 10000 });
+                assert.match(page.url(), /app\.html/u);
             } finally {
                 await teardown();
             }
