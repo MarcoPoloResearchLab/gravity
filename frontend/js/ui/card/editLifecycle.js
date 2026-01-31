@@ -88,31 +88,58 @@ export function runMergeAction(handler) {
  * Enable inline editing for a card.
  * @param {HTMLElement} card
  * @param {HTMLElement} notesContainer
- * @param {{ bubblePreviousCardToTop?: boolean, bubbleSelfToTop?: boolean, config: import("../../core/config.js").AppConfig }} options
+ * @param {{ bubblePreviousCardToTop?: boolean, bubbleSelfToTop?: boolean, viewportAnchor?: import("./viewport.js").ViewportAnchor|null, config: import("../../core/config.js").AppConfig }} options
  * @returns {void}
  */
 export function enableInPlaceEditing(card, notesContainer, options) {
     const {
         bubblePreviousCardToTop = true,
         bubbleSelfToTop = false,
-        config
+        config,
+        viewportAnchor: viewportAnchorOverride = null
     } = options;
     if (!config) {
         throw new Error(ERROR_MESSAGES.MISSING_CONFIG);
     }
-    const viewportAnchor = !bubbleSelfToTop ? captureViewportAnchor(card) : null;
-    if (viewportAnchor) {
+    if (currentEditingCard && !currentEditingCard.isConnected) {
+        clearCardAnchor(currentEditingCard);
+        disposeCardState(currentEditingCard);
+        currentEditingCard = null;
+    }
+    const viewportAnchor = !bubbleSelfToTop
+        ? viewportAnchorOverride ?? captureViewportAnchor(card)
+        : null;
+    const centerCardOnEntry = !bubbleSelfToTop && shouldCenterCard(viewportAnchor);
+    if (centerCardOnEntry) {
+        card.dataset.allowEditCenter = "true";
+    } else {
+        delete card.dataset.allowEditCenter;
+    }
+    if (viewportAnchor && !centerCardOnEntry) {
         storeCardAnchor(card, viewportAnchor);
     }
-    const centerCardOnEntry = !bubbleSelfToTop && shouldCenterCard(viewportAnchor);
 
     const wasEditing = card.classList.contains("editing-in-place");
     const htmlViewWrapper = card.querySelector(".note-html-view");
     const wasHtmlViewExpanded = htmlViewWrapper instanceof HTMLElement && htmlViewWrapper.classList.contains("note-html-view--expanded");
-    const expandedCardHeight = wasHtmlViewExpanded ? card.getBoundingClientRect().height : null;
-    const expandedContentHeight = wasHtmlViewExpanded && htmlViewWrapper instanceof HTMLElement
-        ? htmlViewWrapper.getBoundingClientRect().height
-        : null;
+    const cardRect = card.getBoundingClientRect();
+    const cardHeight = normalizeHeight(cardRect.height);
+    let expandedCardHeight = cardHeight > 0 ? cardHeight : null;
+    let expandedContentHeight = null;
+    if (htmlViewWrapper instanceof HTMLElement) {
+        const htmlViewRect = htmlViewWrapper.getBoundingClientRect();
+        const htmlViewHeight = normalizeHeight(htmlViewRect.height);
+        const htmlViewScrollHeight = normalizeHeight(htmlViewWrapper.scrollHeight);
+        const overflowDelta = Math.max(htmlViewScrollHeight - htmlViewHeight, 0);
+        if (cardHeight > 0) {
+            expandedCardHeight = cardHeight + overflowDelta;
+        }
+        if (htmlViewScrollHeight > 0) {
+            expandedContentHeight = htmlViewScrollHeight;
+        } else if (htmlViewHeight > 0) {
+            expandedContentHeight = htmlViewHeight;
+        }
+    }
     if (Number.isFinite(expandedContentHeight) && expandedContentHeight > 0) {
         rememberExpandedHeight(card, expandedContentHeight);
     }
@@ -183,6 +210,10 @@ export function enableInPlaceEditing(card, notesContainer, options) {
                 cardHeight: currentCardHeight > 0 ? currentCardHeight : expandedCardHeight,
                 contentHeight: 0
             });
+            const refreshedAnchor = captureViewportAnchor(card);
+            if (refreshedAnchor) {
+                storeCardAnchor(card, refreshedAnchor);
+            }
         };
         editorHost.on("change", synchronizeEditingHeight);
         card.__editingHeightCleanup = () => {
@@ -206,6 +237,24 @@ export function enableInPlaceEditing(card, notesContainer, options) {
                 behavior: centerCardOnEntry ? "center" : "preserve",
                 anchor: viewportAnchor ?? null,
                 anchorCompensation: !centerCardOnEntry && Boolean(viewportAnchor)
+            });
+            if (!centerCardOnEntry && viewportAnchor) {
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        maintainCardViewport(card, {
+                            behavior: "preserve",
+                            anchor: viewportAnchor,
+                            anchorCompensation: true,
+                            attempts: 3
+                        });
+                    });
+                });
+            }
+            requestAnimationFrame(() => {
+                const refreshedAnchor = captureViewportAnchor(card);
+                if (refreshedAnchor) {
+                    storeCardAnchor(card, refreshedAnchor);
+                }
             });
         }
     });
@@ -243,7 +292,7 @@ export async function finalizeCard(card, notesContainer, options) {
     if (!config) {
         throw new Error(ERROR_MESSAGES.MISSING_CONFIG);
     }
-    if (!card || mergeInProgress) return { status: "unchanged", record: null };
+    if (!card || !card.isConnected || mergeInProgress) return { status: "unchanged", record: null };
     if (isCardFinalizeSuppressed(card)) return { status: "unchanged", record: null };
 
     const editorHost = getEditorHost(card);
@@ -294,6 +343,7 @@ export async function finalizeCard(card, notesContainer, options) {
 
     const exitEditingMode = () => {
         card.classList.remove("editing-in-place");
+        delete card.dataset.allowEditCenter;
         releaseEditingSurfaceHeight(card);
         if (currentEditingCard === card) {
             currentEditingCard = null;
@@ -323,6 +373,7 @@ export async function finalizeCard(card, notesContainer, options) {
         return { status: "deleted", record: null };
     }
 
+    const anchorSnapshot = captureViewportAnchor(card);
     const shouldBubble = forceBubble || bubbleToTop;
     const resultRecord = persistCardState(card, notesContainer, text, { bubbleToTop: shouldBubble });
 
@@ -338,6 +389,14 @@ export async function finalizeCard(card, notesContainer, options) {
             requestAnimationFrame(() => {
                 requestAnimationFrame(resolve);
             });
+        });
+    }
+    const storedAnchor = anchorSnapshot ?? getCardAnchor(card);
+    if (storedAnchor) {
+        maintainCardViewport(card, {
+            behavior: "preserve",
+            anchor: storedAnchor,
+            anchorCompensation: true
         });
     }
 
@@ -546,7 +605,7 @@ export function mergeUp(card, notesContainer) {
  * Focus the editor for a specific card.
  * @param {HTMLElement} card
  * @param {HTMLElement} notesContainer
- * @param {{ caretPlacement?: "start" | "end" | number, bubblePreviousCardToTop?: boolean, config: import("../../core/config.js").AppConfig }} options
+ * @param {{ caretPlacement?: "start" | "end" | number, bubblePreviousCardToTop?: boolean, viewportAnchor?: import("./viewport.js").ViewportAnchor|null, config: import("../../core/config.js").AppConfig }} options
  * @returns {boolean}
  */
 export function focusCardEditor(card, notesContainer, options) {
@@ -555,7 +614,8 @@ export function focusCardEditor(card, notesContainer, options) {
     const {
         caretPlacement = "start",
         bubblePreviousCardToTop = false,
-        config
+        config,
+        viewportAnchor: viewportAnchorOverride = null
     } = options;
     if (!config) {
         throw new Error(ERROR_MESSAGES.MISSING_CONFIG);
@@ -564,7 +624,8 @@ export function focusCardEditor(card, notesContainer, options) {
     enableInPlaceEditing(card, notesContainer, {
         bubblePreviousCardToTop,
         bubbleSelfToTop: false,
-        config
+        config,
+        viewportAnchor: viewportAnchorOverride
     });
 
     requestAnimationFrame(() => {

@@ -56,6 +56,7 @@ import {
     shouldCenterCard,
     clamp
 } from "./card/viewport.js?build=2026-01-01T22:43:21Z";
+import { storeCardAnchor } from "./card/anchorState.js?build=2026-01-01T22:43:21Z";
 import {
     initializePointerTracking,
     shouldKeepEditingAfterBlur,
@@ -646,14 +647,18 @@ export function renderCard(record, options) {
                 caretPlacement = resolveMarkdownCaretOffset(card, markdownValue, offset);
             }
         }
-        if (shouldCenterCard(captureViewportAnchor(card))) {
+        const preExpansionAnchor = captureViewportAnchor(card);
+        if (shouldCenterCard(preExpansionAnchor)) {
             card.dataset.suppressHtmlViewScroll = "true";
         }
         setHtmlViewExpanded(card, true);
+        const expandedAnchor = captureViewportAnchor(card) ?? preExpansionAnchor;
+        const focusAnchor = preExpansionAnchor ?? expandedAnchor;
         focusCardEditor(card, notesContainer, {
             caretPlacement,
             bubblePreviousCardToTop: true,
-            config: appConfig
+            config: appConfig,
+            viewportAnchor: focusAnchor
         });
     };
 
@@ -680,14 +685,18 @@ export function renderCard(record, options) {
             }
         }
 
-        if (shouldCenterCard(captureViewportAnchor(card))) {
+        const preExpansionAnchor = captureViewportAnchor(card);
+        if (shouldCenterCard(preExpansionAnchor)) {
             card.dataset.suppressHtmlViewScroll = "true";
         }
         setHtmlViewExpanded(card, true);
+        const expandedAnchor = captureViewportAnchor(card) ?? preExpansionAnchor;
+        const focusAnchor = preExpansionAnchor ?? expandedAnchor;
         focusCardEditor(card, notesContainer, {
             caretPlacement,
             bubblePreviousCardToTop: true,
-            config: appConfig
+            config: appConfig,
+            viewportAnchor: focusAnchor
         });
     };
 
@@ -750,13 +759,13 @@ export function renderCard(record, options) {
         }
     });
     editorHost.on("submit", () => finalizeCard(card, notesContainer, {
-        forceBubble: true,
+        bubbleToTop: false,
         suppressTopEditorAutofocus: true,
         config: appConfig
     }));
     editorHost.on("blur", () => {
         if (typeof window === "undefined") {
-            finalizeCard(card, notesContainer, { config: appConfig });
+            finalizeCard(card, notesContainer, { bubbleToTop: false, config: appConfig });
             return;
         }
         window.requestAnimationFrame(() => {
@@ -769,7 +778,7 @@ export function renderCard(record, options) {
                 editorHost.focus();
                 return;
             }
-            finalizeCard(card, notesContainer, { config: appConfig });
+            finalizeCard(card, notesContainer, { bubbleToTop: false, config: appConfig });
         });
     });
     editorHost.on("navigatePrevious", () => navigateToAdjacentCard(card, DIRECTION_PREVIOUS, notesContainer, appConfig));
@@ -804,15 +813,17 @@ export function renderCard(record, options) {
             return;
         }
 
-        queueHtmlViewFocus(card, { type: "checkbox", taskIndex, remaining: 2 });
-        host.setValue(nextMarkdown);
-        const toggledAttachments = getAllAttachments(editor);
-        const toggledHtmlViewSource = transformMarkdownWithAttachments(nextMarkdown, toggledAttachments);
-        createHtmlView(card, {
-            markdownSource: toggledHtmlViewSource,
-            badgesTarget: badges
-        });
         const shouldAnchorExpandedView = card.dataset.htmlViewExpanded === "true";
+        if (shouldAnchorExpandedView) {
+            const viewportAnchor = captureViewportAnchor(card);
+            if (viewportAnchor) {
+                storeCardAnchor(card, viewportAnchor);
+            }
+            card.dataset.suppressHtmlViewScroll = "true";
+        }
+
+        queueHtmlViewFocus(card, { type: "checkbox", taskIndex, remaining: shouldAnchorExpandedView ? 1 : 2 });
+        host.setValue(nextMarkdown);
         const persisted = persistCardState(card, notesContainer, nextMarkdown, { bubbleToTop: false });
         if (persisted && !shouldAnchorExpandedView) {
             scheduleHtmlViewBubble(card, notesContainer);

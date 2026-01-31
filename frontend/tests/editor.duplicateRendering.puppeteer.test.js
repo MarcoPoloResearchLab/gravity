@@ -1,3 +1,5 @@
+// @ts-check
+
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -5,18 +7,17 @@ import test from "node:test";
 
 import { decodePng } from "./helpers/png.js";
 
-import { createAppConfig } from "../js/core/config.js?build=2026-01-01T22:43:21Z";
-import { ENVIRONMENT_DEVELOPMENT } from "../js/core/environmentConfig.js?build=2026-01-01T22:43:21Z";
-import { createSharedPage, waitForAppHydration } from "./helpers/browserHarness.js";
+import { connectSharedBrowser } from "./helpers/browserHarness.js";
+import { startTestBackend } from "./helpers/backendHarness.js";
+import { attachBackendSessionCookie, buildUserStorageKey, dispatchNoteCreate, prepareFrontendPage, signInTestUser } from "./helpers/syncTestUtils.js";
 import { saveScreenshotArtifact, withScreenshotCapture } from "./helpers/screenshotArtifacts.js";
-
-const appConfig = createAppConfig({ environment: ENVIRONMENT_DEVELOPMENT });
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+const PAGE_URL = `file://${path.join(PROJECT_ROOT, "app.html")}`;
 
 const GN58_NOTE_ID = "gn58-duplicate-htmlView";
+const TEST_USER_ID = "duplicate-render-user";
 const UNIQUE_TASK_TEXT = "unique1";
 const INITIAL_MARKDOWN_LINES = [
     `- [ ] ${UNIQUE_TASK_TEXT}`,
@@ -37,6 +38,7 @@ const DUPLICATE_SURFACE_ALERT_RGB = Object.freeze([240, 128, 0]);
 const CHECKBOX_CLICK_TIMEOUT_MS = 2000;
 const CHECKBOX_WAIT_TIMEOUT_MS = 2000;
 const CHECKBOX_STABLE_FRAMES = 2;
+const CARD_WAIT_TIMEOUT_MS = 12000;
 const ERROR_MESSAGES = Object.freeze({
     CHECKBOX_MISSING: "editor.duplicate_rendering.checkbox_missing",
     CHECKBOX_UNSTABLE: "editor.duplicate_rendering.checkbox_unstable"
@@ -56,7 +58,7 @@ test.describe("GN-58 duplicate markdown rendering", () => {
         try {
             await withScreenshotCapture(async () => {
                 const cardSelector = `.markdown-block[data-note-id="${GN58_NOTE_ID}"]`;
-                await page.waitForSelector(cardSelector);
+                await page.waitForSelector(cardSelector, { timeout: CARD_WAIT_TIMEOUT_MS });
 
                 const htmlViewCleanBuffer = await captureCardScreenshot(page, cardSelector);
                 await saveScreenshotArtifact("htmlView-clean", htmlViewCleanBuffer);
@@ -210,16 +212,74 @@ function buildNoteRecord({ noteId, markdownText, attachments = {}, pinned = fals
 }
 
 async function openPageWithRecords(records) {
-    const { page, teardown } = await createSharedPage();
-    const serialized = JSON.stringify(Array.isArray(records) ? records : []);
-    await page.evaluateOnNewDocument((storageKey, payload) => {
-        window.__gravityForceMarkdownEditor = true;
-        window.localStorage.clear();
-        window.localStorage.setItem(storageKey, payload);
-    }, appConfig.storageKey, serialized);
-    await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
-    await waitForAppHydration(page);
-    return { page, teardown };
+    const backend = await startTestBackend();
+    const browser = await connectSharedBrowser();
+    const context = await browser.createBrowserContext();
+    const storageKey = buildUserStorageKey(TEST_USER_ID);
+    const page = await prepareFrontendPage(context, PAGE_URL, {
+        backendBaseUrl: backend.baseUrl,
+        beforeNavigate: async (targetPage) => {
+            // Set session cookie BEFORE navigation to prevent redirect to landing page
+            await attachBackendSessionCookie(targetPage, backend, TEST_USER_ID);
+            await targetPage.evaluateOnNewDocument((payloadKey) => {
+                window.__gravityForceMarkdownEditor = true;
+                window.localStorage.clear();
+                window.localStorage.setItem(payloadKey, "[]");
+            }, storageKey);
+        }
+    });
+    await signInTestUser(page, backend, TEST_USER_ID, { waitForSyncManager: false });
+    if (Array.isArray(records) && records.length > 0) {
+        for (const record of records) {
+            await dispatchNoteCreate(page, { record, storeUpdated: false, shouldRender: true });
+        }
+        try {
+            await page.waitForSelector(".markdown-block[data-note-id]", { timeout: CARD_WAIT_TIMEOUT_MS });
+        } catch (error) {
+            const debugState = await page.evaluate((payloadKey) => {
+                const root = document.querySelector("[x-data]");
+                const alpineComponent = (() => {
+                    const legacy = /** @type {{ $data?: Record<string, any> }} */ (/** @type {any} */ (root).__x ?? null);
+                    if (legacy && typeof legacy.$data === "object") {
+                        return legacy.$data;
+                    }
+                    const alpine = typeof window !== "undefined" ? /** @type {{ $data?: (el: Element) => any }} */ (window.Alpine ?? null) : null;
+                    if (alpine && typeof alpine.$data === "function") {
+                        const scoped = alpine.$data(root);
+                        if (scoped && typeof scoped === "object") {
+                            return scoped;
+                        }
+                    }
+                    const stack = /** @type {Array<Record<string, any>>|undefined} */ (/** @type {any} */ (root)._x_dataStack);
+                    if (Array.isArray(stack) && stack.length > 0) {
+                        const candidate = stack[stack.length - 1];
+                        if (candidate && typeof candidate === "object") {
+                            return candidate;
+                        }
+                    }
+                    return null;
+                })();
+                const storageValue = payloadKey ? window.localStorage.getItem(payloadKey) : null;
+                return {
+                    authState: document.body?.dataset?.authState ?? null,
+                    authUserId: alpineComponent?.authUser?.id ?? null,
+                    activeUserId: alpineComponent?.syncManager?.getDebugState?.()?.activeUserId ?? null,
+                    storedPayloadSize: storageValue ? storageValue.length : 0,
+                    renderedNotes: document.querySelectorAll(".markdown-block[data-note-id]").length
+                };
+            }, storageKey);
+            throw new Error(`Seeded notes not rendered: ${JSON.stringify(debugState)}`, { cause: error });
+        }
+    }
+    return {
+        page,
+        teardown: async () => {
+            await page.close().catch(() => {});
+            await context.close().catch(() => {});
+            browser.disconnect();
+            await backend.close();
+        }
+    };
 }
 
 async function highlightRenderedCheckboxes(page, cardSelector) {

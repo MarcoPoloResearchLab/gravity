@@ -1,25 +1,45 @@
+// @ts-check
+
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import {
-    EVENT_AUTH_SIGN_OUT,
-    LABEL_ENTER_FULL_SCREEN,
+    EVENT_MPR_AUTH_UNAUTHENTICATED,
+    EVENT_MPR_AUTH_AUTHENTICATED,
     LABEL_EXPORT_NOTES,
     LABEL_IMPORT_NOTES,
+    LABEL_ENTER_FULL_SCREEN,
     LABEL_SIGN_OUT
 } from "../js/constants.js";
 import {
     initializePuppeteerTest,
-    dispatchSignIn,
+    attachBackendSessionCookie,
     waitForSyncManagerUser,
     resetToSignedOut
 } from "./helpers/syncTestUtils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+// Avatar menu is in app.html in the new page-separation architecture
+const PAGE_URL = `file://${path.join(PROJECT_ROOT, "app.html")}`;
+const USER_MENU_TIMEOUT_MS = 8000;
+
+/**
+ * @param {import("puppeteer").Page} page
+ */
+async function readUserMenuState(page) {
+    return page.evaluate(() => {
+        const menu = document.querySelector("mpr-user");
+        return {
+            authState: document.body?.dataset?.authState ?? null,
+            status: menu?.getAttribute("data-mpr-user-status") ?? null,
+            mode: menu?.getAttribute("data-mpr-user-mode") ?? null,
+            error: menu?.getAttribute("data-mpr-user-error") ?? null
+        };
+    });
+}
 
 let puppeteerAvailable = true;
 try {
@@ -54,7 +74,7 @@ if (!puppeteerAvailable) {
             harness = null;
         });
 
-        test("hides Google button after sign-in and reveals stacked avatar menu", async () => {
+        test("shows landing sign-in and reveals user menu after authentication", async () => {
             if (!harness) {
                 test.skip(launchError ? launchError.message : "Puppeteer harness unavailable");
                 return;
@@ -62,91 +82,122 @@ if (!puppeteerAvailable) {
 
             const { page, backend } = harness;
 
+            // Reset to signed out state - this navigates to landing page in the new architecture
             await resetToSignedOut(page);
 
             assert.equal(LABEL_EXPORT_NOTES, "Export Notes");
             assert.equal(LABEL_IMPORT_NOTES, "Import Notes");
 
-            await page.waitForSelector(".auth-button-host");
-            await page.waitForSelector("#guest-export-button:not([hidden])");
+            // Verify we're on the landing page
+            await page.waitForSelector("[data-test=\"landing-login\"]");
+            const landingVisible = await page.evaluate(() => {
+                const landing = document.querySelector("[data-test=\"landing\"]");
+                return Boolean(landing && !landing.hasAttribute("hidden"));
+            });
+            assert.equal(landingVisible, true);
 
-            await page.evaluate(() => {
-                window.__guestExports = [];
-                window.__guestExportOriginalCreate = URL.createObjectURL;
-                window.__guestExportOriginalRevoke = URL.revokeObjectURL;
-                URL.createObjectURL = (blob) => {
-                    if (blob && typeof blob.text === "function") {
-                        blob.text().then((text) => {
-                            window.__guestExports.push(text);
-                        });
-                    }
-                    return "blob:mock";
+            // Sign in - this will trigger redirect to app.html in the new architecture
+            await attachBackendSessionCookie(page, backend, "avatar-menu-user");
+
+            // On landing page, dispatch auth event directly (landing page has mpr-login-button, not mpr-user)
+            // Set up navigation wait before dispatching sign-in event
+            const navigationPromise = page.waitForNavigation({ waitUntil: "domcontentloaded" });
+            await page.evaluate((eventName) => {
+                const profile = {
+                    user_id: "avatar-menu-user",
+                    user_email: "avatar-menu-user@example.com",
+                    display: "Avatar Menu User",
+                    name: "Avatar Menu User",
+                    given_name: "Avatar",
+                    avatar_url: "https://example.com/avatar.png"
                 };
-                URL.revokeObjectURL = () => {};
-            });
-
-            await page.click("#guest-export-button");
-            await page.waitForFunction(() => Array.isArray(window.__guestExports) && window.__guestExports.length > 0);
-            const exportedPayload = await page.evaluate(() => window.__guestExports[0]);
-            assert.equal(exportedPayload, "[]");
-
-            await page.evaluate(() => {
-                if (window.__guestExportOriginalCreate) {
-                    URL.createObjectURL = window.__guestExportOriginalCreate;
-                    delete window.__guestExportOriginalCreate;
+                // Store profile in sessionStorage for mpr-ui
+                try {
+                    window.sessionStorage.setItem("__gravityTestAuthProfile", JSON.stringify(profile));
+                } catch {
+                    // ignore storage errors
                 }
-                if (window.__guestExportOriginalRevoke) {
-                    URL.revokeObjectURL = window.__guestExportOriginalRevoke;
-                    delete window.__guestExportOriginalRevoke;
-                }
-                delete window.__guestExports;
-            });
+                const event = new CustomEvent(eventName, {
+                    detail: { profile },
+                    bubbles: true
+                });
+                document.body.dispatchEvent(event);
+            }, EVENT_MPR_AUTH_AUTHENTICATED);
+            await navigationPromise;
 
-            const hostBeforeSignIn = await page.$(".auth-button-host");
-            assert.ok(hostBeforeSignIn, "auth button host should render while signed out");
+            // Now we should be on app.html
+            await page.waitForSelector("[data-test=\"app-shell\"]");
+            await waitForSyncManagerUser(page, "avatar-menu-user", USER_MENU_TIMEOUT_MS);
 
-            const credential = backend.tokenFactory("avatar-menu-user");
-            await dispatchSignIn(page, credential, "avatar-menu-user");
-            await waitForSyncManagerUser(page, "avatar-menu-user");
+            await page.waitForSelector("[data-test=\"app-shell\"]:not([hidden])");
+            try {
+                await page.waitForSelector("mpr-user[data-mpr-user-status=\"authenticated\"]", { timeout: USER_MENU_TIMEOUT_MS });
+            } catch (error) {
+                const menuState = await readUserMenuState(page);
+                throw new Error(`User menu did not authenticate: ${JSON.stringify(menuState)}`, { cause: error });
+            }
 
-            await page.waitForFunction(() => !document.querySelector(".auth-button-host"));
+            await page.click("mpr-user [data-mpr-user=\"trigger\"]");
+            await page.waitForSelector("mpr-user[data-mpr-user-open=\"true\"] [data-mpr-user=\"menu\"]");
 
-            const hostAfterSignIn = await page.$(".auth-button-host");
-            assert.equal(hostAfterSignIn, null);
-
-            await page.waitForSelector(".auth-avatar:not([hidden])");
-
-            const guestHiddenAfterSignIn = await page.evaluate(() => {
-                const button = document.querySelector("#guest-export-button");
-                return button ? button.hasAttribute("hidden") : false;
-            });
-            assert.equal(guestHiddenAfterSignIn, true);
-
-            await page.click(".auth-avatar-trigger");
-            await page.waitForSelector("[data-test='auth-menu'][data-open='true']");
-
-            const visibleItems = await page.$$eval("[data-test='auth-menu'] .auth-menu-item", (elements) => {
-                return elements.map((element) => element.textContent?.trim() ?? "").filter((text) => text.length > 0);
-            });
-
-            assert.deepEqual(visibleItems, [
-                LABEL_EXPORT_NOTES,
-                LABEL_IMPORT_NOTES,
-                LABEL_ENTER_FULL_SCREEN,
-                LABEL_SIGN_OUT
+            const [visibleItems, fullScreenSupported] = await Promise.all([
+                page.$$eval("mpr-user [data-mpr-user=\"menu-item\"]", (elements) => {
+                    return elements.map((element) => element.textContent?.trim() ?? "").filter((text) => text.length > 0);
+                }),
+                page.evaluate(() => {
+                    const element = document.documentElement;
+                    if (!element) {
+                        return false;
+                    }
+                    const candidate = /** @type {HTMLElement & {
+                        webkitRequestFullscreen?: () => Promise<void> | void,
+                        mozRequestFullScreen?: () => Promise<void> | void,
+                        msRequestFullscreen?: () => Promise<void> | void
+                    }} */ (element);
+                    return typeof element.requestFullscreen === "function"
+                        || typeof candidate.webkitRequestFullscreen === "function"
+                        || typeof candidate.mozRequestFullScreen === "function"
+                        || typeof candidate.msRequestFullscreen === "function";
+                })
             ]);
 
+            const expectedItems = [LABEL_EXPORT_NOTES, LABEL_IMPORT_NOTES];
+            if (fullScreenSupported) {
+                expectedItems.push(LABEL_ENTER_FULL_SCREEN);
+            }
+            assert.deepEqual(visibleItems, expectedItems);
+
+            const logoutLabel = await page.$eval("mpr-user [data-mpr-user=\"logout\"]", (element) => element.textContent?.trim() ?? "");
+            assert.equal(logoutLabel, LABEL_SIGN_OUT);
+            if (fullScreenSupported) {
+                const menuOrder = await page.$$eval("mpr-user [data-mpr-user=\"menu\"] > [data-mpr-user]", (elements) => {
+                    return elements
+                        .map((element) => ({
+                            role: element.getAttribute("data-mpr-user"),
+                            label: element.textContent?.trim() ?? ""
+                        }))
+                        .filter((entry) => entry.role === "menu-item" || entry.role === "logout");
+                });
+                const fullScreenIndex = menuOrder.findIndex((entry) => entry.label === LABEL_ENTER_FULL_SCREEN);
+                const logoutIndex = menuOrder.findIndex((entry) => entry.role === "logout");
+                assert.ok(fullScreenIndex >= 0, "expected Enter full screen item in the user menu");
+                assert.ok(logoutIndex > fullScreenIndex, "expected Sign out to appear after Enter full screen");
+            }
+
+            // Sign out - this will trigger redirect to landing page in the new architecture
+            const signOutNavigationPromise = page.waitForNavigation({ waitUntil: "domcontentloaded" });
             await page.evaluate((eventName) => {
                 const root = document.querySelector("body");
                 if (!root) return;
                 root.dispatchEvent(new CustomEvent(eventName, {
-                    detail: { reason: "test" },
+                    detail: { profile: null },
                     bubbles: true
                 }));
-            }, EVENT_AUTH_SIGN_OUT);
+            }, EVENT_MPR_AUTH_UNAUTHENTICATED);
+            await signOutNavigationPromise;
 
-            await page.waitForSelector(".auth-button-host");
-            await page.waitForSelector("#guest-export-button:not([hidden])");
+            // Now we should be back on the landing page
+            await page.waitForSelector("[data-test=\"landing\"]:not([hidden])");
         });
     });
 }

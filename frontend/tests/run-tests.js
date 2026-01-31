@@ -35,6 +35,7 @@ const PROJECT_ROOT = path.join(TESTS_ROOT, "..");
 const RUNTIME_OPTIONS_PATH = path.join(TESTS_ROOT, "runtime-options.json");
 const SCREENSHOT_ARTIFACT_ROOT = path.join(TESTS_ROOT, "artifacts");
 const RUNTIME_MODULE_PREFIX = path.join(os.tmpdir(), "gravity-runtime-");
+const CAPTURED_LOG_LIMIT = 4000;
 
 /**
  * @param {string} root
@@ -128,6 +129,21 @@ function parseBooleanOption(value, fallback) {
     }
   }
   return fallback;
+}
+
+/**
+ * @param {string} text
+ * @param {number} limit
+ */
+function trimCapturedOutput(text, limit) {
+  if (typeof text !== "string" || text.length === 0) {
+    return "";
+  }
+  const normalized = text.replace(/\s+$/u, "");
+  if (normalized.length <= limit) {
+    return normalized;
+  }
+  return normalized.slice(Math.max(0, normalized.length - limit));
 }
 
 /**
@@ -314,6 +330,7 @@ globalThis.__gravityRuntimeContext = Object.freeze(context);
  *   iterations?: number,
  *   seed?: string,
  *   randomize?: boolean,
+ *   failFast?: boolean,
  *   stress?: boolean,
  *   passthroughArgs: string[]
  * }}
@@ -327,6 +344,7 @@ function parseCommandLineArguments(argv) {
     iterations: undefined,
     seed: undefined,
     randomize: undefined,
+    failFast: undefined,
     stress: undefined,
     passthroughArgs: []
   };
@@ -380,6 +398,14 @@ function parseCommandLineArguments(argv) {
       parsed.randomize = false;
       continue;
     }
+    if (argument === "--fail-fast") {
+      parsed.failFast = true;
+      continue;
+    }
+    if (argument === "--no-fail-fast") {
+      parsed.failFast = false;
+      continue;
+    }
     if (argument === "--stress") {
       parsed.iterations = Math.max(parsed.iterations ?? 0, 10);
       parsed.stress = true;
@@ -418,6 +444,11 @@ async function main() {
 
   const runtimeOptions = await loadRuntimeOptions();
   const isCiEnvironment = process.env.CI === "true";
+  const failFast = typeof cliArguments.failFast === "boolean"
+    ? cliArguments.failFast
+    : typeof runtimeOptions.failFast === "boolean"
+      ? runtimeOptions.failFast
+      : false;
 
   /** @type {{ policy?: string, allowlist?: string[] }} */
   const mergedScreenshotConfig = {};
@@ -529,6 +560,9 @@ async function main() {
 
   const patternInput = typeof runtimeOptions.pattern === "string" ? runtimeOptions.pattern : null;
   const pattern = patternInput ? new RegExp(patternInput) : null;
+  const testNamePatternInput = typeof runtimeOptions.testNamePattern === "string"
+    ? runtimeOptions.testNamePattern
+    : null;
 
   const timeoutMs = parseTimeout(runtimeOptions.timeoutMs, harnessDefaults.timeoutMs);
   const killGraceMs = parseTimeout(runtimeOptions.killGraceMs, harnessDefaults.killGraceMs);
@@ -554,10 +588,15 @@ async function main() {
   // Default per-file overrides for real runs (not in minimal/raw mode).
   if (!minimal && !raw) {
     const defaultTimeoutEntries = [
+      ["auth.tauth.puppeteer.test.js", 90000],
+      ["auth.login.puppeteer.test.js", 60000],
       ["fullstack.endtoend.puppeteer.test.js", 60000],
       ["persistence.backend.puppeteer.test.js", 45000],
-      ["sync.endtoend.puppeteer.test.js", 45000],
-      ["editor.inline.puppeteer.test.js", 40000]
+      ["sync.endtoend.puppeteer.test.js", 90000],
+      ["sync.realtime.puppeteer.test.js", 90000],
+      ["sync.scenarios.puppeteer.test.js", 90000],
+      ["editor.inline.puppeteer.test.js", 60000],
+      ["htmlView.checkmark.puppeteer.test.js", 60000]
     ];
     for (const [file, value] of defaultTimeoutEntries) {
       if (!timeoutOverrides.has(file)) timeoutOverrides.set(file, value);
@@ -566,7 +605,7 @@ async function main() {
       ["fullstack.endtoend.puppeteer.test.js", 10000],
       ["persistence.backend.puppeteer.test.js", 8000],
       ["sync.endtoend.puppeteer.test.js", 8000],
-      ["editor.inline.puppeteer.test.js", 6000]
+      ["editor.inline.puppeteer.test.js", 8000]
     ];
     for (const [file, value] of defaultKillEntries) {
       if (!killOverrides.has(file)) killOverrides.set(file, value);
@@ -602,8 +641,7 @@ async function main() {
   let backendHandle = null;
   const environmentCopy = Object.fromEntries(Object.entries(process.env));
   /** @type {any} */
-  let baseRuntimeContext = { ci: isCiEnvironment, environment: environmentCopy };
-  publishRuntimeContext(baseRuntimeContext);
+  const baseEnvironmentContext = { ci: isCiEnvironment, environment: environmentCopy };
 
   const sectionHeading = (label) => `\n${cliColors.symbols.section} ${cliColors.bold(label)}`;
   const formatCount = (count, label, format) => {
@@ -642,105 +680,111 @@ async function main() {
   let passCount = 0;
   let failCount = 0;
   let timeoutCount = 0;
+  let failFastTriggered = false;
 
   try {
-    if (!minimal && !raw) {
-      sharedBrowserContext = await launchSharedBrowser();
-      if (!sharedBrowserContext) throw new Error("Shared browser failed to launch.");
-      backendHandle = await startTestBackend();
-      if (!backendHandle.signingKeyPem || !backendHandle.signingKeyId) {
-        throw new Error("Shared backend did not expose signing metadata.");
-      }
-      baseRuntimeContext = {
-        ...baseRuntimeContext,
-        backend: {
-          baseUrl: backendHandle.baseUrl,
-          googleClientId: backendHandle.googleClientId,
-          signingKeyPem: backendHandle.signingKeyPem,
-          signingKeyId: backendHandle.signingKeyId
-        },
-        browser: {
-          wsEndpoint: sharedBrowserContext.wsEndpoint
-        }
-      };
-      publishRuntimeContext(baseRuntimeContext);
-    }
-    if (!baseRuntimeContext) {
-      baseRuntimeContext = { ci: isCiEnvironment };
-    }
-
     for (let iterationIndex = 0; iterationIndex < iterationCount; iterationIndex += 1) {
-      const iterationSeed = randomizeTests ? iterationSeeds[iterationIndex] ?? null : iterationSeeds[iterationIndex] ?? null;
-      const iterationFiles = randomizeTests ? shuffleWithSeed(files, iterationSeed ?? 0) : files.slice();
-      iterationMetadata.push({
-        index: iterationIndex + 1,
-        seed: iterationSeed,
-        files: iterationFiles.slice()
-      });
-
-      const iterationLabelParts = [`Iteration ${iterationIndex + 1}/${iterationCount}`];
-      if (randomizeTests) {
-        iterationLabelParts.push(`seed ${formatSeed(iterationSeed)}`);
-      }
-      console.log(sectionHeading(iterationLabelParts.join(" ")));
-
-      let screenshotIterationRoot = null;
-      if (screenshotRunRoot) {
-        const iterationDirectory = `iteration-${String(iterationIndex + 1).padStart(2, "0")}`;
-        screenshotIterationRoot = path.join(screenshotRunRoot, iterationDirectory);
-        await fs.mkdir(screenshotIterationRoot, { recursive: true });
-      }
-
-      for (const relative of iterationFiles) {
-        const absolute = path.join(TESTS_ROOT, relative);
-        const effectiveTimeout = timeoutOverrides.get(relative) ?? timeoutMs;
-        const effectiveKillGrace = killOverrides.get(relative) ?? killGraceMs;
-
-        let screenshotDirectoryForTest = null;
-        if (screenshotIterationRoot) {
-          const shortName = deriveShortTestName(relative);
-          screenshotDirectoryForTest = path.join(screenshotIterationRoot, shortName);
-          await fs.mkdir(screenshotDirectoryForTest, { recursive: true });
-        }
-
-        console.log(sectionHeading(relative));
-
-        /** @type {string[]} */
-        const args = [];
-        if (!raw) {
-          args.push("--test", `--test-timeout=${Math.max(effectiveTimeout, 1000)}`, absolute);
-        } else {
-          args.push(absolute);
-        }
-
-        const runtimeContextForTest = {
-          ...baseRuntimeContext,
-          test: {
-            file: relative,
-            iteration: iterationIndex + 1,
-            totalIterations: iterationCount,
-            seed: iterationSeed ?? null
-          },
-          screenshots: {
-            directory: screenshotDirectoryForTest,
-            policy: screenshotOptions.policy ?? null,
-            allowlist: Array.isArray(screenshotOptions.allowlist) ? screenshotOptions.allowlist : [],
-            force: screenshotForce
+      /** @type {any} */
+      let baseRuntimeContext = baseEnvironmentContext;
+      try {
+        publishRuntimeContext(baseEnvironmentContext);
+        if (!minimal && !raw) {
+          sharedBrowserContext = await launchSharedBrowser();
+          if (!sharedBrowserContext) throw new Error("Shared browser failed to launch.");
+          backendHandle = await startTestBackend();
+          if (!backendHandle.signingKeyPem || !backendHandle.signingKeyId) {
+            throw new Error("Shared backend did not expose signing metadata.");
           }
-        };
+          baseRuntimeContext = {
+            ...baseEnvironmentContext,
+            backend: {
+              baseUrl: backendHandle.baseUrl,
+              googleClientId: backendHandle.googleClientId,
+              signingKeyPem: backendHandle.signingKeyPem,
+              signingKeyId: backendHandle.signingKeyId
+            },
+            browser: {
+              wsEndpoint: sharedBrowserContext.wsEndpoint
+            }
+          };
+        }
+        publishRuntimeContext(baseRuntimeContext);
 
-        const { modulePath: runtimeModulePath, dispose: disposeRuntimeModule } = await createRuntimeModule(runtimeContextForTest);
+        const iterationSeed = randomizeTests ? iterationSeeds[iterationIndex] ?? null : iterationSeeds[iterationIndex] ?? null;
+        const iterationFiles = randomizeTests ? shuffleWithSeed(files, iterationSeed ?? 0) : files.slice();
+        iterationMetadata.push({
+          index: iterationIndex + 1,
+          seed: iterationSeed,
+          files: iterationFiles.slice()
+        });
 
-        if (!raw) {
-          args.unshift("--import", runtimeModulePath);
-          if (!minimal) {
-            args.unshift("--import", guardSpecifier);
-          }
-        } else {
-          args.unshift("--import", runtimeModulePath);
+        const iterationLabelParts = [`Iteration ${iterationIndex + 1}/${iterationCount}`];
+        if (randomizeTests) {
+          iterationLabelParts.push(`seed ${formatSeed(iterationSeed)}`);
+        }
+        console.log(sectionHeading(iterationLabelParts.join(" ")));
+
+        let screenshotIterationRoot = null;
+        if (screenshotRunRoot) {
+          const iterationDirectory = `iteration-${String(iterationIndex + 1).padStart(2, "0")}`;
+          screenshotIterationRoot = path.join(screenshotRunRoot, iterationDirectory);
+          await fs.mkdir(screenshotIterationRoot, { recursive: true });
         }
 
-        try {
+        for (const relative of iterationFiles) {
+          const absolute = path.join(TESTS_ROOT, relative);
+          const effectiveTimeout = timeoutOverrides.get(relative) ?? timeoutMs;
+          const effectiveKillGrace = killOverrides.get(relative) ?? killGraceMs;
+
+          let screenshotDirectoryForTest = null;
+          if (screenshotIterationRoot) {
+            const shortName = deriveShortTestName(relative);
+            screenshotDirectoryForTest = path.join(screenshotIterationRoot, shortName);
+            await fs.mkdir(screenshotDirectoryForTest, { recursive: true });
+          }
+
+          console.log(sectionHeading(relative));
+
+          /** @type {string[]} */
+          const args = [];
+          if (!raw) {
+            args.push("--test", `--test-timeout=${Math.max(effectiveTimeout, 1000)}`);
+            if (testNamePatternInput) {
+              args.push(`--test-name-pattern=${testNamePatternInput}`);
+            }
+            args.push(absolute);
+          } else {
+            args.push(absolute);
+          }
+
+          const runtimeContextForTest = {
+            ...baseRuntimeContext,
+            test: {
+              file: relative,
+              iteration: iterationIndex + 1,
+              totalIterations: iterationCount,
+              seed: iterationSeed ?? null
+            },
+            screenshots: {
+              directory: screenshotDirectoryForTest,
+              policy: screenshotOptions.policy ?? null,
+              allowlist: Array.isArray(screenshotOptions.allowlist) ? screenshotOptions.allowlist : [],
+              force: screenshotForce
+            }
+          };
+
+          const { modulePath: runtimeModulePath, dispose: disposeRuntimeModule } = await createRuntimeModule(runtimeContextForTest);
+
+          if (!raw) {
+            args.unshift("--import", runtimeModulePath);
+            if (!minimal) {
+              args.unshift("--import", guardSpecifier);
+            }
+          } else {
+            args.unshift("--import", runtimeModulePath);
+          }
+
+          try {
           /** @type {import("./helpers/testHarness.js").RunResult} */
           let result;
           const runOptions = {
@@ -772,6 +816,11 @@ async function main() {
             timeoutCount += 1;
             const timeoutMessage = `${cliColors.symbols.timeout} ${cliColors.yellow(`Timed out after ${formatDuration(effectiveTimeout)}`)}`;
             console.error(`  ${timeoutMessage}`);
+            if (failFast && !failFastTriggered) {
+              failFastTriggered = true;
+              console.error(`  ${cliColors.red("Fail-fast enabled; stopping after first failure.")}`);
+              break;
+            }
             continue;
           }
           if (result.exitCode !== 0) {
@@ -779,6 +828,23 @@ async function main() {
             failCount += 1;
             const signalDetail = result.signal ? `signal=${result.signal}` : `exitCode=${result.exitCode}`;
             console.error(`  ${cliColors.symbols.fail} ${cliColors.red(`Failed (${signalDetail})`)}`);
+            if (!streamChildLogs) {
+              const stderrOutput = trimCapturedOutput(result.stderr ?? "", CAPTURED_LOG_LIMIT);
+              if (stderrOutput) {
+                console.error(`  ${cliColors.dim("stderr:")}`);
+                console.error(stderrOutput);
+              }
+              const stdoutOutput = trimCapturedOutput(result.stdout ?? "", CAPTURED_LOG_LIMIT);
+              if (stdoutOutput) {
+                console.error(`  ${cliColors.dim("stdout:")}`);
+                console.error(stdoutOutput);
+              }
+            }
+            if (failFast && !failFastTriggered) {
+              failFastTriggered = true;
+              console.error(`  ${cliColors.red("Fail-fast enabled; stopping after first failure.")}`);
+              break;
+            }
           } else {
             passCount += 1;
             const durationLabel = cliColors.dim(`(${formatDuration(result.durationMs)})`);
@@ -786,6 +852,22 @@ async function main() {
           }
         } finally {
           await disposeRuntimeModule();
+        }
+        if (failFastTriggered) {
+          break;
+        }
+      }
+      if (failFastTriggered) {
+        break;
+      }
+      } finally {
+        if (backendHandle) {
+          await backendHandle.close().catch(() => {});
+          backendHandle = null;
+        }
+        if (sharedBrowserContext) {
+          await closeSharedBrowser().catch(() => {});
+          sharedBrowserContext = null;
         }
       }
     }

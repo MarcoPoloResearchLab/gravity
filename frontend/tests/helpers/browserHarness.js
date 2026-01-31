@@ -27,6 +27,93 @@ const CDN_LOG_PREFIX = "[cdn mirror] missing";
 const GOOGLE_GSI_STUB = "window.google=window.google||{accounts:{id:{initialize(){},prompt(){},renderButton(){}}}};";
 const AVATAR_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=";
 const AVATAR_PNG_BYTES = Buffer.from(AVATAR_PNG_BASE64, "base64");
+const DEFAULT_TEST_TENANT_ID = "gravity";
+const DEFAULT_GOOGLE_CLIENT_ID = "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com";
+const DEFAULT_AUTH_BUTTON_CONFIG = Object.freeze({
+    text: "signin_with",
+    size: "small",
+    theme: "outline",
+    shape: "circle"
+});
+const TAUTH_STUB_NONCE = "tauth-stub-nonce";
+const TAUTH_SCRIPT_PATTERN = /\/tauth\.js(?:\?.*)?$/u;
+const TAUTH_STUB_KEYS = Object.freeze({
+    OPTIONS: "__tauthStubOptions",
+    PROFILE: "__tauthStubProfile",
+    INIT: "initAuthClient",
+    REQUEST_NONCE: "requestNonce",
+    EXCHANGE_CREDENTIAL: "exchangeGoogleCredential",
+    LOGOUT: "logout",
+    GET_CURRENT_USER: "getCurrentUser",
+    ON_AUTHENTICATED: "onAuthenticated",
+    ON_UNAUTHENTICATED: "onUnauthenticated"
+});
+const TAUTH_STUB_SCRIPT = [
+    "(() => {",
+    `  const OPTIONS_KEY = "${TAUTH_STUB_KEYS.OPTIONS}";`,
+    `  const PROFILE_KEY = "${TAUTH_STUB_KEYS.PROFILE}";`,
+    "  const PROFILE_STORAGE_KEY = \"__gravityTestAuthProfile\";",
+    `  const NONCE = "${TAUTH_STUB_NONCE}";`,
+    "  const win = window;",
+    "  const loadStoredProfile = () => {",
+    "    try {",
+    "      const raw = win.sessionStorage?.getItem(PROFILE_STORAGE_KEY);",
+    "      if (!raw) return null;",
+    "      return JSON.parse(raw);",
+    "    } catch {",
+    "      return null;",
+    "    }",
+    "  };",
+    "  const persistProfile = (profile) => {",
+    "    try {",
+    "      if (!win.sessionStorage) return;",
+    "      if (!profile) {",
+    "        win.sessionStorage.removeItem(PROFILE_STORAGE_KEY);",
+    "        return;",
+    "      }",
+    "      win.sessionStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));",
+    "    } catch {",
+    "      // ignore storage errors",
+    "    }",
+    "  };",
+    "  const storedProfile = loadStoredProfile();",
+    "  if (storedProfile) {",
+    "    win[PROFILE_KEY] = storedProfile;",
+    "  } else if (!win[PROFILE_KEY]) {",
+    "    // No stored profile and no evaluateOnNewDocument profile - start unauthenticated",
+    "    win[PROFILE_KEY] = null;",
+    "  }",
+    "  // Preserve existing profile from evaluateOnNewDocument if no storage override",
+    "  win.initAuthClient = async (options) => {",
+    "    win[OPTIONS_KEY] = options ?? null;",
+    "    const profile = win[PROFILE_KEY] ?? null;",
+    "    if (profile) {",
+    "      persistProfile(profile);",
+    "    }",
+    "    const authenticated = profile && options && typeof options.onAuthenticated === \"function\" ? options.onAuthenticated : null;",
+    "    const handler = options && typeof options.onUnauthenticated === \"function\" ? options.onUnauthenticated : null;",
+    "    if (authenticated) {",
+    "      authenticated(profile);",
+    "      return;",
+    "    }",
+    "    if (handler) {",
+    "      handler();",
+    "    }",
+    "  };",
+    "  win.getCurrentUser = async () => win[PROFILE_KEY] ?? null;",
+    "  win.requestNonce = async () => NONCE;",
+    "  win.exchangeGoogleCredential = async () => {};",
+    "  win.logout = async () => {",
+    "    win[PROFILE_KEY] = null;",
+    "    persistProfile(null);",
+    "    const options = win[OPTIONS_KEY];",
+    "    const handler = options && typeof options.onUnauthenticated === \"function\" ? options.onUnauthenticated : null;",
+    "    if (handler) {",
+    "      handler();",
+    "    }",
+    "  };",
+    "})();"
+].join("\n");
 const CDN_MIRRORS = Object.freeze([
     {
         pattern: /^https:\/\/cdn\.jsdelivr\.net\/npm\/alpinejs@3\.13\.5\/dist\/module\.esm\.js$/u,
@@ -66,6 +153,11 @@ const CDN_STUBS = Object.freeze([
         body: EMPTY_STRING
     },
     {
+        pattern: /^https:\/\/tauth\.mprlab\.com\/tauth\.js(?:\?.*)?$/u,
+        contentType: "application/javascript",
+        body: TAUTH_STUB_SCRIPT
+    },
+    {
         pattern: /^https:\/\/example\.com\/avatar\.png$/u,
         contentType: "image/png",
         body: AVATAR_PNG_BYTES
@@ -76,13 +168,19 @@ const RUNTIME_CONFIG_KEYS = Object.freeze({
     BACKEND_BASE_URL: "backendBaseUrl",
     LLM_PROXY_URL: "llmProxyUrl",
     AUTH_BASE_URL: "authBaseUrl",
-    AUTH_TENANT_ID: "authTenantId"
+    TAUTH_SCRIPT_URL: "tauthScriptUrl",
+    MPR_UI_SCRIPT_URL: "mprUiScriptUrl",
+    AUTH_TENANT_ID: "authTenantId",
+    GOOGLE_CLIENT_ID: "googleClientId"
 });
 const TEST_RUNTIME_CONFIG = Object.freeze({
     backendBaseUrl: DEVELOPMENT_ENVIRONMENT_CONFIG.backendBaseUrl,
     llmProxyUrl: EMPTY_STRING,
     authBaseUrl: DEVELOPMENT_ENVIRONMENT_CONFIG.authBaseUrl,
-    authTenantId: DEVELOPMENT_ENVIRONMENT_CONFIG.authTenantId
+    tauthScriptUrl: DEVELOPMENT_ENVIRONMENT_CONFIG.tauthScriptUrl,
+    mprUiScriptUrl: DEVELOPMENT_ENVIRONMENT_CONFIG.mprUiScriptUrl,
+    authTenantId: DEFAULT_TEST_TENANT_ID,
+    googleClientId: DEFAULT_GOOGLE_CLIENT_ID
 });
 const CDN_INTERCEPTOR_SYMBOL = Symbol("gravityCdnInterceptor");
 const RUNTIME_CONFIG_SYMBOL = Symbol("gravityRuntimeConfigOverrides");
@@ -90,40 +188,6 @@ const RUNTIME_CONFIG_HANDLER_SYMBOL = Symbol("gravityRuntimeConfigHandler");
 const REQUEST_HANDLERS_SYMBOL = Symbol("gravityRequestHandlers");
 const REQUEST_INTERCEPTION_READY_SYMBOL = Symbol("gravityRequestInterceptionReady");
 const REQUEST_HANDLER_REGISTRY_SYMBOL = Symbol("gravityRequestHandlerRegistry");
-const TAUTH_STUB_NONCE = "tauth-stub-nonce";
-const TAUTH_SCRIPT_PATTERN = /\/tauth\.js$/u;
-const TAUTH_STUB_KEYS = Object.freeze({
-    OPTIONS: "__tauthStubOptions",
-    INIT: "initAuthClient",
-    REQUEST_NONCE: "requestNonce",
-    EXCHANGE_CREDENTIAL: "exchangeGoogleCredential",
-    LOGOUT: "logout",
-    ON_AUTHENTICATED: "onAuthenticated",
-    ON_UNAUTHENTICATED: "onUnauthenticated"
-});
-const TAUTH_STUB_SCRIPT = [
-    "(() => {",
-    `  const OPTIONS_KEY = "${TAUTH_STUB_KEYS.OPTIONS}";`,
-    `  const NONCE = "${TAUTH_STUB_NONCE}";`,
-    "  const win = window;",
-    "  win.initAuthClient = async (options) => {",
-    "    win[OPTIONS_KEY] = options ?? null;",
-    "    const handler = options && typeof options.onUnauthenticated === \"function\" ? options.onUnauthenticated : null;",
-    "    if (handler) {",
-    "      handler();",
-    "    }",
-    "  };",
-    "  win.requestNonce = async () => NONCE;",
-    "  win.exchangeGoogleCredential = async () => {};",
-    "  win.logout = async () => {",
-    "    const options = win[OPTIONS_KEY];",
-    "    const handler = options && typeof options.onUnauthenticated === \"function\" ? options.onUnauthenticated : null;",
-    "    if (handler) {",
-    "      handler();",
-    "    }",
-    "  };",
-    "})();"
-].join("\n");
 
 /**
  * Launch the shared Puppeteer browser for the entire test run.
@@ -186,6 +250,9 @@ export async function createSharedPage(runtimeConfigOverrides = {}) {
     const browser = await connectSharedBrowser();
     const context = await browser.createBrowserContext();
     const page = await context.newPage();
+    await page.evaluateOnNewDocument(() => {
+        window.__gravityForceLocalStorage = true;
+    });
     if (process.env.GRAVITY_TEST_STREAM_LOGS === "1") {
         page.on("console", (message) => {
             const type = message.type?.().toUpperCase?.() ?? "LOG";
@@ -204,7 +271,8 @@ export async function createSharedPage(runtimeConfigOverrides = {}) {
     await installCdnMirrors(page);
     await attachImportAppModule(page);
     await injectTAuthStub(page);
-    await injectRuntimeConfig(page, runtimeConfigOverrides);
+    const resolvedOverrides = applyRuntimeContextOverrides(runtimeConfigOverrides);
+    await injectRuntimeConfig(page, resolvedOverrides);
     const teardown = async () => {
         await page.close().catch(() => {});
         await context.close().catch(() => {});
@@ -226,6 +294,11 @@ export async function installCdnMirrors(page) {
     page[CDN_INTERCEPTOR_SYMBOL] = controller;
     controller.add((request) => {
         const url = request.url();
+        // Debug: log if this is a tauth request
+        if (process.env.DEBUG_TAUTH_HARNESS === "1" && url.includes("tauth")) {
+            // eslint-disable-next-line no-console
+            console.log(`[cdn-mirrors] checking tauth URL: ${url}`);
+        }
         const mirror = CDN_MIRRORS.find((entry) => entry.pattern.test(url));
         if (mirror) {
             fs.readFile(mirror.filePath)
@@ -251,6 +324,10 @@ export async function installCdnMirrors(page) {
         }
         const stub = CDN_STUBS.find((entry) => entry.pattern.test(url));
         if (stub) {
+            if (process.env.DEBUG_TAUTH_HARNESS === "1" && url.includes("tauth")) {
+                // eslint-disable-next-line no-console
+                console.log(`[cdn-stubs] INTERCEPTING tauth.js: ${url}`);
+            }
             request.respond({
                 status: 200,
                 contentType: stub.contentType,
@@ -275,14 +352,62 @@ export async function installCdnMirrors(page) {
 export async function injectTAuthStub(page) {
     await page.evaluateOnNewDocument((stubConfig) => {
         const windowRef = /** @type {any} */ (window);
+        // Set a default test profile so the app starts authenticated.
+        // Tests can override this by setting a different profile or signing out.
+        const defaultProfile = {
+            user_id: "test-user",
+            user_email: "test@example.com",
+            display: "Test User",
+            avatar_url: "https://example.com/avatar.png"
+        };
+        // Check if a test has requested forced sign-out state (persists across navigation)
+        const forceSignOutKey = "__gravityTestForceSignOut";
+        const isForceSignedOut = (() => {
+            try {
+                return windowRef.sessionStorage?.getItem(forceSignOutKey) === "true";
+            } catch {
+                return false;
+            }
+        })();
+        // Always set the profile unless explicitly cleared by a previous test
+        // Use a marker to detect if this is a fresh context
+        if (!windowRef.__gravityTestStubInitialized) {
+            // If force signed out, don't set the default profile
+            if (isForceSignedOut) {
+                windowRef[stubConfig.PROFILE] = null;
+            } else {
+                windowRef[stubConfig.PROFILE] = defaultProfile;
+                // Also persist to sessionStorage so the CDN stub's TAUTH_STUB_SCRIPT uses it
+                try {
+                    const storageKey = stubConfig.STORAGE_KEY;
+                    if (storageKey && typeof windowRef.sessionStorage?.setItem === "function") {
+                        windowRef.sessionStorage.setItem(storageKey, JSON.stringify(defaultProfile));
+                    }
+                } catch {
+                    // Ignore storage errors
+                }
+            }
+            windowRef.__gravityTestStubInitialized = true;
+        }
         if (typeof windowRef[stubConfig.INIT] !== "function") {
             windowRef[stubConfig.INIT] = async (options) => {
                 windowRef[stubConfig.OPTIONS] = options ?? null;
-                const handler = options && typeof options[stubConfig.ON_UNAUTHENTICATED] === "function"
-                    ? options[stubConfig.ON_UNAUTHENTICATED]
-                    : null;
-                if (handler) {
-                    handler();
+                // Check if we have a profile and call the appropriate handler
+                const profile = windowRef[stubConfig.PROFILE];
+                if (profile) {
+                    const authHandler = options && typeof options[stubConfig.ON_AUTHENTICATED] === "function"
+                        ? options[stubConfig.ON_AUTHENTICATED]
+                        : null;
+                    if (authHandler) {
+                        authHandler(profile);
+                    }
+                } else {
+                    const unauthHandler = options && typeof options[stubConfig.ON_UNAUTHENTICATED] === "function"
+                        ? options[stubConfig.ON_UNAUTHENTICATED]
+                        : null;
+                    if (unauthHandler) {
+                        unauthHandler();
+                    }
                 }
             };
         }
@@ -292,8 +417,21 @@ export async function injectTAuthStub(page) {
         if (typeof windowRef[stubConfig.EXCHANGE_CREDENTIAL] !== "function") {
             windowRef[stubConfig.EXCHANGE_CREDENTIAL] = async () => {};
         }
+        if (typeof windowRef[stubConfig.GET_CURRENT_USER] !== "function") {
+            windowRef[stubConfig.GET_CURRENT_USER] = async () => windowRef[stubConfig.PROFILE] ?? null;
+        }
         if (typeof windowRef[stubConfig.LOGOUT] !== "function") {
             windowRef[stubConfig.LOGOUT] = async () => {
+                windowRef[stubConfig.PROFILE] = null;
+                // Also clear from sessionStorage
+                try {
+                    const storageKey = stubConfig.STORAGE_KEY;
+                    if (storageKey && typeof windowRef.sessionStorage?.removeItem === "function") {
+                        windowRef.sessionStorage.removeItem(storageKey);
+                    }
+                } catch {
+                    // Ignore storage errors
+                }
                 const options = windowRef[stubConfig.OPTIONS];
                 const handler = options && typeof options[stubConfig.ON_UNAUTHENTICATED] === "function"
                     ? options[stubConfig.ON_UNAUTHENTICATED]
@@ -305,7 +443,8 @@ export async function injectTAuthStub(page) {
         }
     }, {
         ...TAUTH_STUB_KEYS,
-        NONCE: TAUTH_STUB_NONCE
+        NONCE: TAUTH_STUB_NONCE,
+        STORAGE_KEY: "__gravityTestAuthProfile"
     });
 }
 
@@ -325,8 +464,9 @@ export async function injectRuntimeConfig(page, overrides = {}) {
         development: resolveRuntimeConfigOverrides(page[RUNTIME_CONFIG_SYMBOL], "development"),
         production: resolveRuntimeConfigOverrides(page[RUNTIME_CONFIG_SYMBOL], "production")
     };
-    await page.evaluateOnNewDocument((config) => {
-        const configPattern = /\/data\/runtime\.config\.(development|production)\.json$/u;
+    await page.evaluateOnNewDocument((config, authButton) => {
+        const runtimeConfigPattern = /\/data\/runtime\.config\.(development|production)\.json$/u;
+        const yamlConfigPattern = /config\.yaml$/u;
         const originalFetch = window.fetch;
         window.fetch = async (input, init = {}) => {
             const requestUrl = typeof input === "string"
@@ -334,8 +474,36 @@ export async function injectRuntimeConfig(page, overrides = {}) {
                 : typeof input?.url === "string"
                     ? input.url
                     : "";
-            if (typeof requestUrl === "string" && configPattern.test(requestUrl)) {
-                const match = requestUrl.match(configPattern);
+            if (typeof requestUrl === "string" && yamlConfigPattern.test(requestUrl)) {
+                const origin = typeof window.location?.origin === "string" ? window.location.origin : "";
+                if (!origin) {
+                    throw new Error("config.yaml requires a window.location.origin");
+                }
+                const yaml = [
+                    "environments:",
+                    "  - description: \"Test\"",
+                    "    origins:",
+                    `      - \"${origin}\"`,
+                    "    auth:",
+                    `      tauthUrl: \"${config.development.authBaseUrl}\"`,
+                    `      googleClientId: \"${config.development.googleClientId}\"`,
+                    `      tenantId: \"${config.development.authTenantId}\"`,
+                    "      loginPath: \"/auth/google\"",
+                    "      logoutPath: \"/auth/logout\"",
+                    "      noncePath: \"/auth/nonce\"",
+                    "    authButton:",
+                    `      text: \"${authButton.text}\"`,
+                    `      size: \"${authButton.size}\"`,
+                    `      theme: \"${authButton.theme}\"`,
+                    `      shape: \"${authButton.shape}\"`
+                ].join("\n");
+                return new Response(yaml, {
+                    status: 200,
+                    headers: { "Content-Type": "text/yaml" }
+                });
+            }
+            if (typeof requestUrl === "string" && runtimeConfigPattern.test(requestUrl)) {
+                const match = requestUrl.match(runtimeConfigPattern);
                 const environment = match && match[1] ? match[1] : "development";
                 const payload = environment === "production" ? config.production : config.development;
                 return new Response(JSON.stringify(payload), {
@@ -351,16 +519,22 @@ export async function injectRuntimeConfig(page, overrides = {}) {
             [RUNTIME_CONFIG_KEYS.BACKEND_BASE_URL]: overridesByEnvironment.development.backendBaseUrl,
             [RUNTIME_CONFIG_KEYS.LLM_PROXY_URL]: overridesByEnvironment.development.llmProxyUrl,
             [RUNTIME_CONFIG_KEYS.AUTH_BASE_URL]: overridesByEnvironment.development.authBaseUrl,
-            [RUNTIME_CONFIG_KEYS.AUTH_TENANT_ID]: overridesByEnvironment.development.authTenantId
+            [RUNTIME_CONFIG_KEYS.TAUTH_SCRIPT_URL]: overridesByEnvironment.development.tauthScriptUrl,
+            [RUNTIME_CONFIG_KEYS.MPR_UI_SCRIPT_URL]: overridesByEnvironment.development.mprUiScriptUrl,
+            [RUNTIME_CONFIG_KEYS.AUTH_TENANT_ID]: overridesByEnvironment.development.authTenantId,
+            [RUNTIME_CONFIG_KEYS.GOOGLE_CLIENT_ID]: overridesByEnvironment.development.googleClientId
         },
         production: {
             [RUNTIME_CONFIG_KEYS.ENVIRONMENT]: "production",
             [RUNTIME_CONFIG_KEYS.BACKEND_BASE_URL]: overridesByEnvironment.production.backendBaseUrl,
             [RUNTIME_CONFIG_KEYS.LLM_PROXY_URL]: overridesByEnvironment.production.llmProxyUrl,
             [RUNTIME_CONFIG_KEYS.AUTH_BASE_URL]: overridesByEnvironment.production.authBaseUrl,
-            [RUNTIME_CONFIG_KEYS.AUTH_TENANT_ID]: overridesByEnvironment.production.authTenantId
+            [RUNTIME_CONFIG_KEYS.TAUTH_SCRIPT_URL]: overridesByEnvironment.production.tauthScriptUrl,
+            [RUNTIME_CONFIG_KEYS.MPR_UI_SCRIPT_URL]: overridesByEnvironment.production.mprUiScriptUrl,
+            [RUNTIME_CONFIG_KEYS.AUTH_TENANT_ID]: overridesByEnvironment.production.authTenantId,
+            [RUNTIME_CONFIG_KEYS.GOOGLE_CLIENT_ID]: overridesByEnvironment.production.googleClientId
         }
-    });
+    }, DEFAULT_AUTH_BUTTON_CONFIG);
     await registerRequestInterceptor(page, (request) => {
         const url = request.url();
         if (TAUTH_SCRIPT_PATTERN.test(url)) {
@@ -382,7 +556,10 @@ export async function injectRuntimeConfig(page, overrides = {}) {
             [RUNTIME_CONFIG_KEYS.BACKEND_BASE_URL]: resolvedOverrides.backendBaseUrl,
             [RUNTIME_CONFIG_KEYS.LLM_PROXY_URL]: resolvedOverrides.llmProxyUrl,
             [RUNTIME_CONFIG_KEYS.AUTH_BASE_URL]: resolvedOverrides.authBaseUrl,
-            [RUNTIME_CONFIG_KEYS.AUTH_TENANT_ID]: resolvedOverrides.authTenantId
+            [RUNTIME_CONFIG_KEYS.TAUTH_SCRIPT_URL]: resolvedOverrides.tauthScriptUrl,
+            [RUNTIME_CONFIG_KEYS.MPR_UI_SCRIPT_URL]: resolvedOverrides.mprUiScriptUrl,
+            [RUNTIME_CONFIG_KEYS.AUTH_TENANT_ID]: resolvedOverrides.authTenantId,
+            [RUNTIME_CONFIG_KEYS.GOOGLE_CLIENT_ID]: resolvedOverrides.googleClientId
         });
         request.respond({ status: 200, contentType: "application/json", body }).catch(() => {});
         return true;
@@ -444,6 +621,12 @@ async function ensureRequestInterception(page) {
             await page.setRequestInterception(true);
             page.on("request", async (request) => {
                 const currentHandlers = Array.isArray(page[REQUEST_HANDLERS_SYMBOL]) ? page[REQUEST_HANDLERS_SYMBOL] : [];
+                // Debug: log handler count for tauth.mprlab.com requests
+                const requestUrl = request.url();
+                if (process.env.DEBUG_TAUTH_HARNESS === "1" && requestUrl.includes("tauth.mprlab.com")) {
+                    // eslint-disable-next-line no-console
+                    console.log(`[request-handler] tauth.js request, handler count: ${currentHandlers.length}, disabled: ${currentHandlers.filter(h => h?.disabled).length}`);
+                }
                 for (const entry of currentHandlers) {
                     if (!entry || entry.disabled) {
                         continue;
@@ -518,7 +701,7 @@ function isThenable(value) {
 /**
  * @param {Record<string, any>} overrides
  * @param {"development" | "production"} environment
- * @returns {{ backendBaseUrl: string, llmProxyUrl: string }}
+ * @returns {{ backendBaseUrl: string, llmProxyUrl: string, authBaseUrl: string, tauthScriptUrl: string, mprUiScriptUrl: string, authTenantId: string, googleClientId: string }}
  */
 function resolveRuntimeConfigOverrides(overrides, environment) {
     if (!overrides || typeof overrides !== "object") {
@@ -530,11 +713,61 @@ function resolveRuntimeConfigOverrides(overrides, environment) {
     const backendBaseUrl = normalizeTestUrl(scoped?.backendBaseUrl ?? overrides.backendBaseUrl ?? TEST_RUNTIME_CONFIG.backendBaseUrl);
     const llmProxyUrl = normalizeTestUrl(scoped?.llmProxyUrl ?? overrides.llmProxyUrl ?? TEST_RUNTIME_CONFIG.llmProxyUrl, true);
     const authBaseUrl = normalizeTestUrl(scoped?.authBaseUrl ?? overrides.authBaseUrl ?? TEST_RUNTIME_CONFIG.authBaseUrl, true);
+    const tauthScriptUrl = normalizeTestUrl(scoped?.tauthScriptUrl ?? overrides.tauthScriptUrl ?? TEST_RUNTIME_CONFIG.tauthScriptUrl);
+    const mprUiScriptUrl = normalizeTestUrl(scoped?.mprUiScriptUrl ?? overrides.mprUiScriptUrl ?? TEST_RUNTIME_CONFIG.mprUiScriptUrl);
     const authTenantIdCandidate = scoped?.authTenantId ?? overrides.authTenantId ?? TEST_RUNTIME_CONFIG.authTenantId;
     const authTenantId = typeof authTenantIdCandidate === "string"
         ? authTenantIdCandidate
         : TEST_RUNTIME_CONFIG.authTenantId;
-    return { backendBaseUrl, llmProxyUrl, authBaseUrl, authTenantId };
+    const googleClientIdCandidate = scoped?.googleClientId ?? overrides.googleClientId ?? TEST_RUNTIME_CONFIG.googleClientId;
+    const googleClientId = typeof googleClientIdCandidate === "string"
+        ? googleClientIdCandidate
+        : TEST_RUNTIME_CONFIG.googleClientId;
+    return { backendBaseUrl, llmProxyUrl, authBaseUrl, tauthScriptUrl, mprUiScriptUrl, authTenantId, googleClientId };
+}
+
+/**
+ * Merge runtime context defaults into the provided overrides.
+ * @param {Record<string, any>} overrides
+ * @returns {Record<string, any>}
+ */
+function applyRuntimeContextOverrides(overrides) {
+    const resolvedOverrides = overrides && typeof overrides === "object" ? { ...overrides } : {};
+    const runtimeBackendBaseUrl = readRuntimeBackendBaseUrl();
+    if (!runtimeBackendBaseUrl) {
+        return resolvedOverrides;
+    }
+    const hasTopLevelOverride = Object.prototype.hasOwnProperty.call(resolvedOverrides, "backendBaseUrl");
+    const scopedDevelopment = resolvedOverrides.development;
+    const hasDevOverride = scopedDevelopment
+        && typeof scopedDevelopment === "object"
+        && Object.prototype.hasOwnProperty.call(scopedDevelopment, "backendBaseUrl");
+    if (hasTopLevelOverride || hasDevOverride) {
+        return resolvedOverrides;
+    }
+    return {
+        ...resolvedOverrides,
+        backendBaseUrl: runtimeBackendBaseUrl
+    };
+}
+
+/**
+ * @returns {string}
+ */
+function readRuntimeBackendBaseUrl() {
+    try {
+        const context = readRuntimeContext();
+        const baseUrl = context?.backend?.baseUrl;
+        return typeof baseUrl === "string" && baseUrl.length > 0 ? baseUrl : EMPTY_STRING;
+    } catch (error) {
+        if (error && typeof error === "object" && "message" in error) {
+            const message = /** @type {{ message?: string }} */ (error).message;
+            if (typeof message === "string" && message.startsWith("Runtime context unavailable")) {
+                return EMPTY_STRING;
+            }
+        }
+        throw error;
+    }
 }
 
 /**

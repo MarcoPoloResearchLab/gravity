@@ -1,17 +1,18 @@
+// @ts-check
+
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { createAppConfig } from "../js/core/config.js?build=2026-01-01T22:43:21Z";
-import { ENVIRONMENT_DEVELOPMENT } from "../js/core/environmentConfig.js?build=2026-01-01T22:43:21Z";
 import { createSharedPage, waitForAppHydration, flushAlpineQueues } from "./helpers/browserHarness.js";
-
-const appConfig = createAppConfig({ environment: ENVIRONMENT_DEVELOPMENT });
+import { startTestBackend } from "./helpers/backendHarness.js";
+import { attachBackendSessionCookie, resolvePageUrl, seedNotes, signInTestUser } from "./helpers/syncTestUtils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+const PAGE_URL = `file://${path.join(PROJECT_ROOT, "app.html")}`;
+const TEST_USER_ID = "htmlview-bounded-user";
 
 const SHORT_NOTE_ID = "htmlView-short-note";
 const MEDIUM_NOTE_ID = "htmlView-medium-note";
@@ -288,6 +289,12 @@ test.describe("Bounded htmlViews", () => {
         try {
             await collapseAllHtmlViews(page);
             await page.waitForSelector(`${cardSelector} .note-expand-toggle`, { timeout: 5000 });
+            await page.$eval(cardSelector, (card) => {
+                if (card instanceof HTMLElement) {
+                    card.scrollIntoView({ block: "center", inline: "nearest" });
+                }
+            });
+            await flushAlpineQueues(page);
 
             const clickTarget = await page.$eval(cardSelector, (card) => {
                 const toggle = card.querySelector(".note-expand-toggle");
@@ -492,17 +499,28 @@ test.describe("Bounded htmlViews", () => {
 });
 
 async function openHtmlViewHarness(records) {
+    const backend = await startTestBackend();
     const { page, teardown } = await createSharedPage({
         development: {
             llmProxyUrl: ""
         }
     });
-    await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
+    // Set session cookie BEFORE navigation to prevent redirect to landing page
+    await attachBackendSessionCookie(page, backend, TEST_USER_ID);
+    const resolvedUrl = await resolvePageUrl(PAGE_URL);
+    await page.goto(resolvedUrl, { waitUntil: "domcontentloaded" });
     await waitForAppHydration(page);
     await flushAlpineQueues(page);
     await page.waitForSelector("#top-editor .markdown-editor");
+    await signInTestUser(page, backend, TEST_USER_ID);
     await ensureHtmlViewRecords(page, records);
-    return { page, teardown };
+    return {
+        page,
+        teardown: async () => {
+            await teardown();
+            await backend.close();
+        }
+    };
 }
 
 function buildNoteRecord({ noteId, markdownText, attachments }) {
@@ -561,37 +579,7 @@ function buildMediumMarkdown() {
 }
 
 async function ensureHtmlViewRecords(page, records) {
-    const shouldReload = await page.evaluate(
-        ({ storageKey, records }) => {
-            const serialized = JSON.stringify(records);
-            window.localStorage.setItem(storageKey, serialized);
-
-            const root = document.querySelector("[x-data]");
-            const alpineData = (() => {
-                if (!root) {
-                    return null;
-                }
-                const alpine = window.Alpine;
-                if (alpine && typeof alpine.$data === "function") {
-                    return alpine.$data(root);
-                }
-                return root.__x?.$data ?? null;
-            })();
-
-            if (alpineData && typeof alpineData.initializeNotes === "function") {
-                alpineData.initializeNotes();
-                return false;
-            }
-            window.location.reload();
-            return true;
-        },
-        { storageKey: appConfig.storageKey, records }
-    );
-
-    if (shouldReload) {
-        await page.waitForNavigation({ waitUntil: "domcontentloaded" });
-    }
-
+    await seedNotes(page, records, TEST_USER_ID);
     await page.waitForSelector(`[data-note-id="${LONG_NOTE_ID}"] .note-html-view`);
     await page.evaluate(() => (document.fonts ? document.fonts.ready : Promise.resolve()));
     await page.waitForFunction((noteId) => {

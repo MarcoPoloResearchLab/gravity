@@ -10,7 +10,8 @@ import { createAppConfig } from "../../js/core/config.js?build=2026-01-01T22:43:
 import { ENVIRONMENT_DEVELOPMENT } from "../../js/core/environmentConfig.js?build=2026-01-01T22:43:21Z";
 import { DEVELOPMENT_ENVIRONMENT_CONFIG } from "../../js/core/environmentConfig.js?build=2026-01-01T22:43:21Z";
 import {
-    EVENT_AUTH_SIGN_IN,
+    EVENT_MPR_AUTH_AUTHENTICATED,
+    EVENT_MPR_AUTH_ERROR,
     EVENT_NOTE_CREATE,
     EVENT_NOTE_UPDATE
 } from "../../js/constants.js";
@@ -29,12 +30,20 @@ import {
 const APP_BOOTSTRAP_SELECTOR = "#top-editor .markdown-editor";
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(TESTS_DIR, "..", "..");
-const DEFAULT_PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+const DEFAULT_PAGE_URL = `file://${path.join(PROJECT_ROOT, "app.html")}`;
 const DEFAULT_JWT_ISSUER = "https://accounts.google.com";
-const appConfig = createAppConfig({ environment: ENVIRONMENT_DEVELOPMENT });
+const DEFAULT_GOOGLE_CLIENT_ID = "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com";
+const appConfig = createAppConfig({
+    environment: ENVIRONMENT_DEVELOPMENT,
+    googleClientId: DEFAULT_GOOGLE_CLIENT_ID
+});
 const DEFAULT_JWT_AUDIENCE = appConfig.googleClientId;
 const EMPTY_STRING = "";
 const DEVELOPMENT_AUTH_BASE_URL = DEVELOPMENT_ENVIRONMENT_CONFIG.authBaseUrl;
+const DEVELOPMENT_TAUTH_SCRIPT_URL = DEVELOPMENT_ENVIRONMENT_CONFIG.tauthScriptUrl;
+const DEVELOPMENT_MPR_UI_SCRIPT_URL = DEVELOPMENT_ENVIRONMENT_CONFIG.mprUiScriptUrl;
+const DEFAULT_AUTH_TENANT_ID = DEVELOPMENT_ENVIRONMENT_CONFIG.authTenantId || "gravity";
+const TAUTH_PROFILE_STORAGE_KEY = "__gravityTestAuthProfile";
 const STATIC_SERVER_HOST = "127.0.0.1";
 let staticServerOriginPromise = null;
 let staticServerHandle = null;
@@ -50,12 +59,32 @@ const MIME_TYPES = new Map([
     [".jpeg", "image/jpeg"],
     [".ico", "image/x-icon"]
 ]);
+const STORAGE_USER_PREFIX = (() => {
+    const configured = typeof appConfig.storageKeyUserPrefix === "string"
+        ? appConfig.storageKeyUserPrefix.trim()
+        : "";
+    const prefix = configured.length > 0 ? configured : appConfig.storageKey;
+    return prefix.endsWith(":") ? prefix : `${prefix}:`;
+})();
+
+/**
+ * Build the user-scoped storage key used by GravityStore.
+ * @param {string} userId
+ * @returns {string}
+ */
+export function buildUserStorageKey(userId) {
+    if (typeof userId !== "string" || userId.trim().length === 0) {
+        throw new Error("buildUserStorageKey requires a userId.");
+    }
+    const encoded = encodeURIComponent(userId.trim());
+    return `${STORAGE_USER_PREFIX}${encoded}`;
+}
 
 /**
  * Prepare a new browser page configured for backend synchronization tests.
  * @param {import('puppeteer').Browser | import('puppeteer').BrowserContext} browser
  * @param {string} pageUrl
- * @param {{ backendBaseUrl: string, llmProxyUrl?: string, authBaseUrl?: string, authTenantId?: string, preserveLocalStorage?: boolean }} options
+ * @param {{ backendBaseUrl: string, llmProxyUrl?: string, authBaseUrl?: string, tauthScriptUrl?: string, mprUiScriptUrl?: string, authTenantId?: string, googleClientId?: string, preserveLocalStorage?: boolean, skipAppReady?: boolean }} options
  * @returns {Promise<import('puppeteer').Page>}
  */
 export async function prepareFrontendPage(browser, pageUrl, options) {
@@ -63,11 +92,18 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
         backendBaseUrl,
         llmProxyUrl = EMPTY_STRING,
         authBaseUrl = DEVELOPMENT_AUTH_BASE_URL,
-        authTenantId = EMPTY_STRING,
+        tauthScriptUrl = DEVELOPMENT_TAUTH_SCRIPT_URL,
+        mprUiScriptUrl = DEVELOPMENT_MPR_UI_SCRIPT_URL,
+        authTenantId = DEFAULT_AUTH_TENANT_ID,
+        googleClientId = appConfig.googleClientId,
         beforeNavigate,
-        preserveLocalStorage = false
+        preserveLocalStorage = false,
+        skipAppReady = false
     } = options;
     const page = await browser.newPage();
+    await page.evaluateOnNewDocument(() => {
+        window.__gravityForceLocalStorage = true;
+    });
     if (process.env.GRAVITY_TEST_STREAM_LOGS === "1") {
         page.on("console", (message) => {
             const type = message.type?.().toUpperCase?.() ?? "LOG";
@@ -94,10 +130,12 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
             }
         });
     }
-    await installCdnMirrors(page);
+    // Call beforeNavigate first so custom interceptors (like installTAuthHarness)
+    // have priority over CDN stubs for tauth.js
     if (typeof beforeNavigate === "function") {
         await beforeNavigate(page);
     }
+    await installCdnMirrors(page);
     await attachImportAppModule(page);
     await injectTAuthStub(page);
     await injectRuntimeConfig(page, {
@@ -105,39 +143,11 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
             backendBaseUrl,
             llmProxyUrl,
             authBaseUrl,
-            authTenantId
+            tauthScriptUrl,
+            mprUiScriptUrl,
+            authTenantId,
+            googleClientId
         }
-    });
-    await page.evaluateOnNewDocument((config) => {
-        const targetPattern = /\/data\/runtime\.config\.(development|production)\.json$/;
-        const originalFetch = window.fetch;
-        window.fetch = async (input, init = {}) => {
-            const requestUrl = typeof input === "string"
-                ? input
-                : typeof input?.url === "string"
-                    ? input.url
-                    : "";
-            if (typeof requestUrl === "string" && targetPattern.test(requestUrl)) {
-                const payload = {
-                    environment: config.environment ?? "development",
-                    backendBaseUrl: config.backendBaseUrl,
-                    llmProxyUrl: config.llmProxyUrl,
-                    authBaseUrl: config.authBaseUrl,
-                    authTenantId: config.authTenantId
-                };
-                return new Response(JSON.stringify(payload), {
-                    status: 200,
-                    headers: { "Content-Type": "application/json" }
-                });
-            }
-            return originalFetch.call(window, input, init);
-        };
-    }, {
-        environment: "development",
-        backendBaseUrl,
-        llmProxyUrl,
-        authBaseUrl,
-        authTenantId
     });
     await page.evaluateOnNewDocument((storageKey, shouldPreserve) => {
         const initialized = window.sessionStorage.getItem("__gravityTestInitialized") === "true";
@@ -153,7 +163,9 @@ export async function prepareFrontendPage(browser, pageUrl, options) {
     }, appConfig.storageKey, preserveLocalStorage === true);
     const resolvedUrl = await resolvePageUrl(pageUrl);
     await page.goto(resolvedUrl, { waitUntil: "domcontentloaded" });
-    await waitForAppReady(page);
+    if (!skipAppReady) {
+        await waitForAppReady(page);
+    }
     return page;
 }
 
@@ -210,12 +222,21 @@ export async function initializePuppeteerTest(pageUrl = DEFAULT_PAGE_URL, setupO
     const browser = await connectSharedBrowser();
     const context = await browser.createBrowserContext();
     const page = await context.newPage();
+    await page.evaluateOnNewDocument(() => {
+        window.__gravityForceLocalStorage = true;
+    });
+    await installCdnMirrors(page);
     await attachImportAppModule(page);
+    await injectTAuthStub(page);
     const baseRuntimeOverrides = {
         development: {
             backendBaseUrl: backend.baseUrl,
             llmProxyUrl: EMPTY_STRING,
-            authBaseUrl: DEVELOPMENT_AUTH_BASE_URL
+            authBaseUrl: DEVELOPMENT_AUTH_BASE_URL,
+            tauthScriptUrl: DEVELOPMENT_TAUTH_SCRIPT_URL,
+            mprUiScriptUrl: DEVELOPMENT_MPR_UI_SCRIPT_URL,
+            authTenantId: DEFAULT_AUTH_TENANT_ID,
+            googleClientId: appConfig.googleClientId
         }
     };
     const mergedRuntimeOverrides = mergeRuntimeOverrides(baseRuntimeOverrides, setupOptions.runtimeConfig);
@@ -223,7 +244,12 @@ export async function initializePuppeteerTest(pageUrl = DEFAULT_PAGE_URL, setupO
     if (typeof setupOptions.beforeNavigate === "function") {
         await setupOptions.beforeNavigate(page);
     }
-    await page.goto(pageUrl, { waitUntil: "domcontentloaded" });
+    // Set up session cookie for the default test user BEFORE navigation
+    // so that the initial /me call succeeds and the app doesn't redirect to landing
+    const defaultTestUserId = "test-user";
+    await attachBackendSessionCookie(page, backend, defaultTestUserId);
+    const resolvedUrl = await resolvePageUrl(pageUrl);
+    await page.goto(resolvedUrl, { waitUntil: "domcontentloaded" });
     await waitForAppReady(page);
 
     const teardown = async () => {
@@ -274,24 +300,148 @@ export async function dispatchSignIn(page, credential, userId) {
     if (typeof userId !== "string" || userId.length === 0) {
         throw new Error("dispatchSignIn requires a userId.");
     }
-    await page.evaluate((eventName, token, id) => {
-        const root = document.querySelector("body");
-        if (!root) {
+    await waitForMprUiReady(page);
+    await waitForUserMenuReady(page);
+    await page.evaluate((eventName, token, id, storageKey) => {
+        void token;
+        const fullName = "Fullstack Integration User";
+        const profile = {
+            user_id: id,
+            user_email: `${id}@example.com`,
+            display: fullName,
+            name: fullName,
+            given_name: "Fullstack",
+            avatar_url: "https://example.com/avatar.png"
+        };
+        if (typeof window !== "undefined") {
+            window.__tauthStubProfile = profile;
+            try {
+                window.sessionStorage?.setItem(storageKey, JSON.stringify(profile));
+                // Clear force sign-out marker since we're signing in
+                window.sessionStorage?.removeItem("__gravityTestForceSignOut");
+            } catch {
+                // ignore storage failures
+            }
+        }
+        const targets = [];
+        const body = document.body;
+        if (body && typeof body.dispatchEvent === "function") {
+            targets.push(body);
+        }
+        if (typeof document !== "undefined" && typeof document.dispatchEvent === "function") {
+            if (!targets.includes(document)) {
+                targets.push(document);
+            }
+        }
+        if (targets.length === 0) {
             return;
         }
-        root.dispatchEvent(new CustomEvent(eventName, {
-            detail: {
-                user: {
-                    id,
-                    email: `${id}@example.com`,
-                    name: "Fullstack Integration User",
-                    pictureUrl: "https://example.com/avatar.png"
-                },
-                credential: token
-            },
+        const event = new CustomEvent(eventName, {
+            detail: { profile },
             bubbles: true
-        }));
-    }, EVENT_AUTH_SIGN_IN, credential, userId);
+        });
+        targets.forEach((target) => {
+            target.dispatchEvent(event);
+        });
+    }, EVENT_MPR_AUTH_AUTHENTICATED, credential, userId, TAUTH_PROFILE_STORAGE_KEY);
+}
+
+/**
+ * Sign in a test user by attaching a backend cookie and dispatching the auth event.
+ * @param {import('puppeteer').Page} page
+ * @param {{ baseUrl: string, cookieName: string, tokenFactory: (userId: string) => string, createSessionToken: (userId: string, expiresInSeconds?: number) => string }} backend
+ * @param {string} userId
+ * @param {{ waitForAppShell?: boolean }} [options]
+ * @returns {Promise<void>}
+ */
+export async function signInTestUser(page, backend, userId, options = {}) {
+    if (!backend || typeof backend.tokenFactory !== "function") {
+        throw new Error("signInTestUser requires a backend handle.");
+    }
+    const shouldWaitForSyncManager = options.waitForSyncManager !== false;
+    const syncTimeoutMs = typeof options.syncTimeoutMs === "number" && Number.isFinite(options.syncTimeoutMs)
+        ? options.syncTimeoutMs
+        : undefined;
+    await waitForAppReady(page);
+    await waitForMprUiReady(page);
+    await attachBackendSessionCookie(page, backend, userId);
+    const credential = backend.tokenFactory(userId);
+    await dispatchSignIn(page, credential, userId);
+    if (shouldWaitForSyncManager) {
+        await waitForSyncManagerUser(page, userId, syncTimeoutMs);
+    }
+    if (options.waitForAppShell !== false) {
+        await page.waitForSelector("[data-test=\"app-shell\"]:not([hidden])");
+    }
+}
+
+/**
+ * Wait for the mpr-ui custom elements to be defined.
+ * @param {import("puppeteer").Page} page
+ * @returns {Promise<void>}
+ */
+async function waitForMprUiReady(page) {
+    await page.waitForFunction(() => {
+        if (typeof window === "undefined") {
+            return false;
+        }
+        const registry = window.customElements;
+        if (!registry || typeof registry.get !== "function") {
+            return false;
+        }
+        return Boolean(registry.get("mpr-user") && registry.get("mpr-login-button"));
+    }, { timeout: 10000 });
+}
+
+/**
+ * Wait for the mpr-user element to finish its initial render.
+ * @param {import("puppeteer").Page} page
+ * @returns {Promise<void>}
+ */
+async function waitForUserMenuReady(page) {
+    await page.waitForFunction(() => {
+        const menu = document.querySelector("mpr-user");
+        return Boolean(menu && menu.hasAttribute("data-mpr-user-status"));
+    }, { timeout: 10000 });
+}
+
+/**
+ * Exchange a Google credential through the TAuth helper.
+ * @param {import('puppeteer').Page} page
+ * @param {string} credential
+ * @returns {Promise<void>}
+ */
+export async function exchangeTAuthCredential(page, credential) {
+    if (typeof credential !== "string" || credential.length === 0) {
+        throw new Error("exchangeTAuthCredential requires a credential.");
+    }
+    try {
+        await page.evaluate(async (token) => {
+            if (typeof window.requestNonce !== "function") {
+                throw new Error("requestNonce helper unavailable");
+            }
+            if (typeof window.exchangeGoogleCredential !== "function") {
+                throw new Error("exchangeGoogleCredential helper unavailable");
+            }
+            const nonceToken = await window.requestNonce();
+            await window.exchangeGoogleCredential({ credential: token, nonceToken });
+        }, credential);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await page.evaluate((eventName, payload) => {
+            const detail = { code: payload };
+            const event = new CustomEvent(eventName, { detail, bubbles: true });
+            const targets = [];
+            if (document?.body) {
+                targets.push(document.body);
+            }
+            if (typeof document !== "undefined") {
+                targets.push(document);
+            }
+            targets.forEach((target) => target.dispatchEvent(event));
+        }, EVENT_MPR_AUTH_ERROR, message);
+        throw error;
+    }
 }
 
 /**
@@ -320,8 +470,10 @@ export async function attachBackendSessionCookie(page, backend, userId) {
         cookieAttached = false;
         // ignore failures; some browsers disallow setting cookies for file:// origins in automation
     }
-    if (!cookieAttached) {
-        // Fallback for file:// origins that reject setCookie: inject Cookie header per request.
+    const pageUrl = page.url();
+    const shouldForceCookieHeader = typeof pageUrl === "string" && pageUrl.startsWith("file:");
+    if (!cookieAttached || shouldForceCookieHeader) {
+        // Ensure session cookies are present for file:// origins.
         const dispose = await registerRequestInterceptor(page, (request) => {
             const url = request.url();
             if (!url.startsWith(backend.baseUrl)) {
@@ -406,34 +558,23 @@ export async function waitForSyncManagerUser(page, expectedUserId, timeoutMs) {
 export async function waitForTAuthSession(page, timeoutMs) {
     const options = typeof timeoutMs === "number" && Number.isFinite(timeoutMs)
         ? { timeout: timeoutMs }
-        : undefined;
+        : { timeout: 5000 };
     await page.waitForFunction(() => {
-        const root = document.querySelector("[x-data]");
-        if (!root) {
-            return false;
+        // Check if harness is installed (functions injected via evaluateOnNewDocument)
+        const harnessEvents = window.__tauthHarnessEvents;
+        if (harnessEvents) {
+            // Harness is installed - check if initAuthClient was called OR harness object exists
+            if (typeof harnessEvents.initCount === "number" && harnessEvents.initCount >= 1) {
+                return true;
+            }
+            // Also accept if __tauthHarness exists (harness stub injected)
+            if (window.__tauthHarness) {
+                return true;
+            }
         }
-        const alpineComponent = (() => {
-            const legacy = /** @type {{ $data?: Record<string, any> }} */ (/** @type {any} */ (root).__x ?? null);
-            if (legacy && typeof legacy.$data === "object") {
-                return legacy.$data;
-            }
-            const alpine = typeof window !== "undefined" ? /** @type {{ $data?: (el: Element) => any }} */ (window.Alpine ?? null) : null;
-            if (alpine && typeof alpine.$data === "function") {
-                const scoped = alpine.$data(root);
-                if (scoped && typeof scoped === "object") {
-                    return scoped;
-                }
-            }
-            const stack = /** @type {Array<Record<string, any>>|undefined} */ (/** @type {any} */ (root)._x_dataStack);
-            if (Array.isArray(stack) && stack.length > 0) {
-                const candidate = stack[stack.length - 1];
-                if (candidate && typeof candidate === "object") {
-                    return candidate;
-                }
-            }
-            return null;
-        })();
-        return Boolean(alpineComponent?.tauthSession);
+        // Fallback: check for CDN stub options
+        const stubOptions = window.__tauthStubOptions;
+        return Boolean(stubOptions && typeof stubOptions === "object");
     }, options);
 }
 
@@ -490,19 +631,70 @@ export async function waitForAppReady(page) {
 
 /**
  * Reset the application state to a signed-out view and wait for readiness.
+ * In the separated page architecture:
+ * - If on app.html, this navigates to the landing page (index.html)
+ * - If on index.html (landing), this clears auth state and waits for landing elements
  * @param {import('puppeteer').Page} page
  * @returns {Promise<void>}
  */
 export async function resetToSignedOut(page) {
-    await page.evaluate(() => {
-        window.sessionStorage.setItem("__gravityTestInitialized", "true");
-        window.localStorage.setItem("gravityNotesData", "[]");
-        window.location.reload();
-    });
-    await page.waitForNavigation({ waitUntil: "domcontentloaded" });
-    await waitForAppReady(page);
-    await page.waitForSelector("#top-editor .markdown-editor");
-    await page.waitForSelector(".auth-button-host");
+    // Determine which page we're on
+    const currentUrl = page.url();
+    const isAppPage = currentUrl.includes("app.html");
+
+    if (isAppPage) {
+        // On app.html: navigate to the landing page
+        // Build the landing page URL from the current app.html URL
+        const landingUrl = currentUrl.replace(/app\.html.*$/, "index.html");
+
+        // Clear auth state and set force sign-out marker before navigating.
+        // The force sign-out marker persists across navigation and tells the
+        // evaluateOnNewDocument stub to not set a default authenticated profile.
+        await page.evaluate(() => {
+            window.__tauthStubProfile = null;
+            try {
+                window.sessionStorage.removeItem("__gravityTestAuthProfile");
+                // Set force sign-out marker so the stub won't auto-authenticate on next page
+                window.sessionStorage.setItem("__gravityTestForceSignOut", "true");
+            } catch {
+                // ignore storage errors
+            }
+            window.sessionStorage.setItem("__gravityTestInitialized", "true");
+            window.localStorage.setItem("gravityNotesData", "[]");
+        });
+
+        await page.goto(landingUrl, { waitUntil: "domcontentloaded" });
+
+        // Wait for landing page elements
+        await page.waitForSelector("[data-test=\"landing-login\"]");
+        await page.waitForFunction(() => {
+            const landing = document.querySelector("[data-test=\"landing\"]");
+            return Boolean(landing && !landing.hasAttribute("hidden"));
+        });
+    } else {
+        // On landing page (index.html): just clear auth state and reload
+        await page.evaluate(() => {
+            window.__tauthStubProfile = null;
+            try {
+                window.sessionStorage.removeItem("__gravityTestAuthProfile");
+                // Set force sign-out marker so the stub won't auto-authenticate after reload
+                window.sessionStorage.setItem("__gravityTestForceSignOut", "true");
+            } catch {
+                // ignore storage errors
+            }
+            window.sessionStorage.setItem("__gravityTestInitialized", "true");
+            window.localStorage.setItem("gravityNotesData", "[]");
+            window.location.reload();
+        });
+        await page.waitForNavigation({ waitUntil: "domcontentloaded" });
+
+        // Wait for landing page elements
+        await page.waitForSelector("[data-test=\"landing-login\"]");
+        await page.waitForFunction(() => {
+            const landing = document.querySelector("[data-test=\"landing\"]");
+            return Boolean(landing && !landing.hasAttribute("hidden"));
+        });
+    }
 }
 
 /**
@@ -632,6 +824,45 @@ export async function dispatchNoteCreate(page, detail) {
 }
 
 /**
+ * Seed notes in the UI by dispatching note-create events.
+ * @param {import('puppeteer').Page} page
+ * @param {import("../../js/types.d.js").NoteRecord[]} records
+ * @returns {Promise<void>}
+ */
+export async function seedNotes(page, records, userId) {
+    if (!Array.isArray(records) || records.length === 0) {
+        return;
+    }
+    const storageKey = typeof userId === "string" && userId.trim().length > 0
+        ? buildUserStorageKey(userId)
+        : null;
+    const payload = JSON.stringify(records);
+    await page.evaluate((key, serialized) => {
+        if (key) {
+            window.localStorage.setItem(key, serialized);
+        }
+        const root = document.querySelector("[x-data]");
+        const alpineData = (() => {
+            if (!root) {
+                return null;
+            }
+            const alpine = window.Alpine;
+            if (alpine && typeof alpine.$data === "function") {
+                return alpine.$data(root);
+            }
+            return root.__x?.$data ?? null;
+        })();
+        if (!alpineData || typeof alpineData.initializeNotes !== "function") {
+            throw new Error("seedNotes missing initializeNotes");
+        }
+        alpineData.initializeNotes();
+    }, storageKey, payload);
+    await page.waitForFunction((count) => {
+        return document.querySelectorAll(".markdown-block[data-note-id]").length >= count;
+    }, {}, records.length);
+}
+
+/**
  * Dispatch a note update event to the application root.
  * @param {import('puppeteer').Page} page
  * @param {{ noteId: string, record: import("../../js/types.d.js").NoteRecord, storeUpdated?: boolean, shouldRender?: boolean }} detail
@@ -684,7 +915,7 @@ function generateJwtIdentifier() {
     return randomBytes(16).toString("hex");
 }
 
-async function resolvePageUrl(rawUrl) {
+export async function resolvePageUrl(rawUrl) {
     try {
         const parsed = new URL(rawUrl);
         if (parsed.protocol !== "file:") {

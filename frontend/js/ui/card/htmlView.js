@@ -158,6 +158,10 @@ export function createHtmlView(card, { markdownSource, badgesTarget }) {
     if (!(card instanceof HTMLElement) || typeof markdownSource !== "string") {
         return null;
     }
+    if (card.classList.contains("editing-in-place")) {
+        deleteHtmlView(card);
+        return null;
+    }
     deleteHtmlView(card);
     if (card.dataset.htmlViewExpanded !== "true") {
         card.dataset.htmlViewExpanded = "false";
@@ -319,6 +323,9 @@ function isToggleActivationArea(event, wrapper, toggle) {
         return false;
     }
     if (toggle.hidden || toggle.style.display === "none") {
+        return false;
+    }
+    if (wrapper.classList.contains("note-html-view--expanded")) {
         return false;
     }
     const target = event.target;

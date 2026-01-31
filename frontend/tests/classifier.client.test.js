@@ -1,3 +1,5 @@
+// @ts-check
+
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -6,9 +8,13 @@ import { createAppConfig } from "../js/core/config.js?build=2026-01-01T22:43:21Z
 import { ENVIRONMENT_DEVELOPMENT } from "../js/core/environmentConfig.js?build=2026-01-01T22:43:21Z";
 
 const EMPTY_STRING = "";
+const DEFAULT_GOOGLE_CLIENT_ID = "156684561903-4r8t8fvucfdl0o77bf978h2ug168mgur.apps.googleusercontent.com";
 
 test("createClassifierClient uses injected fetch for classification", async () => {
-    const config = createAppConfig({ environment: ENVIRONMENT_DEVELOPMENT });
+    const config = createAppConfig({
+        environment: ENVIRONMENT_DEVELOPMENT,
+        googleClientId: DEFAULT_GOOGLE_CLIENT_ID
+    });
     const mockResponse = {
         ok: true,
         status: 200,
@@ -48,7 +54,11 @@ test("createClassifierClient uses injected fetch for classification", async () =
 });
 
 test("ClassifierClient falls back when endpoint disabled", async () => {
-    const config = createAppConfig({ environment: ENVIRONMENT_DEVELOPMENT, llmProxyUrl: EMPTY_STRING });
+    const config = createAppConfig({
+        environment: ENVIRONMENT_DEVELOPMENT,
+        llmProxyUrl: EMPTY_STRING,
+        googleClientId: DEFAULT_GOOGLE_CLIENT_ID
+    });
     const client = createClassifierClient({ config });
     const result = await client.classifyOrFallback("Any", "Text");
     assert.equal(result.category, "Journal");
@@ -59,7 +69,10 @@ test("ClassifierClient falls back when endpoint disabled", async () => {
 });
 
 test("createClassifierClient returns fallback on fetch error", async () => {
-    const config = createAppConfig({ environment: ENVIRONMENT_DEVELOPMENT });
+    const config = createAppConfig({
+        environment: ENVIRONMENT_DEVELOPMENT,
+        googleClientId: DEFAULT_GOOGLE_CLIENT_ID
+    });
     const client = createClassifierClient({
         config,
         fetchImplementation: async () => { throw new Error("network"); }

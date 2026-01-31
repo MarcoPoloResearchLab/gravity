@@ -1,28 +1,46 @@
+// @ts-check
+
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { createAppConfig } from "../js/core/config.js?build=2026-01-01T22:43:21Z";
-import { ENVIRONMENT_DEVELOPMENT } from "../js/core/environmentConfig.js?build=2026-01-01T22:43:21Z";
 import { createSharedPage } from "./helpers/browserHarness.js";
-
-const appConfig = createAppConfig({ environment: ENVIRONMENT_DEVELOPMENT });
+import { startTestBackend } from "./helpers/backendHarness.js";
+import { attachBackendSessionCookie, buildUserStorageKey, resolvePageUrl, signInTestUser } from "./helpers/syncTestUtils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+const PAGE_URL = `file://${path.join(PROJECT_ROOT, "app.html")}`;
+const TEST_USER_ID = "editor-enhanced-user";
+const STORAGE_KEY = buildUserStorageKey(TEST_USER_ID);
 
 const getCodeMirrorInputSelector = (scope) => `${scope} .CodeMirror [contenteditable="true"], ${scope} .CodeMirror textarea`;
+let sharedEnhancedContext = null;
 
 test.describe("Enhanced Markdown editor", () => {
+    test.before(async () => {
+        sharedEnhancedContext = await openEnhancedPage();
+    });
+
+    test.beforeEach(async () => {
+        const page = getEnhancedPage();
+        await resetEnhancedPage(page);
+    });
+
+    test.after(async () => {
+        if (sharedEnhancedContext) {
+            await sharedEnhancedContext.teardown();
+            sharedEnhancedContext = null;
+        }
+    });
+
     test("EasyMDE auto-continues lists, fences, and brackets", async () => {
-        const { page, teardown } = await openEnhancedPage();
-        try {
-            const cmSelector = "#top-editor .CodeMirror";
-            const cmInputSelector = getCodeMirrorInputSelector("#top-editor");
-            await page.waitForSelector(cmSelector);
-            await page.waitForSelector(cmInputSelector);
+        const page = getEnhancedPage();
+        const cmSelector = "#top-editor .CodeMirror";
+        const cmInputSelector = getCodeMirrorInputSelector("#top-editor");
+        await page.waitForSelector(cmSelector);
+        await page.waitForSelector(cmInputSelector);
 
                 // Unordered list continuation retains bullet symbol
                 await page.focus(cmInputSelector);
@@ -103,18 +121,14 @@ test.describe("Enhanced Markdown editor", () => {
                 assert.equal(bracketState.value, "()");
                 assert.equal(bracketState.cursor.line, 0);
                 assert.equal(bracketState.cursor.ch, 1);
-            } finally {
-                await teardown();
-            }
-        });
+    });
 
-        test("EasyMDE undo and redo shortcuts restore history", async () => {
-            const { page, teardown } = await openEnhancedPage();
-            try {
-                const cmSelector = "#top-editor .CodeMirror";
-                const cmInputSelector = getCodeMirrorInputSelector("#top-editor");
-                await page.waitForSelector(cmSelector);
-                await page.waitForSelector(cmInputSelector);
+    test("EasyMDE undo and redo shortcuts restore history", async () => {
+            const page = getEnhancedPage();
+            const cmSelector = "#top-editor .CodeMirror";
+            const cmInputSelector = getCodeMirrorInputSelector("#top-editor");
+            await page.waitForSelector(cmSelector);
+            await page.waitForSelector(cmInputSelector);
 
                 await page.focus(cmInputSelector);
                 await page.keyboard.type("Alpha");
@@ -137,18 +151,14 @@ test.describe("Enhanced Markdown editor", () => {
 
                 state = await getCodeMirrorState(page);
                 assert.equal(state.value, "Alpha");
-            } finally {
-                await teardown();
-            }
         });
 
         test("EasyMDE skips duplicate closing brackets", async () => {
-            const { page, teardown } = await openEnhancedPage();
-            try {
-                const cmSelector = "#top-editor .CodeMirror";
-                const cmInputSelector = getCodeMirrorInputSelector("#top-editor");
-                await page.waitForSelector(cmSelector);
-                await page.waitForSelector(cmInputSelector);
+            const page = getEnhancedPage();
+            const cmSelector = "#top-editor .CodeMirror";
+            const cmInputSelector = getCodeMirrorInputSelector("#top-editor");
+            await page.waitForSelector(cmSelector);
+            await page.waitForSelector(cmInputSelector);
 
                 await page.focus(cmInputSelector);
                 await page.keyboard.type("(");
@@ -194,18 +204,14 @@ test.describe("Enhanced Markdown editor", () => {
                 state = await getCodeMirrorState(page);
                 assert.equal(state.value, "[ ] ");
                 assert.equal(state.cursor.ch, 4);
-        } finally {
-            await teardown();
-        }
     });
 
     test("EasyMDE delete line shortcut removes the active row", async () => {
-        const { page, teardown } = await openEnhancedPage();
-        try {
-            const cmSelector = "#top-editor .CodeMirror";
-            const cmInputSelector = getCodeMirrorInputSelector("#top-editor");
-            await page.waitForSelector(cmSelector);
-            await page.waitForSelector(cmInputSelector);
+        const page = getEnhancedPage();
+        const cmSelector = "#top-editor .CodeMirror";
+        const cmInputSelector = getCodeMirrorInputSelector("#top-editor");
+        await page.waitForSelector(cmSelector);
+        await page.waitForSelector(cmInputSelector);
 
                 await page.evaluate(() => {
                     const wrapper = document.querySelector("#top-editor .CodeMirror");
@@ -226,18 +232,14 @@ test.describe("Enhanced Markdown editor", () => {
                 assert.equal(state.value, "Beta");
                 assert.equal(state.cursor.line, 0);
                 assert.equal(state.cursor.ch, 0);
-        } finally {
-            await teardown();
-        }
     });
 
     test("EasyMDE duplicate line shortcut copies the active row", async () => {
-        const { page, teardown } = await openEnhancedPage();
-        try {
-            const cmSelector = "#top-editor .CodeMirror";
-            const cmInputSelector = getCodeMirrorInputSelector("#top-editor");
-            await page.waitForSelector(cmSelector);
-            await page.waitForSelector(cmInputSelector);
+        const page = getEnhancedPage();
+        const cmSelector = "#top-editor .CodeMirror";
+        const cmInputSelector = getCodeMirrorInputSelector("#top-editor");
+        await page.waitForSelector(cmSelector);
+        await page.waitForSelector(cmInputSelector);
 
                 await page.evaluate(() => {
                     const wrapper = document.querySelector("#top-editor .CodeMirror");
@@ -258,18 +260,14 @@ test.describe("Enhanced Markdown editor", () => {
                 assert.equal(state.value, "Alpha\nAlpha\nBeta");
                 assert.equal(state.cursor.line, 1);
                 assert.equal(state.cursor.ch, 2);
-        } finally {
-            await teardown();
-        }
     });
 
     test("EasyMDE renumbers ordered lists before submit", async () => {
-        const { page, teardown } = await openEnhancedPage();
-        try {
-            const cmSelector = "#top-editor .CodeMirror";
-            const cmInputSelector = getCodeMirrorInputSelector("#top-editor");
-            await page.waitForSelector(cmSelector);
-            await page.waitForSelector(cmInputSelector);
+        const page = getEnhancedPage();
+        const cmSelector = "#top-editor .CodeMirror";
+        const cmInputSelector = getCodeMirrorInputSelector("#top-editor");
+        await page.waitForSelector(cmSelector);
+        await page.waitForSelector(cmInputSelector);
 
                 await page.evaluate(() => {
                     const wrapper = document.querySelector("#top-editor .CodeMirror");
@@ -301,45 +299,38 @@ test.describe("Enhanced Markdown editor", () => {
                     } catch {
                         return false;
                     }
-                }, {}, appConfig.storageKey);
+                }, {}, STORAGE_KEY);
 
                 const savedRecords = await page.evaluate((storageKey) => {
                     const raw = window.localStorage.getItem(storageKey);
                     return raw ? JSON.parse(raw) : [];
-                }, appConfig.storageKey);
+                }, STORAGE_KEY);
 
                 assert.equal(savedRecords[0]?.markdownText, "1. Bravo\n2. Charlie");
-        } finally {
-            await teardown();
-        }
     });
 
     test("EasyMDE renumbers ordered lists after pasted insertion", async () => {
-        const { page, teardown } = await openEnhancedPage();
-        try {
-            await page.evaluate(() => {
+        const page = getEnhancedPage();
+        await page.evaluate(() => {
+            const wrapper = document.querySelector("#top-editor .CodeMirror");
+            if (!wrapper) {
+                throw new Error("CodeMirror wrapper not found");
+            }
+                const cm = wrapper.CodeMirror;
+                cm.setValue("1. First\n2. Third");
+                cm.setCursor({ line: 1, ch: 0 });
+                cm.replaceSelection("2. Second\n", "start");
+            });
+
+            await page.waitForFunction(() => {
                 const wrapper = document.querySelector("#top-editor .CodeMirror");
-                if (!wrapper) {
-                    throw new Error("CodeMirror wrapper not found");
-                }
-                    const cm = wrapper.CodeMirror;
-                    cm.setValue("1. First\n2. Third");
-                    cm.setCursor({ line: 1, ch: 0 });
-                    cm.replaceSelection("2. Second\n", "start");
-                });
+                if (!wrapper) return false;
+                const cm = wrapper.CodeMirror;
+                return cm.getValue() === "1. First\n2. Second\n3. Third";
+            });
 
-                await page.waitForFunction(() => {
-                    const wrapper = document.querySelector("#top-editor .CodeMirror");
-                    if (!wrapper) return false;
-                    const cm = wrapper.CodeMirror;
-                    return cm.getValue() === "1. First\n2. Second\n3. Third";
-                });
-
-                const state = await getCodeMirrorState(page);
-                assert.equal(state.value, "1. First\n2. Second\n3. Third");
-        } finally {
-            await teardown();
-        }
+            const state = await getCodeMirrorState(page);
+            assert.equal(state.value, "1. First\n2. Second\n3. Third");
     });
 });
 
@@ -353,14 +344,52 @@ async function getCodeMirrorState(page) {
     });
 }
 
+function getEnhancedPage() {
+    if (!sharedEnhancedContext) {
+        throw new Error("Enhanced test page not initialized.");
+    }
+    return sharedEnhancedContext.page;
+}
+
+async function resetEnhancedPage(page) {
+    await page.waitForSelector("#top-editor .CodeMirror");
+    await page.evaluate((storageKey) => {
+        const wrapper = document.querySelector("#top-editor .CodeMirror");
+        if (wrapper) {
+            const cm = wrapper.CodeMirror;
+            if (cm) {
+                cm.setValue("");
+                cm.setCursor({ line: 0, ch: 0 });
+            }
+        }
+        window.localStorage.setItem(storageKey, JSON.stringify([]));
+        const notesContainer = document.getElementById("notes-container");
+        if (notesContainer) {
+            notesContainer.innerHTML = "";
+        }
+    }, STORAGE_KEY);
+}
+
 async function openEnhancedPage() {
+    const backend = await startTestBackend();
     const { page, teardown } = await createSharedPage();
+    const storageKey = buildUserStorageKey(TEST_USER_ID);
     await page.evaluateOnNewDocument((storageKey) => {
         window.__gravityForceMarkdownEditor = true;
         window.localStorage.clear();
         window.localStorage.setItem(storageKey, JSON.stringify([]));
-    }, appConfig.storageKey);
-    await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
+    }, storageKey);
+    // Set session cookie BEFORE navigation to prevent redirect to landing page
+    await attachBackendSessionCookie(page, backend, TEST_USER_ID);
+    const resolvedUrl = await resolvePageUrl(PAGE_URL);
+    await page.goto(resolvedUrl, { waitUntil: "domcontentloaded" });
     await page.waitForSelector("#top-editor .CodeMirror");
-    return { page, teardown };
+    await signInTestUser(page, backend, TEST_USER_ID, { waitForSyncManager: false });
+    return {
+        page,
+        teardown: async () => {
+            await teardown();
+            await backend.close();
+        }
+    };
 }

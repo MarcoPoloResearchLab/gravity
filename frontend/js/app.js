@@ -3,16 +3,20 @@
 
 import Alpine from "https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/module.esm.js";
 
-import { renderCard, updateActionButtons, insertCardRespectingPinned } from "./ui/card.js?build=2026-01-01T22:43:21Z";
+import { renderCard, updateActionButtons } from "./ui/card.js?build=2026-01-01T22:43:21Z";
+import { createAttachmentSignature } from "./ui/card/renderPipeline.js?build=2026-01-01T22:43:21Z";
 import { initializeImportExport } from "./ui/importExport.js?build=2026-01-01T22:43:21Z";
 import { GravityStore } from "./core/store.js?build=2026-01-01T22:43:21Z";
 import { initializeRuntimeConfig } from "./core/runtimeConfig.js?build=2026-01-01T22:43:21Z";
-import { createGoogleIdentityController, isGoogleIdentitySupportedOrigin } from "./core/auth.js?build=2026-01-01T22:43:21Z";
+import {
+    bootstrapTauthSession,
+    canNavigate,
+    ensureAuthReady,
+    waitForMprUiReadyPromise
+} from "./core/authBootstrap.js?build=2026-01-01T22:43:21Z";
 import { initializeAnalytics } from "./core/analytics.js?build=2026-01-01T22:43:21Z";
 import { createSyncManager } from "./core/syncManager.js?build=2026-01-01T22:43:21Z";
 import { createRealtimeSyncController } from "./core/realtimeSyncController.js?build=2026-01-01T22:43:21Z";
-import { ensureTAuthClientLoaded } from "./core/tauthClient.js?build=2026-01-01T22:43:21Z";
-import { createTAuthSession } from "./core/tauthSession.js?build=2026-01-01T22:43:21Z";
 import { mountTopEditor } from "./ui/topEditor.js?build=2026-01-01T22:43:21Z";
 import {
     LABEL_APP_SUBTITLE,
@@ -20,6 +24,11 @@ import {
     LABEL_EXPORT_NOTES,
     LABEL_IMPORT_NOTES,
     LABEL_ENTER_FULL_SCREEN,
+    LABEL_EXIT_FULL_SCREEN,
+    LABEL_LANDING_TITLE,
+    LABEL_LANDING_DESCRIPTION,
+    LABEL_LANDING_SIGN_IN_HINT,
+    LABEL_LANDING_STATUS_LOADING,
     ERROR_NOTES_CONTAINER_NOT_FOUND,
     ERROR_AUTHENTICATION_GENERIC,
     EVENT_NOTE_CREATE,
@@ -28,11 +37,11 @@ import {
     EVENT_NOTE_PIN_TOGGLE,
     EVENT_NOTES_IMPORTED,
     EVENT_NOTIFICATION_REQUEST,
-    EVENT_AUTH_SIGN_IN,
-    EVENT_AUTH_SIGN_OUT,
     EVENT_AUTH_SIGN_OUT_REQUEST,
-    EVENT_AUTH_ERROR,
-    EVENT_AUTH_CREDENTIAL_RECEIVED,
+    EVENT_MPR_AUTH_AUTHENTICATED,
+    EVENT_MPR_AUTH_UNAUTHENTICATED,
+    EVENT_MPR_AUTH_ERROR,
+    EVENT_MPR_USER_MENU_ITEM,
     EVENT_SYNC_SNAPSHOT_APPLIED,
     MESSAGE_NOTES_IMPORTED,
     MESSAGE_NOTES_SKIPPED,
@@ -42,20 +51,33 @@ import {
 import { initializeKeyboardShortcutsModal } from "./ui/keyboardShortcutsModal.js?build=2026-01-01T22:43:21Z";
 import { initializeNotesState } from "./ui/notesState.js?build=2026-01-01T22:43:21Z";
 import { showSaveFeedback } from "./ui/saveFeedback.js?build=2026-01-01T22:43:21Z";
-import { initializeAuthControls } from "./ui/authControls.js?build=2026-01-01T22:43:21Z";
-import { createAvatarMenu } from "./ui/menu/avatarMenu.js?build=2026-01-01T22:43:21Z";
-import { initializeFullScreenToggle } from "./ui/fullScreenToggle.js?build=2026-01-01T22:43:21Z";
+import {
+    isElementFullScreen,
+    isFullScreenSupported,
+    performFullScreenToggle
+} from "./ui/fullScreenToggle.js?build=2026-01-01T22:43:21Z";
 import { initializeVersionRefresh } from "./utils/versionRefresh.js?build=2026-01-01T22:43:21Z";
 import { logging } from "./utils/logging.js?build=2026-01-01T22:43:21Z";
+import { normalizeProfileForApp } from "./utils/profileNormalization.js?build=2026-01-01T22:43:21Z";
 
 const CONSTANTS_VIEW_MODEL = Object.freeze({
     LABEL_APP_SUBTITLE,
     LABEL_APP_TITLE,
     LABEL_EXPORT_NOTES,
     LABEL_IMPORT_NOTES,
-    LABEL_ENTER_FULL_SCREEN
+    LABEL_ENTER_FULL_SCREEN,
+    LABEL_LANDING_TITLE,
+    LABEL_LANDING_DESCRIPTION,
+    LABEL_LANDING_SIGN_IN_HINT
 });
 
+const AUTH_STATE_LOADING = "loading";
+const AUTH_STATE_AUTHENTICATED = "authenticated";
+const AUTH_STATE_UNAUTHENTICATED = "unauthenticated";
+const LANDING_PAGE_URL = "/";
+const USER_MENU_ACTION_EXPORT = "export-notes";
+const USER_MENU_ACTION_IMPORT = "import-notes";
+const USER_MENU_ACTION_FULLSCREEN = "toggle-fullscreen";
 const NOTIFICATION_DEFAULT_DURATION_MS = 3000;
 
 /**
@@ -79,6 +101,22 @@ function buildCacheBustedUrl(targetUrl, buildId) {
     }
 }
 
+/**
+ * @param {string} eventName
+ * @param {Record<string, unknown>} detail
+ * @returns {void}
+ */
+function dispatchMprAuthEvent(eventName, detail) {
+    if (typeof document === "undefined") {
+        return;
+    }
+    const target = document.body ?? document;
+    if (!target || typeof target.dispatchEvent !== "function") {
+        return;
+    }
+    target.dispatchEvent(new CustomEvent(eventName, { detail, bubbles: true }));
+}
+
 async function clearAssetCaches() {
     if (typeof window === "undefined" || typeof caches === "undefined") {
         return;
@@ -91,18 +129,20 @@ async function clearAssetCaches() {
     }
 }
 
-bootstrapApplication().catch((error) => {
+startApplication().catch((error) => {
     logging.error("Failed to bootstrap Gravity Notes", error);
+    throw error;
 });
+
+async function startApplication() {
+    await waitForMprUiReadyPromise();
+    await bootstrapApplication();
+}
 
 async function bootstrapApplication() {
     const appConfig = await initializeRuntimeConfig();
-    await ensureTAuthClientLoaded({
-        baseUrl: appConfig.authBaseUrl,
-        tenantId: appConfig.authTenantId
-    }).catch((error) => {
-        logging.error("TAuth client failed to load", error);
-    });
+    await GravityStore.initialize();
+    await ensureAuthReady();
     initializeAnalytics({ config: appConfig });
     document.addEventListener("alpine:init", () => {
         Alpine.data("gravityApp", () => gravityApp(appConfig));
@@ -118,29 +158,37 @@ async function bootstrapApplication() {
 function gravityApp(appConfig) {
     return {
         constants: CONSTANTS_VIEW_MODEL,
+        landingView: /** @type {HTMLElement|null} */ (null),
+        landingStatus: /** @type {HTMLElement|null} */ (null),
+        landingLogin: /** @type {HTMLElement|null} */ (null),
+        appShell: /** @type {HTMLElement|null} */ (null),
+        userMenu: /** @type {HTMLElement|null} */ (null),
+        authState: AUTH_STATE_LOADING,
         notesContainer: /** @type {HTMLElement|null} */ (null),
         exportButton: /** @type {HTMLButtonElement|null} */ (null),
         importButton: /** @type {HTMLButtonElement|null} */ (null),
         importInput: /** @type {HTMLInputElement|null} */ (null),
-        authControls: /** @type {ReturnType<typeof initializeAuthControls>|null} */ (null),
-        avatarMenu: /** @type {ReturnType<typeof createAvatarMenu>|null} */ (null),
-        authController: /** @type {{ signOut(reason?: string): void, dispose(): void, requestCredential(): Promise<string|null> }|null} */ (null),
-        authControllerPromise: /** @type {Promise<void>|null} */ (null),
-        tauthSession: /** @type {ReturnType<typeof createTAuthSession>|null} */ (null),
-        tauthReadyPromise: /** @type {Promise<void>|null} */ (null),
         authUser: /** @type {{ id: string, email: string|null, name: string|null, pictureUrl: string|null }|null} */ (null),
         pendingSignInUserId: /** @type {string|null} */ (null),
-        authPollHandle: /** @type {number|null} */ (null),
-        guestExportButton: /** @type {HTMLButtonElement|null} */ (null),
+        authBootstrapInProgress: false,
+        /** @type {Promise<void>} */
+        authOperationChain: Promise.resolve(),
+        /** @type {number} */
+        authOperationId: 0,
         syncManager: /** @type {ReturnType<typeof createSyncManager>|null} */ (null),
-        realtimeSync: /** @type {{ connect(params: { baseUrl: string, accessToken: string, expiresAtMs?: number|null }): void, disconnect(): void, dispose(): void }|null} */ (null),
+        realtimeSync: /** @type {{ connect(params: { baseUrl: string }): void, disconnect(): void, dispose(): void }|null} */ (null),
         syncIntervalHandle: /** @type {number|null} */ (null),
-        authNonceToken: /** @type {string|null} */ (null),
         lastRenderedSignature: /** @type {string|null} */ (null),
-        fullScreenToggleController: /** @type {{ dispose(): void }|null} */ (null),
         versionRefreshController: /** @type {{ dispose(): void, checkNow(): Promise<{ reloaded: boolean, remoteVersion: string|null }> }|null} */ (null),
 
         init() {
+            // In the separated page architecture, landing elements don't exist in app.html
+            this.landingView = null;
+            this.landingStatus = null;
+            this.landingLogin = null;
+            this.appShell = this.$refs.appShell ?? document.querySelector("[data-test=\"app-shell\"]");
+            this.userMenu = this.$refs.userMenu ?? document.querySelector("[data-test=\"user-menu\"]");
+
             this.notesContainer = this.$refs.notesContainer ?? document.getElementById("notes-container");
             if (!(this.notesContainer instanceof HTMLElement)) {
                 throw new Error(ERROR_NOTES_CONTAINER_NOT_FOUND);
@@ -149,21 +197,17 @@ function gravityApp(appConfig) {
             this.exportButton = /** @type {HTMLButtonElement|null} */ (this.$refs.exportButton ?? document.getElementById("export-notes-button"));
             this.importButton = /** @type {HTMLButtonElement|null} */ (this.$refs.importButton ?? document.getElementById("import-notes-button"));
             this.importInput = /** @type {HTMLInputElement|null} */ (this.$refs.importInput ?? document.getElementById("import-notes-input"));
-            this.guestExportButton = /** @type {HTMLButtonElement|null} */ (this.$refs.guestExportButton ?? document.getElementById("guest-export-button"));
-            const fullScreenButton = /** @type {HTMLButtonElement|null} */ (this.$refs.fullScreenToggle ?? document.querySelector('[data-test="fullscreen-toggle"]'));
-
-            this.fullScreenToggleController = initializeFullScreenToggle({
-                button: fullScreenButton,
-                targetElement: document.documentElement ?? null,
-                notify: (message) => {
-                    this.emitNotification(message);
-                }
-            });
+            if (typeof document !== "undefined") {
+                const fullScreenEvents = ["fullscreenchange", "webkitfullscreenchange", "mozfullscreenchange", "MSFullscreenChange"];
+                fullScreenEvents.forEach((eventName) => {
+                    document.addEventListener(eventName, () => {
+                        this.updateUserMenuItems();
+                    });
+                });
+            }
 
             this.configureMarked();
             this.registerEventBridges();
-            this.initializeTAuthSession();
-            this.initializeAuth();
             this.initializeTopEditor();
             this.initializeImportExport();
             this.syncManager = createSyncManager({
@@ -175,20 +219,35 @@ function gravityApp(appConfig) {
             GravityStore.setUserScope(null);
 
             if (typeof window !== "undefined") {
-                window.addEventListener("storage", (event) => {
-                    if (!event) {
+                const unsubscribe = GravityStore.subscribeToChanges?.((storageKey) => {
+                    if (storageKey !== GravityStore.getActiveStorageKey()) {
                         return;
                     }
-                    if (event.storageArea !== window.localStorage) {
-                        return;
-                    }
-                    const activeKey = GravityStore.getActiveStorageKey();
-                    if (event.key !== activeKey) {
-                        return;
-                    }
-                    this.initializeNotes();
-                    void this.syncManager?.synchronize({ flushQueue: false });
-                });
+                    void GravityStore.hydrateActiveScope()
+                        .then(() => {
+                            this.initializeNotes();
+                            void this.syncManager?.synchronize({ flushQueue: false });
+                        })
+                        .catch((error) => {
+                            logging.error("Storage hydration failed", error);
+                        });
+                }) ?? null;
+                if (!unsubscribe) {
+                    window.addEventListener("storage", (event) => {
+                        if (!event) {
+                            return;
+                        }
+                        if (event.storageArea !== window.localStorage) {
+                            return;
+                        }
+                        const activeKey = GravityStore.getActiveStorageKey();
+                        if (event.key !== activeKey) {
+                            return;
+                        }
+                        this.initializeNotes();
+                        void this.syncManager?.synchronize({ flushQueue: false });
+                    });
+                }
                 if (this.syncIntervalHandle === null) {
                     this.syncIntervalHandle = window.setInterval(() => {
                         void this.syncManager?.synchronize({ flushQueue: false });
@@ -196,7 +255,10 @@ function gravityApp(appConfig) {
                 }
             }
             this.initializeNotes();
-            this.setGuestExportVisibility(true);
+            this.setAuthState(AUTH_STATE_LOADING);
+            this.setLandingStatus(LABEL_LANDING_STATUS_LOADING, "loading");
+            this.updateUserMenuItems();
+            void this.bootstrapAuthState();
             initializeKeyboardShortcutsModal();
             this.versionRefreshController = initializeVersionRefresh({
                 currentVersion: APP_BUILD_ID,
@@ -239,241 +301,253 @@ function gravityApp(appConfig) {
             });
         },
 
+        setAuthState(nextState) {
+            this.authState = nextState;
+            if (typeof document !== "undefined") {
+                document.body.dataset.authState = nextState;
+            }
+            // In the separated page architecture, app.html is for authenticated users only.
+            // Redirect to landing page if unauthenticated.
+            if (nextState === AUTH_STATE_UNAUTHENTICATED) {
+                this.redirectToLanding();
+            }
+        },
+
         /**
-         * Initialize Google Identity auth controls and controller.
+         * Redirect to the landing page for unauthenticated users.
          * @returns {void}
          */
-        initializeAuth() {
-            const container = /** @type {HTMLElement|null} */ (this.$refs.authContainer ?? null);
-            const buttonHost = /** @type {HTMLElement|null} */ (this.$refs.authButtonHost ?? null);
-            const profile = /** @type {HTMLElement|null} */ (this.$refs.authProfile ?? null);
-            const displayName = /** @type {HTMLElement|null} */ (this.$refs.authDisplayName ?? null);
-            const avatar = /** @type {HTMLImageElement|null} */ (this.$refs.authAvatar ?? null);
-            const status = /** @type {HTMLElement|null} */ (this.$refs.authStatus ?? null);
-            const signOutButton = /** @type {HTMLButtonElement|null} */ (this.$refs.authSignOutButton ?? null);
-            const menuWrapper = /** @type {HTMLElement|null} */ (this.$refs.authMenuWrapper ?? null);
-            const menuPanel = /** @type {HTMLElement|null} */ (this.$refs.authMenu ?? null);
-            const avatarTrigger = /** @type {HTMLButtonElement|null} */ (this.$refs.authAvatarTrigger ?? null);
+        redirectToLanding() {
+            if (typeof window !== "undefined" && canNavigate(window.location)) {
+                window.location.href = LANDING_PAGE_URL;
+            }
+        },
 
-            if (!container || !buttonHost || !profile || !displayName) {
+        setLandingStatus(message, status) {
+            const statusElement = this.landingStatus;
+            if (!statusElement) {
                 return;
             }
-
-            if (this.avatarMenu) {
-                this.avatarMenu.dispose();
-                this.avatarMenu = null;
+            if (typeof message === "string" && message.length > 0) {
+                statusElement.hidden = false;
+                statusElement.textContent = message;
+                statusElement.dataset.status = status;
+                statusElement.setAttribute("aria-hidden", "false");
+            } else {
+                statusElement.hidden = true;
+                statusElement.textContent = "";
+                statusElement.setAttribute("aria-hidden", "true");
+                delete statusElement.dataset.status;
             }
+        },
 
-            this.authControls = initializeAuthControls({
-                container,
-                buttonElement: buttonHost,
-                profileContainer: profile,
-                displayNameElement: displayName,
-                avatarElement: avatar ?? null,
-                statusElement: status ?? null,
-                signOutButton: signOutButton ?? null,
-                menuWrapper: menuWrapper ?? null,
-                onSignOutRequested: () => {
-                    this.handleAuthSignOutRequest();
-                }
-            });
+        clearLandingStatus() {
+            this.setLandingStatus("", "");
+        },
 
-            if (avatarTrigger && menuPanel) {
-                this.avatarMenu = createAvatarMenu({
-                    triggerElement: avatarTrigger,
-                    menuElement: menuPanel
+        updateUserMenuItems() {
+            const menu = this.userMenu;
+            if (!(menu instanceof HTMLElement)) {
+                return;
+            }
+            const items = [
+                { label: LABEL_EXPORT_NOTES, action: USER_MENU_ACTION_EXPORT },
+                { label: LABEL_IMPORT_NOTES, action: USER_MENU_ACTION_IMPORT }
+            ];
+            const fullScreenTarget = typeof document !== "undefined" ? document.documentElement : null;
+            if (fullScreenTarget instanceof HTMLElement && isFullScreenSupported(fullScreenTarget)) {
+                const label = isElementFullScreen(fullScreenTarget)
+                    ? LABEL_EXIT_FULL_SCREEN
+                    : LABEL_ENTER_FULL_SCREEN;
+                items.push({ label, action: USER_MENU_ACTION_FULLSCREEN });
+            }
+            menu.setAttribute("menu-items", JSON.stringify(items));
+        },
+
+        handleUserMenuAction(action) {
+            if (action === USER_MENU_ACTION_EXPORT) {
+                this.exportButton?.click();
+                return;
+            }
+            if (action === USER_MENU_ACTION_IMPORT) {
+                this.importButton?.click();
+                return;
+            }
+            if (action === USER_MENU_ACTION_FULLSCREEN) {
+                void performFullScreenToggle({
+                    targetElement: typeof document !== "undefined" ? document.documentElement : null,
+                    notify: (message) => {
+                        this.emitNotification(message);
+                    }
                 });
-                this.avatarMenu.setEnabled(false);
             }
-
-            this.authControls.showSignedOut();
-            void this.ensureGoogleIdentityController();
         },
 
-        /**
-         * Initialize the TAuth session bridge if available.
-         * @returns {Promise<void>|void}
-         */
-        initializeTAuthSession() {
-            if (this.tauthSession) {
-                return this.tauthReadyPromise ?? Promise.resolve();
-            }
-            this.tauthSession = createTAuthSession({
-                baseUrl: appConfig.authBaseUrl,
-                eventTarget: this.$el ?? document,
-                tenantId: appConfig.authTenantId,
-                windowRef: typeof window !== "undefined" ? window : undefined
-            });
-            this.tauthReadyPromise = this.tauthSession.initialize().catch((error) => {
-                logging.error("Failed to initialize TAuth session", error);
-            });
-            return this.tauthReadyPromise;
-        },
-
-        /**
-         * Ensure the Google Identity controller is instantiated once the API is available.
-         * @returns {void}
-         */
-        async ensureGoogleIdentityController(force = false) {
-            if (this.authController && !force) {
+        handleAuthAuthenticated(profile) {
+            const normalizedUser = normalizeProfileForApp(profile);
+            if (!normalizedUser || !normalizedUser.id) {
+                this.setLandingStatus(ERROR_AUTHENTICATION_GENERIC, "error");
+                this.setAuthState(AUTH_STATE_UNAUTHENTICATED);
                 return;
             }
-            if (this.authControllerPromise) {
-                await this.authControllerPromise;
-                return;
-            }
-            if (typeof window === "undefined") {
-                return;
-            }
-            if (!isGoogleIdentitySupportedOrigin(window.location)) {
-                this.stopGoogleIdentityPolling();
-                return;
-            }
-            const google = /** @type {any} */ (window.google);
-            const hasIdentity = Boolean(google?.accounts?.id);
-            if (!hasIdentity) {
-                this.startGoogleIdentityPolling();
+            if (this.authUser?.id === normalizedUser.id || this.pendingSignInUserId === normalizedUser.id) {
                 return;
             }
 
-            this.authControllerPromise = (async () => {
-                if (this.tauthReadyPromise) {
-                    await this.tauthReadyPromise;
-                }
-                const shouldAutoPrompt = !(this.authUser && typeof this.authUser.id === "string" && this.authUser.id.length > 0);
+            const operationId = ++this.authOperationId;
+            this.pendingSignInUserId = normalizedUser.id;
 
-                if (this.tauthSession) {
-                    try {
-                        this.authNonceToken = await this.tauthSession.requestNonce();
-                    } catch (error) {
-                        logging.error("Failed to request auth nonce", error);
-                        this.authNonceToken = null;
+            const runOperation = async () => {
+                const applySignedInState = () => {
+                    if (this.authOperationId !== operationId) {
+                        return;
+                    }
+                    this.authUser = normalizedUser;
+                    this.clearLandingStatus();
+                    this.setAuthState(AUTH_STATE_AUTHENTICATED);
+                    this.initializeNotes();
+                    this.realtimeSync?.connect({
+                        baseUrl: appConfig.backendBaseUrl
+                    });
+                    if (typeof window !== "undefined" && this.syncIntervalHandle === null) {
+                        this.syncIntervalHandle = window.setInterval(() => {
+                            void this.syncManager?.synchronize({ flushQueue: false });
+                        }, 3000);
+                    }
+                };
+
+                const applySignedOutState = async () => {
+                    if (this.authOperationId !== operationId) {
+                        return;
+                    }
+                    this.authUser = null;
+                    this.setAuthState(AUTH_STATE_UNAUTHENTICATED);
+                    GravityStore.setUserScope(null);
+                    await GravityStore.hydrateActiveScope();
+                    if (this.authOperationId !== operationId) {
+                        return;
+                    }
+                    this.initializeNotes();
+                    this.syncManager?.handleSignOut();
+                    this.realtimeSync?.disconnect();
+                };
+
+                try {
+                    GravityStore.setUserScope(normalizedUser.id);
+                    await GravityStore.hydrateActiveScope();
+                    if (this.authOperationId !== operationId) {
+                        return;
+                    }
+                    const result = this.syncManager && typeof this.syncManager.handleSignIn === "function"
+                        ? await this.syncManager.handleSignIn({ userId: normalizedUser.id })
+                        : { authenticated: true, queueFlushed: false, snapshotApplied: false };
+                    if (this.authOperationId !== operationId) {
+                        return;
+                    }
+                    if (!result?.authenticated) {
+                        await applySignedOutState();
+                        if (this.authOperationId === operationId) {
+                            this.setLandingStatus(ERROR_AUTHENTICATION_GENERIC, "error");
+                        }
+                        return;
+                    }
+                    applySignedInState();
+                } catch (error) {
+                    logging.error(error);
+                    await applySignedOutState();
+                    if (this.authOperationId === operationId) {
+                        this.setLandingStatus(ERROR_AUTHENTICATION_GENERIC, "error");
+                    }
+                } finally {
+                    if (this.pendingSignInUserId === normalizedUser.id) {
+                        this.pendingSignInUserId = null;
                     }
                 }
+            };
 
-                const buttonHost = this.authControls?.getButtonHost() ?? null;
-                this.authController = createGoogleIdentityController({
-                    clientId: appConfig.googleClientId,
-                    google,
-                    buttonElement: buttonHost ?? undefined,
-                    eventTarget: this.$el,
-                    autoPrompt: shouldAutoPrompt,
-                    nonceToken: this.authNonceToken ?? undefined
-                });
-                this.stopGoogleIdentityPolling();
-            })();
-
-            try {
-                await this.authControllerPromise;
-            } finally {
-                this.authControllerPromise = null;
-            }
+            const operation = this.authOperationChain
+                .then(runOperation)
+                .catch((error) => logging.error("Auth operation failed", error));
+            this.authOperationChain = operation;
+            return operation;
         },
 
-        async requestFreshCredential() {
-            await this.ensureGoogleIdentityController();
-            const controller = this.authController;
-            if (!controller || typeof controller.requestCredential !== "function") {
-                return null;
-            }
-            try {
-                const credential = await controller.requestCredential();
-                if (typeof credential === "string" && credential.length > 0) {
-                    return credential;
+        handleAuthUnauthenticated() {
+            const operationId = ++this.authOperationId;
+
+            const runOperation = async () => {
+                this.authUser = null;
+                this.pendingSignInUserId = null;
+                // In the separated page architecture, setAuthState will redirect to landing
+                this.setAuthState(AUTH_STATE_UNAUTHENTICATED);
+                // The following code may not execute due to redirect, but kept for completeness
+                GravityStore.setUserScope(null);
+                await GravityStore.hydrateActiveScope();
+                if (this.authOperationId !== operationId) {
+                    return;
                 }
-            } catch (error) {
-                logging.error(error);
-            }
-            return null;
-        },
-
-        async exchangeCredentialWithTAuth(credential) {
-            if (!this.tauthSession || typeof credential !== "string" || credential.length === 0) {
-                return;
-            }
-            if (!this.authNonceToken) {
-                logging.error("Auth nonce missing during credential exchange - reinitializing");
-                this.authControls?.showError(ERROR_AUTHENTICATION_GENERIC);
-                this.authController?.dispose();
-                this.authController = null;
-                return;
-            }
-            try {
-                await this.tauthSession.exchangeGoogleCredential({
-                    credential,
-                    nonceToken: this.authNonceToken
-                });
-                this.authNonceToken = null;
-            } catch (error) {
-                logging.error("Credential exchange failed", error);
-                this.authControls?.showError(ERROR_AUTHENTICATION_GENERIC);
-                this.authNonceToken = null;
-            }
-        },
-
-        /**
-         * Begin polling for the Google Identity script to become available.
-         * @returns {void}
-         */
-        startGoogleIdentityPolling() {
-            if (this.authPollHandle !== null) {
-                return;
-            }
-            if (typeof window === "undefined") {
-                return;
-            }
-            if (!isGoogleIdentitySupportedOrigin(window.location)) {
-                return;
-            }
-            const poll = () => {
-                if (window.google && window.google.accounts && window.google.accounts.id) {
-                    this.stopGoogleIdentityPolling();
-                    this.ensureGoogleIdentityController();
+                this.syncManager?.handleSignOut();
+                this.realtimeSync?.disconnect();
+                if (typeof window !== "undefined" && this.syncIntervalHandle !== null) {
+                    window.clearInterval(this.syncIntervalHandle);
+                    this.syncIntervalHandle = null;
                 }
             };
-            poll();
-            if (!this.authController) {
-                this.authPollHandle = window.setInterval(poll, 350);
-            }
+
+            const operation = this.authOperationChain
+                .then(runOperation)
+                .catch((error) => logging.error("Auth operation failed", error));
+            this.authOperationChain = operation;
+            return operation;
         },
 
-        /**
-         * Stop any outstanding polling interval for Google Identity availability.
-         * @returns {void}
-         */
-        stopGoogleIdentityPolling() {
-            if (this.authPollHandle === null) {
+        handleAuthError(detail) {
+            if (this.authState === AUTH_STATE_AUTHENTICATED) {
                 return;
             }
-            if (typeof window !== "undefined") {
-                window.clearInterval(this.authPollHandle);
+            if (detail?.code) {
+                logging.warn("Auth error reported by mpr-ui", detail);
             }
-            this.authPollHandle = null;
+            // In the separated page architecture, redirect to landing on auth error
+            this.setAuthState(AUTH_STATE_UNAUTHENTICATED);
         },
 
-        /**
-         * Handle a local sign-out request from the UI.
-         * @param {string} [reason]
-         * @returns {void}
-         */
         handleAuthSignOutRequest(reason = "manual") {
-            this.avatarMenu?.close({ focusTrigger: false });
-            this.realtimeSync?.disconnect();
-            if (this.tauthSession) {
-                void this.tauthSession.signOut();
+            void reason;
+            void this.handleAuthUnauthenticated();
+            if (typeof window !== "undefined" && typeof window.logout === "function") {
+                window.logout().catch((error) => {
+                    logging.error("TAuth logout failed", error);
+                });
             }
-            if (this.authController) {
-                this.authController.signOut(reason);
-                this.authController.dispose();
-                this.authController = null;
-            } else {
-                this.dispatchAuthSignOut(reason);
+        },
+
+        async bootstrapAuthState() {
+            if (this.authState !== AUTH_STATE_LOADING) {
+                return;
             }
-            this.authControls?.showSignedOut();
-            this.avatarMenu?.setEnabled(false);
-            GravityStore.setUserScope(null);
-            this.initializeNotes();
-            this.authNonceToken = null;
+            if (this.authBootstrapInProgress) {
+                return;
+            }
+            this.authBootstrapInProgress = true;
+            try {
+                await ensureAuthReady();
+                const session = await bootstrapTauthSession(appConfig);
+                if (this.authState !== AUTH_STATE_LOADING) {
+                    return;
+                }
+                if (session.profile) {
+                    dispatchMprAuthEvent(EVENT_MPR_AUTH_AUTHENTICATED, { profile: session.profile });
+                    return;
+                }
+                dispatchMprAuthEvent(EVENT_MPR_AUTH_UNAUTHENTICATED, { profile: null });
+                return;
+            } catch (error) {
+                logging.error("Auth bootstrap failed", error);
+                throw error;
+            } finally {
+                this.authBootstrapInProgress = false;
+            }
         },
 
         /**
@@ -578,13 +652,27 @@ function gravityApp(appConfig) {
                 this.emitNotification(message);
             });
 
-            root.addEventListener(EVENT_AUTH_CREDENTIAL_RECEIVED, (event) => {
-                const detail = /** @type {{ credential?: string|null }} */ (event?.detail ?? {});
-                const credential = typeof detail?.credential === "string" ? detail.credential : "";
-                if (!credential) {
+            root.addEventListener(EVENT_MPR_AUTH_AUTHENTICATED, (event) => {
+                const detail = /** @type {{ profile?: unknown }} */ (event?.detail ?? {});
+                void this.handleAuthAuthenticated(detail.profile ?? null);
+            });
+
+            root.addEventListener(EVENT_MPR_AUTH_UNAUTHENTICATED, () => {
+                void this.handleAuthUnauthenticated();
+            });
+
+            root.addEventListener(EVENT_MPR_AUTH_ERROR, (event) => {
+                const detail = /** @type {{ message?: unknown, code?: unknown }} */ (event?.detail ?? {});
+                this.handleAuthError(detail);
+            });
+
+            root.addEventListener(EVENT_MPR_USER_MENU_ITEM, (event) => {
+                const detail = /** @type {{ action?: string }} */ (event?.detail ?? {});
+                const action = typeof detail.action === "string" ? detail.action : "";
+                if (!action) {
                     return;
                 }
-                void this.exchangeCredentialWithTAuth(credential);
+                this.handleUserMenuAction(action);
             });
 
             root.addEventListener(EVENT_AUTH_SIGN_OUT_REQUEST, (event) => {
@@ -593,107 +681,6 @@ function gravityApp(appConfig) {
                     ? detail.reason
                     : "backend-unauthorized";
                 this.handleAuthSignOutRequest(reason);
-            });
-
-            root.addEventListener(EVENT_AUTH_SIGN_IN, (event) => {
-                const detail = /** @type {{ user?: { id?: string, email?: string|null, name?: string|null, pictureUrl?: string|null } }} */ (event?.detail ?? {});
-                const user = detail?.user;
-                if (!user || !user.id) {
-                    return;
-                }
-                if (this.authUser?.id === user.id || this.pendingSignInUserId === user.id) {
-                    return;
-                }
-                this.pendingSignInUserId = user.id;
-
-                const applyGuestState = () => {
-                    this.authUser = null;
-                    this.authControls?.showSignedOut();
-                    this.avatarMenu?.setEnabled(false);
-                    this.avatarMenu?.close({ focusTrigger: false });
-                    GravityStore.setUserScope(null);
-                    this.initializeNotes();
-                    this.setGuestExportVisibility(true);
-                    this.authNonceToken = null;
-                    this.realtimeSync?.disconnect();
-                };
-
-                const applySignedInState = () => {
-                    this.authUser = {
-                        id: user.id,
-                        email: typeof user.email === "string" ? user.email : null,
-                        name: typeof user.name === "string" ? user.name : null,
-                        pictureUrl: typeof user.pictureUrl === "string" ? user.pictureUrl : null
-                    };
-                    this.authControls?.clearError();
-                    this.authControls?.showSignedIn(this.authUser);
-                    this.avatarMenu?.setEnabled(true);
-                    this.avatarMenu?.close({ focusTrigger: false });
-                    GravityStore.setUserScope(this.authUser.id);
-                    this.initializeNotes();
-                    this.setGuestExportVisibility(false);
-                };
-
-                const attemptSignIn = async () => {
-                    GravityStore.setUserScope(user.id);
-                    try {
-                        const result = this.syncManager && typeof this.syncManager.handleSignIn === "function"
-                            ? await this.syncManager.handleSignIn({
-                                userId: user.id
-                            })
-                            : {
-                                authenticated: true,
-                                queueFlushed: false,
-                                snapshotApplied: false
-                            };
-                        if (!result?.authenticated) {
-                            applyGuestState();
-                            this.authControls?.showError(ERROR_AUTHENTICATION_GENERIC);
-                            return;
-                        }
-                        applySignedInState();
-                        this.realtimeSync?.connect({
-                            baseUrl: appConfig.backendBaseUrl
-                        });
-                    } catch (error) {
-                        logging.error(error);
-                        applyGuestState();
-                        this.authControls?.showError(ERROR_AUTHENTICATION_GENERIC);
-                    } finally {
-                        if (this.pendingSignInUserId === user.id) {
-                            this.pendingSignInUserId = null;
-                        }
-                    }
-                };
-
-                void attemptSignIn();
-            });
-
-            root.addEventListener(EVENT_AUTH_SIGN_OUT, () => {
-                this.authUser = null;
-                this.authControls?.clearError();
-                this.authControls?.showSignedOut();
-                this.avatarMenu?.setEnabled(false);
-                this.avatarMenu?.close({ focusTrigger: false });
-                GravityStore.setUserScope(null);
-                this.initializeNotes();
-                this.syncManager?.handleSignOut();
-                this.setGuestExportVisibility(true);
-                this.realtimeSync?.disconnect();
-                if (typeof window !== "undefined" && this.syncIntervalHandle !== null) {
-                    window.clearInterval(this.syncIntervalHandle);
-                    this.syncIntervalHandle = null;
-                }
-            });
-
-            root.addEventListener(EVENT_AUTH_ERROR, (event) => {
-                const detail = /** @type {{ error?: unknown, reason?: unknown }} */ (event?.detail ?? {});
-                const errorMessage = typeof detail.error === "string"
-                    ? detail.error
-                    : typeof detail.reason === "string"
-                        ? String(detail.reason)
-                        : ERROR_AUTHENTICATION_GENERIC;
-                this.authControls?.showError(errorMessage);
             });
 
             root.addEventListener(EVENT_NOTIFICATION_REQUEST, (event) => {
@@ -712,34 +699,6 @@ function gravityApp(appConfig) {
                 initializeNotesState(refreshedRecords);
                 this.renderNotes(refreshedRecords);
             });
-        },
-
-        /**
-         * Emit a sign-out event when auth controllers cannot dispatch one.
-         * @param {string} reason
-         * @returns {void}
-         */
-        dispatchAuthSignOut(reason) {
-            const target = this.$el ?? (typeof document !== "undefined" ? document.body : null);
-            if (!target || typeof target.dispatchEvent !== "function") {
-                return;
-            }
-            const detail = { reason };
-            try {
-                if (typeof CustomEvent === "function") {
-                    target.dispatchEvent(new CustomEvent(EVENT_AUTH_SIGN_OUT, { bubbles: true, detail }));
-                    return;
-                }
-            } catch (error) {
-                logging.error(error);
-            }
-            try {
-                const fallbackEvent = new Event(EVENT_AUTH_SIGN_OUT);
-                /** @type {any} */ (fallbackEvent).detail = detail;
-                target.dispatchEvent(fallbackEvent);
-            } catch (error) {
-                logging.error(error);
-            }
         },
 
         /**
@@ -779,12 +738,21 @@ function gravityApp(appConfig) {
                 const noteId = record.noteId;
                 const existingCard = existingCards.get(noteId);
                 const isEditing = existingCard?.classList?.contains("editing-in-place") ?? false;
+                const attachmentsSignature = createAttachmentSignature(record.attachments ?? {});
 
                 if (existingCard && isEditing) {
                     existingCard.dataset.pinned = record.pinned ? "true" : "false";
                     if (typeof record.createdAtIso === "string") existingCard.dataset.createdAtIso = record.createdAtIso;
                     if (typeof record.updatedAtIso === "string") existingCard.dataset.updatedAtIso = record.updatedAtIso;
                     if (typeof record.lastActivityIso === "string") existingCard.dataset.lastActivityIso = record.lastActivityIso;
+                    existingCard.dataset.attachmentsSignature = attachmentsSignature;
+                    desiredOrder.push(existingCard);
+                    existingCards.delete(noteId);
+                    continue;
+                }
+
+                if (existingCard && canReuseRenderedCard(existingCard, record, attachmentsSignature)) {
+                    applyRecordMetadata(existingCard, record, attachmentsSignature);
                     desiredOrder.push(existingCard);
                     existingCards.delete(noteId);
                     continue;
@@ -843,29 +811,6 @@ function gravityApp(appConfig) {
                 fileInput: this.importInput ?? null,
                 notify
             });
-
-            if (this.guestExportButton) {
-                initializeImportExport({
-                    exportButton: this.guestExportButton,
-                    importButton: null,
-                    fileInput: null,
-                    notify
-                });
-            }
-        },
-
-        setGuestExportVisibility(isVisible) {
-            const button = this.guestExportButton;
-            if (!button) {
-                return;
-            }
-            if (isVisible) {
-                button.hidden = false;
-                button.removeAttribute("aria-hidden");
-            } else {
-                button.hidden = true;
-                button.setAttribute("aria-hidden", "true");
-            }
         },
 
         /**
@@ -956,6 +901,73 @@ function createRenderSignature(records) {
         };
     });
     return JSON.stringify(summary);
+}
+
+/**
+ * @param {HTMLElement} card
+ * @returns {string}
+ */
+function readCardMarkdown(card) {
+    const host = Reflect.get(card, "__markdownHost");
+    if (host && typeof host.getValue === "function") {
+        return host.getValue();
+    }
+    const textarea = card.querySelector(".markdown-editor");
+    if (textarea instanceof HTMLTextAreaElement) {
+        return textarea.value;
+    }
+    return typeof card.dataset.initialValue === "string" ? card.dataset.initialValue : "";
+}
+
+/**
+ * @param {HTMLElement} card
+ * @param {import("./types.d.js").NoteRecord} record
+ * @param {string} attachmentsSignature
+ * @returns {boolean}
+ */
+function canReuseRenderedCard(card, record, attachmentsSignature) {
+    if (!(card instanceof HTMLElement)) {
+        return false;
+    }
+    const currentMarkdown = readCardMarkdown(card);
+    if (currentMarkdown !== record.markdownText) {
+        return false;
+    }
+    const cardSignature = typeof card.dataset.attachmentsSignature === "string"
+        ? card.dataset.attachmentsSignature
+        : "";
+    if (cardSignature !== attachmentsSignature) {
+        return false;
+    }
+    const pinnedMatches = card.dataset.pinned === "true"
+        ? record.pinned === true
+        : record.pinned !== true;
+    return pinnedMatches;
+}
+
+/**
+ * @param {HTMLElement} card
+ * @param {import("./types.d.js").NoteRecord} record
+ * @param {string} attachmentsSignature
+ * @returns {void}
+ */
+function applyRecordMetadata(card, record, attachmentsSignature) {
+    if (!(card instanceof HTMLElement)) {
+        return;
+    }
+    card.dataset.initialValue = record.markdownText;
+    card.dataset.attachmentsSignature = attachmentsSignature;
+    card.dataset.pinned = record.pinned === true ? "true" : "false";
+    card.classList.toggle("markdown-block--pinned", record.pinned === true);
+    if (typeof record.createdAtIso === "string") {
+        card.dataset.createdAtIso = record.createdAtIso;
+    }
+    if (typeof record.updatedAtIso === "string") {
+        card.dataset.updatedAtIso = record.updatedAtIso;
+    }
+    if (typeof record.lastActivityIso === "string") {
+        card.dataset.lastActivityIso = record.lastActivityIso;
+    }
 }
 
 /**

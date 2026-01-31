@@ -1,17 +1,18 @@
+// @ts-check
+
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { createAppConfig } from "../js/core/config.js?build=2026-01-01T22:43:21Z";
-import { ENVIRONMENT_DEVELOPMENT } from "../js/core/environmentConfig.js?build=2026-01-01T22:43:21Z";
 import { createSharedPage, flushAlpineQueues, waitForAppHydration } from "./helpers/browserHarness.js";
-
-const appConfig = createAppConfig({ environment: ENVIRONMENT_DEVELOPMENT });
+import { startTestBackend } from "./helpers/backendHarness.js";
+import { attachBackendSessionCookie, resolvePageUrl, seedNotes, signInTestUser } from "./helpers/syncTestUtils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+const PAGE_URL = `file://${path.join(PROJECT_ROOT, "app.html")}`;
+const TEST_USER_ID = "expand-cursor-user";
 
 const NOTE_ID = "cursor-hover-primary";
 const NOTE_MARKDOWN = [
@@ -79,25 +80,34 @@ test("htmlView expand strip exposes pointer cursor in the control zone", async (
 });
 
 async function openPageWithRecord(record) {
+    const backend = await startTestBackend();
     const { page, teardown } = await createSharedPage({
         development: {
             llmProxyUrl: ""
         }
     });
-    await page.evaluateOnNewDocument((storageKey, payload) => {
+    await page.evaluateOnNewDocument(() => {
         window.sessionStorage.setItem("__gravityTestInitialized", "true");
         window.localStorage.clear();
-        if (typeof payload === "string") {
-            window.localStorage.setItem(storageKey, payload);
-        }
-    }, appConfig.storageKey, JSON.stringify([record]));
+    });
 
-    await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
+    // Set session cookie BEFORE navigation to prevent redirect to landing page
+    await attachBackendSessionCookie(page, backend, TEST_USER_ID);
+    const resolvedUrl = await resolvePageUrl(PAGE_URL);
+    await page.goto(resolvedUrl, { waitUntil: "domcontentloaded" });
     await waitForAppHydration(page);
     await flushAlpineQueues(page);
     await page.waitForSelector("#top-editor .markdown-editor");
+    await signInTestUser(page, backend, TEST_USER_ID);
+    await seedNotes(page, [record], TEST_USER_ID);
 
-    return { page, teardown };
+    return {
+        page,
+        teardown: async () => {
+            await teardown();
+            await backend.close();
+        }
+    };
 }
 
 async function getHtmlViewCursor(page, selector) {

@@ -1,23 +1,29 @@
+// @ts-check
+
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { EVENT_AUTH_CREDENTIAL_RECEIVED } from "../js/constants.js";
 import { startTestBackend, waitForBackendNote } from "./helpers/backendHarness.js";
 import {
     prepareFrontendPage,
     waitForSyncManagerUser,
     waitForPendingOperations,
     waitForTAuthSession,
-    composeTestCredential
+    composeTestCredential,
+    exchangeTAuthCredential,
+    attachBackendSessionCookie
 } from "./helpers/syncTestUtils.js";
 import { connectSharedBrowser } from "./helpers/browserHarness.js";
 import { installTAuthHarness } from "./helpers/tauthHarness.js";
+import { readRuntimeContext } from "./helpers/runtimeContext.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+const PAGE_URL = `file://${path.join(PROJECT_ROOT, "app.html")}`;
+const APP_SHELL_SELECTOR = "[data-test=\"app-shell\"]:not([hidden])";
+const TOP_EDITOR_INPUT_SELECTOR = "#top-editor .CodeMirror [contenteditable=\"true\"], #top-editor .CodeMirror textarea";
 
 test.describe("UI sync integration", () => {
     /** @type {{ baseUrl: string, tokenFactory: (userId: string) => string, close: () => Promise<void> } | null} */
@@ -50,50 +56,52 @@ test.describe("UI sync integration", () => {
         const browser = await connectSharedBrowser();
         const context = await browser.createBrowserContext();
 
-        const userId = "ui-sync-user";
+        let iterationSuffix = 1;
+        try {
+            const runtimeContext = readRuntimeContext();
+            const runtimeIteration = runtimeContext?.test?.iteration;
+            if (Number.isInteger(runtimeIteration) && runtimeIteration > 0) {
+                iterationSuffix = runtimeIteration;
+            }
+        } catch {
+            iterationSuffix = 1;
+        }
+        const userId = `ui-sync-user-${iterationSuffix}`;
+        const tauthScriptUrl = new URL("/tauth.js", backendContext.baseUrl).toString();
         const page = await prepareFrontendPage(context, PAGE_URL, {
             backendBaseUrl: backendContext.baseUrl,
             llmProxyUrl: "",
             authBaseUrl: backendContext.baseUrl,
+            tauthScriptUrl,
             beforeNavigate: async (targetPage) => {
+                // Install TAuth harness FIRST so it has priority over session cookie interceptor.
                 await installTAuthHarness(targetPage, {
                     baseUrl: backendContext.baseUrl,
                     cookieName: backendContext.cookieName,
                     mintSessionToken: backendContext.createSessionToken
                 });
+                // Attach session cookie to prevent redirect to landing page.
+                await attachBackendSessionCookie(targetPage, backendContext, userId);
             }
         });
         try {
             await waitForTAuthSession(page);
-            await page.evaluate((eventName, detail) => {
-                const target = document.querySelector("body");
-                if (!target) {
-                    throw new Error("Application root missing");
-                }
-                target.dispatchEvent(new CustomEvent(eventName, {
-                    bubbles: true,
-                    detail
-                }));
-            }, EVENT_AUTH_CREDENTIAL_RECEIVED, {
-                credential: composeTestCredential({
-                    userId,
-                    email: `${userId}@example.com`,
-                    name: "UI Sync User",
-                    pictureUrl: "https://example.com/avatar.png"
-                }),
-                user: {
-                    id: userId,
-                    email: `${userId}@example.com`,
-                    name: "UI Sync User",
-                    pictureUrl: "https://example.com/avatar.png"
-                }
+            const credential = composeTestCredential({
+                userId,
+                email: `${userId}@example.com`,
+                name: "UI Sync User",
+                pictureUrl: "https://example.com/avatar.png"
             });
+            await exchangeTAuthCredential(page, credential);
             await waitForSyncManagerUser(page, userId);
 
-            const editorSelector = "#top-editor .markdown-editor";
+            await page.waitForSelector(APP_SHELL_SELECTOR);
+            await page.waitForSelector(TOP_EDITOR_INPUT_SELECTOR, { visible: true });
+
+            const editorSelector = TOP_EDITOR_INPUT_SELECTOR;
             const noteContent = "End-to-end synced note";
             await page.focus(editorSelector);
-            await page.type(editorSelector, noteContent);
+            await page.keyboard.type(noteContent);
             await page.keyboard.down("Control");
             await page.keyboard.press("Enter");
             await page.keyboard.up("Control");

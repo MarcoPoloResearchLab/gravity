@@ -1,20 +1,30 @@
+// @ts-check
+
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import { createSharedPage } from "./helpers/browserHarness.js";
+import { startTestBackend } from "./helpers/backendHarness.js";
+import { attachBackendSessionCookie, resolvePageUrl, signInTestUser } from "./helpers/syncTestUtils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+const PAGE_URL = `file://${path.join(PROJECT_ROOT, "app.html")}`;
 const CODEMIRROR_SELECTOR = ".markdown-block.top-editor .CodeMirror";
+const TEST_USER_ID = "editor-grammar-user";
 
 test.describe("GN-205 browser grammar support", () => {
     test("top editor exposes a contenteditable surface with native grammar attributes", async () => {
+        const backend = await startTestBackend();
         const { page, teardown } = await createSharedPage();
         try {
-            await page.goto(PAGE_URL);
+            // Set session cookie BEFORE navigation to prevent redirect to landing page
+            await attachBackendSessionCookie(page, backend, TEST_USER_ID);
+            const resolvedUrl = await resolvePageUrl(PAGE_URL);
+            await page.goto(resolvedUrl, { waitUntil: "domcontentloaded" });
+            await signInTestUser(page, backend, TEST_USER_ID);
             await page.waitForSelector(CODEMIRROR_SELECTOR, { timeout: 3000 });
 
             const diagnostics = await page.evaluate((selector) => {
@@ -56,6 +66,7 @@ test.describe("GN-205 browser grammar support", () => {
             );
         } finally {
             await teardown();
+            await backend.close();
         }
     });
 });

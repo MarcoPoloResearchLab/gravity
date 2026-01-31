@@ -1,17 +1,19 @@
+// @ts-check
+
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { createAppConfig } from "../js/core/config.js?build=2026-01-01T22:43:21Z";
-import { ENVIRONMENT_DEVELOPMENT } from "../js/core/environmentConfig.js?build=2026-01-01T22:43:21Z";
-import { createSharedPage, waitForAppHydration, flushAlpineQueues } from "./helpers/browserHarness.js";
-
-const appConfig = createAppConfig({ environment: ENVIRONMENT_DEVELOPMENT });
+import { connectSharedBrowser, flushAlpineQueues } from "./helpers/browserHarness.js";
+import { startTestBackend } from "./helpers/backendHarness.js";
+import { seedNotes, signInTestUser, attachBackendSessionCookie, prepareFrontendPage } from "./helpers/syncTestUtils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+const PAGE_URL = `file://${path.join(PROJECT_ROOT, "app.html")}`;
+// Use "test-user" to match the default profile set by injectTAuthStub
+const TEST_USER_ID = "test-user";
 
 const NOTE_ID = "ui-style-fixture";
 const NOTE_MARKDOWN = [
@@ -266,10 +268,9 @@ async function withPreparedPage(callback, options = {}) {
 
 async function preparePage(options = {}) {
     const { viewport } = options;
-    const { page, teardown } = await createSharedPage();
-    if (viewport && typeof page.setViewport === "function") {
-        await page.setViewport(viewport);
-    }
+    const backend = await startTestBackend();
+    const browser = await connectSharedBrowser();
+    const context = await browser.createBrowserContext();
     const records = [
         buildNoteRecord({ noteId: NOTE_ID, markdownText: NOTE_MARKDOWN }),
         ...Array.from({ length: 12 }, (_, index) => buildNoteRecord({
@@ -277,19 +278,38 @@ async function preparePage(options = {}) {
             markdownText: FILLER_NOTE_MARKDOWN
         }))
     ];
-    const serialized = JSON.stringify(records);
-    await page.evaluateOnNewDocument((storageKey, payload) => {
-        window.sessionStorage.setItem("__gravityTestInitialized", "true");
-        window.localStorage.setItem(storageKey, payload);
-        window.__gravityForceMarkdownEditor = true;
-    }, appConfig.storageKey, serialized);
-    await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
-    await waitForAppHydration(page);
+    const page = await prepareFrontendPage(context, PAGE_URL, {
+        backendBaseUrl: backend.baseUrl,
+        llmProxyUrl: "",
+        beforeNavigate: async (targetPage) => {
+            if (viewport && typeof targetPage.setViewport === "function") {
+                await targetPage.setViewport(viewport);
+            }
+            await targetPage.evaluateOnNewDocument(() => {
+                window.sessionStorage.setItem("__gravityTestInitialized", "true");
+                window.localStorage.clear();
+                window.__gravityForceMarkdownEditor = true;
+            });
+            // Set up session cookie BEFORE navigation to prevent redirect to landing page
+            await attachBackendSessionCookie(targetPage, backend, TEST_USER_ID);
+        }
+    });
     await flushAlpineQueues(page);
-    await page.waitForSelector(".markdown-block.top-editor");
+    await signInTestUser(page, backend, TEST_USER_ID);
+    await seedNotes(page, records, TEST_USER_ID);
+    await page.waitForSelector(".markdown-block.top-editor", { timeout: 5000 });
     const cardSelector = `.markdown-block[data-note-id="${NOTE_ID}"]`;
-    await page.waitForSelector(cardSelector);
-    return { page, teardown, cardSelector };
+    await page.waitForSelector(cardSelector, { timeout: 5000 });
+    return {
+        page,
+        teardown: async () => {
+            await page.close().catch(() => {});
+            await context.close().catch(() => {});
+            browser.disconnect();
+            await backend.close();
+        },
+        cardSelector
+    };
 }
 
 async function getComputedStyles(page, selector, properties) {

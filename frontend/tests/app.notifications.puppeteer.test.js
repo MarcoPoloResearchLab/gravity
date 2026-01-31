@@ -1,3 +1,5 @@
+// @ts-check
+
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -7,10 +9,13 @@ import test from "node:test";
 
 import { ERROR_IMPORT_INVALID_PAYLOAD } from "../js/constants.js";
 import { createSharedPage } from "./helpers/browserHarness.js";
+import { startTestBackend } from "./helpers/backendHarness.js";
+import { signInTestUser, resolvePageUrl, attachBackendSessionCookie } from "./helpers/syncTestUtils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..");
-const PAGE_URL = `file://${path.join(PROJECT_ROOT, "index.html")}`;
+const FILE_PAGE_URL = `file://${path.join(PROJECT_ROOT, "app.html")}`;
+const TEST_USER_ID = "notifications-user";
 
 test.describe("App notifications", () => {
     test("import failure surfaces toast notification", async () => {
@@ -18,9 +23,14 @@ test.describe("App notifications", () => {
         const invalidFilePath = path.join(tempDir, "invalid.json");
         await fs.writeFile(invalidFilePath, "not-json", "utf8");
 
+        const backend = await startTestBackend();
         const { page, teardown } = await createSharedPage();
         try {
+            const PAGE_URL = await resolvePageUrl(FILE_PAGE_URL);
+            // Set up session cookie BEFORE navigation so the initial /me call succeeds
+            await attachBackendSessionCookie(page, backend, TEST_USER_ID);
             await page.goto(PAGE_URL, { waitUntil: "domcontentloaded" });
+            await signInTestUser(page, backend, TEST_USER_ID);
             await page.waitForSelector("#top-editor .markdown-editor");
 
             const fileInput = await page.$("#import-notes-input");
@@ -34,6 +44,7 @@ test.describe("App notifications", () => {
             assert.equal(toastMessage, ERROR_IMPORT_INVALID_PAYLOAD);
         } finally {
             await teardown();
+            await backend.close();
             await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
         }
     });

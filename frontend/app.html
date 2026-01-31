@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script defer src="https://loopaware.mprlab.com/widget.js?site_id=d8c3d1c8-7968-43d0-8026-ee827ada7666"></script>
+    <script defer src="https://tauth.mprlab.com/tauth.js"></script>
+    <!-- GSI loaded dynamically by mpr-ui to avoid timing issues with <mpr-login-button> -->
+    <script src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@v3.6.2/mpr-ui-config.js"></script>
+    <!-- Wrap tauth functions for mpr-ui v3.6.2+ profile format compatibility -->
+    <script>
+        (function() {
+            var POLL_INTERVAL_MS = 10;
+            var MAX_POLLS = 500;
+            var pollCount = 0;
+            var wrappedInitAuth = false;
+            var wrappedExchange = false;
+            var wrappedGetUser = false;
+
+            function getConfigFromDom() {
+                var loginButton = document.querySelector("mpr-login-button");
+                if (!loginButton) {
+                    return null;
+                }
+                var tauthUrl = loginButton.getAttribute("tauth-url");
+                var tenantId = loginButton.getAttribute("tauth-tenant-id");
+                var loginPath = loginButton.getAttribute("tauth-login-path") || "/auth/google";
+                if (!tauthUrl || !tenantId) {
+                    return null;
+                }
+                return { tauthUrl: tauthUrl, tenantId: tenantId, loginPath: loginPath };
+            }
+
+            function normalizeProfile(profile) {
+                if (!profile || typeof profile !== "object") {
+                    return profile;
+                }
+                var normalized = Object.assign({}, profile);
+                // Map common field name variations to mpr-ui expected format
+                // user_id: check id, sub (OIDC standard), userId
+                if (!normalized.user_id) {
+                    normalized.user_id = normalized.id || normalized.sub || normalized.userId || null;
+                }
+                // user_email: check email, userEmail
+                if (!normalized.user_email) {
+                    normalized.user_email = normalized.email || normalized.userEmail || null;
+                }
+                // display: check name, displayName, given_name, or fall back to email/id
+                if (!normalized.display) {
+                    normalized.display = normalized.name || normalized.displayName || normalized.given_name || normalized.user_email || normalized.user_id || null;
+                }
+                // avatar_url: check picture, avatarUrl, photoURL
+                if (!normalized.avatar_url) {
+                    normalized.avatar_url = normalized.picture || normalized.avatarUrl || normalized.photoURL || null;
+                }
+                // Add reverse mappings for compatibility
+                if (!normalized.user_display && normalized.display) {
+                    normalized.user_display = normalized.display;
+                }
+                if (!normalized.user_avatar_url && normalized.avatar_url) {
+                    normalized.user_avatar_url = normalized.avatar_url;
+                }
+                return normalized;
+            }
+
+            function wrapTAuthFunctions() {
+                var allWrapped = wrappedInitAuth && wrappedExchange && wrappedGetUser;
+                if (allWrapped) {
+                    return;
+                }
+
+                // Wrap initAuthClient to normalize profiles in onAuthenticated callback
+                if (!wrappedInitAuth && typeof window.initAuthClient === "function") {
+                    var originalInit = window.initAuthClient;
+                    window.initAuthClient = function(options) {
+                        if (!options || typeof options !== "object") {
+                            return originalInit(options);
+                        }
+                        var wrappedOptions = Object.assign({}, options);
+                        if (typeof options.onAuthenticated === "function") {
+                            var originalOnAuth = options.onAuthenticated;
+                            wrappedOptions.onAuthenticated = function(profile) {
+                                return originalOnAuth(normalizeProfile(profile));
+                            };
+                        }
+                        return originalInit(wrappedOptions);
+                    };
+                    wrappedInitAuth = true;
+                }
+
+                // Wrap getCurrentUser to normalize returned profile
+                if (!wrappedGetUser && typeof window.getCurrentUser === "function") {
+                    var originalGetUser = window.getCurrentUser;
+                    window.getCurrentUser = function() {
+                        var result = originalGetUser();
+                        if (result && typeof result.then === "function") {
+                            return result.then(normalizeProfile);
+                        }
+                        return normalizeProfile(result);
+                    };
+                    wrappedGetUser = true;
+                }
+
+                // Wrap exchangeGoogleCredential to return normalized profile
+                if (!wrappedExchange && typeof window.exchangeGoogleCredential === "function") {
+                    var originalExchange = window.exchangeGoogleCredential;
+                    window.exchangeGoogleCredential = function(params) {
+                        var config = getConfigFromDom();
+                        if (!config) {
+                            var result = originalExchange(params);
+                            if (result && typeof result.then === "function") {
+                                return result.then(normalizeProfile);
+                            }
+                            return normalizeProfile(result);
+                        }
+                        var credential = params && params.credential ? params.credential : null;
+                        var nonceToken = params && params.nonceToken ? params.nonceToken : null;
+                        var payload = JSON.stringify({
+                            google_id_token: credential,
+                            nonce_token: nonceToken
+                        });
+                        return window.fetch(config.tauthUrl + config.loginPath, {
+                            method: "POST",
+                            credentials: "include",
+                            headers: {
+                                "Content-Type": "application/json",
+                                "X-Requested-With": "XMLHttpRequest",
+                                "X-TAuth-Tenant": config.tenantId
+                            },
+                            body: payload
+                        }).then(function(response) {
+                            return response.json().catch(function() {
+                                return null;
+                            }).then(function(body) {
+                                if (!response.ok) {
+                                    var errorCode = body && typeof body.error === "string"
+                                        ? body.error
+                                        : "credential exchange failed";
+                                    var err = new Error(errorCode);
+                                    err.status = response.status;
+                                    throw err;
+                                }
+                                return body;
+                            });
+                        }).then(normalizeProfile);
+                    };
+                    wrappedExchange = true;
+                }
+
+                // Keep polling until all functions are wrapped
+                if (!wrappedInitAuth || !wrappedExchange || !wrappedGetUser) {
+                    if (pollCount++ < MAX_POLLS) {
+                        setTimeout(wrapTAuthFunctions, POLL_INTERVAL_MS);
+                    }
+                }
+            }
+
+            wrapTAuthFunctions();
+        })();
+    </script>
+    <script>
+        (function() {
+            function loadMprUi() {
+                return new Promise((resolve, reject) => {
+                    const script = document.createElement("script");
+                    script.src = "https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@v3.6.2/mpr-ui.js";
+                    script.addEventListener("load", () => resolve(), { once: true });
+                    script.addEventListener("error", () => reject(new Error("mpr_ui.load_failed")), { once: true });
+                    document.head.appendChild(script);
+                });
+            }
+
+            function start() {
+                if (!window.MPRUI || typeof window.MPRUI.applyYamlConfig !== "function") {
+                    throw new Error("mpr_ui.config_loader_missing");
+                }
+                const configUrl = typeof window.__mprUiConfigUrl === "string" && window.__mprUiConfigUrl.length > 0
+                    ? window.__mprUiConfigUrl
+                    : "/config.yaml";
+                window.__mprUiReady = window.MPRUI.applyYamlConfig({ configUrl })
+                    .then(loadMprUi);
+            }
+
+            if (document.readyState === "loading") {
+                document.addEventListener("DOMContentLoaded", start, { once: true });
+            } else {
+                start();
+            }
+        })();
+    </script>
+
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <link
+            rel="icon"
+            type="image/png"
+            sizes="32x32"
+            href="data:image/png;base64,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"
+    />
+    <link
+            rel="shortcut icon"
+            type="image/png"
+            sizes="32x32"
+            href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAG0klEQVR4nI2XXahdVxHHfzNr7fN1v5L0tkmIMYltaiM21CQ2RqVEsdBQNRChKmhKfUhBKkgqovWt2IgPFREfTPxAxKI+WKhtSUvQ+gU1Jiag1Yba3tI0bYk3Njf33txzzt57rfFhn4+9z70B12Fzzj5r9sx/5j8za7Zw6GjCsfszDv5mH1p7iLyzh7wrgLLSEsCu8T/X2Cs2Iq5mJK3niekRfvbJ4xw6mhSPfe6pu2iOPQFSI3QMUSkU9bX1rcpyvdKTu6bh8oqGbwpmKe2r+/n5x58R7j2+l6R+AguOmEcQNzR2DQDLcKwMQMUAI5qW1QTUK+IC1r3To/Yoqp6sGxBxVQtlS6NWpaewB0yWA47BQ3Tg07JKh+UBl3hyeVTx9R1kS4aqG3ooKxjvGRlcDGVFh3IiqEYkr/HRDa/xvTuOg7meaP9ZdeRtwyU7PCGLqNOhk+Uwr8D5isuWiZop39r5B+ouQPCoC1iFRhVCFj0iQ4LKCTXIaikZkCLkIgO7iFWCoURCVmfnDRe4fe15PvHsZ0EEUXq5UNIvon6gbEChVL1X64HoLVUwQ8RwagQTzBzEonCiRMjqPLzjj/z14kaeOn8LWu8SrERT/6eBR69RWgPPZQRcz3BIyNMaaM54fYnVvkvDB66mNd63/lU+vO48e4/fC45qTpWTVYRhBABUSolsRXL1+4EIIhEMQjrO5olZPrPpBfauf5WtE5eZSlK8RDoxYW1rnsdmtnN2dhPaWiRGLUXVGIRAwKMjDa8iKAMKBMPMg3m+/t7fc/g9f2a6uQjmyaIjokRTWkmHGB3b1/yH5tgSbfOIGlbJ0mHbHFIgpZBbWagwLqY0TPjpB37FPZvP0s7GmOuO46RoOBFlzKf8fW4tYz5j2+QltkzM868rNyA+LQCU9fbsKU7AaRF+1SLs2qNDBVFBnRCpc3TXr7ln0xkud6YIKDWNOCm8q7mci90WP5zZyXTjKl4DN09cBvFIgbKw4xSco7DrUFQZgHBaJI1zg3v1EMIY92/5C59/52kud6aouYCUatUQ6r7Nl8/uZ/uqWVbXl8Bgw/gVUIcMjPZs+J6zKnhcpU8zLMPiK1jCda0FvnbT7+iEJl7jgCkwMvNMNef45j/3MdNew2M3nmS+22Kyvsh4LR0YGpZyP7eK+yGA0t6wKCIha3Jg/Sk2t95mLkyQuDgQyswzVV/gyTdu45GX7+TkHd8FU0Kvkkz6Ue0DKIHo5ZrH9TdGTjSBiICL3D39ItG0UrGZeaaSq5yd28inznyBH932C7ZPvsF8No4Xgwj/zcaG4baSoyVFpTKsThTFQZcw1Vzk1ok36VqCEgHITZlKlphpX8fHTn2Jh295moPvOMl8NoGXiJmQ5p5zS2vBG9GVAIyc7D0Klg8bQsRinW2tN1lXWyAnQRUCjqmkzWvd1dx99ot8Y+uzHN50goV0Ei+RaFCXlJeuTvO39kao50R8z7fR+aJPgcloAFARoiVsG3+Llku5YnUwmPAdzrWv5/BLn+aRm57kwLpTzHdX4TWAGcEcievwk4u76cQJXLJIGHTCctPrA1CpIBpsSwFs18Trg0OwJjmvdKb55eztfHvr49w6/jrz3Sm85GCQmmOVu8qpuS0cu7gXrXcK73WZ+kEeDKugHAUgoCS1Nh8cnyG1BMWICHl0fGXDbxnTLvNpwXn//1V+kfOdKQ7O3Mei1FA32gGXoehTUKIGwREJscXu1ou8u/kW7dhA1chNeVfzEmn0zIcmYOQmNDRj3C9wauFGDs7cx7lsHZq0ibhhtCsDjg0cLlHQ3wBTQQweuP45mpqRU8NjRT8xaGiGlwAEgin/7qzlx7Mf4vuzH6FjCZp0idGXnKo4XZkvPKKVLqgaibHJ+8dfYU/rZS5ka4ojQgRDyXAshjoXslX8o72BPy3ezHOLW1nIJ8Ev4UgJ5hBH5eQd7TH9qIh854UqMT2EdclpSEZdA9Irn4jSNUcnerqxAZaARNAuXgIRHQzJVUul3yP7HiEWc2HpXUCMjiV0rAahOsGAgUbUpXhSIsWh2ud7IG1QaZ2j9wBm0Uu9oZZ2TKQYhwwpPmKVgXOUSMORDzUvC2I1ChQTVlkuBqPWVCXvnpHmmEAMiKD9GbA3x5mMXjo8V/pz/lC8iqJylfSaBZoTQt4946Pogw5O0Gg68iwg6mS0Xlc4qge0lMZ2Gblf1l4RiDFQa6hheRR9UADckZN3WaP1BCI1ukuGuhHyRsJZ2VvBSLWxDMMfo1ErXk5jvrSfr+5+Rjh0OuHYrowHHt/H5PRDiOwhbcvwheX/XCs1ugpWi9SahtnzvH3pCD84cJxDp5P/Ae923DzqfHDNAAAAAElFTkSuQmCC"
+    />
+    <title>Gravity Notes</title>
+
+    <!-- Markdown renderer -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+
+    <!-- HTML sanitizer -->
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
+
+    <!-- Markdown editor -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde@2.19.0/dist/easymde.min.css"/>
+    <script src="https://cdn.jsdelivr.net/npm/easymde@2.19.0/dist/easymde.min.js"></script>
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@v3.6.2/mpr-ui.css"/>
+    <link rel="stylesheet" href="./styles.css?build=2026-01-01T22:43:21Z"/>
+</head>
+<body x-data="gravityApp()" data-page="app" data-auth-state="loading">
+<div class="app-shell" data-test="app-shell">
+    <header class="app-header">
+        <div class="app-branding">
+            <h1 class="app-title" x-text="constants.LABEL_APP_TITLE">Gravity Notes</h1>
+            <div class="app-subtitle" x-text="constants.LABEL_APP_SUBTITLE">Append anywhere &middot; Bubble to top &middot; Auto-organize</div>
+        </div>
+        <div class="app-auth">
+            <mpr-user
+                    id="app-user-menu"
+                    x-ref="userMenu"
+                    data-test="user-menu"
+                    display-mode="avatar-name"
+                    logout-url="/"
+                    logout-label="Sign out"
+            ></mpr-user>
+        </div>
+    </header>
+
+    <button id="export-notes-button" class="app-hidden-button" type="button" x-ref="exportButton" hidden></button>
+    <button id="import-notes-button" class="app-hidden-button" type="button" x-ref="importButton" hidden></button>
+    <input id="import-notes-input" x-ref="importInput" type="file" hidden />
+
+    <!-- Structural, always-empty editor (never persisted) -->
+    <section id="top-editor"></section>
+
+    <!-- Persisted notes list -->
+    <main id="notes-container" x-ref="notesContainer" class="block-container"></main>
+
+    <div id="editor-toast" class="toast" aria-live="polite" hidden></div>
+    <div id="editor-save-status" class="sr-only" aria-live="polite"></div>
+
+    <footer class="app-footer">
+        <a class="app-legal-link" href="/privacy">Privacy &bull; Terms</a>
+    </footer>
+</div>
+
+<script type="module" src="./js/app.js?build=2026-01-01T22:43:21Z"></script>
+</body>
+</html>
