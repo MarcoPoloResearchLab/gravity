@@ -12,11 +12,7 @@ import {
 } from "./storageDb.js?build=2026-01-01T22:43:21Z";
 
 /**
- * @typedef {{ serverVersion: number, serverEditSeq: number, serverUpdatedAtSeconds: number, serverPayload: unknown, rejectedAtSeconds: number }} ConflictInfo
- */
-
-/**
- * @typedef {{ operationId: string, noteId: string, operation: "upsert"|"delete", payload: unknown|null, baseVersion: number, clientEditSeq: number, updatedAtSeconds: number, createdAtSeconds: number, clientTimeSeconds: number, status?: "pending"|"conflict", conflict?: ConflictInfo }} PendingOperation
+ * @typedef {{ operationId: string, noteId: string, updateB64: string, snapshotB64: string, snapshotUpdateId: number }} PendingOperation
  */
 
 const ERROR_MESSAGES = Object.freeze({
@@ -63,7 +59,7 @@ export function createSyncQueue(options = {}) {
             }
             const storageKey = composeKey(keyPrefix, userId);
             const operations = await loadQueueFromIndexedDb(storageKey);
-            queueCache.set(userId, operations);
+            queueCache.set(userId, normalizeOperations(operations));
         },
 
         /**
@@ -76,7 +72,7 @@ export function createSyncQueue(options = {}) {
                 return [];
             }
             if (storageMode === STORAGE_MODE_INDEXED) {
-                return cloneOperations(queueCache.get(userId) ?? []);
+                return cloneOperations(normalizeOperations(queueCache.get(userId) ?? []));
             }
             if (!localStorage) {
                 return [];
@@ -87,8 +83,9 @@ export function createSyncQueue(options = {}) {
             }
             try {
                 const parsed = JSON.parse(raw);
-                return Array.isArray(parsed) ? parsed : [];
-            } catch {
+                return normalizeOperations(Array.isArray(parsed) ? parsed : []);
+            } catch (error) {
+                logging.error("Sync queue local storage parse failed", error);
                 return [];
             }
         },
@@ -104,7 +101,7 @@ export function createSyncQueue(options = {}) {
                 return;
             }
             if (storageMode === STORAGE_MODE_INDEXED) {
-                const normalized = Array.isArray(operations) ? operations : [];
+                const normalized = normalizeOperations(Array.isArray(operations) ? operations : []);
                 if (normalized.length === 0) {
                     queueCache.delete(userId);
                 } else {
@@ -120,7 +117,7 @@ export function createSyncQueue(options = {}) {
                 localStorage.removeItem(composeKey(keyPrefix, userId));
                 return;
             }
-            localStorage.setItem(composeKey(keyPrefix, userId), JSON.stringify(operations));
+            localStorage.setItem(composeKey(keyPrefix, userId), JSON.stringify(normalizeOperations(operations)));
         },
 
         /**
@@ -166,11 +163,11 @@ export function createSyncQueue(options = {}) {
      */
     async function loadQueueFromIndexedDb(storageKey) {
         const value = await readQueueValueFromIndexedDb(storageKey);
-        const operations = Array.isArray(value) ? value : [];
+        const operations = normalizeOperations(Array.isArray(value) ? value : []);
         if (operations.length > 0) {
             return operations;
         }
-        const migrated = readQueueFromLocalStorage(storageKey);
+        const migrated = normalizeOperations(readQueueFromLocalStorage(storageKey));
         if (migrated.length === 0) {
             return [];
         }
@@ -239,7 +236,8 @@ export function createSyncQueue(options = {}) {
         try {
             const parsed = JSON.parse(raw);
             return Array.isArray(parsed) ? parsed : [];
-        } catch {
+        } catch (error) {
+            logging.error("Sync queue migration parse failed", error);
             return [];
         }
     }
@@ -283,6 +281,41 @@ export function createSyncQueue(options = {}) {
             }
         }
     }
+}
+
+/**
+ * @param {unknown} operations
+ * @returns {PendingOperation[]}
+ */
+function normalizeOperations(operations) {
+    if (!Array.isArray(operations)) {
+        return [];
+    }
+    const normalized = [];
+    for (const entry of operations) {
+        if (!entry || typeof entry !== "object") {
+            continue;
+        }
+        const candidate = /** @type {Record<string, unknown>} */ (entry);
+        const operationId = typeof candidate.operationId === "string" ? candidate.operationId : "";
+        const noteId = typeof candidate.noteId === "string" ? candidate.noteId : "";
+        const updateB64 = typeof candidate.updateB64 === "string" ? candidate.updateB64 : "";
+        const snapshotB64 = typeof candidate.snapshotB64 === "string" ? candidate.snapshotB64 : "";
+        const snapshotUpdateId = typeof candidate.snapshotUpdateId === "number" && Number.isFinite(candidate.snapshotUpdateId) && candidate.snapshotUpdateId >= 0
+            ? candidate.snapshotUpdateId
+            : 0;
+        if (!operationId || !noteId || !updateB64 || !snapshotB64) {
+            continue;
+        }
+        normalized.push({
+            operationId,
+            noteId,
+            updateB64,
+            snapshotB64,
+            snapshotUpdateId
+        });
+    }
+    return normalized;
 }
 
 /**

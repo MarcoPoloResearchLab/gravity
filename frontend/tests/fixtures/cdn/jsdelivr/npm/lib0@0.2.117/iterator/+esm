@@ -1,0 +1,8 @@
+/**
+ * Bundled by jsDelivr using Rollup v2.79.2 and Terser v5.39.0.
+ * Original file: /npm/lib0@0.2.117/iterator.js
+ *
+ * Do NOT use SRI with dynamically generated files! More information: https://www.jsdelivr.com/using-sri-with-dynamic-files
+ */
+const e=(e,t)=>({[Symbol.iterator](){return this},next(){const n=e.next();return{value:n.done?void 0:t(n.value),done:n.done}}}),t=e=>({[Symbol.iterator](){return this},next:e}),n=(e,n)=>t((()=>{let t;do{t=e.next()}while(!t.done&&!n(t.value));return t})),o=(e,n)=>t((()=>{const{done:t,value:o}=e.next();return{done:t,value:t?void 0:n(o)}}));export{t as createIterator,n as iteratorFilter,o as iteratorMap,e as mapIterator};export default null;
+//# sourceMappingURL=/sm/cfb57b57fac1686a4fafa8883e602745951245b1e330f825012f4f4d1ec785a6.map

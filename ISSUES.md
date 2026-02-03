@@ -203,6 +203,8 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 - [x] [GN-50] Provide a development docker compose that rebuilds the backend image on launch.
   (Resolved by adding a dev compose configuration that rebuilds the backend image on launch.)
 - [x] [GN-454] Evaluate CRDT/OT sync for multi-device edits; define merge strategy, payload schema, and migration plan. (Resolved with a CRDT/OT evaluation doc, merge strategy, schema draft, and migration plan.)
+- [x] [GN-455] Implement CRDT-based sync as the sole source of truth (no LWW fallback); ship backend storage, API contract, frontend CRDT integration, migration, and full coverage.
+  (Resolved by adding CRDT update/snapshot storage + sync protocol, migrating legacy payloads, wiring frontend CRDT engine/persistence, and updating tests/harness; make test/lint/ci pass.)
 
 
 ## Planning

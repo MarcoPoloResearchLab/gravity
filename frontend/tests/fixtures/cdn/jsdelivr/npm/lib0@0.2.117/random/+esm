@@ -1,0 +1,8 @@
+/**
+ * Bundled by jsDelivr using Rollup v2.79.2 and Terser v5.39.0.
+ * Original file: /npm/lib0@0.2.117/random.js
+ *
+ * Do NOT use SRI with dynamically generated files! More information: https://www.jsdelivr.com/using-sri-with-dynamic-files
+ */
+import{getRandomValues as e}from"/npm/lib0@0.2.117/webcrypto/+esm";const r=Math.floor,t=Math.random,n=()=>e(new Uint32Array(1))[0],o=()=>{const r=e(new Uint32Array(8));return 4294967296*(2097151&r[0])+(r[1]>>>0)},a=e=>e[r(t()*e.length)],l=[1e7]+-1e3+-4e3+-8e3+-1e11,p=()=>l.replace(/[018]/g,(e=>(e^n()&15>>e/4).toString(16)));export{a as oneOf,t as rand,n as uint32,o as uint53,p as uuidv4};export default null;
+//# sourceMappingURL=/sm/1fc08ebae9b6f74df39ace0b4cd8a45cbf3b1bdc90523710c4619c3a369989cd.map

@@ -1,0 +1,8 @@
+/**
+ * Bundled by jsDelivr using Rollup v2.79.2 and Terser v5.39.0.
+ * Original file: /npm/lib0@0.2.117/promise.js
+ *
+ * Do NOT use SRI with dynamically generated files! More information: https://www.jsdelivr.com/using-sri-with-dynamic-files
+ */
+const e=Date.now,r=e=>new Promise(e),o=e=>new Promise(e),t=Promise.all.bind(Promise),n=e=>Promise.reject(e),i=e=>Promise.resolve(e),s=e=>Promise.resolve(e),a=(o,t,n=10)=>r(((r,i)=>{const s=e(),a=o>0,l=setInterval((()=>{t()?(clearInterval(l),r()):a&&e()-s>o&&(clearInterval(l),i(new Error("Timeout")))}),n)})),l=async(r,o=0,t=10)=>{const n=e(),i=o<=0;for(;i||e()-n<=o;){if(await r())return;await m(t)}throw new Error("Timeout")},m=e=>r(((r,o)=>setTimeout(r,e))),c=e=>e instanceof Promise||e&&e.then&&e.catch&&e.finally;export{t as all,r as create,o as createEmpty,c as isPromise,n as reject,i as resolve,s as resolveWith,a as until,l as untilAsync,m as wait};export default null;
+//# sourceMappingURL=/sm/76c9103ee71a3e9e5a0c3cebcada62a336c83b69be42f7cd3cadac4cfc0c84a5.map
