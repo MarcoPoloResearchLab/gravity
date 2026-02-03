@@ -115,6 +115,19 @@ export function createCrdtNoteEngine(options = {}) {
         },
 
         /**
+         * Build a CRDT snapshot for a note.
+         * @param {string} noteId
+         * @returns {string|null}
+         */
+        buildSnapshot(noteId) {
+            const docState = docsById.get(noteId);
+            if (!docState) {
+                return null;
+            }
+            return encodeDocSnapshot(docState.doc);
+        },
+
+        /**
          * Build a note record from a CRDT document.
          * @param {string} noteId
          * @returns {import("../types.d.js").NoteRecord|null}

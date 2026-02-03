@@ -205,6 +205,8 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 - [x] [GN-454] Evaluate CRDT/OT sync for multi-device edits; define merge strategy, payload schema, and migration plan. (Resolved with a CRDT/OT evaluation doc, merge strategy, schema draft, and migration plan.)
 - [x] [GN-455] Implement CRDT-based sync as the sole source of truth (no LWW fallback); ship backend storage, API contract, frontend CRDT integration, migration, and full coverage.
   (Resolved by adding CRDT update/snapshot storage + sync protocol, migrating legacy payloads, wiring frontend CRDT engine/persistence, and updating tests/harness; make test/lint/ci pass.)
+- [x] [GN-456] Refresh queued CRDT snapshots after applying remote updates to avoid stale snapshot coverage in sync payloads.
+  (Resolved by rebuilding queued snapshots after remote updates/snapshots apply and adding a sync manager regression test; make test/lint/ci pass.)
 
 
 ## Planning
