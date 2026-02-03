@@ -1,44 +1,34 @@
 package server
 
-import (
-	"testing"
+import "testing"
 
-	"github.com/MarcoPoloResearchLab/gravity/backend/internal/notes"
-)
+type testOutcome struct {
+	noteID    string
+	duplicate bool
+}
+
+func (outcome testOutcome) NoteID() string {
+	return outcome.noteID
+}
+
+func (outcome testOutcome) Duplicate() bool {
+	return outcome.duplicate
+}
 
 func TestCollectAcceptedNoteIDs(t *testing.T) {
-	outcomes := []notes.ChangeOutcome{
-		{
-			Outcome: notes.ConflictOutcome{
-				Accepted: true,
-				UpdatedNote: &notes.Note{
-					NoteID: "note-2",
-				},
-			},
+	outcomes := []noteChangeOutcome{
+		testOutcome{
+			noteID: "note-2",
 		},
-		{
-			Outcome: notes.ConflictOutcome{
-				Accepted: false,
-				UpdatedNote: &notes.Note{
-					NoteID: "note-3",
-				},
-			},
+		testOutcome{
+			noteID:    "note-3",
+			duplicate: true,
 		},
-		{
-			Outcome: notes.ConflictOutcome{
-				Accepted: true,
-				UpdatedNote: &notes.Note{
-					NoteID: "note-1",
-				},
-			},
+		testOutcome{
+			noteID: "note-1",
 		},
-		{
-			Outcome: notes.ConflictOutcome{
-				Accepted: true,
-				UpdatedNote: &notes.Note{
-					NoteID: "",
-				},
-			},
+		testOutcome{
+			noteID: "",
 		},
 	}
 

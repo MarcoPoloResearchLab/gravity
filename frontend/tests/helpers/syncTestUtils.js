@@ -225,6 +225,32 @@ export async function initializePuppeteerTest(pageUrl = DEFAULT_PAGE_URL, setupO
     await page.evaluateOnNewDocument(() => {
         window.__gravityForceLocalStorage = true;
     });
+    if (process.env.GRAVITY_TEST_STREAM_LOGS === "1") {
+        page.on("console", (message) => {
+            const type = message.type?.().toUpperCase?.() ?? "LOG";
+            // eslint-disable-next-line no-console
+            console.log(`[page ${type}] ${message.text?.() ?? message}`);
+        });
+        page.on("pageerror", (error) => {
+            const message = error?.stack ?? error?.message ?? String(error);
+            const details = (() => {
+                if (!error || typeof error !== "object") {
+                    return null;
+                }
+                const result = {};
+                for (const key of Object.getOwnPropertyNames(error)) {
+                    result[key] = /** @type {any} */ (error)[key];
+                }
+                return result;
+            })();
+            // eslint-disable-next-line no-console
+            console.error(`[page error] ${message}${details ? ` ${JSON.stringify(details)}` : ""}`);
+        });
+        page.on("requestfailed", (request) => {
+            // eslint-disable-next-line no-console
+            console.error(`[request failed] ${request.url?.() ?? "unknown"}: ${request.failure?.()?.errorText ?? "unknown"}`);
+        });
+    }
     await installCdnMirrors(page);
     await attachImportAppModule(page);
     await injectTAuthStub(page);

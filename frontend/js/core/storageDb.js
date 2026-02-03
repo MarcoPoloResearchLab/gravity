@@ -1,10 +1,11 @@
 // @ts-check
 
 export const STORAGE_DB_NAME = "gravity-storage";
-export const STORAGE_DB_VERSION = 1;
+export const STORAGE_DB_VERSION = 2;
 export const STORE_NOTES = "notes";
 export const STORE_SYNC_QUEUE = "sync-queue";
 export const STORE_SYNC_METADATA = "sync-metadata";
+export const STORE_CRDT_DOCS = "crdt-docs";
 
 export const STORAGE_MODE_INDEXED = "indexeddb";
 export const STORAGE_MODE_LOCAL = "localstorage";
@@ -18,6 +19,9 @@ const ERROR_MESSAGES = Object.freeze({
 /** @type {Promise<IDBDatabase>|null} */
 let dbPromise = null;
 
+/**
+ * @returns {"indexeddb"|"localstorage"|"unavailable"}
+ */
 export function resolveStorageMode() {
     if (forceLocalStorage()) {
         return STORAGE_MODE_LOCAL;
@@ -53,6 +57,9 @@ export function openStorageDb() {
             }
             if (!db.objectStoreNames.contains(STORE_SYNC_METADATA)) {
                 db.createObjectStore(STORE_SYNC_METADATA);
+            }
+            if (!db.objectStoreNames.contains(STORE_CRDT_DOCS)) {
+                db.createObjectStore(STORE_CRDT_DOCS);
             }
         };
         request.onsuccess = () => resolve(request.result);

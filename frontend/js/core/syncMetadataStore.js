@@ -12,7 +12,7 @@ import {
 } from "./storageDb.js?build=2026-01-01T22:43:21Z";
 
 /**
- * @typedef {{ clientEditSeq: number, serverEditSeq: number, serverVersion: number }} NoteMetadata
+ * @typedef {{ lastSeenUpdateId: number }} NoteMetadata
  */
 
 const ERROR_MESSAGES = Object.freeze({
@@ -72,7 +72,7 @@ export function createSyncMetadataStore(options = {}) {
                 return {};
             }
             if (storageMode === STORAGE_MODE_INDEXED) {
-                return cloneMetadata(metadataCache.get(userId) ?? {});
+                return normalizeMetadata(metadataCache.get(userId) ?? {});
             }
             if (!localStorage) {
                 return {};
@@ -83,8 +83,9 @@ export function createSyncMetadataStore(options = {}) {
             }
             try {
                 const parsed = JSON.parse(raw);
-                return isPlainObject(parsed) ? parsed : {};
-            } catch {
+                return normalizeMetadata(parsed);
+            } catch (error) {
+                logging.error("Sync metadata local storage parse failed", error);
                 return {};
             }
         },
@@ -105,8 +106,9 @@ export function createSyncMetadataStore(options = {}) {
                     queuePersist(composeKey(keyPrefix, userId), null);
                     return;
                 }
-                metadataCache.set(userId, cloneMetadata(metadata));
-                queuePersist(composeKey(keyPrefix, userId), metadata);
+                const normalized = normalizeMetadata(metadata);
+                metadataCache.set(userId, normalized);
+                queuePersist(composeKey(keyPrefix, userId), normalized);
                 return;
             }
             if (!localStorage) {
@@ -116,7 +118,7 @@ export function createSyncMetadataStore(options = {}) {
                 localStorage.removeItem(composeKey(keyPrefix, userId));
                 return;
             }
-            localStorage.setItem(composeKey(keyPrefix, userId), JSON.stringify(metadata));
+            localStorage.setItem(composeKey(keyPrefix, userId), JSON.stringify(normalizeMetadata(metadata)));
         },
 
         /**
@@ -163,17 +165,18 @@ export function createSyncMetadataStore(options = {}) {
     async function loadMetadataFromIndexedDb(storageKey) {
         const value = await readMetadataValueFromIndexedDb(storageKey);
         if (isPlainObject(value)) {
-            return value;
+            return normalizeMetadata(value);
         }
         const migrated = readMetadataFromLocalStorage(storageKey);
         if (!isPlainObject(migrated)) {
             return {};
         }
-        await persistMetadataToIndexedDb(storageKey, migrated).catch((error) => {
+        const normalized = normalizeMetadata(migrated);
+        await persistMetadataToIndexedDb(storageKey, normalized).catch((error) => {
             logging.error("Sync metadata migration failed", error);
         });
         removeMetadataFromLocalStorage(storageKey);
-        return migrated;
+        return normalized;
     }
 
     /**
@@ -234,7 +237,8 @@ export function createSyncMetadataStore(options = {}) {
         try {
             const parsed = JSON.parse(raw);
             return isPlainObject(parsed) ? parsed : {};
-        } catch {
+        } catch (error) {
+            logging.error("Sync metadata migration parse failed", error);
             return {};
         }
     }
@@ -281,6 +285,27 @@ export function createSyncMetadataStore(options = {}) {
 }
 
 /**
+ * @param {unknown} value
+ * @returns {Record<string, NoteMetadata>}
+ */
+function normalizeMetadata(value) {
+    if (!isPlainObject(value)) {
+        return {};
+    }
+    const normalized = {};
+    for (const [noteId, entry] of Object.entries(value)) {
+        const candidate = /** @type {Record<string, unknown>} */ (entry);
+        const lastSeenUpdateId = typeof candidate.lastSeenUpdateId === "number"
+            && Number.isFinite(candidate.lastSeenUpdateId)
+            && candidate.lastSeenUpdateId >= 0
+            ? candidate.lastSeenUpdateId
+            : 0;
+        normalized[noteId] = { lastSeenUpdateId };
+    }
+    return normalized;
+}
+
+/**
  * @returns {Storage|null}
  */
 function getLocalStorage() {
@@ -313,15 +338,4 @@ function isNonEmptyString(value) {
  */
 function isPlainObject(value) {
     return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-/**
- * @param {Record<string, NoteMetadata>} metadata
- * @returns {Record<string, NoteMetadata>}
- */
-function cloneMetadata(metadata) {
-    if (typeof structuredClone === "function") {
-        return structuredClone(metadata);
-    }
-    return JSON.parse(JSON.stringify(metadata));
 }
