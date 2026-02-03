@@ -9,6 +9,9 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
+import * as Y from "yjs";
+
+import { decodeBase64 } from "../../js/utils/base64.js";
 import { readRuntimeContext } from "./runtimeContext.js";
 
 const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..", "..");
@@ -19,6 +22,14 @@ const DEFAULT_LOG_LEVEL = "info";
 const HEADER_COOKIE = "Cookie";
 const HEADER_AUTHORIZATION = "Authorization";
 const AUTH_SCHEME_BEARER = "Bearer";
+const CRDT_TEXT_KEY = "markdown";
+const CRDT_META_KEY = "meta";
+const META_CREATED_AT = "createdAtIso";
+const META_UPDATED_AT = "updatedAtIso";
+const META_LAST_ACTIVITY = "lastActivityIso";
+const META_PINNED = "pinned";
+const META_ATTACHMENTS = "attachments";
+const META_CLASSIFICATION = "classification";
 const isWindows = process.platform === "win32";
 let backendBinaryPromise = null;
 
@@ -199,9 +210,13 @@ export async function waitForBackendNote({ backendUrl, sessionToken, cookieName,
             try {
                 const payload = JSON.parse(body);
                 const notes = Array.isArray(payload?.notes) ? payload.notes : [];
-                const match = notes.find((entry) => entry?.payload?.noteId === noteId);
+                const match = notes.find((entry) => entry?.note_id === noteId);
                 if (match) {
-                    return payload;
+                    const derivedPayload = derivePayloadFromEntry(match, noteId);
+                    return {
+                        ...match,
+                        payload: derivedPayload
+                    };
                 }
             } catch {
                 // ignore parse errors and retry
@@ -426,6 +441,87 @@ function runCommand(command, args, options) {
             }
         });
     });
+}
+
+function derivePayloadFromEntry(entry, noteId) {
+    if (entry && typeof entry.snapshot_b64 === "string" && entry.snapshot_b64.length > 0) {
+        return decodeSnapshotToRecord(noteId, entry.snapshot_b64);
+    }
+    if (entry && typeof entry.legacy_payload === "object" && entry.legacy_payload) {
+        return normalizeLegacyPayload(entry.legacy_payload, noteId);
+    }
+    return null;
+}
+
+function decodeSnapshotToRecord(noteId, snapshotB64) {
+    const doc = new Y.Doc();
+    doc.getText(CRDT_TEXT_KEY);
+    doc.getMap(CRDT_META_KEY);
+    Y.applyUpdate(doc, decodeBase64(snapshotB64));
+    const meta = doc.getMap(CRDT_META_KEY);
+    const nowIso = new Date().toISOString();
+    const createdAtIso = readMetaString(meta, META_CREATED_AT, nowIso);
+    const updatedAtIso = readMetaString(meta, META_UPDATED_AT, createdAtIso);
+    const lastActivityIso = readMetaString(meta, META_LAST_ACTIVITY, updatedAtIso);
+    const classification = readMetaObject(meta, META_CLASSIFICATION, null);
+    return {
+        noteId,
+        markdownText: doc.getText(CRDT_TEXT_KEY).toString(),
+        createdAtIso,
+        updatedAtIso,
+        lastActivityIso,
+        pinned: meta.get(META_PINNED) === true,
+        attachments: readMetaObject(meta, META_ATTACHMENTS, {}),
+        classification: classification ?? undefined
+    };
+}
+
+function normalizeLegacyPayload(payload, noteId) {
+    const nowIso = new Date().toISOString();
+    const normalized = payload && typeof payload === "object" ? payload : {};
+    const noteIdValue = typeof normalized.noteId === "string" && normalized.noteId.length > 0
+        ? normalized.noteId
+        : noteId;
+    const markdownText = typeof normalized.markdownText === "string" ? normalized.markdownText : "";
+    const createdAtIso = typeof normalized.createdAtIso === "string" ? normalized.createdAtIso : nowIso;
+    const updatedAtIso = typeof normalized.updatedAtIso === "string" ? normalized.updatedAtIso : nowIso;
+    const lastActivityIso = typeof normalized.lastActivityIso === "string" ? normalized.lastActivityIso : updatedAtIso;
+    const attachments = isPlainObject(normalized.attachments) ? normalized.attachments : {};
+    const classification = isPlainObject(normalized.classification) ? normalized.classification : undefined;
+    return {
+        ...normalized,
+        noteId: noteIdValue,
+        markdownText,
+        createdAtIso,
+        updatedAtIso,
+        lastActivityIso,
+        attachments,
+        classification
+    };
+}
+
+function readMetaString(meta, key, fallback) {
+    const value = meta.get(key);
+    return typeof value === "string" && value ? value : fallback;
+}
+
+function readMetaObject(meta, key, fallback) {
+    const value = meta.get(key);
+    if (!isPlainObject(value)) {
+        return fallback;
+    }
+    return cloneValue(value);
+}
+
+function isPlainObject(value) {
+    return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function cloneValue(value) {
+    if (typeof structuredClone === "function") {
+        return structuredClone(value);
+    }
+    return JSON.parse(JSON.stringify(value));
 }
 
 function mintSessionToken({ userId, signingSecret, expiresInSeconds }) {

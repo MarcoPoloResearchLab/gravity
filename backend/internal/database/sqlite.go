@@ -27,7 +27,7 @@ func OpenSQLite(path string, logger *zap.Logger) (*gorm.DB, error) {
 	}
 	sqlDB.SetMaxOpenConns(1)
 
-	if err := db.AutoMigrate(&notes.Note{}, &notes.NoteChange{}, &users.Identity{}); err != nil {
+	if err := db.AutoMigrate(&notes.Note{}, &notes.NoteChange{}, &notes.CrdtUpdate{}, &notes.CrdtSnapshot{}, &users.Identity{}); err != nil {
 		return nil, err
 	}
 
@@ -50,5 +50,13 @@ func migrateUserIDs(db *gorm.DB) error {
 		return err
 	}
 	updateChanges := fmt.Sprintf("UPDATE note_changes SET user_id = substr(user_id, %d) WHERE user_id LIKE '%s%%';", start, prefix)
-	return db.Exec(updateChanges).Error
+	if err := db.Exec(updateChanges).Error; err != nil {
+		return err
+	}
+	updateCrdtUpdates := fmt.Sprintf("UPDATE note_crdt_updates SET user_id = substr(user_id, %d) WHERE user_id LIKE '%s%%';", start, prefix)
+	if err := db.Exec(updateCrdtUpdates).Error; err != nil {
+		return err
+	}
+	updateCrdtSnapshots := fmt.Sprintf("UPDATE note_crdt_snapshots SET user_id = substr(user_id, %d) WHERE user_id LIKE '%s%%';", start, prefix)
+	return db.Exec(updateCrdtSnapshots).Error
 }

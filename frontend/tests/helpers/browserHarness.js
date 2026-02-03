@@ -114,6 +114,39 @@ const TAUTH_STUB_SCRIPT = [
     "  };",
     "})();"
 ].join("\n");
+const YJS_CDN_VERSION = "13.6.29";
+const LIB0_CDN_VERSION = "0.2.117";
+const LIB0_MODULES = Object.freeze([
+    "observable",
+    "array",
+    "math",
+    "map",
+    "encoding",
+    "decoding",
+    "random",
+    "promise",
+    "buffer",
+    "error",
+    "binary",
+    "function",
+    "set",
+    "logging",
+    "time",
+    "string",
+    "iterator",
+    "object",
+    "environment"
+]);
+const LIB0_CDN_MIRRORS = LIB0_MODULES.map((moduleName) => ({
+    pattern: new RegExp(`^https://cdn\\.jsdelivr\\.net/npm/lib0@${LIB0_CDN_VERSION}/${moduleName}/\\+esm$`, "u"),
+    filePath: path.join(CDN_FIXTURES_ROOT, "jsdelivr", "npm", `lib0@${LIB0_CDN_VERSION}`, moduleName, "+esm"),
+    contentType: "application/javascript"
+}));
+const YJS_CDN_MIRROR = Object.freeze({
+    pattern: new RegExp(`^https://cdn\\.jsdelivr\\.net/npm/yjs@${YJS_CDN_VERSION}/\\+esm$`, "u"),
+    filePath: path.join(CDN_FIXTURES_ROOT, "jsdelivr", "npm", `yjs@${YJS_CDN_VERSION}`, "+esm"),
+    contentType: "application/javascript"
+});
 const CDN_MIRRORS = Object.freeze([
     {
         pattern: /^https:\/\/cdn\.jsdelivr\.net\/npm\/alpinejs@3\.13\.5\/dist\/module\.esm\.js$/u,
@@ -139,7 +172,9 @@ const CDN_MIRRORS = Object.freeze([
         pattern: /^https:\/\/cdn\.jsdelivr\.net\/npm\/easymde@2\.19\.0\/dist\/easymde\.min\.css$/u,
         filePath: path.join(CDN_FIXTURES_ROOT, "jsdelivr", "npm", "easymde@2.19.0", "dist", "easymde.min.css"),
         contentType: "text/css"
-    }
+    },
+    YJS_CDN_MIRROR,
+    ...LIB0_CDN_MIRRORS
 ]);
 const CDN_STUBS = Object.freeze([
     {

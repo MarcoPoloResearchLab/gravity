@@ -1,0 +1,8 @@
+/**
+ * Bundled by jsDelivr using Rollup v2.79.2 and Terser v5.39.0.
+ * Original file: /npm/lib0@0.2.117/observable.js
+ *
+ * Do NOT use SRI with dynamically generated files! More information: https://www.jsdelivr.com/using-sri-with-dynamic-files
+ */
+const e=()=>new Map,s=(e,s,t)=>{let r=e.get(s);return void 0===r&&e.set(s,r=t()),r},t=()=>new Set,r=Array.from;class o{constructor(){this._observers=e()}on(e,r){return s(this._observers,e,t).add(r),r}once(e,s){const t=(...r)=>{this.off(e,t),s(...r)};this.on(e,t)}off(e,s){const t=this._observers.get(e);void 0!==t&&(t.delete(s),0===t.size&&this._observers.delete(e))}emit(s,t){return r((this._observers.get(s)||e()).values()).forEach((e=>e(...t)))}destroy(){this._observers=e()}}class i{constructor(){this._observers=e()}on(e,r){s(this._observers,e,t).add(r)}once(e,s){const t=(...r)=>{this.off(e,t),s(...r)};this.on(e,t)}off(e,s){const t=this._observers.get(e);void 0!==t&&(t.delete(s),0===t.size&&this._observers.delete(e))}emit(s,t){return r((this._observers.get(s)||e()).values()).forEach((e=>e(...t)))}destroy(){this._observers=e()}}export{i as Observable,o as ObservableV2};export default null;
+//# sourceMappingURL=/sm/894774eb175fcd2c56eb7daaee81d8fcf0dadd61a7107ede814ffd3b5d448e82.map

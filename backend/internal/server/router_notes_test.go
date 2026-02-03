@@ -6,20 +6,24 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/MarcoPoloResearchLab/gravity/backend/internal/notes"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
 
-func TestHandleNotesSyncRejectsEmptyNoteID(t *testing.T) {
+const (
+	validUpdateB64   = "AQID"
+	validSnapshotB64 = "AQID"
+)
+
+func TestHandleNotesSyncRejectsEmptyNoteID(testContext *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	context, _ := gin.CreateTestContext(recorder)
 	context.Set(userIDContextKey, "user-1")
 
-	body := `{"operations":[{"note_id":"","operation":"upsert","base_version":0,"client_edit_seq":1,"client_device":"device","client_time_s":1710000000,"created_at_s":0,"updated_at_s":0,"payload":{"noteId":"","markdownText":"hello"}}]}`
+	body := `{"protocol":"crdt-v1","updates":[{"note_id":"","update_b64":"` + validUpdateB64 + `","snapshot_b64":"` + validSnapshotB64 + `","snapshot_update_id":0}]}`
 	request := httptest.NewRequest(http.MethodPost, "/notes/sync", strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	context.Request = request
@@ -32,21 +36,21 @@ func TestHandleNotesSyncRejectsEmptyNoteID(t *testing.T) {
 	handler.handleNotesSync(context)
 
 	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("expected bad request status, got %d", recorder.Code)
+		testContext.Fatalf("expected bad request status, got %d", recorder.Code)
 	}
 	expected := `{"error":"invalid_note_id"}`
 	if recorder.Body.String() != expected {
-		t.Fatalf("unexpected response body: %s", recorder.Body.String())
+		testContext.Fatalf("unexpected response body: %s", recorder.Body.String())
 	}
 }
 
-func TestHandleNotesSyncRejectsNegativeEditSeq(t *testing.T) {
+func TestHandleNotesSyncRejectsInvalidProtocol(testContext *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	context, _ := gin.CreateTestContext(recorder)
 	context.Set(userIDContextKey, "user-1")
 
-	body := `{"operations":[{"note_id":"note-1","operation":"upsert","base_version":0,"client_edit_seq":-5,"client_device":"device","client_time_s":1710000000,"created_at_s":1710000000,"updated_at_s":1710000000,"payload":{"noteId":"note-1","markdownText":"hello"}}]}`
+	body := `{"protocol":"lww-v1","updates":[{"note_id":"note-1","update_b64":"` + validUpdateB64 + `","snapshot_b64":"` + validSnapshotB64 + `","snapshot_update_id":0}]}`
 	request := httptest.NewRequest(http.MethodPost, "/notes/sync", strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	context.Request = request
@@ -59,21 +63,21 @@ func TestHandleNotesSyncRejectsNegativeEditSeq(t *testing.T) {
 	handler.handleNotesSync(context)
 
 	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("expected bad request status, got %d", recorder.Code)
+		testContext.Fatalf("expected bad request status, got %d", recorder.Code)
 	}
-	expected := `{"error":"invalid_change"}`
+	expected := `{"error":"invalid_protocol"}`
 	if recorder.Body.String() != expected {
-		t.Fatalf("unexpected response body: %s", recorder.Body.String())
+		testContext.Fatalf("unexpected response body: %s", recorder.Body.String())
 	}
 }
 
-func TestHandleNotesSyncIncludesServiceErrorCode(t *testing.T) {
+func TestHandleNotesSyncIncludesServiceErrorCode(testContext *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	context, _ := gin.CreateTestContext(recorder)
 	context.Set(userIDContextKey, "user-1")
 
-	body := `{"operations":[{"note_id":"note-1","operation":"upsert","base_version":0,"client_edit_seq":1,"client_device":"device","client_time_s":1710000000,"created_at_s":1710000000,"updated_at_s":1710000000,"payload":{"noteId":"note-1","markdownText":"hello"}}]}`
+	body := `{"protocol":"crdt-v1","updates":[{"note_id":"note-1","update_b64":"` + validUpdateB64 + `","snapshot_b64":"` + validSnapshotB64 + `","snapshot_update_id":0}]}`
 	request := httptest.NewRequest(http.MethodPost, "/notes/sync", strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	context.Request = request
@@ -86,48 +90,18 @@ func TestHandleNotesSyncIncludesServiceErrorCode(t *testing.T) {
 	handler.handleNotesSync(context)
 
 	if recorder.Code != http.StatusInternalServerError {
-		t.Fatalf("expected internal server error status, got %d", recorder.Code)
+		testContext.Fatalf("expected internal server error status, got %d", recorder.Code)
 	}
 	var payload map[string]any
 	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
+		testContext.Fatalf("failed to decode response: %v", err)
 	}
-	if payload["code"] != "notes.apply_changes.missing_database" {
-		t.Fatalf("expected service error code, got %v", payload["code"])
-	}
-}
-
-func TestHandleNotesSyncAllowsNullPayloadForDelete(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	context, _ := gin.CreateTestContext(recorder)
-	context.Set(userIDContextKey, "user-1")
-
-	body := `{"operations":[{"note_id":"note-1","operation":"delete","base_version":0,"client_edit_seq":1,"client_device":"device","client_time_s":1710000000,"created_at_s":1710000000,"updated_at_s":1710000000,"payload":null}]}`
-	request := httptest.NewRequest(http.MethodPost, "/notes/sync", strings.NewReader(body))
-	request.Header.Set("Content-Type", "application/json")
-	context.Request = request
-
-	handler := &httpHandler{
-		notesService: &notes.Service{},
-		logger:       zap.NewNop(),
-	}
-
-	handler.handleNotesSync(context)
-
-	if recorder.Code != http.StatusInternalServerError {
-		t.Fatalf("expected internal server error status, got %d", recorder.Code)
-	}
-	var payload map[string]any
-	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
-	}
-	if payload["code"] != "notes.apply_changes.missing_database" {
-		t.Fatalf("expected service error code, got %v", payload["code"])
+	if payload["code"] != "notes.apply_crdt_updates.missing_database" {
+		testContext.Fatalf("expected service error code, got %v", payload["code"])
 	}
 }
 
-func TestHandleListNotesIncludesServiceErrorCode(t *testing.T) {
+func TestHandleListNotesIncludesServiceErrorCode(testContext *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	context, _ := gin.CreateTestContext(recorder)
@@ -144,18 +118,18 @@ func TestHandleListNotesIncludesServiceErrorCode(t *testing.T) {
 	handler.handleListNotes(context)
 
 	if recorder.Code != http.StatusInternalServerError {
-		t.Fatalf("expected internal server error status, got %d", recorder.Code)
+		testContext.Fatalf("expected internal server error status, got %d", recorder.Code)
 	}
 	var payload map[string]any
 	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
+		testContext.Fatalf("failed to decode response: %v", err)
 	}
-	if payload["code"] != "notes.list_notes.missing_database" {
-		t.Fatalf("expected list notes error code, got %v", payload["code"])
+	if payload["code"] != "notes.list_crdt_snapshots.missing_database" {
+		testContext.Fatalf("expected list notes error code, got %v", payload["code"])
 	}
 }
 
-func TestHandleNotesSyncValidationFailures(t *testing.T) {
+func TestHandleNotesSyncValidationFailures(testContext *testing.T) {
 	gin.SetMode(gin.TestMode)
 	testCases := []struct {
 		name       string
@@ -164,50 +138,44 @@ func TestHandleNotesSyncValidationFailures(t *testing.T) {
 		wantStatus int
 	}{
 		{
-			name:       "invalid-operation",
-			body:       `{"operations":[{"note_id":"note-1","operation":"truncate","base_version":0,"client_edit_seq":1}]}`,
-			wantError:  "invalid_operation",
+			name:       "invalid-request",
+			body:       `{"protocol":"crdt-v1"}`,
+			wantError:  "invalid_request",
 			wantStatus: http.StatusBadRequest,
 		},
 		{
-			name:       "invalid-note-id",
-			body:       `{"operations":[{"note_id":"","operation":"upsert","base_version":0,"client_edit_seq":1}]}`,
-			wantError:  "invalid_note_id",
+			name:       "invalid-update-b64",
+			body:       `{"protocol":"crdt-v1","updates":[{"note_id":"note-1","update_b64":"not-base64","snapshot_b64":"` + validSnapshotB64 + `","snapshot_update_id":0}]}`,
+			wantError:  "invalid_update",
 			wantStatus: http.StatusBadRequest,
 		},
 		{
-			name:       "invalid-edit-seq",
-			body:       `{"operations":[{"note_id":"note-1","operation":"upsert","base_version":0,"client_edit_seq":-3,"payload":{"noteId":"note-1","markdownText":"hello"}}]}`,
-			wantError:  "invalid_change",
+			name:       "invalid-snapshot-b64",
+			body:       `{"protocol":"crdt-v1","updates":[{"note_id":"note-1","update_b64":"` + validUpdateB64 + `","snapshot_b64":"not-base64","snapshot_update_id":0}]}`,
+			wantError:  "invalid_snapshot",
 			wantStatus: http.StatusBadRequest,
 		},
 		{
-			name:       "invalid-base-version",
-			body:       `{"operations":[{"note_id":"note-1","operation":"upsert","base_version":-1,"client_edit_seq":1,"payload":{"noteId":"note-1","markdownText":"hello"}}]}`,
-			wantError:  "invalid_base_version",
+			name:       "invalid-snapshot-update-id",
+			body:       `{"protocol":"crdt-v1","updates":[{"note_id":"note-1","update_b64":"` + validUpdateB64 + `","snapshot_b64":"` + validSnapshotB64 + `","snapshot_update_id":-1}]}`,
+			wantError:  "invalid_snapshot_update_id",
 			wantStatus: http.StatusBadRequest,
 		},
 		{
-			name:       "missing-payload",
-			body:       `{"operations":[{"note_id":"note-1","operation":"upsert","base_version":0,"client_edit_seq":1}]}`,
-			wantError:  "invalid_change",
-			wantStatus: http.StatusBadRequest,
-		},
-		{
-			name:       "payload-note-id-mismatch",
-			body:       `{"operations":[{"note_id":"note-1","operation":"upsert","base_version":0,"client_edit_seq":1,"payload":{"noteId":"note-2","markdownText":"hello"}}]}`,
-			wantError:  "invalid_change",
+			name:       "invalid-cursor",
+			body:       `{"protocol":"crdt-v1","cursors":[{"note_id":"note-1","last_update_id":-5}]}`,
+			wantError:  "invalid_cursor",
 			wantStatus: http.StatusBadRequest,
 		},
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, testCase := range testCases {
+		testContext.Run(testCase.name, func(testContext *testing.T) {
 			recorder := httptest.NewRecorder()
 			context, _ := gin.CreateTestContext(recorder)
 			context.Set(userIDContextKey, "user-1")
 
-			request := httptest.NewRequest(http.MethodPost, "/notes/sync", strings.NewReader(tc.body))
+			request := httptest.NewRequest(http.MethodPost, "/notes/sync", strings.NewReader(testCase.body))
 			request.Header.Set("Content-Type", "application/json")
 			context.Request = request
 
@@ -218,98 +186,16 @@ func TestHandleNotesSyncValidationFailures(t *testing.T) {
 
 			handler.handleNotesSync(context)
 
-			if recorder.Code != tc.wantStatus {
-				t.Fatalf("unexpected status: got %d want %d", recorder.Code, tc.wantStatus)
+			if recorder.Code != testCase.wantStatus {
+				testContext.Fatalf("unexpected status: got %d want %d", recorder.Code, testCase.wantStatus)
 			}
 
 			var payload map[string]any
 			if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
-				t.Fatalf("failed to decode payload: %v", err)
+				testContext.Fatalf("failed to decode payload: %v", err)
 			}
-			if payload["error"] != tc.wantError {
-				t.Fatalf("expected error %s, got %v", tc.wantError, payload["error"])
-			}
-		})
-	}
-}
-
-func TestNormalizeOperationTimestamps(t *testing.T) {
-	now := time.Unix(1700000000, 0).UTC()
-	testCases := []struct {
-		name            string
-		operation       syncOperationPayload
-		expectedClient  int64
-		expectedCreated int64
-		expectedUpdated int64
-	}{
-		{
-			name: "all-missing",
-			operation: syncOperationPayload{
-				ClientTimeSeconds: 0,
-				CreatedAtSeconds:  0,
-				UpdatedAtSeconds:  0,
-			},
-			expectedClient:  now.Unix(),
-			expectedCreated: now.Unix(),
-			expectedUpdated: now.Unix(),
-		},
-		{
-			name: "created-fallbacks-to-client",
-			operation: syncOperationPayload{
-				ClientTimeSeconds: 1700000005,
-				CreatedAtSeconds:  0,
-				UpdatedAtSeconds:  0,
-			},
-			expectedClient:  1700000005,
-			expectedCreated: 1700000005,
-			expectedUpdated: 1700000005,
-		},
-		{
-			name: "created-fallbacks-to-updated",
-			operation: syncOperationPayload{
-				ClientTimeSeconds: 0,
-				CreatedAtSeconds:  0,
-				UpdatedAtSeconds:  1700000007,
-			},
-			expectedClient:  now.Unix(),
-			expectedCreated: 1700000007,
-			expectedUpdated: 1700000007,
-		},
-		{
-			name: "updated-fallbacks-to-created",
-			operation: syncOperationPayload{
-				ClientTimeSeconds: 0,
-				CreatedAtSeconds:  1700000008,
-				UpdatedAtSeconds:  0,
-			},
-			expectedClient:  now.Unix(),
-			expectedCreated: 1700000008,
-			expectedUpdated: 1700000008,
-		},
-		{
-			name: "updated-fallbacks-to-client",
-			operation: syncOperationPayload{
-				ClientTimeSeconds: 1700000009,
-				CreatedAtSeconds:  1700000008,
-				UpdatedAtSeconds:  0,
-			},
-			expectedClient:  1700000009,
-			expectedCreated: 1700000008,
-			expectedUpdated: 1700000009,
-		},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			clientSeconds, createdSeconds, updatedSeconds := normalizeOperationTimestamps(testCase.operation, now)
-			if clientSeconds != testCase.expectedClient {
-				t.Fatalf("unexpected client timestamp: %d", clientSeconds)
-			}
-			if createdSeconds != testCase.expectedCreated {
-				t.Fatalf("unexpected created timestamp: %d", createdSeconds)
-			}
-			if updatedSeconds != testCase.expectedUpdated {
-				t.Fatalf("unexpected updated timestamp: %d", updatedSeconds)
+			if payload["error"] != testCase.wantError {
+				testContext.Fatalf("expected error %s, got %v", testCase.wantError, payload["error"])
 			}
 		})
 	}

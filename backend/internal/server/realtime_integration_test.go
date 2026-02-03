@@ -27,13 +27,13 @@ const (
 	jsonContentType      = "application/json"
 )
 
-func TestRealtimeStreamEmitsNoteChangeEvents(t *testing.T) {
+func TestRealtimeStreamEmitsNoteChangeEvents(testContext *testing.T) {
 	db, err := gorm.Open(githubsqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
 	if err != nil {
-		t.Fatalf("failed to open in-memory database: %v", err)
+		testContext.Fatalf("failed to open in-memory database: %v", err)
 	}
-	if err := db.AutoMigrate(&notes.Note{}, &notes.NoteChange{}); err != nil {
-		t.Fatalf("failed to migrate schema: %v", err)
+	if err := db.AutoMigrate(&notes.Note{}, &notes.NoteChange{}, &notes.CrdtUpdate{}, &notes.CrdtSnapshot{}); err != nil {
+		testContext.Fatalf("failed to migrate schema: %v", err)
 	}
 
 	noteService, err := notes.NewService(notes.ServiceConfig{
@@ -42,14 +42,14 @@ func TestRealtimeStreamEmitsNoteChangeEvents(t *testing.T) {
 		Logger:     zap.NewNop(),
 	})
 	if err != nil {
-		t.Fatalf("failed to construct notes service: %v", err)
+		testContext.Fatalf("failed to construct notes service: %v", err)
 	}
 	sessionValidator, err := auth.NewSessionValidator(auth.SessionValidatorConfig{
 		SigningSecret: []byte(sessionSigningSecret),
 		CookieName:    sessionCookieName,
 	})
 	if err != nil {
-		t.Fatalf("failed to construct session validator: %v", err)
+		testContext.Fatalf("failed to construct session validator: %v", err)
 	}
 
 	dispatcher := NewRealtimeDispatcher()
@@ -61,57 +61,58 @@ func TestRealtimeStreamEmitsNoteChangeEvents(t *testing.T) {
 		Realtime:         dispatcher,
 	})
 	if err != nil {
-		t.Fatalf("failed to construct http handler: %v", err)
+		testContext.Fatalf("failed to construct http handler: %v", err)
 	}
 
 	server := httptest.NewServer(handler)
-	t.Cleanup(server.Close)
+	testContext.Cleanup(server.Close)
 
-	sessionToken := mustMintSessionToken(t, sessionSigningSecret, sessionUserID, time.Now())
+	sessionToken := mustMintSessionToken(testContext, sessionSigningSecret, sessionUserID, time.Now())
 
 	streamRequest, err := http.NewRequest(http.MethodGet, server.URL+"/notes/stream?access_token="+sessionToken, http.NoBody)
 	if err != nil {
-		t.Fatalf("failed to construct stream request: %v", err)
+		testContext.Fatalf("failed to construct stream request: %v", err)
 	}
 	streamResp, err := http.DefaultClient.Do(streamRequest)
 	if err != nil {
-		t.Fatalf("failed to open stream: %v", err)
+		testContext.Fatalf("failed to open stream: %v", err)
 	}
-	t.Cleanup(func() {
+	testContext.Cleanup(func() {
 		_ = streamResp.Body.Close()
 	})
 	if streamResp.StatusCode != http.StatusOK {
-		t.Fatalf("unexpected stream status: %d", streamResp.StatusCode)
+		testContext.Fatalf("unexpected stream status: %d", streamResp.StatusCode)
 	}
 
 	streamReader := bufio.NewReader(streamResp.Body)
 
-	payload := `{"operations":[{"note_id":"` + sessionNoteID + `","operation":"upsert","base_version":0,"client_edit_seq":1,"client_time_s":1700000000,"created_at_s":1700000000,"updated_at_s":1700000000,"payload":{"noteId":"` + sessionNoteID + `","markdownText":"hello world","createdAtIso":"2023-01-01T00:00:00Z","updatedAtIso":"2023-01-01T00:00:00Z","lastActivityIso":"2023-01-01T00:00:00Z"}}]}`
+	payload := `{"protocol":"crdt-v1","updates":[{"note_id":"` + sessionNoteID + `","update_b64":"AQID","snapshot_b64":"AQID","snapshot_update_id":0}]}`
 	syncReq, err := http.NewRequest(http.MethodPost, server.URL+"/notes/sync", bytes.NewBufferString(payload))
 	if err != nil {
-		t.Fatalf("failed to construct sync request: %v", err)
+		testContext.Fatalf("failed to construct sync request: %v", err)
 	}
 	syncReq.AddCookie(&http.Cookie{Name: sessionCookieName, Value: sessionToken})
 	syncReq.Header.Set("Content-Type", jsonContentType)
 	syncResp, err := http.DefaultClient.Do(syncReq)
 	if err != nil {
-		t.Fatalf("sync request failed: %v", err)
+		testContext.Fatalf("sync request failed: %v", err)
 	}
 	if syncResp.StatusCode != http.StatusOK {
-		t.Fatalf("unexpected sync status: %d", syncResp.StatusCode)
+		testContext.Fatalf("unexpected sync status: %d", syncResp.StatusCode)
 	}
 	var syncPayload struct {
 		Results []struct {
 			NoteID   string `json:"note_id"`
 			Accepted bool   `json:"accepted"`
+			UpdateID int64  `json:"update_id"`
 		} `json:"results"`
 	}
 	if err := json.NewDecoder(syncResp.Body).Decode(&syncPayload); err != nil {
-		t.Fatalf("failed to decode sync response: %v", err)
+		testContext.Fatalf("failed to decode sync response: %v", err)
 	}
 	_ = syncResp.Body.Close()
-	if len(syncPayload.Results) != 1 || !syncPayload.Results[0].Accepted || syncPayload.Results[0].NoteID != sessionNoteID {
-		t.Fatalf("unexpected sync results: %#v", syncPayload)
+	if len(syncPayload.Results) != 1 || !syncPayload.Results[0].Accepted || syncPayload.Results[0].NoteID != sessionNoteID || syncPayload.Results[0].UpdateID == 0 {
+		testContext.Fatalf("unexpected sync results: %#v", syncPayload)
 	}
 
 	type eventPayload struct {
@@ -132,10 +133,10 @@ func TestRealtimeStreamEmitsNoteChangeEvents(t *testing.T) {
 		}()
 		select {
 		case <-deadline:
-			t.Fatal("timed out waiting for realtime event")
+			testContext.Fatal("timed out waiting for realtime event")
 		case res := <-resultCh:
 			if res.err != nil {
-				t.Fatalf("failed to read stream: %v", res.err)
+				testContext.Fatalf("failed to read stream: %v", res.err)
 			}
 			line := strings.TrimSpace(res.line)
 			if line == "" {
@@ -154,18 +155,18 @@ func TestRealtimeStreamEmitsNoteChangeEvents(t *testing.T) {
 			dataJSON := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
 			var payload eventPayload
 			if err := json.Unmarshal([]byte(dataJSON), &payload); err != nil {
-				t.Fatalf("failed to decode event payload: %v", err)
+				testContext.Fatalf("failed to decode event payload: %v", err)
 			}
 			if len(payload.NoteIDs) == 0 || payload.NoteIDs[0] != sessionNoteID {
-				t.Fatalf("unexpected note identifiers: %#v", payload.NoteIDs)
+				testContext.Fatalf("unexpected note identifiers: %#v", payload.NoteIDs)
 			}
 			return
 		}
 	}
 }
 
-func mustMintSessionToken(t *testing.T, signingSecret, userID string, now time.Time) string {
-	t.Helper()
+func mustMintSessionToken(testContext *testing.T, signingSecret, userID string, now time.Time) string {
+	testContext.Helper()
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, auth.SessionClaims{
 		UserID: userID,
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -178,7 +179,7 @@ func mustMintSessionToken(t *testing.T, signingSecret, userID string, now time.T
 	})
 	signed, err := token.SignedString([]byte(signingSecret))
 	if err != nil {
-		t.Fatalf("failed to sign session token: %v", err)
+		testContext.Fatalf("failed to sign session token: %v", err)
 	}
 	return signed
 }

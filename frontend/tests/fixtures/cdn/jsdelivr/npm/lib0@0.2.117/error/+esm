@@ -1,0 +1,8 @@
+/**
+ * Bundled by jsDelivr using Rollup v2.79.2 and Terser v5.39.0.
+ * Original file: /npm/lib0@0.2.117/error.js
+ *
+ * Do NOT use SRI with dynamically generated files! More information: https://www.jsdelivr.com/using-sri-with-dynamic-files
+ */
+const e=e=>new Error(e),t=()=>{throw e("Method unimplemented")},r=()=>{throw e("Unexpected case")},o=t=>{if(!t)throw e("Assert failed")};export{o as assert,e as create,t as methodUnimplemented,r as unexpectedCase};export default null;
+//# sourceMappingURL=/sm/e9ecd6c4017ccad004826ad188e513024699558e29079a071eaa4a2f348374f0.map

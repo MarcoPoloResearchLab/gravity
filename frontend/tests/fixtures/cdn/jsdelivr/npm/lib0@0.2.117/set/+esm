@@ -1,0 +1,8 @@
+/**
+ * Bundled by jsDelivr using Rollup v2.79.2 and Terser v5.39.0.
+ * Original file: /npm/lib0@0.2.117/set.js
+ *
+ * Do NOT use SRI with dynamically generated files! More information: https://www.jsdelivr.com/using-sri-with-dynamic-files
+ */
+const e=()=>new Set,t=e=>Array.from(e),l=e=>e.values().next().value,n=e=>new Set(e);export{e as create,l as first,n as from,t as toArray};export default null;
+//# sourceMappingURL=/sm/189ad82b6afdd444fa2cf5671aff017a3ce69530162fba9ec1278c5d5da0c73e.map

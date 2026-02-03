@@ -76,12 +76,12 @@ test("custom fetch is preferred over apiFetch", async () => {
             customCalls += 1;
             assert.equal(url, "https://api.example.com/notes/sync");
             assert.equal(init?.method, "POST");
-            return new StubResponse(200, { results: [] });
+            return new StubResponse(200, { results: [], updates: [] });
         }
     });
 
-    const result = await client.syncOperations({ operations: [] });
-    assert.deepEqual(result, { results: [] });
+    const result = await client.syncOperations({ updates: [], cursors: [] });
+    assert.deepEqual(result, { results: [], updates: [] });
     assert.equal(customCalls, 1);
 });
 

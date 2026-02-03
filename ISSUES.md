@@ -202,6 +202,9 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
   (Resolved by making selection/keypress atomic in tests and clicking a deterministic badge surface for edit-mode exit.)
 - [x] [GN-50] Provide a development docker compose that rebuilds the backend image on launch.
   (Resolved by adding a dev compose configuration that rebuilds the backend image on launch.)
+- [x] [GN-454] Evaluate CRDT/OT sync for multi-device edits; define merge strategy, payload schema, and migration plan. (Resolved with a CRDT/OT evaluation doc, merge strategy, schema draft, and migration plan.)
+- [x] [GN-455] Implement CRDT-based sync as the sole source of truth (no LWW fallback); ship backend storage, API contract, frontend CRDT integration, migration, and full coverage.
+  (Resolved by adding CRDT update/snapshot storage + sync protocol, migrating legacy payloads, wiring frontend CRDT engine/persistence, and updating tests/harness; make test/lint/ci pass.)
 
 
 ## Planning
@@ -209,4 +212,4 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 
 - [ ] [GN-55] (P1) The current llm-proxy URL is wrong -- there is no such path as https://llm-proxy.mprlab.com/v1/gravity/.
   classify. There is only https://llm-proxy.mprlab.com/, and we need to be sending a system prompt to it to get classification. I have copied llm-proxy codebase under the tools folder. Prepare a system prompt for classification of the notes and send it to llm-proxy service.
-- [ ] [GN-428] Evaluate CRDT/OT sync for multi-device edits; define merge strategy, payload schema, and migration plan.
+- [x] [GN-428] Evaluate CRDT/OT sync for multi-device edits; define merge strategy, payload schema, and migration plan. (Moved to Maintenance GN-454.)

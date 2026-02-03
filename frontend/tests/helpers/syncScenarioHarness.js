@@ -27,7 +27,7 @@ const DEFAULT_PAGE_URL = `file://${path.join(PROJECT_ROOT, "app.html")}`;
  */
 
 /**
- * @typedef {{ payload: import("../../js/types.d.js").NoteRecord, version: number }} BackendNoteEntry
+ * @typedef {{ note_id: string, snapshot_b64?: string, snapshot_update_id?: number, legacy_payload?: unknown, payload: import("../../js/types.d.js").NoteRecord|null }} BackendNoteEntry
  */
 
 /**
@@ -217,16 +217,13 @@ export async function createSyncScenarioHarness(options = {}) {
     }
 
     async function waitForBackendEntry(userId, noteId, timeoutMs) {
-        const snapshot = await waitForBackendNote({
+        const noteEntry = await waitForBackendNote({
             backendUrl: backend.baseUrl,
             sessionToken: backend.createSessionToken(userId),
             cookieName: backend.cookieName,
             noteId,
             timeoutMs
         });
-        const noteEntry = Array.isArray(snapshot?.notes)
-            ? snapshot.notes.find((entry) => entry?.payload?.noteId === noteId)
-            : null;
         if (!noteEntry) {
             throw new Error(`Backend entry for ${noteId} not found`);
         }
