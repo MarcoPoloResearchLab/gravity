@@ -74,6 +74,7 @@ and are grouped by the date the work landed on `master`.
 - Reworked `README.md` to focus on user-facing workflows and migrated technical setup guidance into `ARCHITECTURE.md` (GN-400).
 - Documented the full-screen controller, keyboard shortcuts modal, analytics bootstrap, and version refresh utility in `ARCHITECTURE.md` so the guide matches the current code structure (GN-401).
 - Added `REFACTORING_PLAN.md` capturing backend smart constructor work, frontend card-controller decomposition, and testing upgrades required by POLICY.md (GN-402).
+- Added a CRDT/OT sync evaluation with merge strategy, payload schema, and migration plan (GN-454).
 
 ### Removed
 - Deleted the legacy `MIGRATION.md` now that the architecture guide houses the relevant details (GN-54).
