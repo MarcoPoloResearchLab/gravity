@@ -354,6 +354,7 @@ export function createSyncManager(options) {
             });
 
         let applied = false;
+        const updatedNoteIds = new Set();
         for (const update of sorted) {
             const noteId = typeof update.note_id === "string" ? update.note_id : "";
             const updateB64 = typeof update.update_b64 === "string" ? update.update_b64 : "";
@@ -365,9 +366,11 @@ export function createSyncManager(options) {
                 updateLastSeenUpdateId(noteId, update.update_id);
             }
             applied = true;
+            updatedNoteIds.add(noteId);
         }
 
         if (applied) {
+            refreshQueuedSnapshots(updatedNoteIds);
             crdtEngine.persist();
             syncNotesFromEngine(SYNC_SOURCE_UPDATES);
         }
@@ -382,6 +385,7 @@ export function createSyncManager(options) {
         const localRecordsById = new Map(localRecords.map((record) => [record.noteId, record]));
         let appliedSnapshot = false;
         let queuedMigration = false;
+        const updatedNoteIds = new Set();
 
         for (const entry of notes) {
             if (!entry || typeof entry !== "object") {
@@ -398,6 +402,7 @@ export function createSyncManager(options) {
                     updateLastSeenUpdateId(noteId, entry.snapshot_update_id);
                 }
                 appliedSnapshot = true;
+                updatedNoteIds.add(noteId);
                 continue;
             }
 
@@ -410,6 +415,7 @@ export function createSyncManager(options) {
                 enqueueOperation(noteId, operationResult);
                 queuedMigration = true;
                 appliedSnapshot = true;
+                updatedNoteIds.add(noteId);
                 continue;
             }
             const legacyPayload = entry.legacy_payload && typeof entry.legacy_payload === "object"
@@ -420,9 +426,11 @@ export function createSyncManager(options) {
             enqueueOperation(noteId, operationResult);
             queuedMigration = true;
             appliedSnapshot = true;
+            updatedNoteIds.add(noteId);
         }
 
         if (appliedSnapshot) {
+            refreshQueuedSnapshots(updatedNoteIds);
             crdtEngine.persist();
             syncNotesFromEngine(SYNC_SOURCE_SNAPSHOT);
         }
@@ -505,6 +513,32 @@ export function createSyncManager(options) {
             });
         }
         return cursors;
+    }
+
+    /**
+     * @param {Set<string>} noteIds
+     * @returns {boolean}
+     */
+    function refreshQueuedSnapshots(noteIds) {
+        if (!(noteIds instanceof Set) || noteIds.size === 0) {
+            return false;
+        }
+        if (!Array.isArray(state.queue) || state.queue.length === 0) {
+            return false;
+        }
+        let refreshed = false;
+        for (const operation of state.queue) {
+            if (!noteIds.has(operation.noteId)) {
+                continue;
+            }
+            const snapshotB64 = crdtEngine.buildSnapshot(operation.noteId);
+            if (!snapshotB64 || snapshotB64 === operation.snapshotB64) {
+                continue;
+            }
+            operation.snapshotB64 = snapshotB64;
+            refreshed = true;
+        }
+        return refreshed;
     }
 
     function updateLastSeenUpdateId(noteId, updateId) {
