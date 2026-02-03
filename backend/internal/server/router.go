@@ -197,42 +197,7 @@ func (h *httpHandler) handleNotesSync(c *gin.Context) {
 		return
 	}
 
-	updates := make([]notes.CrdtUpdateEnvelope, 0, len(request.Updates))
-	for _, update := range request.Updates {
-		noteID, err := notes.NewNoteID(update.NoteID)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_note_id"})
-			return
-		}
-		updateB64, err := notes.NewCrdtUpdateBase64(update.UpdateB64)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_update"})
-			return
-		}
-		snapshotB64, err := notes.NewCrdtSnapshotBase64(update.SnapshotB64)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_snapshot"})
-			return
-		}
-		snapshotUpdateID, err := notes.NewCrdtUpdateID(update.SnapshotUpdateID)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_snapshot_update_id"})
-			return
-		}
-		envelope, err := notes.NewCrdtUpdateEnvelope(notes.CrdtUpdateEnvelopeConfig{
-			UserID:           userID,
-			NoteID:           noteID,
-			UpdateB64:        updateB64,
-			SnapshotB64:      snapshotB64,
-			SnapshotUpdateID: snapshotUpdateID,
-		})
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_update"})
-			return
-		}
-		updates = append(updates, envelope)
-	}
-
+	cursorByNoteID := make(map[string]int64, len(request.Cursors))
 	cursors := make([]notes.CrdtCursor, 0, len(request.Cursors))
 	for _, cursor := range request.Cursors {
 		noteID, err := notes.NewNoteID(cursor.NoteID)
@@ -253,7 +218,53 @@ func (h *httpHandler) handleNotesSync(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_cursor"})
 			return
 		}
+		noteIDValue := noteID.String()
+		cursorByNoteID[noteIDValue] = lastUpdateID.Int64()
 		cursors = append(cursors, parsedCursor)
+	}
+
+	updates := make([]notes.CrdtUpdateEnvelope, 0, len(request.Updates))
+	for _, update := range request.Updates {
+		noteID, err := notes.NewNoteID(update.NoteID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_note_id"})
+			return
+		}
+		updateB64, err := notes.NewCrdtUpdateBase64(update.UpdateB64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_update"})
+			return
+		}
+		snapshotB64, err := notes.NewCrdtSnapshotBase64(update.SnapshotB64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_snapshot"})
+			return
+		}
+		snapshotUpdateIDValue := update.SnapshotUpdateID
+		cursorLastUpdateID := int64(0)
+		if cursorValue, ok := cursorByNoteID[noteID.String()]; ok {
+			cursorLastUpdateID = cursorValue
+		}
+		if snapshotUpdateIDValue > cursorLastUpdateID {
+			snapshotUpdateIDValue = cursorLastUpdateID
+		}
+		snapshotUpdateID, err := notes.NewCrdtUpdateID(snapshotUpdateIDValue)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_snapshot_update_id"})
+			return
+		}
+		envelope, err := notes.NewCrdtUpdateEnvelope(notes.CrdtUpdateEnvelopeConfig{
+			UserID:           userID,
+			NoteID:           noteID,
+			UpdateB64:        updateB64,
+			SnapshotB64:      snapshotB64,
+			SnapshotUpdateID: snapshotUpdateID,
+		})
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_update"})
+			return
+		}
+		updates = append(updates, envelope)
 	}
 
 	result, err := h.notesService.ApplyCrdtUpdates(c.Request.Context(), userID, updates)

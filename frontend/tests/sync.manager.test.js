@@ -237,6 +237,7 @@ test.describe("SyncManager", () => {
         const flushedSnapshotText = decodeUpdateText(syncCalls[1].updates[0].snapshot_b64);
         assert.ok(flushedSnapshotText.includes("Local"));
         assert.ok(flushedSnapshotText.includes("Remote"));
+        assert.equal(syncCalls[1].updates[0].snapshot_update_id, 4);
     });
 
     test("coalesces repeated upserts and syncs the latest payload", async () => {

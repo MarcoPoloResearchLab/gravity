@@ -207,6 +207,8 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
   (Resolved by adding CRDT update/snapshot storage + sync protocol, migrating legacy payloads, wiring frontend CRDT engine/persistence, and updating tests/harness; make test/lint/ci pass.)
 - [x] [GN-456] Refresh queued CRDT snapshots after applying remote updates to avoid stale snapshot coverage in sync payloads.
   (Resolved by rebuilding queued snapshots after remote updates/snapshots apply and adding a sync manager regression test; make test/lint/ci pass.)
+- [x] [GN-457] Patch snapshot coverage semantics (client + server) so remote updates are never skipped.
+  (Resolved by bounding snapshot coverage to cursor history, refreshing client snapshot update ids, and adding regression coverage; make test/lint/ci pass.)
 
 
 ## Planning

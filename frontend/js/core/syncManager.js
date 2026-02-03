@@ -11,7 +11,6 @@ import { EVENT_SYNC_SNAPSHOT_APPLIED } from "../constants.js?build=2026-01-01T22
 const debugEnabled = () => typeof globalThis !== "undefined" && globalThis.__debugSyncScenarios === true;
 const TYPE_OBJECT = "object";
 const TYPE_STRING = "string";
-const SNAPSHOT_UPDATE_ID_MAX = Number.MAX_SAFE_INTEGER;
 const SYNC_SOURCE_SNAPSHOT = "snapshot";
 const SYNC_SOURCE_UPDATES = "updates";
 
@@ -248,7 +247,7 @@ export function createSyncManager(options) {
             noteId,
             updateB64: operationResult.updateB64,
             snapshotB64: operationResult.snapshotB64,
-            snapshotUpdateId: SNAPSHOT_UPDATE_ID_MAX
+            snapshotUpdateId: resolveSnapshotUpdateId(noteId)
         };
 
         const existingIndex = state.queue.findIndex((entry) => entry.noteId === noteId);
@@ -477,7 +476,7 @@ export function createSyncManager(options) {
             note_id: operation.noteId,
             update_b64: operation.updateB64,
             snapshot_b64: operation.snapshotB64,
-            snapshot_update_id: operation.snapshotUpdateId
+            snapshot_update_id: resolveSnapshotUpdateId(operation.noteId)
         }));
     }
 
@@ -516,6 +515,21 @@ export function createSyncManager(options) {
     }
 
     /**
+     * @param {string} noteId
+     * @returns {number}
+     */
+    function resolveSnapshotUpdateId(noteId) {
+        if (!noteId) {
+            return 0;
+        }
+        const lastSeen = state.metadata[noteId]?.lastSeenUpdateId ?? 0;
+        if (!Number.isFinite(lastSeen) || lastSeen < 0) {
+            return 0;
+        }
+        return lastSeen;
+    }
+
+    /**
      * @param {Set<string>} noteIds
      * @returns {boolean}
      */
@@ -532,11 +546,18 @@ export function createSyncManager(options) {
                 continue;
             }
             const snapshotB64 = crdtEngine.buildSnapshot(operation.noteId);
-            if (!snapshotB64 || snapshotB64 === operation.snapshotB64) {
+            if (!snapshotB64) {
                 continue;
             }
-            operation.snapshotB64 = snapshotB64;
-            refreshed = true;
+            const snapshotUpdateId = resolveSnapshotUpdateId(operation.noteId);
+            if (snapshotUpdateId !== operation.snapshotUpdateId) {
+                operation.snapshotUpdateId = snapshotUpdateId;
+                refreshed = true;
+            }
+            if (snapshotB64 !== operation.snapshotB64) {
+                operation.snapshotB64 = snapshotB64;
+                refreshed = true;
+            }
         }
         return refreshed;
     }

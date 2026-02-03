@@ -18,7 +18,7 @@ Gravity Notes' backend keeps validation logic at the domain edges. All construct
 
 ## CRDT Sync
 
-CRDT sync is the primary persistence path. The server stores CRDT updates and snapshots without interpreting them, ensuring stale payloads cannot overwrite newer state. Snapshot coverage is tracked via `snapshot_update_id` so snapshots never regress.
+CRDT sync is the primary persistence path. The server stores CRDT updates and snapshots without interpreting them, ensuring stale payloads cannot overwrite newer state. Snapshot coverage is tracked via `snapshot_update_id` so snapshots never regress; handlers cap snapshot coverage to the cursor history so stale clients cannot advance snapshot coverage past unseen updates.
 
 Snapshot responses may include `legacy_payload` entries only for notes that have not yet been migrated into CRDT snapshots. Clients must convert those payloads into CRDT updates immediately so the server can persist snapshots and stop emitting legacy payloads.
 
