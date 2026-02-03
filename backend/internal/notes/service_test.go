@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestResolveChangeAcceptsHigherEditSequence(t *testing.T) {
+func TestResolveChangeAcceptsMatchingBaseVersion(t *testing.T) {
 	userID := mustUserID(t, "user-1")
 	noteID := mustNoteID(t, "note-1")
 	existing := &Note{
@@ -27,6 +27,7 @@ func TestResolveChangeAcceptsHigherEditSequence(t *testing.T) {
 		UserID:          userID,
 		NoteID:          noteID,
 		Operation:       OperationTypeUpsert,
+		BaseVersion:     mustNoteVersion(t, 2),
 		ClientEditSeq:   5,
 		ClientDevice:    "web",
 		ClientTimestamp: mustTimestamp(t, 1700000500),
@@ -65,7 +66,7 @@ func TestResolveChangeAcceptsHigherEditSequence(t *testing.T) {
 	}
 }
 
-func TestResolveChangeRejectsLowerEditSequence(t *testing.T) {
+func TestResolveChangeRejectsStaleBaseVersion(t *testing.T) {
 	userID := mustUserID(t, "user-1")
 	noteID := mustNoteID(t, "note-1")
 	existing := &Note{
@@ -80,7 +81,8 @@ func TestResolveChangeRejectsLowerEditSequence(t *testing.T) {
 		UserID:          userID,
 		NoteID:          noteID,
 		Operation:       OperationTypeUpsert,
-		ClientEditSeq:   8,
+		BaseVersion:     mustNoteVersion(t, 5),
+		ClientEditSeq:   12,
 		ClientDevice:    "tablet",
 		ClientTimestamp: mustTimestamp(t, 1700000001),
 		CreatedAt:       mustTimestamp(t, 1699999000),
@@ -103,7 +105,7 @@ func TestResolveChangeRejectsLowerEditSequence(t *testing.T) {
 	}
 }
 
-func TestResolveChangeBreaksTieByUpdatedAt(t *testing.T) {
+func TestResolveChangeAcceptsNoOpWithoutVersionBump(t *testing.T) {
 	userID := mustUserID(t, "user-1")
 	noteID := mustNoteID(t, "note-1")
 	existing := &Note{
@@ -114,68 +116,68 @@ func TestResolveChangeBreaksTieByUpdatedAt(t *testing.T) {
 		LastWriterEditSeq: 7,
 		PayloadJSON:       `{"noteId":"note-1","markdownText":"stored"}`,
 	}
-
-	tests := []struct {
-		name              string
-		clientUpdatedAt   int64
-		expectAcceptance  bool
-		expectedVersion   int64
-		expectedEditSeq   int64
-		expectedIsDeleted bool
-	}{
-		{
-			name:             "client-newer",
-			clientUpdatedAt:  1700000100,
-			expectAcceptance: true,
-			expectedVersion:  5,
-			expectedEditSeq:  7,
-		},
-		{
-			name:             "server-newer",
-			clientUpdatedAt:  1699999990,
-			expectAcceptance: false,
-			expectedVersion:  4,
-			expectedEditSeq:  7,
-		},
-		{
-			name:             "equal-timestamp",
-			clientUpdatedAt:  1700000000,
-			expectAcceptance: true,
-			expectedVersion:  5,
-			expectedEditSeq:  7,
-		},
+	change := mustEnvelope(t, ChangeEnvelopeConfig{
+		UserID:          userID,
+		NoteID:          noteID,
+		Operation:       OperationTypeUpsert,
+		BaseVersion:     mustNoteVersion(t, 4),
+		ClientEditSeq:   9,
+		ClientDevice:    "wearable",
+		ClientTimestamp: mustTimestamp(t, 1700000100),
+		CreatedAt:       mustTimestamp(t, 1699990000),
+		UpdatedAt:       mustTimestamp(t, 1700000100),
+		PayloadJSON:     `{"noteId":"note-1","markdownText":"stored"}`,
+	})
+	outcome, err := resolveChange(existing, change, time.Unix(1700000600, 0).UTC())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
+	if outcome.Accepted == false {
+		t.Fatalf("expected change to be accepted")
+	}
+	if outcome.UpdatedNote.Version != 4 {
+		t.Fatalf("expected version to remain 4, got %d", outcome.UpdatedNote.Version)
+	}
+	if outcome.AuditRecord != nil {
+		t.Fatalf("expected no audit record for no-op change")
+	}
+}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			change := mustEnvelope(t, ChangeEnvelopeConfig{
-				UserID:          userID,
-				NoteID:          noteID,
-				Operation:       OperationTypeDelete,
-				ClientEditSeq:   7,
-				ClientDevice:    "wearable",
-				ClientTimestamp: mustTimestamp(t, tt.clientUpdatedAt),
-				CreatedAt:       mustTimestamp(t, 1699990000),
-				UpdatedAt:       mustTimestamp(t, tt.clientUpdatedAt),
-				PayloadJSON:     "",
-			})
-			outcome, err := resolveChange(existing, change, time.Unix(1700000600, 0).UTC())
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if outcome.Accepted != tt.expectAcceptance {
-				t.Fatalf("acceptance mismatch, want %v got %v", tt.expectAcceptance, outcome.Accepted)
-			}
-			if outcome.UpdatedNote.Version != tt.expectedVersion {
-				t.Fatalf("unexpected version %d", outcome.UpdatedNote.Version)
-			}
-			if outcome.UpdatedNote.LastWriterEditSeq != tt.expectedEditSeq {
-				t.Fatalf("unexpected edit seq %d", outcome.UpdatedNote.LastWriterEditSeq)
-			}
-			if outcome.Accepted && change.Operation() == OperationTypeDelete && outcome.UpdatedNote.IsDeleted != true {
-				t.Fatalf("accepted delete should mark note as deleted")
-			}
-		})
+func TestResolveChangeAcceptsDuplicatePayloadWhenVersionMismatch(t *testing.T) {
+	userID := mustUserID(t, "user-1")
+	noteID := mustNoteID(t, "note-1")
+	existing := &Note{
+		UserID:            userID.String(),
+		NoteID:            noteID.String(),
+		UpdatedAtSeconds:  1700000000,
+		Version:           4,
+		LastWriterEditSeq: 7,
+		PayloadJSON:       `{"noteId":"note-1","markdownText":"stored"}`,
+	}
+	change := mustEnvelope(t, ChangeEnvelopeConfig{
+		UserID:          userID,
+		NoteID:          noteID,
+		Operation:       OperationTypeUpsert,
+		BaseVersion:     mustNoteVersion(t, 3),
+		ClientEditSeq:   7,
+		ClientDevice:    "tablet",
+		ClientTimestamp: mustTimestamp(t, 1700000100),
+		CreatedAt:       mustTimestamp(t, 1699990000),
+		UpdatedAt:       mustTimestamp(t, 1700000100),
+		PayloadJSON:     `{"noteId":"note-1","markdownText":"stored"}`,
+	})
+	outcome, err := resolveChange(existing, change, time.Unix(1700000600, 0).UTC())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if outcome.Accepted == false {
+		t.Fatalf("expected duplicate payload to be accepted")
+	}
+	if outcome.UpdatedNote.Version != 4 {
+		t.Fatalf("expected version to remain 4, got %d", outcome.UpdatedNote.Version)
+	}
+	if outcome.AuditRecord != nil {
+		t.Fatalf("expected no audit record for duplicate payload")
 	}
 }
 
@@ -184,6 +186,7 @@ func TestNewChangeEnvelopeInvalidCases(t *testing.T) {
 		UserID:          mustUserID(t, "user-1"),
 		NoteID:          mustNoteID(t, "note-1"),
 		Operation:       OperationTypeUpsert,
+		BaseVersion:     mustNoteVersion(t, 0),
 		ClientEditSeq:   1,
 		ClientDevice:    "device",
 		ClientTimestamp: mustTimestamp(t, 1700000000),
@@ -218,6 +221,12 @@ func TestNewChangeEnvelopeInvalidCases(t *testing.T) {
 			name: "negative-edit-seq",
 			mutate: func(cfg *ChangeEnvelopeConfig) {
 				cfg.ClientEditSeq = -1
+			},
+		},
+		{
+			name: "negative-base-version",
+			mutate: func(cfg *ChangeEnvelopeConfig) {
+				cfg.BaseVersion = NoteVersion(-1)
 			},
 		},
 		{

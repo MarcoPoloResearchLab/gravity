@@ -16,7 +16,10 @@ import (
 	"go.uber.org/zap"
 )
 
-const userIDContextKey = "gravity_user_id"
+const (
+	userIDContextKey    = "gravity_user_id"
+	crdtProtocolVersion = "crdt-v1"
+)
 
 var (
 	errMissingSessionValidator = errors.New("session validator dependency required")
@@ -116,47 +119,54 @@ type httpHandler struct {
 	userIdentities IdentityResolver
 }
 
-type syncRequestPayload struct {
-	Operations []syncOperationPayload `json:"operations"`
+type crdtSyncRequestPayload struct {
+	Protocol string                  `json:"protocol"`
+	Updates  []crdtSyncUpdatePayload `json:"updates"`
+	Cursors  []crdtSyncCursorPayload `json:"cursors"`
 }
 
-type syncOperationPayload struct {
-	NoteID            string          `json:"note_id"`
-	Operation         string          `json:"operation"`
-	ClientEditSeq     int64           `json:"client_edit_seq"`
-	ClientDevice      string          `json:"client_device"`
-	ClientTimeSeconds int64           `json:"client_time_s"`
-	CreatedAtSeconds  int64           `json:"created_at_s"`
-	UpdatedAtSeconds  int64           `json:"updated_at_s"`
-	Payload           json.RawMessage `json:"payload"`
+type crdtSyncUpdatePayload struct {
+	NoteID           string `json:"note_id"`
+	UpdateB64        string `json:"update_b64"`
+	SnapshotB64      string `json:"snapshot_b64"`
+	SnapshotUpdateID int64  `json:"snapshot_update_id"`
 }
 
-type syncResponsePayload struct {
-	Results []syncResultPayload `json:"results"`
+type crdtSyncCursorPayload struct {
+	NoteID       string `json:"note_id"`
+	LastUpdateID int64  `json:"last_update_id"`
 }
 
-type syncResultPayload struct {
-	NoteID            string          `json:"note_id"`
-	Accepted          bool            `json:"accepted"`
-	Version           int64           `json:"version"`
-	UpdatedAtSeconds  int64           `json:"updated_at_s"`
-	LastWriterEditSeq int64           `json:"last_writer_edit_seq"`
-	IsDeleted         bool            `json:"is_deleted"`
-	Payload           json.RawMessage `json:"payload"`
+type crdtSyncResponsePayload struct {
+	Protocol string                          `json:"protocol"`
+	Results  []crdtSyncResultPayload         `json:"results"`
+	Updates  []crdtSyncUpdateResponsePayload `json:"updates"`
 }
 
-type snapshotResponsePayload struct {
-	Notes []snapshotResultPayload `json:"notes"`
+type crdtSyncResultPayload struct {
+	NoteID    string `json:"note_id"`
+	Accepted  bool   `json:"accepted"`
+	UpdateID  int64  `json:"update_id"`
+	Duplicate bool   `json:"duplicate"`
 }
 
-type snapshotResultPayload struct {
-	NoteID            string          `json:"note_id"`
-	Version           int64           `json:"version"`
-	LastWriterEditSeq int64           `json:"last_writer_edit_seq"`
-	IsDeleted         bool            `json:"is_deleted"`
-	CreatedAtSeconds  int64           `json:"created_at_s"`
-	UpdatedAtSeconds  int64           `json:"updated_at_s"`
-	Payload           json.RawMessage `json:"payload"`
+type crdtSyncUpdateResponsePayload struct {
+	NoteID    string `json:"note_id"`
+	UpdateID  int64  `json:"update_id"`
+	UpdateB64 string `json:"update_b64"`
+}
+
+type crdtSnapshotResponsePayload struct {
+	Protocol string                    `json:"protocol"`
+	Notes    []crdtSnapshotNotePayload `json:"notes"`
+}
+
+type crdtSnapshotNotePayload struct {
+	NoteID           string          `json:"note_id"`
+	SnapshotB64      *string         `json:"snapshot_b64,omitempty"`
+	SnapshotUpdateID *int64          `json:"snapshot_update_id,omitempty"`
+	LegacyPayload    json.RawMessage `json:"legacy_payload,omitempty"`
+	LegacyDeleted    bool            `json:"legacy_deleted,omitempty"`
 }
 
 func (h *httpHandler) handleNotesSync(c *gin.Context) {
@@ -173,146 +183,142 @@ func (h *httpHandler) handleNotesSync(c *gin.Context) {
 		return
 	}
 
-	var request syncRequestPayload
-	if err := c.ShouldBindJSON(&request); err != nil || len(request.Operations) == 0 {
+	var request crdtSyncRequestPayload
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
+		return
+	}
+	if strings.TrimSpace(request.Protocol) != crdtProtocolVersion {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_protocol"})
+		return
+	}
+	if len(request.Updates) == 0 && len(request.Cursors) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
 		return
 	}
 
-	changes := make([]notes.ChangeEnvelope, 0, len(request.Operations))
-	now := time.Now().UTC()
-	for _, op := range request.Operations {
-		opType, err := parseOperation(op.Operation)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_operation"})
-			return
-		}
-
-		noteID, err := notes.NewNoteID(op.NoteID)
+	updates := make([]notes.CrdtUpdateEnvelope, 0, len(request.Updates))
+	for _, update := range request.Updates {
+		noteID, err := notes.NewNoteID(update.NoteID)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_note_id"})
 			return
 		}
-
-		clientSeconds, createdSeconds, updatedSeconds := normalizeOperationTimestamps(op, now)
-
-		clientTimestamp, err := notes.NewUnixTimestamp(clientSeconds)
+		updateB64, err := notes.NewCrdtUpdateBase64(update.UpdateB64)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_client_time"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_update"})
 			return
 		}
-
-		createdTimestamp, err := notes.NewUnixTimestamp(createdSeconds)
+		snapshotB64, err := notes.NewCrdtSnapshotBase64(update.SnapshotB64)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_created_time"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_snapshot"})
 			return
 		}
-
-		updatedTimestamp, err := notes.NewUnixTimestamp(updatedSeconds)
+		snapshotUpdateID, err := notes.NewCrdtUpdateID(update.SnapshotUpdateID)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_updated_time"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_snapshot_update_id"})
 			return
 		}
-
-		payloadJSON := ""
-		if len(op.Payload) > 0 {
-			payloadJSON = string(op.Payload)
-			if opType == notes.OperationTypeDelete && strings.TrimSpace(payloadJSON) == "null" {
-				payloadJSON = ""
-			}
-		}
-		envelope, err := notes.NewChangeEnvelope(notes.ChangeEnvelopeConfig{
-			UserID:          userID,
-			NoteID:          noteID,
-			Operation:       opType,
-			ClientEditSeq:   op.ClientEditSeq,
-			ClientDevice:    op.ClientDevice,
-			ClientTimestamp: clientTimestamp,
-			CreatedAt:       createdTimestamp,
-			UpdatedAt:       updatedTimestamp,
-			PayloadJSON:     payloadJSON,
-			IsDeleted:       opType == notes.OperationTypeDelete,
+		envelope, err := notes.NewCrdtUpdateEnvelope(notes.CrdtUpdateEnvelopeConfig{
+			UserID:           userID,
+			NoteID:           noteID,
+			UpdateB64:        updateB64,
+			SnapshotB64:      snapshotB64,
+			SnapshotUpdateID: snapshotUpdateID,
 		})
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_change"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_update"})
 			return
 		}
-		changes = append(changes, envelope)
+		updates = append(updates, envelope)
 	}
 
-	result, err := h.notesService.ApplyChanges(c.Request.Context(), userID, changes)
+	cursors := make([]notes.CrdtCursor, 0, len(request.Cursors))
+	for _, cursor := range request.Cursors {
+		noteID, err := notes.NewNoteID(cursor.NoteID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_note_id"})
+			return
+		}
+		lastUpdateID, err := notes.NewCrdtUpdateID(cursor.LastUpdateID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_cursor"})
+			return
+		}
+		parsedCursor, err := notes.NewCrdtCursor(notes.CrdtCursorConfig{
+			NoteID:       noteID,
+			LastUpdateID: lastUpdateID,
+		})
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_cursor"})
+			return
+		}
+		cursors = append(cursors, parsedCursor)
+	}
+
+	result, err := h.notesService.ApplyCrdtUpdates(c.Request.Context(), userID, updates)
 	if err != nil {
 		var serviceErr *notes.ServiceError
 		if errors.As(err, &serviceErr) {
-			h.logger.Error("failed to apply note changes", zap.String("error_code", serviceErr.Code()), zap.Error(err))
+			h.logger.Error("failed to apply CRDT updates", zap.String("error_code", serviceErr.Code()), zap.Error(err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "sync_failed", "code": serviceErr.Code()})
 		} else {
-			h.logger.Error("failed to apply note changes", zap.Error(err))
+			h.logger.Error("failed to apply CRDT updates", zap.Error(err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "sync_failed"})
 		}
 		return
 	}
 
-	response := syncResponsePayload{Results: make([]syncResultPayload, 0, len(result.ChangeOutcomes))}
-	for _, outcome := range result.ChangeOutcomes {
-		note := outcome.Outcome.UpdatedNote
-		payload := encodePayload(note.PayloadJSON)
-		response.Results = append(response.Results, syncResultPayload{
-			NoteID:            note.NoteID,
-			Accepted:          outcome.Outcome.Accepted,
-			Version:           note.Version,
-			UpdatedAtSeconds:  note.UpdatedAtSeconds,
-			LastWriterEditSeq: note.LastWriterEditSeq,
-			IsDeleted:         note.IsDeleted,
-			Payload:           payload,
+	updatesFromServer, err := h.notesService.ListCrdtUpdates(c.Request.Context(), userID, cursors)
+	if err != nil {
+		var serviceErr *notes.ServiceError
+		if errors.As(err, &serviceErr) {
+			h.logger.Error("failed to list CRDT updates", zap.String("error_code", serviceErr.Code()), zap.Error(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "sync_failed", "code": serviceErr.Code()})
+		} else {
+			h.logger.Error("failed to list CRDT updates", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "sync_failed"})
+		}
+		return
+	}
+
+	response := crdtSyncResponsePayload{
+		Protocol: crdtProtocolVersion,
+		Results:  make([]crdtSyncResultPayload, 0, len(result.UpdateOutcomes)),
+		Updates:  make([]crdtSyncUpdateResponsePayload, 0, len(updatesFromServer)),
+	}
+	for _, outcome := range result.UpdateOutcomes {
+		response.Results = append(response.Results, crdtSyncResultPayload{
+			NoteID:    outcome.NoteID().String(),
+			Accepted:  true,
+			UpdateID:  outcome.UpdateID().Int64(),
+			Duplicate: outcome.Duplicate(),
+		})
+	}
+	for _, update := range updatesFromServer {
+		response.Updates = append(response.Updates, crdtSyncUpdateResponsePayload{
+			NoteID:    update.NoteID().String(),
+			UpdateID:  update.UpdateID().Int64(),
+			UpdateB64: update.UpdateB64().String(),
 		})
 	}
 
-	h.broadcastNoteChanges(userID.String(), result)
+	h.broadcastCrdtNoteChanges(userID.String(), result.UpdateOutcomes)
 	c.JSON(http.StatusOK, response)
 }
 
-func normalizeOperationTimestamps(op syncOperationPayload, now time.Time) (clientSeconds int64, createdSeconds int64, updatedSeconds int64) {
-	clientSeconds = op.ClientTimeSeconds
-	if clientSeconds <= 0 {
-		clientSeconds = now.Unix()
-	}
-
-	createdSeconds = op.CreatedAtSeconds
-	if createdSeconds <= 0 {
-		switch {
-		case op.ClientTimeSeconds > 0:
-			createdSeconds = op.ClientTimeSeconds
-		case op.UpdatedAtSeconds > 0:
-			createdSeconds = op.UpdatedAtSeconds
-		default:
-			createdSeconds = clientSeconds
-		}
-	}
-
-	updatedSeconds = op.UpdatedAtSeconds
-	if updatedSeconds <= 0 {
-		switch {
-		case op.ClientTimeSeconds > 0:
-			updatedSeconds = op.ClientTimeSeconds
-		case createdSeconds > 0:
-			updatedSeconds = createdSeconds
-		default:
-			updatedSeconds = clientSeconds
-		}
-	}
-
-	return clientSeconds, createdSeconds, updatedSeconds
-}
-
-func (h *httpHandler) broadcastNoteChanges(userID string, result notes.SyncResult) {
+func (h *httpHandler) broadcastCrdtNoteChanges(userID string, outcomes []notes.CrdtUpdateOutcome) {
 	if h.realtime == nil {
 		return
 	}
 	if userID == "" {
 		return
 	}
-	noteIDs := collectAcceptedNoteIDs(result.ChangeOutcomes)
+	adaptedOutcomes := make([]noteChangeOutcome, 0, len(outcomes))
+	for _, outcome := range outcomes {
+		adaptedOutcomes = append(adaptedOutcomes, crdtOutcomeAdapter{outcome: outcome})
+	}
+	noteIDs := collectAcceptedNoteIDs(adaptedOutcomes)
 	if len(noteIDs) == 0 {
 		return
 	}
@@ -327,37 +333,77 @@ func (h *httpHandler) broadcastNoteChanges(userID string, result notes.SyncResul
 }
 
 func (h *httpHandler) handleListNotes(c *gin.Context) {
-	userID := c.GetString(userIDContextKey)
-	if userID == "" {
+	userIDValue := c.GetString(userIDContextKey)
+	if userIDValue == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
 
-	storedNotes, err := h.notesService.ListNotes(c.Request.Context(), userID)
+	userID, err := notes.NewUserID(userIDValue)
+	if err != nil {
+		h.logger.Error("invalid user identifier in context", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "list_failed"})
+		return
+	}
+
+	snapshots, err := h.notesService.ListCrdtSnapshots(c.Request.Context(), userID)
 	if err != nil {
 		var serviceErr *notes.ServiceError
 		if errors.As(err, &serviceErr) {
-			h.logger.Error("failed to list notes", zap.String("error_code", serviceErr.Code()), zap.Error(err))
+			h.logger.Error("failed to list CRDT snapshots", zap.String("error_code", serviceErr.Code()), zap.Error(err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "list_failed", "code": serviceErr.Code()})
 		} else {
-			h.logger.Error("failed to list notes", zap.Error(err))
+			h.logger.Error("failed to list CRDT snapshots", zap.Error(err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "list_failed"})
 		}
 		return
 	}
 
-	response := snapshotResponsePayload{
-		Notes: make([]snapshotResultPayload, 0, len(storedNotes)),
+	legacyNotes, err := h.notesService.ListNotes(c.Request.Context(), userID.String())
+	if err != nil {
+		var serviceErr *notes.ServiceError
+		if errors.As(err, &serviceErr) {
+			h.logger.Error("failed to list legacy notes", zap.String("error_code", serviceErr.Code()), zap.Error(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "list_failed", "code": serviceErr.Code()})
+		} else {
+			h.logger.Error("failed to list legacy notes", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "list_failed"})
+		}
+		return
 	}
-	for _, note := range storedNotes {
-		response.Notes = append(response.Notes, snapshotResultPayload{
-			NoteID:            note.NoteID,
-			Version:           note.Version,
-			LastWriterEditSeq: note.LastWriterEditSeq,
-			IsDeleted:         note.IsDeleted,
-			CreatedAtSeconds:  note.CreatedAtSeconds,
-			UpdatedAtSeconds:  note.UpdatedAtSeconds,
-			Payload:           encodePayload(note.PayloadJSON),
+
+	response := crdtSnapshotResponsePayload{
+		Protocol: crdtProtocolVersion,
+		Notes:    make([]crdtSnapshotNotePayload, 0, len(snapshots)+len(legacyNotes)),
+	}
+
+	snapshotByNoteID := make(map[string]struct{}, len(snapshots))
+	for _, snapshot := range snapshots {
+		noteID := snapshot.NoteID().String()
+		snapshotValue := snapshot.SnapshotB64().String()
+		snapshotUpdateID := snapshot.SnapshotUpdateID().Int64()
+		response.Notes = append(response.Notes, crdtSnapshotNotePayload{
+			NoteID:           noteID,
+			SnapshotB64:      &snapshotValue,
+			SnapshotUpdateID: &snapshotUpdateID,
+		})
+		snapshotByNoteID[noteID] = struct{}{}
+	}
+
+	for _, note := range legacyNotes {
+		if _, exists := snapshotByNoteID[note.NoteID]; exists {
+			continue
+		}
+		payload, payloadErr := encodeLegacyPayload(note.PayloadJSON)
+		if payloadErr != nil {
+			h.logger.Error("invalid legacy payload", zap.Error(payloadErr), zap.String("note_id", note.NoteID))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "list_failed"})
+			return
+		}
+		response.Notes = append(response.Notes, crdtSnapshotNotePayload{
+			NoteID:        note.NoteID,
+			LegacyPayload: payload,
+			LegacyDeleted: note.IsDeleted,
 		})
 	}
 
@@ -472,11 +518,15 @@ func (h *httpHandler) handleNotesStream(c *gin.Context) {
 	})
 }
 
-func encodePayload(raw string) json.RawMessage {
-	if strings.TrimSpace(raw) == "" {
-		return json.RawMessage("null")
+func encodeLegacyPayload(raw string) (json.RawMessage, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil, nil
 	}
-	return json.RawMessage(raw)
+	if !json.Valid([]byte(trimmed)) {
+		return nil, errors.New("invalid legacy payload")
+	}
+	return json.RawMessage(trimmed), nil
 }
 
 func (h *httpHandler) authorizeRequest(c *gin.Context) {
@@ -537,31 +587,33 @@ func (h *httpHandler) extractToken(c *gin.Context) string {
 	return ""
 }
 
-func parseOperation(value string) (notes.OperationType, error) {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case string(notes.OperationTypeUpsert):
-		return notes.OperationTypeUpsert, nil
-	case string(notes.OperationTypeDelete):
-		return notes.OperationTypeDelete, nil
-	default:
-		return "", errors.New("unknown operation")
-	}
+type noteChangeOutcome interface {
+	NoteID() string
+	Duplicate() bool
 }
 
-func collectAcceptedNoteIDs(outcomes []notes.ChangeOutcome) []string {
+type crdtOutcomeAdapter struct {
+	outcome notes.CrdtUpdateOutcome
+}
+
+func (adapter crdtOutcomeAdapter) NoteID() string {
+	return adapter.outcome.NoteID().String()
+}
+
+func (adapter crdtOutcomeAdapter) Duplicate() bool {
+	return adapter.outcome.Duplicate()
+}
+
+func collectAcceptedNoteIDs(outcomes []noteChangeOutcome) []string {
 	if len(outcomes) == 0 {
 		return nil
 	}
 	unique := make(map[string]struct{}, len(outcomes))
 	for _, outcome := range outcomes {
-		if !outcome.Outcome.Accepted {
+		if outcome.Duplicate() {
 			continue
 		}
-		note := outcome.Outcome.UpdatedNote
-		if note == nil {
-			continue
-		}
-		noteID := strings.TrimSpace(note.NoteID)
+		noteID := strings.TrimSpace(outcome.NoteID())
 		if noteID == "" {
 			continue
 		}

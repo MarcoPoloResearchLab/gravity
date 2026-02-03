@@ -29,6 +29,15 @@ func mustTimestamp(t *testing.T, value int64) UnixTimestamp {
 	return ts
 }
 
+func mustNoteVersion(t *testing.T, value int64) NoteVersion {
+	t.Helper()
+	version, err := NewNoteVersion(value)
+	if err != nil {
+		t.Fatalf("unexpected note version error: %v", err)
+	}
+	return version
+}
+
 func mustEnvelope(t *testing.T, cfg ChangeEnvelopeConfig) ChangeEnvelope {
 	t.Helper()
 	envelope, err := NewChangeEnvelope(cfg)

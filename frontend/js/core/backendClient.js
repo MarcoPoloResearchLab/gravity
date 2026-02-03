@@ -8,7 +8,11 @@ const HTTP_STATUS_UNAUTHORIZED = 401;
 const AUTH_SIGN_OUT_REASON = "backend-unauthorized";
 
 /**
- * @typedef {{ operation: "upsert"|"delete", note_id: string, client_edit_seq: number, client_device?: string, client_time_s?: number, created_at_s?: number, updated_at_s?: number, payload?: unknown }} SyncOperation
+ * @typedef {{ note_id: string, update_b64: string, snapshot_b64: string, snapshot_update_id: number }} CrdtUpdate
+ */
+
+/**
+ * @typedef {{ note_id: string, last_update_id: number }} CrdtCursor
  */
 
 /**
@@ -24,16 +28,20 @@ export function createBackendClient(options = {}) {
 
     return Object.freeze({
         /**
-         * Submit queued operations to the backend.
-         * @param {{ operations: SyncOperation[] }} params
-         * @returns {Promise<{ results: Array<Record<string, unknown>> }>}
+         * Submit CRDT updates and request remote updates.
+         * @param {{ updates: CrdtUpdate[], cursors: CrdtCursor[] }} params
+         * @returns {Promise<{ results: Array<Record<string, unknown>>, updates: Array<Record<string, unknown>> }>}
          */
         async syncOperations(params) {
             const response = await resolveFetch()(
                 `${normalizedBase}/notes/sync`,
                 buildFetchOptions({
                     method: "POST",
-                    body: JSON.stringify({ operations: params.operations })
+                    body: JSON.stringify({
+                        protocol: "crdt-v1",
+                        updates: params.updates,
+                        cursors: params.cursors
+                    })
                 })
             );
             handleUnauthorizedResponse(response);
@@ -45,7 +53,7 @@ export function createBackendClient(options = {}) {
         },
 
         /**
-         * Retrieve the canonical note snapshot for the active user.
+         * Retrieve the canonical CRDT snapshot for the active user.
          * @returns {Promise<{ notes: Array<Record<string, unknown>> }>}
          */
         async fetchSnapshot() {

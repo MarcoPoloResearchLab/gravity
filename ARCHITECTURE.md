@@ -119,10 +119,10 @@ go run ./cmd/gravity-api --http-address :8080
 
 - `POST /notes/sync`
   - Requires the `app_session` cookie (preferred) or an `Authorization: Bearer <jwt>` header containing the TAuth session token.
-  - Request body: `{ "operations": [{ "note_id": "uuid", "operation": "upsert" | "delete", "client_edit_seq": 1, "client_device": "web", "client_time_s": 1700000000, "created_at_s": 1700000000, "updated_at_s": 1700000000, "payload": { … } }] }`
+  - Request body: `{ "operations": [{ "note_id": "uuid", "operation": "upsert" | "delete", "base_version": 1, "client_edit_seq": 1, "client_device": "web", "client_time_s": 1700000000, "created_at_s": 1700000000, "updated_at_s": 1700000000, "payload": { … } }] }`
   - Response: `{ "results": [{ "note_id": "uuid", "accepted": true, "version": 1, "updated_at_s": 1700000000, "last_writer_edit_seq": 1, "is_deleted": false, "payload": { … } }] }` where rejected changes return the authoritative server copy for reconciliation.
 
-Conflict resolution follows the documented `(client_edit_seq, updated_at)` precedence while writing an append-only `note_changes` audit log.
+Conflict resolution validates the client base version against the stored note version before applying changes, while writing an append-only `note_changes` audit log.
 
 ### Client Sync Semantics
 

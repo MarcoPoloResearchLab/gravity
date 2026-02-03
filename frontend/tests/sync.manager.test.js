@@ -1,9 +1,15 @@
+// @ts-check
+
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { GravityStore } from "../js/core/store.js";
-import { createSyncManager } from "../js/core/syncManager.js";
-import { EVENT_NOTIFICATION_REQUEST } from "../js/constants.js";
+import * as Y from "yjs";
+
+import { APP_BUILD_ID } from "../js/constants.js";
+import { decodeBase64, encodeBase64 } from "../js/utils/base64.js";
+
+const { GravityStore } = await import(`../js/core/store.js?build=${APP_BUILD_ID}`);
+const { createSyncManager } = await import(`../js/core/syncManager.js?build=${APP_BUILD_ID}`);
 
 class LocalStorageStub {
     constructor() {
@@ -37,21 +43,21 @@ test.describe("SyncManager", () => {
         delete global.localStorage;
     });
 
-    test("handleSignIn exchanges credential, flushes queue, and reconciles snapshot", async () => {
+    test("handleSignIn syncs local records and applies snapshots", async () => {
         const operationsHandled = [];
+        let capturedSnapshotB64 = "";
         const backendClient = {
-            async syncOperations({ operations }) {
-                operationsHandled.push({ type: "sync", operations });
+            async syncOperations({ updates, cursors }) {
+                operationsHandled.push({ type: "sync", updates, cursors });
+                capturedSnapshotB64 = updates[0]?.snapshot_b64 ?? "";
                 return {
-                    results: operations.map((operation) => ({
+                    results: updates.map((operation) => ({
                         note_id: operation.note_id,
                         accepted: true,
-                        version: 1,
-                        updated_at_s: operation.updated_at_s,
-                        last_writer_edit_seq: operation.client_edit_seq,
-                        is_deleted: operation.operation === "delete",
-                        payload: operation.payload
-                    }))
+                        update_id: 5,
+                        duplicate: false
+                    })),
+                    updates: []
                 };
             },
             async fetchSnapshot() {
@@ -60,18 +66,8 @@ test.describe("SyncManager", () => {
                     notes: [
                         {
                             note_id: "note-sync",
-                            created_at_s: 1700000000,
-                            updated_at_s: 1700000000,
-                            last_writer_edit_seq: 2,
-                            version: 2,
-                            is_deleted: false,
-                            payload: {
-                                noteId: "note-sync",
-                                markdownText: "Server-Authoritative",
-                                createdAtIso: "2023-11-14T21:00:00.000Z",
-                                updatedAtIso: "2023-11-14T21:00:00.000Z",
-                                lastActivityIso: "2023-11-14T21:00:00.000Z"
-                            }
+                            snapshot_b64: capturedSnapshotB64,
+                            snapshot_update_id: 5
                         }
                     ]
                 };
@@ -80,22 +76,19 @@ test.describe("SyncManager", () => {
 
         const syncManager = createSyncManager({
             backendClient,
-            clock: () => new Date("2023-11-14T21:00:00.000Z"),
             randomUUID: () => "operation-1"
         });
 
-       const localRecord = {
-           noteId: "note-sync",
-           markdownText: "Local Draft",
-           createdAtIso: "2023-11-14T20:59:00.000Z",
-           updatedAtIso: "2023-11-14T20:59:00.000Z",
-           lastActivityIso: "2023-11-14T20:59:00.000Z"
-       };
+        GravityStore.setUserScope("user-sync");
+        const localRecord = {
+            noteId: "note-sync",
+            markdownText: "Local Draft",
+            createdAtIso: "2023-11-14T20:59:00.000Z",
+            updatedAtIso: "2023-11-14T20:59:00.000Z",
+            lastActivityIso: "2023-11-14T20:59:00.000Z"
+        };
 
         GravityStore.upsertNonEmpty(localRecord);
-        syncManager.recordLocalUpsert(localRecord);
-
-        assert.equal(operationsHandled.length, 0, "operations should queue offline before sign-in");
 
         const signInResult = await syncManager.handleSignIn({
             userId: "user-sync"
@@ -107,13 +100,15 @@ test.describe("SyncManager", () => {
 
         assert.equal(operationsHandled.length >= 2, true, "sync and snapshot should occur");
         assert.equal(operationsHandled[0].type, "sync");
-        assert.equal(operationsHandled[0].operations.length, 1);
-        assert.equal(operationsHandled[0].operations[0].operation, "upsert");
+        assert.equal(operationsHandled[0].updates.length, 1);
+        assert.equal(operationsHandled[0].updates[0].note_id, "note-sync");
+        assert.ok(operationsHandled[0].updates[0].update_b64);
+        assert.ok(operationsHandled[0].updates[0].snapshot_b64);
         assert.equal(operationsHandled[1].type, "snapshot");
 
         const storedRecords = GravityStore.loadAllNotes();
         assert.equal(storedRecords.length, 1);
-        assert.equal(storedRecords[0].markdownText, "Server-Authoritative");
+        assert.equal(storedRecords[0].markdownText, "Local Draft");
 
         const debugState = syncManager.getDebugState();
         assert.equal(debugState.pendingOperations.length, 0);
@@ -148,7 +143,7 @@ test.describe("SyncManager", () => {
         const backendClient = {
             async syncOperations() {
                 calls.push("syncOperations");
-                return { results: [] };
+                return { results: [], updates: [] };
             },
             async fetchSnapshot() {
                 calls.push("fetchSnapshot");
@@ -157,59 +152,51 @@ test.describe("SyncManager", () => {
         };
 
         const syncManager = createSyncManager({ backendClient });
+        GravityStore.setUserScope("user-sync");
         const signInResult = await syncManager.handleSignIn({ userId: "user-sync" });
         assert.equal(signInResult.authenticated, true);
 
+        calls.length = 0;
         const synchronizeResult = await syncManager.synchronize({ flushQueue: false });
         assert.equal(synchronizeResult.snapshotApplied, true, "snapshot should apply during forced sync");
         assert.equal(calls.includes("fetchSnapshot"), true, "fetchSnapshot should be invoked");
         assert.equal(calls.includes("syncOperations"), false, "syncOperations should be skipped when flushing disabled");
     });
 
-    test("rejected sync operations remain in conflicts and preserve local edits", async () => {
-        const notifications = [];
-        const eventTarget = new EventTarget();
-        eventTarget.addEventListener(EVENT_NOTIFICATION_REQUEST, (event) => {
-            notifications.push(event?.detail ?? {});
-        });
+    test("refreshes queued snapshots after remote updates", async () => {
+        const syncCalls = [];
+        let syncCallCount = 0;
+        let snapshotCallCount = 0;
+        const remoteSnapshotB64 = buildSnapshotB64("Remote");
 
         const backendClient = {
-            async syncOperations({ operations }) {
+            async syncOperations({ updates, cursors }) {
+                syncCallCount += 1;
+                syncCalls.push({ updates, cursors });
+                if (syncCallCount === 1) {
+                    return { results: [], updates: [] };
+                }
                 return {
-                    results: operations.map((operation) => ({
+                    results: updates.map((operation) => ({
                         note_id: operation.note_id,
-                        accepted: false,
-                        version: 2,
-                        updated_at_s: operation.updated_at_s,
-                        last_writer_edit_seq: 2,
-                        is_deleted: false,
-                        payload: {
-                            noteId: operation.note_id,
-                            markdownText: "Server version",
-                            createdAtIso: "2023-11-14T21:00:00.000Z",
-                            updatedAtIso: "2023-11-14T21:00:00.000Z",
-                            lastActivityIso: "2023-11-14T21:00:00.000Z"
-                        }
-                    }))
+                        accepted: true,
+                        update_id: 11,
+                        duplicate: false
+                    })),
+                    updates: []
                 };
             },
             async fetchSnapshot() {
+                snapshotCallCount += 1;
+                if (snapshotCallCount === 1) {
+                    return { notes: [] };
+                }
                 return {
                     notes: [
                         {
-                            note_id: "note-conflict",
-                            created_at_s: 1700000000,
-                            updated_at_s: 1700000000,
-                            last_writer_edit_seq: 2,
-                            version: 2,
-                            is_deleted: false,
-                            payload: {
-                                noteId: "note-conflict",
-                                markdownText: "Server snapshot",
-                                createdAtIso: "2023-11-14T21:00:00.000Z",
-                                updatedAtIso: "2023-11-14T21:00:00.000Z",
-                                lastActivityIso: "2023-11-14T21:00:00.000Z"
-                            }
+                            note_id: "note-sync",
+                            snapshot_b64: remoteSnapshotB64,
+                            snapshot_update_id: 4
                         }
                     ]
                 };
@@ -218,40 +205,38 @@ test.describe("SyncManager", () => {
 
         const syncManager = createSyncManager({
             backendClient,
-            clock: () => new Date("2023-11-14T21:00:00.000Z"),
-            randomUUID: () => "operation-conflict",
-            eventTarget
+            randomUUID: () => "operation-1"
         });
 
+        GravityStore.setUserScope("user-sync");
+        const signInResult = await syncManager.handleSignIn({ userId: "user-sync" });
+        assert.equal(signInResult.authenticated, true);
+
         const localRecord = {
-            noteId: "note-conflict",
-            markdownText: "Local draft",
+            noteId: "note-sync",
+            markdownText: "Local",
             createdAtIso: "2023-11-14T20:59:00.000Z",
             updatedAtIso: "2023-11-14T20:59:00.000Z",
             lastActivityIso: "2023-11-14T20:59:00.000Z"
         };
-
         GravityStore.upsertNonEmpty(localRecord);
         syncManager.recordLocalUpsert(localRecord);
 
-        const signInResult = await syncManager.handleSignIn({ userId: "user-conflict" });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        assert.equal(syncCalls.length, 1);
+        const beforeSnapshotState = syncManager.getDebugState();
+        assert.equal(beforeSnapshotState.pendingOperations.length, 1);
 
-        assert.equal(signInResult.authenticated, true);
-        assert.equal(signInResult.queueFlushed, false);
-        assert.equal(signInResult.snapshotApplied, true);
+        const snapshotResult = await syncManager.synchronize({ flushQueue: false });
+        assert.equal(snapshotResult.snapshotApplied, true);
 
-        const storedRecords = GravityStore.loadAllNotes();
-        assert.equal(storedRecords.length, 1);
-        assert.equal(storedRecords[0].markdownText, "Local draft");
+        const flushResult = await syncManager.synchronize();
+        assert.equal(flushResult.queueFlushed, true);
+        assert.equal(syncCalls.length, 2);
 
-        const debugState = syncManager.getDebugState();
-        assert.equal(debugState.pendingOperations.length, 0);
-        assert.equal(debugState.conflictOperations.length, 1);
-        assert.equal(debugState.conflictOperations[0].status, "conflict");
-
-        assert.equal(notifications.length, 1);
-        assert.equal(typeof notifications[0].message, "string");
-        assert.equal(notifications[0].message.length > 0, true);
+        const flushedSnapshotText = decodeUpdateText(syncCalls[1].updates[0].snapshot_b64);
+        assert.ok(flushedSnapshotText.includes("Local"));
+        assert.ok(flushedSnapshotText.includes("Remote"));
     });
 
     test("coalesces repeated upserts and syncs the latest payload", async () => {
@@ -259,21 +244,19 @@ test.describe("SyncManager", () => {
         let shouldFail = true;
         let uuidIndex = 0;
         const backendClient = {
-            async syncOperations({ operations }) {
+            async syncOperations({ updates }) {
                 if (shouldFail) {
                     throw new Error("offline");
                 }
-                operationsHandled.push(operations);
+                operationsHandled.push(updates);
                 return {
-                    results: operations.map((operation) => ({
+                    results: updates.map((operation) => ({
                         note_id: operation.note_id,
                         accepted: true,
-                        version: 1,
-                        updated_at_s: operation.updated_at_s,
-                        last_writer_edit_seq: operation.client_edit_seq,
-                        is_deleted: operation.operation === "delete",
-                        payload: operation.payload
-                    }))
+                        update_id: 12,
+                        duplicate: false
+                    })),
+                    updates: []
                 };
             },
             async fetchSnapshot() {
@@ -283,10 +266,10 @@ test.describe("SyncManager", () => {
 
         const syncManager = createSyncManager({
             backendClient,
-            clock: () => new Date("2023-11-14T21:00:00.000Z"),
             randomUUID: () => `operation-${uuidIndex += 1}`
         });
 
+        GravityStore.setUserScope("user-coalesce");
         const signInResult = await syncManager.handleSignIn({ userId: "user-coalesce" });
         assert.equal(signInResult.authenticated, true);
 
@@ -312,7 +295,6 @@ test.describe("SyncManager", () => {
         const debugState = syncManager.getDebugState();
         assert.equal(debugState.pendingOperations.length, 1);
         assert.equal(debugState.pendingOperations[0].noteId, "note-coalesce");
-        assert.equal(debugState.pendingOperations[0].payload, null);
 
         await new Promise((resolve) => setTimeout(resolve, 0));
         shouldFail = false;
@@ -320,6 +302,27 @@ test.describe("SyncManager", () => {
         assert.equal(syncResult.queueFlushed, true);
         assert.equal(operationsHandled.length, 1);
         assert.equal(operationsHandled[0].length, 1);
-        assert.equal(operationsHandled[0][0].payload.markdownText, "Second draft");
+
+        const syncedUpdate = operationsHandled[0][0];
+        const updateText = decodeUpdateText(syncedUpdate.update_b64);
+        assert.equal(updateText, "Second draft");
     });
 });
+
+function decodeUpdateText(updateB64) {
+    const update = decodeBase64(updateB64);
+    const doc = new Y.Doc();
+    doc.getText("markdown");
+    doc.getMap("meta");
+    Y.applyUpdate(doc, update);
+    return doc.getText("markdown").toString();
+}
+
+function buildSnapshotB64(text) {
+    const doc = new Y.Doc();
+    const noteText = doc.getText("markdown");
+    doc.getMap("meta");
+    noteText.insert(0, text);
+    const update = Y.encodeStateAsUpdate(doc);
+    return encodeBase64(update);
+}

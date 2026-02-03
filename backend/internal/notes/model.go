@@ -30,6 +30,8 @@ var (
 	ErrInvalidUserID = errors.New("notes: invalid user id")
 	// ErrInvalidTimestamp indicates that a unix timestamp value is not positive.
 	ErrInvalidTimestamp = errors.New("notes: invalid unix timestamp")
+	// ErrInvalidVersion indicates that a version value is invalid.
+	ErrInvalidVersion = errors.New("notes: invalid version")
 	// ErrInvalidChange indicates that a change violates domain invariants.
 	ErrInvalidChange = errors.New("notes: invalid change")
 )
@@ -90,6 +92,22 @@ func (ts UnixTimestamp) Int64() int64 {
 	return int64(ts)
 }
 
+// NoteVersion represents a validated note version.
+type NoteVersion int64
+
+// NewNoteVersion validates the value and returns a NoteVersion.
+func NewNoteVersion(value int64) (NoteVersion, error) {
+	if value < 0 {
+		return 0, fmt.Errorf("%w: %d", ErrInvalidVersion, value)
+	}
+	return NoteVersion(value), nil
+}
+
+// Int64 exposes the raw version value.
+func (version NoteVersion) Int64() int64 {
+	return int64(version)
+}
+
 // Note models the persisted note payload with conflict resolution metadata.
 type Note struct {
 	UserID            string `gorm:"column:user_id;primaryKey;size:190;not null;index:idx_notes_user_updated,priority:1"`
@@ -136,6 +154,7 @@ type ChangeEnvelope struct {
 	createdAt       UnixTimestamp
 	updatedAt       UnixTimestamp
 	clientTimestamp UnixTimestamp
+	baseVersion     NoteVersion
 	clientEditSeq   int64
 	clientDevice    string
 	operation       OperationType
@@ -150,6 +169,7 @@ type ChangeEnvelopeConfig struct {
 	CreatedAt       UnixTimestamp
 	UpdatedAt       UnixTimestamp
 	ClientTimestamp UnixTimestamp
+	BaseVersion     NoteVersion
 	ClientEditSeq   int64
 	ClientDevice    string
 	Operation       OperationType
@@ -170,6 +190,9 @@ func NewChangeEnvelope(cfg ChangeEnvelopeConfig) (ChangeEnvelope, error) {
 	}
 	if cfg.ClientEditSeq < 0 {
 		return ChangeEnvelope{}, fmt.Errorf("%w: negative client edit seq", ErrInvalidChange)
+	}
+	if cfg.BaseVersion < 0 {
+		return ChangeEnvelope{}, fmt.Errorf("%w: negative base version", ErrInvalidChange)
 	}
 
 	trimmedDevice := strings.TrimSpace(cfg.ClientDevice)
@@ -196,6 +219,7 @@ func NewChangeEnvelope(cfg ChangeEnvelopeConfig) (ChangeEnvelope, error) {
 		createdAt:       cfg.CreatedAt,
 		updatedAt:       cfg.UpdatedAt,
 		clientTimestamp: cfg.ClientTimestamp,
+		baseVersion:     cfg.BaseVersion,
 		clientEditSeq:   cfg.ClientEditSeq,
 		clientDevice:    trimmedDevice,
 		operation:       cfg.Operation,
@@ -227,6 +251,11 @@ func (c ChangeEnvelope) UpdatedAt() UnixTimestamp {
 // ClientTimestamp returns the client supplied timestamp.
 func (c ChangeEnvelope) ClientTimestamp() UnixTimestamp {
 	return c.clientTimestamp
+}
+
+// BaseVersion returns the note version the client based this change on.
+func (c ChangeEnvelope) BaseVersion() NoteVersion {
+	return c.baseVersion
 }
 
 // ClientEditSeq returns the client edit sequence number.

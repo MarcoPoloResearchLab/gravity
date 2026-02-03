@@ -1,0 +1,8 @@
+/**
+ * Bundled by jsDelivr using Rollup v2.79.2 and Terser v5.39.0.
+ * Original file: /npm/lib0@0.2.117/map.js
+ *
+ * Do NOT use SRI with dynamically generated files! More information: https://www.jsdelivr.com/using-sri-with-dynamic-files
+ */
+const r=()=>new Map,t=t=>{const o=r();return t.forEach(((r,t)=>{o.set(t,r)})),o},o=(r,t,o)=>{let e=r.get(t);return void 0===e&&r.set(t,e=o()),e},e=(r,t)=>{const o=[];for(const[e,n]of r)o.push(t(n,e));return o},n=(r,t)=>{for(const[o,e]of r)if(t(e,o))return!0;return!1},f=(r,t)=>{for(const[o,e]of r)if(!t(e,o))return!1;return!0};export{f as all,n as any,t as copy,r as create,e as map,o as setIfUndefined};export default null;
+//# sourceMappingURL=/sm/6e0c9f08ba4bd1767766fc4dd0ee74a9a4f6906682219a9f4787534d608a40ce.map

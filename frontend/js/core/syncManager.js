@@ -4,14 +4,16 @@ import { GravityStore } from "./store.js?build=2026-01-01T22:43:21Z";
 import { createBackendClient } from "./backendClient.js?build=2026-01-01T22:43:21Z";
 import { createSyncMetadataStore } from "./syncMetadataStore.js?build=2026-01-01T22:43:21Z";
 import { createSyncQueue } from "./syncQueue.js?build=2026-01-01T22:43:21Z";
+import { createCrdtNoteEngine } from "./crdtNoteEngine.js?build=2026-01-01T22:43:21Z";
 import { logging } from "../utils/logging.js?build=2026-01-01T22:43:21Z";
-import { EVENT_NOTIFICATION_REQUEST, EVENT_SYNC_SNAPSHOT_APPLIED, MESSAGE_SYNC_CONFLICT } from "../constants.js?build=2026-01-01T22:43:21Z";
+import { EVENT_SYNC_SNAPSHOT_APPLIED } from "../constants.js?build=2026-01-01T22:43:21Z";
 
 const debugEnabled = () => typeof globalThis !== "undefined" && globalThis.__debugSyncScenarios === true;
-const SYNC_OPERATION_STATUS_PENDING = "pending";
-const SYNC_OPERATION_STATUS_CONFLICT = "conflict";
 const TYPE_OBJECT = "object";
 const TYPE_STRING = "string";
+const SNAPSHOT_UPDATE_ID_MAX = Number.MAX_SAFE_INTEGER;
+const SYNC_SOURCE_SNAPSHOT = "snapshot";
+const SYNC_SOURCE_UPDATES = "updates";
 
 const ERROR_MESSAGES = Object.freeze({
     MISSING_OPTIONS: "sync_manager.missing_options",
@@ -34,6 +36,9 @@ const ERROR_MESSAGES = Object.freeze({
  *   backendClient?: ReturnType<typeof createBackendClient>,
  *   metadataStore?: ReturnType<typeof createSyncMetadataStore>,
  *   queueStore?: ReturnType<typeof createSyncQueue>,
+ *   crdtEngine?: ReturnType<typeof createCrdtNoteEngine>,
+ *   yjsLoader?: () => Promise<typeof import("yjs")>,
+ *   documentStore?: Parameters<typeof createCrdtNoteEngine>[0]["documentStore"],
  *   clock?: () => Date,
  *   randomUUID?: () => string,
  *   eventTarget?: EventTarget|null
@@ -43,6 +48,7 @@ export function createSyncManager(options) {
     if (!options || typeof options !== TYPE_OBJECT) {
         throw new Error(ERROR_MESSAGES.MISSING_OPTIONS);
     }
+
     const metadataStore = options.metadataStore ?? createSyncMetadataStore();
     const queueStore = options.queueStore ?? createSyncQueue();
     const clock = typeof options.clock === "function" ? options.clock : () => new Date();
@@ -59,6 +65,16 @@ export function createSyncManager(options) {
         eventTarget: syncEventTarget
     });
 
+    const engineOptions = {};
+    if (options.documentStore) {
+        engineOptions.documentStore = options.documentStore;
+    }
+    if (typeof options.yjsLoader === "function") {
+        engineOptions.yjsLoader = options.yjsLoader;
+    }
+
+    const crdtEngine = options.crdtEngine ?? createCrdtNoteEngine(engineOptions);
+
     /** @type {{ userId: string|null, metadata: Record<string, NoteMetadata>, queue: PendingOperation[], flushing: boolean }} */
     const state = {
         userId: null,
@@ -67,6 +83,8 @@ export function createSyncManager(options) {
         flushing: false
     };
 
+    let engineReady = false;
+
     return Object.freeze({
         /**
          * Record a local upsert event and queue a sync operation when applicable.
@@ -74,35 +92,17 @@ export function createSyncManager(options) {
          * @returns {void}
          */
         recordLocalUpsert(record) {
-            if (!state.userId) {
+            if (!state.userId || !engineReady) {
                 return;
             }
             if (!isValidRecord(record)) {
                 return;
             }
 
-            const noteId = record.noteId;
-            clearConflictsForNote(noteId);
-            const metadata = ensureMetadata(noteId);
-            const nextEditSeq = metadata.clientEditSeq + 1;
-
-            metadata.clientEditSeq = nextEditSeq;
-            state.metadata[noteId] = metadata;
-
-            const operation = buildPendingOperation({
-                operationId: generateUUID(),
-                noteId,
-                operation: "upsert",
-                payload: null,
-                updatedAtSeconds: isoToSeconds(record.updatedAtIso, clock),
-                createdAtSeconds: isoToSeconds(record.createdAtIso, clock),
-                clientTimeSeconds: isoToSeconds(record.lastActivityIso, clock),
-                clientEditSeq: nextEditSeq
-            });
-
-            upsertPendingOperation(operation);
+            const operationResult = crdtEngine.applyLocalRecord(record, false);
+            enqueueOperation(record.noteId, operationResult);
             persistState();
-            void flushQueue();
+            void syncPendingQueue();
         },
 
         /**
@@ -112,31 +112,17 @@ export function createSyncManager(options) {
          * @returns {void}
          */
         recordLocalDelete(noteId, priorRecord) {
-            if (!state.userId || !noteId) {
+            if (!state.userId || !engineReady || !noteId) {
                 return;
             }
-            clearConflictsForNote(noteId);
-            const metadata = ensureMetadata(noteId);
-            const nextEditSeq = metadata.clientEditSeq + 1;
-            metadata.clientEditSeq = nextEditSeq;
-            state.metadata[noteId] = metadata;
 
-            const payloadRecord = priorRecord ? cloneRecord(priorRecord) : null;
-            const nowSeconds = Math.floor(clock().getTime() / 1000);
-            const operation = buildPendingOperation({
-                operationId: generateUUID(),
-                noteId,
-                operation: "delete",
-                payload: payloadRecord,
-                updatedAtSeconds: nowSeconds,
-                createdAtSeconds: nowSeconds,
-                clientTimeSeconds: nowSeconds,
-                clientEditSeq: nextEditSeq
-            });
-
-            upsertPendingOperation(operation);
+            const record = isValidRecord(priorRecord)
+                ? priorRecord
+                : buildTombstoneRecord(noteId);
+            const operationResult = crdtEngine.applyLocalRecord(record, true);
+            enqueueOperation(noteId, operationResult);
             persistState();
-            void flushQueue();
+            void syncPendingQueue();
         },
 
         /**
@@ -150,39 +136,36 @@ export function createSyncManager(options) {
             }
 
             if (debugEnabled()) {
-                try {
-                    logging.info("syncManager.handleSignIn", params.userId);
-                } catch {
-                    // ignore console failures
-                }
+                logging.info("syncManager.handleSignIn", params.userId);
             }
+
             if (typeof metadataStore.hydrate === "function") {
                 await metadataStore.hydrate(params.userId);
             }
             if (typeof queueStore.hydrate === "function") {
                 await queueStore.hydrate(params.userId);
             }
+            await crdtEngine.hydrate(params.userId);
+
             const loadedMetadata = metadataStore.load(params.userId);
             const loadedQueue = queueStore.load(params.userId);
 
             state.userId = params.userId;
             state.metadata = loadedMetadata;
             state.queue = loadedQueue;
+            engineReady = true;
 
-            seedInitialOperations();
+            seedLocalRecords();
             persistState();
 
             if (debugEnabled()) {
-                try {
-                    logging.info("syncManager.handleSignIn.state", JSON.stringify({
-                        queueLength: state.queue.length,
-                        userId: state.userId
-                    }));
-                } catch {
-                    // ignore console failures
-                }
+                logging.info("syncManager.handleSignIn.state", JSON.stringify({
+                    queueLength: state.queue.length,
+                    userId: state.userId
+                }));
             }
-            const queueFlushed = await flushQueue();
+
+            const queueFlushed = await syncPendingQueue();
             const snapshotApplied = await refreshSnapshot();
 
             return {
@@ -197,14 +180,11 @@ export function createSyncManager(options) {
          * @returns {void}
          */
         handleSignOut() {
-            if (state.userId) {
-                metadataStore.clear(state.userId);
-                queueStore.clear(state.userId);
-            }
             state.userId = null;
             state.metadata = {};
             state.queue = [];
             state.flushing = false;
+            engineReady = false;
         },
 
         /**
@@ -217,61 +197,61 @@ export function createSyncManager(options) {
                 return { queueFlushed: false, snapshotApplied: false };
             }
             const shouldFlush = options.flushQueue !== false;
-            let queueFlushed = !shouldFlush;
-            if (shouldFlush) {
-                queueFlushed = await flushQueue();
-            }
+            const queueFlushed = shouldFlush ? await syncPendingQueue() : true;
             const snapshotApplied = await refreshSnapshot();
             return { queueFlushed, snapshotApplied };
         },
 
         /**
          * Expose internal state for diagnostics and testing.
-         * @returns {{ activeUserId: string|null, pendingOperations: PendingOperation[], conflictOperations: PendingOperation[] }}
+         * @returns {{ activeUserId: string|null, pendingOperations: PendingOperation[], lastSeenUpdateIds: Record<string, NoteMetadata> }}
          */
         getDebugState() {
             return {
                 activeUserId: state.userId,
-                pendingOperations: state.queue.filter(isPendingOperation).map((operation) => ({ ...operation })),
-                conflictOperations: state.queue.filter(isConflictOperation).map((operation) => ({ ...operation }))
+                pendingOperations: state.queue.map((operation) => ({ ...operation })),
+                lastSeenUpdateIds: { ...state.metadata }
             };
         }
     });
 
-    function ensureMetadata(noteId) {
-        if (!state.metadata[noteId]) {
-            state.metadata[noteId] = {
-                clientEditSeq: 0,
-                serverEditSeq: 0,
-                serverVersion: 0
-            };
-        }
-        return state.metadata[noteId];
-    }
-
     function persistState() {
-        if (state.userId) {
-            metadataStore.save(state.userId, state.metadata);
-            queueStore.save(state.userId, state.queue);
-        }
-    }
-
-    function clearConflictsForNote(noteId) {
-        if (!noteId) {
+        if (!state.userId) {
             return;
         }
-        const nextQueue = state.queue.filter((operation) => !(isConflictOperation(operation) && operation.noteId === noteId));
-        if (nextQueue.length !== state.queue.length) {
-            state.queue = nextQueue;
+        metadataStore.save(state.userId, state.metadata);
+        queueStore.save(state.userId, state.queue);
+        crdtEngine.persist();
+    }
+
+    function seedLocalRecords() {
+        const records = GravityStore.loadAllNotes();
+        for (const record of records) {
+            if (!isValidRecord(record)) {
+                continue;
+            }
+            const existing = crdtEngine.buildRecord(record.noteId);
+            if (recordsMatch(existing, record)) {
+                continue;
+            }
+            const operationResult = crdtEngine.applyLocalRecord(record, false);
+            enqueueOperation(record.noteId, operationResult);
         }
     }
 
-    /**
-     * @param {PendingOperation} operation
-     * @returns {void}
-     */
-    function upsertPendingOperation(operation) {
-        const existingIndex = state.queue.findIndex((entry) => isPendingOperation(entry) && entry.noteId === operation.noteId);
+    function enqueueOperation(noteId, operationResult) {
+        if (!noteId || !operationResult) {
+            return;
+        }
+        const operation = {
+            operationId: generateUUID(),
+            noteId,
+            updateB64: operationResult.updateB64,
+            snapshotB64: operationResult.snapshotB64,
+            snapshotUpdateId: SNAPSHOT_UPDATE_ID_MAX
+        };
+
+        const existingIndex = state.queue.findIndex((entry) => entry.noteId === noteId);
         if (existingIndex >= 0) {
             state.queue[existingIndex] = operation;
             return;
@@ -279,66 +259,7 @@ export function createSyncManager(options) {
         state.queue.push(operation);
     }
 
-    function collectConflictNoteIds() {
-        const conflictNotes = new Set();
-        for (const operation of state.queue) {
-            if (isConflictOperation(operation)) {
-                conflictNotes.add(operation.noteId);
-            }
-        }
-        return conflictNotes;
-    }
-
-    function getPendingOperations() {
-        return state.queue.filter(isPendingOperation);
-    }
-
-    function getConflictOperations() {
-        return state.queue.filter(isConflictOperation);
-    }
-
-    function countPendingOperations(queue) {
-        return queue.filter(isPendingOperation).length;
-    }
-
-    function countConflictOperations(queue) {
-        return queue.filter(isConflictOperation).length;
-    }
-
-    function seedInitialOperations() {
-        if (!state.userId) {
-            return;
-        }
-        const notes = GravityStore.loadAllNotes();
-        for (const record of notes) {
-            if (!isValidRecord(record)) {
-                continue;
-            }
-            const pendingExists = state.queue.some((operation) => operation.noteId === record.noteId);
-            if (pendingExists) {
-                continue;
-            }
-            const metadata = ensureMetadata(record.noteId);
-            if (metadata.serverVersion > 0 && metadata.clientEditSeq === metadata.serverEditSeq) {
-                continue;
-            }
-            const nextSeq = metadata.clientEditSeq + 1;
-            metadata.clientEditSeq = nextSeq;
-            state.metadata[record.noteId] = metadata;
-            upsertPendingOperation(buildPendingOperation({
-                operationId: generateUUID(),
-                noteId: record.noteId,
-                operation: "upsert",
-                payload: null,
-                updatedAtSeconds: isoToSeconds(record.updatedAtIso, clock),
-                createdAtSeconds: isoToSeconds(record.createdAtIso, clock),
-                clientTimeSeconds: isoToSeconds(record.lastActivityIso, clock),
-                clientEditSeq: nextSeq
-            }));
-        }
-    }
-
-    async function flushQueue() {
+    async function syncPendingQueue() {
         if (!state.userId) {
             return false;
         }
@@ -347,19 +268,21 @@ export function createSyncManager(options) {
         }
         state.flushing = true;
         try {
-            const pendingOperations = getPendingOperations();
-            const conflictOperations = getConflictOperations();
-            if (pendingOperations.length === 0) {
-                return conflictOperations.length === 0;
+            const updates = buildUpdatePayloads();
+            const cursors = buildCursorPayloads();
+            if (updates.length === 0 && cursors.length === 0) {
+                return true;
             }
-            const operations = pendingOperations.map(convertToSyncOperation);
-            const response = await backendClient.syncOperations({
-                operations
-            });
-            const syncOutcome = applySyncResults(response?.results ?? [], pendingOperations);
-            state.queue = reconcileQueue(state.queue, syncOutcome);
-            persistState();
-            return countPendingOperations(state.queue) === 0 && countConflictOperations(state.queue) === 0;
+            const response = await backendClient.syncOperations({ updates, cursors });
+            const acceptedNotes = applySyncResults(response?.results ?? []);
+            if (acceptedNotes.size > 0) {
+                state.queue = state.queue.filter((operation) => !acceptedNotes.has(operation.noteId));
+            }
+            const appliedUpdates = applyRemoteUpdates(response?.updates ?? []);
+            if (appliedUpdates || acceptedNotes.size > 0) {
+                persistState();
+            }
+            return state.queue.length === 0;
         } catch (error) {
             logging.error(error);
             return false;
@@ -372,280 +295,152 @@ export function createSyncManager(options) {
         if (!state.userId) {
             return false;
         }
-        const pendingOperations = getPendingOperations();
-        const conflictOperations = getConflictOperations();
-        if (debugEnabled()) {
-            try {
-                logging.info("syncManager.refreshSnapshot", JSON.stringify({
-                    userId: state.userId,
-                    pendingCount: pendingOperations.length,
-                    conflictCount: conflictOperations.length
-                }));
-            } catch {
-                // ignore console failures
-            }
-        }
-        if (pendingOperations.length > 0) {
-            if (debugEnabled()) {
-                try {
-                    logging.info("syncManager.refreshSnapshot.skipped", pendingOperations.length);
-                } catch {
-                    // ignore console failures
-                }
-            }
-            return false;
-        }
         try {
             const snapshot = await backendClient.fetchSnapshot();
-            if (getPendingOperations().length > 0) {
+            const notes = Array.isArray(snapshot?.notes) ? snapshot.notes : null;
+            if (!notes) {
                 return false;
             }
-            applySnapshot(snapshot?.notes ?? [], collectConflictNoteIds());
-            if (debugEnabled()) {
-                try {
-                    logging.info("syncManager.refreshSnapshot.applied", JSON.stringify({
-                        userId: state.userId,
-                        recordCount: Array.isArray(snapshot?.notes) ? snapshot.notes.length : 0
-                    }));
-                } catch {
-                    // ignore console failures
-                }
+            const applied = applySnapshotNotes(notes);
+            if (applied) {
+                persistState();
             }
-            persistState();
-            return true;
+            return applied || notes.length === 0;
         } catch (error) {
             logging.error(error);
             return false;
         }
     }
 
-    /**
-     * @param {Array<Record<string, any>>} results
-     * @param {PendingOperation[]} pendingOperations
-     * @returns {{ acceptedOperationIds: Set<string>, conflictOperationUpdates: Array<{ operationId: string, noteId: string, conflict: import("./syncQueue.js").ConflictInfo }>, resolvedNoteIds: Set<string> }}
-     */
-    function applySyncResults(results, pendingOperations) {
-        const syncOutcome = {
-            acceptedOperationIds: new Set(),
-            conflictOperationUpdates: [],
-            resolvedNoteIds: new Set()
-        };
+    function applySyncResults(results) {
+        const acceptedNotes = new Set();
         if (!Array.isArray(results) || results.length === 0) {
-            return syncOutcome;
+            return acceptedNotes;
         }
-        const existingNotes = GravityStore.loadAllNotes();
-        const notesById = new Map(existingNotes.map((record) => [record.noteId, record]));
-        let hasChanges = false;
-
-        for (let resultIndex = 0; resultIndex < results.length; resultIndex += 1) {
-            const result = results[resultIndex];
-            const operation = pendingOperations[resultIndex];
-            if (!operation) {
+        for (const result of results) {
+            if (!result || typeof result !== "object") {
                 continue;
             }
-            const noteId = resolveNoteId(result, operation.noteId);
+            const noteId = typeof result.note_id === "string" ? result.note_id : "";
             if (!noteId) {
                 continue;
             }
-            const metadata = ensureMetadata(noteId);
-            const serverEditSeq = typeof result?.last_writer_edit_seq === "number" ? result.last_writer_edit_seq : metadata.serverEditSeq;
-            const serverVersion = typeof result?.version === "number" ? result.version : metadata.serverVersion;
-            metadata.serverEditSeq = serverEditSeq;
-            metadata.serverVersion = serverVersion;
-            if (metadata.clientEditSeq < serverEditSeq) {
-                metadata.clientEditSeq = serverEditSeq;
-            }
-            const accepted = result?.accepted === true;
+            const accepted = result.accepted === true || result.duplicate === true;
             if (!accepted) {
-                syncOutcome.conflictOperationUpdates.push({
-                    operationId: operation.operationId,
-                    noteId,
-                    conflict: buildConflictInfo(result)
-                });
                 continue;
             }
-            syncOutcome.acceptedOperationIds.add(operation.operationId);
-            syncOutcome.resolvedNoteIds.add(noteId);
-            const isDeleted = result?.is_deleted === true;
-            if (isDeleted) {
-                const existing = GravityStore.getById(noteId);
-                if (existing) {
-                    GravityStore.removeById(noteId);
-                    hasChanges = true;
-                }
-                delete state.metadata[noteId];
-                notesById.delete(noteId);
-                continue;
+            const updateId = typeof result.update_id === "number" && Number.isFinite(result.update_id)
+                ? result.update_id
+                : null;
+            if (updateId !== null) {
+                updateLastSeenUpdateId(noteId, updateId);
             }
-            const payload = normalizeSnapshotPayload(result?.payload);
-            if (!payload) {
-                continue;
-            }
-            notesById.set(noteId, payload);
-            GravityStore.upsertNonEmpty(payload);
-            hasChanges = true;
+            acceptedNotes.add(noteId);
         }
-
-        const noteArray = Array.from(notesById.values());
-        GravityStore.saveAllNotes(noteArray);
-        if (hasChanges) {
-            dispatchSnapshotEvent(noteArray, "sync-results");
-        }
-        if (syncOutcome.conflictOperationUpdates.length > 0) {
-            dispatchConflictNotification(syncOutcome.conflictOperationUpdates.length);
-        }
-        return syncOutcome;
+        return acceptedNotes;
     }
 
-    /**
-     * @param {Array<Record<string, any>>} snapshotNotes
-     * @param {Set<string>} conflictNoteIds
-     * @returns {void}
-     */
-    function applySnapshot(snapshotNotes, conflictNoteIds) {
-        if (!Array.isArray(snapshotNotes)) {
-            return;
+    function applyRemoteUpdates(updates) {
+        if (!Array.isArray(updates) || updates.length === 0) {
+            return false;
         }
-        const conflictNotes = conflictNoteIds instanceof Set ? conflictNoteIds : new Set();
-        const existingNotes = GravityStore.loadAllNotes();
-        const notesById = new Map(existingNotes.map((record) => [record.noteId, record]));
-        for (const entry of snapshotNotes) {
-            const noteId = typeof entry?.note_id === "string" ? entry.note_id : null;
+        const sorted = updates
+            .filter((entry) => entry && typeof entry === "object")
+            .slice()
+            .sort((first, second) => {
+                const firstId = typeof first.update_id === "number" ? first.update_id : 0;
+                const secondId = typeof second.update_id === "number" ? second.update_id : 0;
+                return firstId - secondId;
+            });
+
+        let applied = false;
+        const updatedNoteIds = new Set();
+        for (const update of sorted) {
+            const noteId = typeof update.note_id === "string" ? update.note_id : "";
+            const updateB64 = typeof update.update_b64 === "string" ? update.update_b64 : "";
+            if (!noteId || !updateB64) {
+                continue;
+            }
+            crdtEngine.applyUpdate(noteId, updateB64);
+            if (typeof update.update_id === "number" && Number.isFinite(update.update_id)) {
+                updateLastSeenUpdateId(noteId, update.update_id);
+            }
+            applied = true;
+            updatedNoteIds.add(noteId);
+        }
+
+        if (applied) {
+            refreshQueuedSnapshots(updatedNoteIds);
+            crdtEngine.persist();
+            syncNotesFromEngine(SYNC_SOURCE_UPDATES);
+        }
+        return applied;
+    }
+
+    function applySnapshotNotes(notes) {
+        if (!Array.isArray(notes) || notes.length === 0) {
+            return false;
+        }
+        const localRecords = GravityStore.loadAllNotes();
+        const localRecordsById = new Map(localRecords.map((record) => [record.noteId, record]));
+        let appliedSnapshot = false;
+        let queuedMigration = false;
+        const updatedNoteIds = new Set();
+
+        for (const entry of notes) {
+            if (!entry || typeof entry !== "object") {
+                continue;
+            }
+            const noteId = typeof entry.note_id === "string" ? entry.note_id : "";
             if (!noteId) {
                 continue;
             }
-            const metadata = ensureMetadata(noteId);
-            const serverEditSeq = typeof entry?.last_writer_edit_seq === "number" ? entry.last_writer_edit_seq : metadata.serverEditSeq;
-            const serverVersion = typeof entry?.version === "number" ? entry.version : metadata.serverVersion;
-            metadata.serverEditSeq = serverEditSeq;
-            metadata.serverVersion = serverVersion;
-            if (metadata.clientEditSeq < serverEditSeq) {
-                metadata.clientEditSeq = serverEditSeq;
-            }
-            if (conflictNotes.has(noteId)) {
+            const snapshotB64 = typeof entry.snapshot_b64 === "string" ? entry.snapshot_b64 : "";
+            if (snapshotB64) {
+                crdtEngine.applySnapshot(noteId, snapshotB64);
+                if (typeof entry.snapshot_update_id === "number" && Number.isFinite(entry.snapshot_update_id)) {
+                    updateLastSeenUpdateId(noteId, entry.snapshot_update_id);
+                }
+                appliedSnapshot = true;
+                updatedNoteIds.add(noteId);
                 continue;
             }
-            if (entry?.is_deleted === true) {
-                delete state.metadata[noteId];
-                notesById.delete(noteId);
+
+            if (!("legacy_payload" in entry)) {
                 continue;
             }
-            const payload = normalizeSnapshotPayload(entry?.payload);
-            if (!payload) {
+            const localRecord = localRecordsById.get(noteId) ?? null;
+            if (localRecord && isValidRecord(localRecord)) {
+                const operationResult = crdtEngine.applyLocalRecord(localRecord, false);
+                enqueueOperation(noteId, operationResult);
+                queuedMigration = true;
+                appliedSnapshot = true;
+                updatedNoteIds.add(noteId);
                 continue;
             }
-            notesById.set(noteId, payload);
+            const legacyPayload = entry.legacy_payload && typeof entry.legacy_payload === "object"
+                ? entry.legacy_payload
+                : {};
+            const legacyDeleted = entry.legacy_deleted === true;
+            const operationResult = crdtEngine.applyLegacyPayload(noteId, legacyPayload, legacyDeleted);
+            enqueueOperation(noteId, operationResult);
+            queuedMigration = true;
+            appliedSnapshot = true;
+            updatedNoteIds.add(noteId);
         }
-        const nextRecords = Array.from(notesById.values());
-        GravityStore.saveAllNotes(nextRecords);
-        dispatchSnapshotEvent(nextRecords, "snapshot");
+
+        if (appliedSnapshot) {
+            refreshQueuedSnapshots(updatedNoteIds);
+            crdtEngine.persist();
+            syncNotesFromEngine(SYNC_SOURCE_SNAPSHOT);
+        }
+        return appliedSnapshot || queuedMigration;
     }
 
-    /**
-     * @param {any} payload
-     * @returns {import("../types.d.js").NoteRecord|null}
-     */
-    function normalizeSnapshotPayload(payload) {
-        if (!payload || typeof payload !== "object") {
-            logging.warn("snapshot payload invalid", payload);
-            return null;
-        }
-        const candidate = /** @type {Record<string, unknown>} */ (payload);
-        const noteId = typeof candidate.noteId === "string" ? candidate.noteId : null;
-        const markdownText = typeof candidate.markdownText === "string" ? candidate.markdownText : null;
-        if (!noteId || !markdownText) {
-            logging.warn("snapshot payload missing fields", payload);
-            return null;
-        }
-        return {
-            ...candidate,
-            noteId,
-            markdownText
-        };
-    }
-
-    function buildConflictInfo(result) {
-        const serverEditSeq = typeof result?.last_writer_edit_seq === "number" ? result.last_writer_edit_seq : 0;
-        const serverVersion = typeof result?.version === "number" ? result.version : 0;
-        const serverUpdatedAtSeconds = typeof result?.updated_at_s === "number" ? result.updated_at_s : 0;
-        const serverPayload = result?.payload ?? null;
-        const rejectedAtSeconds = Math.floor(clock().getTime() / 1000);
-        return {
-            serverEditSeq,
-            serverVersion,
-            serverUpdatedAtSeconds,
-            serverPayload,
-            rejectedAtSeconds
-        };
-    }
-
-    function resolveNoteId(result, fallbackNoteId) {
-        const candidate = typeof result?.note_id === "string" ? result.note_id : "";
-        if (candidate.length > 0) {
-            return candidate;
-        }
-        return fallbackNoteId;
-    }
-
-    function reconcileQueue(existingQueue, syncOutcome) {
-        const conflictUpdatesByOperationId = new Map();
-        for (const update of syncOutcome.conflictOperationUpdates) {
-            conflictUpdatesByOperationId.set(update.operationId, update);
-        }
-        const nextQueue = [];
-        for (const operation of existingQueue) {
-            if (syncOutcome.acceptedOperationIds.has(operation.operationId)) {
-                continue;
-            }
-            if (syncOutcome.resolvedNoteIds.has(operation.noteId) && isConflictOperation(operation)) {
-                continue;
-            }
-            const conflictUpdate = conflictUpdatesByOperationId.get(operation.operationId);
-            if (conflictUpdate) {
-                nextQueue.push({
-                    ...operation,
-                    status: SYNC_OPERATION_STATUS_CONFLICT,
-                    conflict: conflictUpdate.conflict
-                });
-                continue;
-            }
-            nextQueue.push(operation);
-        }
-        return nextQueue;
-    }
-
-    /**
-     * @param {PendingOperation} operation
-     * @returns {Record<string, any>}
-     */
-    function convertToSyncOperation(operation) {
-        return {
-            operation: operation.operation,
-            note_id: operation.noteId,
-            client_edit_seq: operation.clientEditSeq,
-            client_time_s: operation.clientTimeSeconds,
-            created_at_s: operation.createdAtSeconds,
-            updated_at_s: operation.updatedAtSeconds,
-            payload: resolveOperationPayload(operation)
-        };
-    }
-
-    /**
-     * @param {PendingOperation} operation
-     * @returns {unknown}
-     */
-    function resolveOperationPayload(operation) {
-        if (operation.payload !== null && typeof operation.payload !== "undefined") {
-            return operation.payload;
-        }
-        if (operation.operation === "delete") {
-            return operation.payload ?? null;
-        }
-        const record = GravityStore.getById(operation.noteId);
-        if (!record) {
-            throw new Error(`sync.payload.missing: ${operation.noteId}`);
-        }
-        return cloneRecord(record);
+    function syncNotesFromEngine(source) {
+        const records = crdtEngine.buildAllRecords();
+        GravityStore.saveAllNotes(records);
+        dispatchSnapshotEvent(records, source);
     }
 
     function dispatchSnapshotEvent(records, source) {
@@ -674,32 +469,104 @@ export function createSyncManager(options) {
         }
     }
 
-    function dispatchConflictNotification(conflictCount) {
-        if (!syncEventTarget) {
-            return;
+    function buildUpdatePayloads() {
+        if (!Array.isArray(state.queue) || state.queue.length === 0) {
+            return [];
         }
-        const detail = {
-            message: MESSAGE_SYNC_CONFLICT,
-            conflictCount
-        };
-        try {
-            const event = new CustomEvent(EVENT_NOTIFICATION_REQUEST, {
-                bubbles: true,
-                detail
-            });
-            syncEventTarget.dispatchEvent(event);
-        } catch (error) {
-            logging.error(error);
-            try {
-                const fallbackEvent = new Event(EVENT_NOTIFICATION_REQUEST);
-                /** @type {any} */ (fallbackEvent).detail = detail;
-                syncEventTarget.dispatchEvent(fallbackEvent);
-            } catch (fallbackError) {
-                logging.error(fallbackError);
-            }
-        }
+        return state.queue.map((operation) => ({
+            note_id: operation.noteId,
+            update_b64: operation.updateB64,
+            snapshot_b64: operation.snapshotB64,
+            snapshot_update_id: operation.snapshotUpdateId
+        }));
     }
 
+    function buildCursorPayloads() {
+        const noteIds = new Set();
+        for (const noteId of Object.keys(state.metadata)) {
+            if (noteId) {
+                noteIds.add(noteId);
+            }
+        }
+        for (const operation of state.queue) {
+            if (operation?.noteId) {
+                noteIds.add(operation.noteId);
+            }
+        }
+        try {
+            const records = GravityStore.loadAllNotes();
+            for (const record of records) {
+                if (record?.noteId) {
+                    noteIds.add(record.noteId);
+                }
+            }
+        } catch (error) {
+            logging.error(error);
+        }
+
+        const cursors = [];
+        for (const noteId of noteIds) {
+            const lastSeen = state.metadata[noteId]?.lastSeenUpdateId ?? 0;
+            cursors.push({
+                note_id: noteId,
+                last_update_id: Number.isFinite(lastSeen) && lastSeen >= 0 ? lastSeen : 0
+            });
+        }
+        return cursors;
+    }
+
+    /**
+     * @param {Set<string>} noteIds
+     * @returns {boolean}
+     */
+    function refreshQueuedSnapshots(noteIds) {
+        if (!(noteIds instanceof Set) || noteIds.size === 0) {
+            return false;
+        }
+        if (!Array.isArray(state.queue) || state.queue.length === 0) {
+            return false;
+        }
+        let refreshed = false;
+        for (const operation of state.queue) {
+            if (!noteIds.has(operation.noteId)) {
+                continue;
+            }
+            const snapshotB64 = crdtEngine.buildSnapshot(operation.noteId);
+            if (!snapshotB64 || snapshotB64 === operation.snapshotB64) {
+                continue;
+            }
+            operation.snapshotB64 = snapshotB64;
+            refreshed = true;
+        }
+        return refreshed;
+    }
+
+    function updateLastSeenUpdateId(noteId, updateId) {
+        if (!noteId) {
+            return;
+        }
+        if (!Number.isFinite(updateId) || updateId < 0) {
+            return;
+        }
+        const existing = state.metadata[noteId]?.lastSeenUpdateId ?? 0;
+        const next = updateId > existing ? updateId : existing;
+        state.metadata[noteId] = { lastSeenUpdateId: next };
+    }
+
+    /**
+     * @param {string} noteId
+     * @returns {import("../types.d.js").NoteRecord}
+     */
+    function buildTombstoneRecord(noteId) {
+        const now = clock().toISOString();
+        return {
+            noteId,
+            markdownText: "",
+            createdAtIso: now,
+            updatedAtIso: now,
+            lastActivityIso: now
+        };
+    }
 }
 
 /**
@@ -714,45 +581,14 @@ function assertBaseUrl(value) {
 }
 
 /**
- * @param {{ operationId: string, noteId: string, operation: "upsert"|"delete", payload?: unknown|null, clientEditSeq: number, updatedAtSeconds: number, createdAtSeconds: number, clientTimeSeconds: number }} options
- * @returns {PendingOperation}
- */
-function buildPendingOperation(options) {
-    return {
-        operationId: options.operationId,
-        noteId: options.noteId,
-        operation: options.operation,
-        payload: options.payload ?? null,
-        clientEditSeq: options.clientEditSeq,
-        updatedAtSeconds: options.updatedAtSeconds,
-        createdAtSeconds: options.createdAtSeconds,
-        clientTimeSeconds: options.clientTimeSeconds,
-        status: SYNC_OPERATION_STATUS_PENDING
-    };
-}
-
-/**
- * @param {PendingOperation} operation
- * @returns {boolean}
- */
-function isConflictOperation(operation) {
-    return operation?.status === SYNC_OPERATION_STATUS_CONFLICT;
-}
-
-/**
- * @param {PendingOperation} operation
- * @returns {boolean}
- */
-function isPendingOperation(operation) {
-    return operation?.status !== SYNC_OPERATION_STATUS_CONFLICT;
-}
-
-/**
- * @param {import("../types.d.js").NoteRecord} record
+ * @param {import("../types.d.js").NoteRecord|null|undefined} record
  * @returns {boolean}
  */
 function isValidRecord(record) {
-    return Boolean(record && typeof record.noteId === "string" && record.noteId.length > 0 && typeof record.markdownText === "string");
+    return Boolean(record
+        && typeof record.noteId === "string"
+        && record.noteId.length > 0
+        && typeof record.markdownText === "string");
 }
 
 /**
@@ -760,22 +596,78 @@ function isValidRecord(record) {
  * @returns {import("../types.d.js").NoteRecord}
  */
 function cloneRecord(record) {
+    if (typeof structuredClone === "function") {
+        return structuredClone(record);
+    }
     return JSON.parse(JSON.stringify(record));
 }
 
 /**
- * @param {string|undefined|null} iso
- * @param {() => Date} clock
- * @returns {number}
+ * @param {import("../types.d.js").NoteRecord|null} left
+ * @param {import("../types.d.js").NoteRecord} right
+ * @returns {boolean}
  */
-function isoToSeconds(iso, clock) {
-    if (typeof iso === "string") {
-        const parsed = Date.parse(iso);
-        if (!Number.isNaN(parsed)) {
-            return Math.floor(parsed / 1000);
-        }
+function recordsMatch(left, right) {
+    if (!left) {
+        return false;
     }
-    return Math.floor(clock().getTime() / 1000);
+    if (left.noteId !== right.noteId) {
+        return false;
+    }
+    if (left.markdownText !== right.markdownText) {
+        return false;
+    }
+    if ((left.createdAtIso ?? "") !== (right.createdAtIso ?? "")) {
+        return false;
+    }
+    if ((left.updatedAtIso ?? "") !== (right.updatedAtIso ?? "")) {
+        return false;
+    }
+    if ((left.lastActivityIso ?? "") !== (right.lastActivityIso ?? "")) {
+        return false;
+    }
+    if (Boolean(left.pinned) !== Boolean(right.pinned)) {
+        return false;
+    }
+    if (!objectsMatch(left.attachments, right.attachments)) {
+        return false;
+    }
+    if (!objectsMatch(left.classification, right.classification)) {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * @param {unknown} left
+ * @param {unknown} right
+ * @returns {boolean}
+ */
+function objectsMatch(left, right) {
+    if (!left && !right) {
+        return true;
+    }
+    return stableStringify(left) === stableStringify(right);
+}
+
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
+function stableStringify(value) {
+    if (value === null || typeof value === "undefined") {
+        return "null";
+    }
+    if (Array.isArray(value)) {
+        return `[${value.map((entry) => stableStringify(entry)).join(",")}]`;
+    }
+    if (typeof value === "object") {
+        const entries = Object.entries(value)
+            .map(([key, entryValue]) => [key, stableStringify(entryValue)])
+            .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey));
+        return `{${entries.map(([key, entryValue]) => `${JSON.stringify(key)}:${entryValue}`).join(",")}}`;
+    }
+    return JSON.stringify(value);
 }
 
 function defaultRandomUUID() {

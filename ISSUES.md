@@ -188,6 +188,8 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
   (Resolved by enabling CI-only fail-fast behavior in the test harness with immediate error output.)
 - [x] [GN-452] (P1) Landing page should redirect to app when a valid session exists even if mpr-ui does not emit auth events on load.
   (Resolved by bootstrapping the TAuth session during landing startup and adding a landing E2E test that stubs mpr-ui.)
+- [x] [GN-453] (P0) Stale sync updates can overwrite newer note versions; enforce base-version checks, reject mismatches, and treat duplicate payloads as no-op acceptances to preserve history.
+  (Resolved by adding base-version validation to sync operations, rejecting mismatched versions, and accepting duplicate payloads without new audit entries; full test suite passed.)
 
 
 ## Maintenance (428–499)
@@ -200,6 +202,11 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
   (Resolved by making selection/keypress atomic in tests and clicking a deterministic badge surface for edit-mode exit.)
 - [x] [GN-50] Provide a development docker compose that rebuilds the backend image on launch.
   (Resolved by adding a dev compose configuration that rebuilds the backend image on launch.)
+- [x] [GN-454] Evaluate CRDT/OT sync for multi-device edits; define merge strategy, payload schema, and migration plan. (Resolved with a CRDT/OT evaluation doc, merge strategy, schema draft, and migration plan.)
+- [x] [GN-455] Implement CRDT-based sync as the sole source of truth (no LWW fallback); ship backend storage, API contract, frontend CRDT integration, migration, and full coverage.
+  (Resolved by adding CRDT update/snapshot storage + sync protocol, migrating legacy payloads, wiring frontend CRDT engine/persistence, and updating tests/harness; make test/lint/ci pass.)
+- [x] [GN-456] Refresh queued CRDT snapshots after applying remote updates to avoid stale snapshot coverage in sync payloads.
+  (Resolved by rebuilding queued snapshots after remote updates/snapshots apply and adding a sync manager regression test; make test/lint/ci pass.)
 
 
 ## Planning
@@ -207,4 +214,4 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
 
 - [ ] [GN-55] (P1) The current llm-proxy URL is wrong -- there is no such path as https://llm-proxy.mprlab.com/v1/gravity/.
   classify. There is only https://llm-proxy.mprlab.com/, and we need to be sending a system prompt to it to get classification. I have copied llm-proxy codebase under the tools folder. Prepare a system prompt for classification of the notes and send it to llm-proxy service.
-- [ ] [GN-428] Evaluate CRDT/OT sync for multi-device edits; define merge strategy, payload schema, and migration plan.
+- [x] [GN-428] Evaluate CRDT/OT sync for multi-device edits; define merge strategy, payload schema, and migration plan. (Moved to Maintenance GN-454.)

@@ -1,0 +1,8 @@
+/**
+ * Bundled by jsDelivr using Rollup v2.79.2 and Terser v5.39.0.
+ * Original file: /npm/lib0@0.2.117/time.js
+ *
+ * Do NOT use SRI with dynamically generated files! More information: https://www.jsdelivr.com/using-sri-with-dynamic-files
+ */
+const t=Math.floor,n=Math.round,e=Math.log10,o=t=>Math.pow(10,t),r=["","k","M","G","T","P","E","Z","Y"],a=["","m","μ","n","p","f","a","z","y"],f=()=>new Date,s=Date.now,h=f=>{if(f<6e4){const t=((t,f=0)=>{const s=0===t?0:e(t);let h=0;for(;s<3*h&&f>-8;)f--,h--;for(;s>=3+3*h&&f<8;)f++,h++;const l=f<0?a[-f]:r[f];return{n:n(1e12*(h>0?t/o(3*h):t*o(-3*h)))/1e12,prefix:l}})(f,-1);return n(100*t.n)/100+t.prefix+"s"}const s=(f=t(f/1e3))%60,h=t(f/60)%60,l=t(f/3600)%24,p=t(f/86400);return p>0?p+"d"+(l>0||h>30?" "+(h>30?l+1:l)+"h":""):l>0?l+"h"+(h>0||s>30?" "+(s>30?h+1:h)+"min":""):h+"min"+(s>0?" "+s+"s":"")};export{f as getDate,s as getUnixTime,h as humanizeDuration};export default null;
+//# sourceMappingURL=/sm/c9263b8688814c1a2dfe6e172507cf5eb25c0bc14204f7a639b6d18a26e4cd69.map

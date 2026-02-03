@@ -46,6 +46,7 @@ func TestServiceAppliesNewUpsert(t *testing.T) {
 			CreatedAt:       mustTimestamp(t, 1700000000),
 			UpdatedAt:       mustTimestamp(t, 1700000000),
 			ClientTimestamp: mustTimestamp(t, 1700000000),
+			BaseVersion:     mustNoteVersion(t, 0),
 			ClientEditSeq:   1,
 			ClientDevice:    "web",
 			Operation:       OperationTypeUpsert,
@@ -87,7 +88,7 @@ func TestServiceAppliesNewUpsert(t *testing.T) {
 	}
 }
 
-func TestServiceRejectsStaleEditSequence(t *testing.T) {
+func TestServiceRejectsStaleBaseVersion(t *testing.T) {
 	service, db := newTestService(t, []string{"change-1"})
 	userID := mustUserID(t, "user-1")
 	noteID := mustNoteID(t, "note-1")
@@ -113,7 +114,8 @@ func TestServiceRejectsStaleEditSequence(t *testing.T) {
 			CreatedAt:       mustTimestamp(t, 1699990000),
 			UpdatedAt:       mustTimestamp(t, 1700000000),
 			ClientTimestamp: mustTimestamp(t, 1700000000),
-			ClientEditSeq:   3,
+			BaseVersion:     mustNoteVersion(t, 1),
+			ClientEditSeq:   5,
 			ClientDevice:    "tablet",
 			Operation:       OperationTypeUpsert,
 			PayloadJSON:     `{"noteId":"note-1","markdownText":"stale"}`,
@@ -158,6 +160,7 @@ func TestServiceRollsBackOnIDGenerationFailure(t *testing.T) {
 			CreatedAt:       mustTimestamp(t, 1700000000),
 			UpdatedAt:       mustTimestamp(t, 1700000000),
 			ClientTimestamp: mustTimestamp(t, 1700000000),
+			BaseVersion:     mustNoteVersion(t, 0),
 			ClientEditSeq:   1,
 			ClientDevice:    "web",
 			Operation:       OperationTypeUpsert,

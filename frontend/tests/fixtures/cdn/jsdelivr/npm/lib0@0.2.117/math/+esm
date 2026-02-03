@@ -1,0 +1,8 @@
+/**
+ * Bundled by jsDelivr using Rollup v2.79.2 and Terser v5.39.0.
+ * Original file: /npm/lib0@0.2.117/math.js
+ *
+ * Do NOT use SRI with dynamically generated files! More information: https://www.jsdelivr.com/using-sri-with-dynamic-files
+ */
+const t=Math.floor,a=Math.ceil,h=Math.abs,M=Math.imul,o=Math.round,l=Math.log10,r=Math.log2,e=Math.log,s=Math.sqrt,u=(t,a)=>t+a,g=(t,a)=>t<a?t:a,i=(t,a)=>t>a?t:a,n=Number.isNaN,p=Math.pow,N=t=>Math.pow(10,t),b=Math.sign,c=t=>0!==t?t<0:1/t<0;export{h as abs,u as add,a as ceil,N as exp10,t as floor,M as imul,n as isNaN,c as isNegativeZero,e as log,l as log10,r as log2,i as max,g as min,p as pow,o as round,b as sign,s as sqrt};export default null;
+//# sourceMappingURL=/sm/51e71145a38b4dc15ccda4532660fdb3863dd6f8695dca2f5c255c51f23ca151.map
