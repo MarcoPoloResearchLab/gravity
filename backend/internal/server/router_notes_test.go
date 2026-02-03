@@ -19,7 +19,7 @@ func TestHandleNotesSyncRejectsEmptyNoteID(t *testing.T) {
 	context, _ := gin.CreateTestContext(recorder)
 	context.Set(userIDContextKey, "user-1")
 
-	body := `{"operations":[{"note_id":"","operation":"upsert","client_edit_seq":1,"client_device":"device","client_time_s":1710000000,"created_at_s":0,"updated_at_s":0,"payload":{"noteId":"","markdownText":"hello"}}]}`
+	body := `{"operations":[{"note_id":"","operation":"upsert","base_version":0,"client_edit_seq":1,"client_device":"device","client_time_s":1710000000,"created_at_s":0,"updated_at_s":0,"payload":{"noteId":"","markdownText":"hello"}}]}`
 	request := httptest.NewRequest(http.MethodPost, "/notes/sync", strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	context.Request = request
@@ -46,7 +46,7 @@ func TestHandleNotesSyncRejectsNegativeEditSeq(t *testing.T) {
 	context, _ := gin.CreateTestContext(recorder)
 	context.Set(userIDContextKey, "user-1")
 
-	body := `{"operations":[{"note_id":"note-1","operation":"upsert","client_edit_seq":-5,"client_device":"device","client_time_s":1710000000,"created_at_s":1710000000,"updated_at_s":1710000000,"payload":{"noteId":"note-1","markdownText":"hello"}}]}`
+	body := `{"operations":[{"note_id":"note-1","operation":"upsert","base_version":0,"client_edit_seq":-5,"client_device":"device","client_time_s":1710000000,"created_at_s":1710000000,"updated_at_s":1710000000,"payload":{"noteId":"note-1","markdownText":"hello"}}]}`
 	request := httptest.NewRequest(http.MethodPost, "/notes/sync", strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	context.Request = request
@@ -73,7 +73,7 @@ func TestHandleNotesSyncIncludesServiceErrorCode(t *testing.T) {
 	context, _ := gin.CreateTestContext(recorder)
 	context.Set(userIDContextKey, "user-1")
 
-	body := `{"operations":[{"note_id":"note-1","operation":"upsert","client_edit_seq":1,"client_device":"device","client_time_s":1710000000,"created_at_s":1710000000,"updated_at_s":1710000000,"payload":{"noteId":"note-1","markdownText":"hello"}}]}`
+	body := `{"operations":[{"note_id":"note-1","operation":"upsert","base_version":0,"client_edit_seq":1,"client_device":"device","client_time_s":1710000000,"created_at_s":1710000000,"updated_at_s":1710000000,"payload":{"noteId":"note-1","markdownText":"hello"}}]}`
 	request := httptest.NewRequest(http.MethodPost, "/notes/sync", strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	context.Request = request
@@ -103,7 +103,7 @@ func TestHandleNotesSyncAllowsNullPayloadForDelete(t *testing.T) {
 	context, _ := gin.CreateTestContext(recorder)
 	context.Set(userIDContextKey, "user-1")
 
-	body := `{"operations":[{"note_id":"note-1","operation":"delete","client_edit_seq":1,"client_device":"device","client_time_s":1710000000,"created_at_s":1710000000,"updated_at_s":1710000000,"payload":null}]}`
+	body := `{"operations":[{"note_id":"note-1","operation":"delete","base_version":0,"client_edit_seq":1,"client_device":"device","client_time_s":1710000000,"created_at_s":1710000000,"updated_at_s":1710000000,"payload":null}]}`
 	request := httptest.NewRequest(http.MethodPost, "/notes/sync", strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	context.Request = request
@@ -165,31 +165,37 @@ func TestHandleNotesSyncValidationFailures(t *testing.T) {
 	}{
 		{
 			name:       "invalid-operation",
-			body:       `{"operations":[{"note_id":"note-1","operation":"truncate","client_edit_seq":1}]}`,
+			body:       `{"operations":[{"note_id":"note-1","operation":"truncate","base_version":0,"client_edit_seq":1}]}`,
 			wantError:  "invalid_operation",
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "invalid-note-id",
-			body:       `{"operations":[{"note_id":"","operation":"upsert","client_edit_seq":1}]}`,
+			body:       `{"operations":[{"note_id":"","operation":"upsert","base_version":0,"client_edit_seq":1}]}`,
 			wantError:  "invalid_note_id",
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "invalid-edit-seq",
-			body:       `{"operations":[{"note_id":"note-1","operation":"upsert","client_edit_seq":-3,"payload":{"noteId":"note-1","markdownText":"hello"}}]}`,
+			body:       `{"operations":[{"note_id":"note-1","operation":"upsert","base_version":0,"client_edit_seq":-3,"payload":{"noteId":"note-1","markdownText":"hello"}}]}`,
 			wantError:  "invalid_change",
 			wantStatus: http.StatusBadRequest,
 		},
 		{
+			name:       "invalid-base-version",
+			body:       `{"operations":[{"note_id":"note-1","operation":"upsert","base_version":-1,"client_edit_seq":1,"payload":{"noteId":"note-1","markdownText":"hello"}}]}`,
+			wantError:  "invalid_base_version",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
 			name:       "missing-payload",
-			body:       `{"operations":[{"note_id":"note-1","operation":"upsert","client_edit_seq":1}]}`,
+			body:       `{"operations":[{"note_id":"note-1","operation":"upsert","base_version":0,"client_edit_seq":1}]}`,
 			wantError:  "invalid_change",
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "payload-note-id-mismatch",
-			body:       `{"operations":[{"note_id":"note-1","operation":"upsert","client_edit_seq":1,"payload":{"noteId":"note-2","markdownText":"hello"}}]}`,
+			body:       `{"operations":[{"note_id":"note-1","operation":"upsert","base_version":0,"client_edit_seq":1,"payload":{"noteId":"note-2","markdownText":"hello"}}]}`,
 			wantError:  "invalid_change",
 			wantStatus: http.StatusBadRequest,
 		},

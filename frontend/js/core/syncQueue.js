@@ -16,7 +16,7 @@ import {
  */
 
 /**
- * @typedef {{ operationId: string, noteId: string, operation: "upsert"|"delete", payload: unknown|null, clientEditSeq: number, updatedAtSeconds: number, createdAtSeconds: number, clientTimeSeconds: number, status?: "pending"|"conflict", conflict?: ConflictInfo }} PendingOperation
+ * @typedef {{ operationId: string, noteId: string, operation: "upsert"|"delete", payload: unknown|null, baseVersion: number, clientEditSeq: number, updatedAtSeconds: number, createdAtSeconds: number, clientTimeSeconds: number, status?: "pending"|"conflict", conflict?: ConflictInfo }} PendingOperation
  */
 
 const ERROR_MESSAGES = Object.freeze({

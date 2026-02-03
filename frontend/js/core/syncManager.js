@@ -94,6 +94,7 @@ export function createSyncManager(options) {
                 noteId,
                 operation: "upsert",
                 payload: null,
+                baseVersion: metadata.serverVersion,
                 updatedAtSeconds: isoToSeconds(record.updatedAtIso, clock),
                 createdAtSeconds: isoToSeconds(record.createdAtIso, clock),
                 clientTimeSeconds: isoToSeconds(record.lastActivityIso, clock),
@@ -128,6 +129,7 @@ export function createSyncManager(options) {
                 noteId,
                 operation: "delete",
                 payload: payloadRecord,
+                baseVersion: metadata.serverVersion,
                 updatedAtSeconds: nowSeconds,
                 createdAtSeconds: nowSeconds,
                 clientTimeSeconds: nowSeconds,
@@ -169,6 +171,7 @@ export function createSyncManager(options) {
             state.metadata = loadedMetadata;
             state.queue = loadedQueue;
 
+            normalizeQueueBaseVersions();
             seedInitialOperations();
             persistState();
 
@@ -266,6 +269,21 @@ export function createSyncManager(options) {
         }
     }
 
+    function normalizeQueueBaseVersions() {
+        let updated = false;
+        for (const operation of state.queue) {
+            if (typeof operation.baseVersion === "number") {
+                continue;
+            }
+            const metadata = ensureMetadata(operation.noteId);
+            operation.baseVersion = metadata.serverVersion;
+            updated = true;
+        }
+        if (updated) {
+            state.queue = state.queue.map((operation) => ({ ...operation }));
+        }
+    }
+
     /**
      * @param {PendingOperation} operation
      * @returns {void}
@@ -330,6 +348,7 @@ export function createSyncManager(options) {
                 noteId: record.noteId,
                 operation: "upsert",
                 payload: null,
+                baseVersion: metadata.serverVersion,
                 updatedAtSeconds: isoToSeconds(record.updatedAtIso, clock),
                 createdAtSeconds: isoToSeconds(record.createdAtIso, clock),
                 clientTimeSeconds: isoToSeconds(record.lastActivityIso, clock),
@@ -622,6 +641,7 @@ export function createSyncManager(options) {
         return {
             operation: operation.operation,
             note_id: operation.noteId,
+            base_version: resolveOperationBaseVersion(operation),
             client_edit_seq: operation.clientEditSeq,
             client_time_s: operation.clientTimeSeconds,
             created_at_s: operation.createdAtSeconds,
@@ -646,6 +666,18 @@ export function createSyncManager(options) {
             throw new Error(`sync.payload.missing: ${operation.noteId}`);
         }
         return cloneRecord(record);
+    }
+
+    /**
+     * @param {PendingOperation} operation
+     * @returns {number}
+     */
+    function resolveOperationBaseVersion(operation) {
+        if (typeof operation.baseVersion === "number" && Number.isFinite(operation.baseVersion)) {
+            return operation.baseVersion;
+        }
+        const metadata = ensureMetadata(operation.noteId);
+        return metadata.serverVersion;
     }
 
     function dispatchSnapshotEvent(records, source) {
@@ -714,7 +746,7 @@ function assertBaseUrl(value) {
 }
 
 /**
- * @param {{ operationId: string, noteId: string, operation: "upsert"|"delete", payload?: unknown|null, clientEditSeq: number, updatedAtSeconds: number, createdAtSeconds: number, clientTimeSeconds: number }} options
+ * @param {{ operationId: string, noteId: string, operation: "upsert"|"delete", payload?: unknown|null, baseVersion: number, clientEditSeq: number, updatedAtSeconds: number, createdAtSeconds: number, clientTimeSeconds: number }} options
  * @returns {PendingOperation}
  */
 function buildPendingOperation(options) {
@@ -723,6 +755,7 @@ function buildPendingOperation(options) {
         noteId: options.noteId,
         operation: options.operation,
         payload: options.payload ?? null,
+        baseVersion: options.baseVersion,
         clientEditSeq: options.clientEditSeq,
         updatedAtSeconds: options.updatedAtSeconds,
         createdAtSeconds: options.createdAtSeconds,

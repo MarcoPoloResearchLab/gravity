@@ -188,6 +188,8 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
   (Resolved by enabling CI-only fail-fast behavior in the test harness with immediate error output.)
 - [x] [GN-452] (P1) Landing page should redirect to app when a valid session exists even if mpr-ui does not emit auth events on load.
   (Resolved by bootstrapping the TAuth session during landing startup and adding a landing E2E test that stubs mpr-ui.)
+- [x] [GN-453] (P0) Stale sync updates can overwrite newer note versions; enforce base-version checks, reject mismatches, and treat duplicate payloads as no-op acceptances to preserve history.
+  (Resolved by adding base-version validation to sync operations, rejecting mismatched versions, and accepting duplicate payloads without new audit entries; full test suite passed.)
 
 
 ## Maintenance (428–499)

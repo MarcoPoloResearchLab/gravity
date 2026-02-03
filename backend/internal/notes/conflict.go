@@ -5,6 +5,7 @@ import "time"
 func resolveChange(existing *Note, change ChangeEnvelope, appliedAt time.Time) (ConflictOutcome, error) {
 	userID := change.UserID().String()
 	noteID := change.NoteID().String()
+	baseVersion := change.BaseVersion().Int64()
 	clientEditSeq := change.ClientEditSeq()
 	clientUpdatedAt := change.UpdatedAt().Int64()
 
@@ -27,28 +28,36 @@ func resolveChange(existing *Note, change ChangeEnvelope, appliedAt time.Time) (
 	serverEditSeq := stored.LastWriterEditSeq
 	serverUpdatedAt := stored.UpdatedAtSeconds
 
-	acceptChange := false
-	switch {
-	case existing == nil:
-		acceptChange = true
-	case clientEditSeq > serverEditSeq:
-		acceptChange = true
-	case clientEditSeq < serverEditSeq:
-		acceptChange = false
-	default:
-		if clientUpdatedAt > serverUpdatedAt {
-			acceptChange = true
-		} else if clientUpdatedAt < serverUpdatedAt {
-			acceptChange = false
-		} else {
-			acceptChange = true
-		}
-	}
-
-	if !acceptChange {
+	if existing == nil && baseVersion > 0 {
 		copyStored := stored
 		return ConflictOutcome{
 			Accepted:    false,
+			UpdatedNote: &copyStored,
+			AuditRecord: nil,
+		}, nil
+	}
+
+	if existing != nil && baseVersion != stored.Version {
+		if changeMatchesStored(stored, change) {
+			copyStored := stored
+			return ConflictOutcome{
+				Accepted:    true,
+				UpdatedNote: &copyStored,
+				AuditRecord: nil,
+			}, nil
+		}
+		copyStored := stored
+		return ConflictOutcome{
+			Accepted:    false,
+			UpdatedNote: &copyStored,
+			AuditRecord: nil,
+		}, nil
+	}
+
+	if existing != nil && changeMatchesStored(stored, change) {
+		copyStored := stored
+		return ConflictOutcome{
+			Accepted:    true,
 			UpdatedNote: &copyStored,
 			AuditRecord: nil,
 		}, nil
@@ -132,4 +141,18 @@ func resolveChange(existing *Note, change ChangeEnvelope, appliedAt time.Time) (
 func pointerTo(value int64) *int64 {
 	v := value
 	return &v
+}
+
+func changeMatchesStored(stored Note, change ChangeEnvelope) bool {
+	incomingIsDeleted := change.Operation() == OperationTypeDelete || change.IsDeleted()
+	if incomingIsDeleted != stored.IsDeleted {
+		return false
+	}
+	if incomingIsDeleted {
+		if change.Payload() == "" {
+			return true
+		}
+		return change.Payload() == stored.PayloadJSON
+	}
+	return change.Payload() == stored.PayloadJSON
 }

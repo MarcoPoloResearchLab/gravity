@@ -128,6 +128,7 @@ type syncOperationPayload struct {
 	ClientTimeSeconds int64           `json:"client_time_s"`
 	CreatedAtSeconds  int64           `json:"created_at_s"`
 	UpdatedAtSeconds  int64           `json:"updated_at_s"`
+	BaseVersion       int64           `json:"base_version"`
 	Payload           json.RawMessage `json:"payload"`
 }
 
@@ -214,6 +215,12 @@ func (h *httpHandler) handleNotesSync(c *gin.Context) {
 			return
 		}
 
+		baseVersion, err := notes.NewNoteVersion(op.BaseVersion)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_base_version"})
+			return
+		}
+
 		payloadJSON := ""
 		if len(op.Payload) > 0 {
 			payloadJSON = string(op.Payload)
@@ -228,6 +235,7 @@ func (h *httpHandler) handleNotesSync(c *gin.Context) {
 			ClientEditSeq:   op.ClientEditSeq,
 			ClientDevice:    op.ClientDevice,
 			ClientTimestamp: clientTimestamp,
+			BaseVersion:     baseVersion,
 			CreatedAt:       createdTimestamp,
 			UpdatedAt:       updatedTimestamp,
 			PayloadJSON:     payloadJSON,

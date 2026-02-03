@@ -8,7 +8,7 @@ const HTTP_STATUS_UNAUTHORIZED = 401;
 const AUTH_SIGN_OUT_REASON = "backend-unauthorized";
 
 /**
- * @typedef {{ operation: "upsert"|"delete", note_id: string, client_edit_seq: number, client_device?: string, client_time_s?: number, created_at_s?: number, updated_at_s?: number, payload?: unknown }} SyncOperation
+ * @typedef {{ operation: "upsert"|"delete", note_id: string, base_version: number, client_edit_seq: number, client_device?: string, client_time_s?: number, created_at_s?: number, updated_at_s?: number, payload?: unknown }} SyncOperation
  */
 
 /**

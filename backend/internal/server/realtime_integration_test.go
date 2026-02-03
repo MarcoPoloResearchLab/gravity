@@ -86,7 +86,7 @@ func TestRealtimeStreamEmitsNoteChangeEvents(t *testing.T) {
 
 	streamReader := bufio.NewReader(streamResp.Body)
 
-	payload := `{"operations":[{"note_id":"` + sessionNoteID + `","operation":"upsert","client_edit_seq":1,"client_time_s":1700000000,"created_at_s":1700000000,"updated_at_s":1700000000,"payload":{"noteId":"` + sessionNoteID + `","markdownText":"hello world","createdAtIso":"2023-01-01T00:00:00Z","updatedAtIso":"2023-01-01T00:00:00Z","lastActivityIso":"2023-01-01T00:00:00Z"}}]}`
+	payload := `{"operations":[{"note_id":"` + sessionNoteID + `","operation":"upsert","base_version":0,"client_edit_seq":1,"client_time_s":1700000000,"created_at_s":1700000000,"updated_at_s":1700000000,"payload":{"noteId":"` + sessionNoteID + `","markdownText":"hello world","createdAtIso":"2023-01-01T00:00:00Z","updatedAtIso":"2023-01-01T00:00:00Z","lastActivityIso":"2023-01-01T00:00:00Z"}}]}`
 	syncReq, err := http.NewRequest(http.MethodPost, server.URL+"/notes/sync", bytes.NewBufferString(payload))
 	if err != nil {
 		t.Fatalf("failed to construct sync request: %v", err)

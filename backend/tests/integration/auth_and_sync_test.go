@@ -80,6 +80,7 @@ func TestAuthAndSyncFlow(t *testing.T) {
 			map[string]any{
 				"note_id":         sessionNoteID,
 				"operation":       "upsert",
+				"base_version":    0,
 				"client_edit_seq": 1,
 				"client_device":   sessionClientDevice,
 				"client_time_s":   1700000000,
@@ -158,6 +159,7 @@ func TestAuthAndSyncFlow(t *testing.T) {
 			map[string]any{
 				"note_id":         sessionNoteID,
 				"operation":       "upsert",
+				"base_version":    0,
 				"client_edit_seq": 0,
 				"client_device":   sessionClientDevice,
 				"client_time_s":   1700000001,

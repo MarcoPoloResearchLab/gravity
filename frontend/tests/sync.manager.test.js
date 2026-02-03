@@ -109,6 +109,7 @@ test.describe("SyncManager", () => {
         assert.equal(operationsHandled[0].type, "sync");
         assert.equal(operationsHandled[0].operations.length, 1);
         assert.equal(operationsHandled[0].operations[0].operation, "upsert");
+        assert.equal(operationsHandled[0].operations[0].base_version, 0);
         assert.equal(operationsHandled[1].type, "snapshot");
 
         const storedRecords = GravityStore.loadAllNotes();
@@ -313,6 +314,7 @@ test.describe("SyncManager", () => {
         assert.equal(debugState.pendingOperations.length, 1);
         assert.equal(debugState.pendingOperations[0].noteId, "note-coalesce");
         assert.equal(debugState.pendingOperations[0].payload, null);
+        assert.equal(debugState.pendingOperations[0].baseVersion, 0);
 
         await new Promise((resolve) => setTimeout(resolve, 0));
         shouldFail = false;
@@ -321,5 +323,6 @@ test.describe("SyncManager", () => {
         assert.equal(operationsHandled.length, 1);
         assert.equal(operationsHandled[0].length, 1);
         assert.equal(operationsHandled[0][0].payload.markdownText, "Second draft");
+        assert.equal(operationsHandled[0][0].base_version, 0);
     });
 });
