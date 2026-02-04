@@ -14,6 +14,7 @@ const (
 	baseSnapshotB64   = "AQID"
 	secondUpdateB64   = "AQIE"
 	secondSnapshotB64 = "AQIE"
+	staleSnapshotB64  = "AQIF"
 )
 
 func TestApplyCrdtUpdatesStoresSnapshot(testContext *testing.T) {
@@ -81,6 +82,51 @@ func TestApplyCrdtUpdatesDeduplicates(testContext *testing.T) {
 	}
 	if secondResult.UpdateOutcomes[0].UpdateID() != firstUpdateID {
 		testContext.Fatalf("expected duplicate to reuse update id")
+	}
+}
+
+func TestApplyCrdtUpdatesSkipsSnapshotOverwriteOnDuplicate(testContext *testing.T) {
+	service := mustCrdtService(testContext)
+	userID := mustUserID(testContext, "user-crdt-snapshot-equal")
+	noteID := mustNoteID(testContext, "note-crdt-snapshot-equal")
+	backgroundContext := context.Background()
+
+	initialUpdate := mustCrdtUpdateEnvelope(testContext, userID, noteID, baseUpdateB64, baseSnapshotB64, 0)
+	firstResult, firstErr := service.ApplyCrdtUpdates(backgroundContext, userID, []CrdtUpdateEnvelope{initialUpdate})
+	if firstErr != nil {
+		testContext.Fatalf("apply crdt updates failed: %v", firstErr)
+	}
+	if len(firstResult.UpdateOutcomes) != 1 {
+		testContext.Fatalf("expected single update outcome, got %d", len(firstResult.UpdateOutcomes))
+	}
+	if firstResult.UpdateOutcomes[0].Duplicate() {
+		testContext.Fatalf("expected initial update to be new")
+	}
+	initialUpdateID := firstResult.UpdateOutcomes[0].UpdateID()
+
+	duplicateUpdate := mustCrdtUpdateEnvelope(testContext, userID, noteID, baseUpdateB64, staleSnapshotB64, 0)
+	secondResult, secondErr := service.ApplyCrdtUpdates(backgroundContext, userID, []CrdtUpdateEnvelope{duplicateUpdate})
+	if secondErr != nil {
+		testContext.Fatalf("apply crdt updates failed: %v", secondErr)
+	}
+	if len(secondResult.UpdateOutcomes) != 1 {
+		testContext.Fatalf("expected single update outcome, got %d", len(secondResult.UpdateOutcomes))
+	}
+	if !secondResult.UpdateOutcomes[0].Duplicate() {
+		testContext.Fatalf("expected duplicate update")
+	}
+	if secondResult.UpdateOutcomes[0].UpdateID() != initialUpdateID {
+		testContext.Fatalf("expected duplicate to reuse update id")
+	}
+
+	var storedSnapshot CrdtSnapshot
+	if err := service.db.WithContext(backgroundContext).
+		Where(queryUserNote, userID.String(), noteID.String()).
+		Take(&storedSnapshot).Error; err != nil {
+		testContext.Fatalf("failed to load stored snapshot: %v", err)
+	}
+	if storedSnapshot.SnapshotB64 != baseSnapshotB64 {
+		testContext.Fatalf("expected snapshot payload to remain unchanged")
 	}
 }
 

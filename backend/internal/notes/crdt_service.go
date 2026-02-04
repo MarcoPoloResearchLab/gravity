@@ -123,7 +123,7 @@ func (service *Service) ApplyCrdtUpdates(ctx context.Context, userID UserID, upd
 
 	transactionError := service.db.WithContext(ctx).Transaction(func(transaction *gorm.DB) error {
 		for _, update := range updates {
-			updateHash, hashErr := hashCrdtPayload(update.UpdateB64())
+			updateHash, hashErr := hashCrdtPayload(update.UpdateB64().String())
 			if hashErr != nil {
 				service.logError(opApplyCrdtUpdates, reasonUpdateHashFailed, hashErr,
 					zap.String(fieldUserID, userID.String()),
@@ -182,7 +182,8 @@ func (service *Service) ApplyCrdtUpdates(ctx context.Context, userID UserID, upd
 			if snapshotUpdateID > updateID {
 				snapshotUpdateID = updateID
 			}
-			if snapshotErr := service.upsertCrdtSnapshot(transaction, userID, update.NoteID(), update.SnapshotB64(), snapshotUpdateID); snapshotErr != nil {
+			allowEqualSnapshotUpdateID := !duplicate
+			if snapshotErr := service.upsertCrdtSnapshot(transaction, userID, update.NoteID(), update.SnapshotB64(), snapshotUpdateID, allowEqualSnapshotUpdateID); snapshotErr != nil {
 				service.logError(opApplyCrdtUpdates, reasonSnapshotUpsertFailed, snapshotErr,
 					zap.String(fieldUserID, userID.String()),
 					zap.String(fieldNoteID, update.NoteID().String()))
@@ -300,16 +301,17 @@ func (service *Service) ListCrdtUpdates(ctx context.Context, userID UserID, curs
 	return records, nil
 }
 
-func (service *Service) upsertCrdtSnapshot(transaction *gorm.DB, userID UserID, noteID NoteID, snapshot CrdtSnapshotBase64, snapshotUpdateID int64) error {
+func (service *Service) upsertCrdtSnapshot(transaction *gorm.DB, userID UserID, noteID NoteID, snapshot CrdtSnapshotBase64, snapshotUpdateID int64, allowEqualSnapshotUpdateID bool) error {
 	var existing CrdtSnapshot
 	err := transaction.Clauses(clause.Locking{Strength: "UPDATE"}).
 		Where(queryUserNote, userID.String(), noteID.String()).
 		Take(&existing).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
+		snapshotValue := snapshot.String()
 		return transaction.Create(&CrdtSnapshot{
 			UserID:           userID.String(),
 			NoteID:           noteID.String(),
-			SnapshotB64:      snapshot.String(),
+			SnapshotB64:      snapshotValue,
 			SnapshotUpdateID: snapshotUpdateID,
 		}).Error
 	}
@@ -319,13 +321,32 @@ func (service *Service) upsertCrdtSnapshot(transaction *gorm.DB, userID UserID, 
 	if snapshotUpdateID < existing.SnapshotUpdateID {
 		return nil
 	}
-	existing.SnapshotB64 = snapshot.String()
+	snapshotValue := snapshot.String()
+	if snapshotUpdateID == existing.SnapshotUpdateID {
+		incomingHash, hashErr := hashCrdtPayload(snapshotValue)
+		if hashErr != nil {
+			return hashErr
+		}
+		existingHash, existingHashErr := hashCrdtPayload(existing.SnapshotB64)
+		if existingHashErr != nil {
+			return existingHashErr
+		}
+		if incomingHash == existingHash {
+			return nil
+		}
+		if !allowEqualSnapshotUpdateID {
+			return nil
+		}
+		existing.SnapshotB64 = snapshotValue
+		return transaction.Save(&existing).Error
+	}
+	existing.SnapshotB64 = snapshotValue
 	existing.SnapshotUpdateID = snapshotUpdateID
 	return transaction.Save(&existing).Error
 }
 
-func hashCrdtPayload(payload CrdtUpdateBase64) (string, error) {
-	rawBytes, err := base64.StdEncoding.DecodeString(payload.String())
+func hashCrdtPayload(payload string) (string, error) {
+	rawBytes, err := base64.StdEncoding.DecodeString(payload)
 	if err != nil {
 		return "", err
 	}
