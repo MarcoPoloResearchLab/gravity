@@ -213,7 +213,8 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
   (Resolved by adding a snapshot coverage repair migration with tracking, requiring cursors for update-bearing syncs, removing LWW/legacy sync handling, and updating tests/docs; make test/lint/ci pass.)
 - [x] [GN-459] (P0) Prevent CRDT snapshot overwrites when snapshot_update_id is equal; require a hash guard or monotonic payload check to avoid stale snapshots replacing newer content.
   (Resolved by hashing snapshot payloads on equal coverage, skipping duplicate snapshot overwrites, and adding regression coverage; make test/lint/ci pass.)
-- [ ] [GN-460] (P0) Optimize CRDT update replay queries to filter by cursor in SQL instead of loading all updates into memory.
+- [x] [GN-460] (P0) Optimize CRDT update replay queries to filter by cursor in SQL instead of loading all updates into memory.
+  (Resolved by generating cursor-scoped SQL predicates, removing in-memory filters, and adding multi-note cursor coverage; make test/lint/ci pass.)
 
 
 ## Planning
