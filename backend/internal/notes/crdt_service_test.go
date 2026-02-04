@@ -129,8 +129,7 @@ func mustCrdtService(testContext *testing.T) *Service {
 		testContext.Fatalf("failed to migrate schema: %v", err)
 	}
 	service, err := NewService(ServiceConfig{
-		Database:   database,
-		IDProvider: NewUUIDProvider(),
+		Database: database,
 		Clock: func() time.Time {
 			return time.Unix(1700000000, 0).UTC()
 		},

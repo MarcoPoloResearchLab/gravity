@@ -77,7 +77,7 @@ func TestHandleNotesSyncIncludesServiceErrorCode(testContext *testing.T) {
 	context, _ := gin.CreateTestContext(recorder)
 	context.Set(userIDContextKey, "user-1")
 
-	body := `{"protocol":"crdt-v1","updates":[{"note_id":"note-1","update_b64":"` + validUpdateB64 + `","snapshot_b64":"` + validSnapshotB64 + `","snapshot_update_id":0}]}`
+	body := `{"protocol":"crdt-v1","updates":[{"note_id":"note-1","update_b64":"` + validUpdateB64 + `","snapshot_b64":"` + validSnapshotB64 + `","snapshot_update_id":0}],"cursors":[{"note_id":"note-1","last_update_id":0}]}`
 	request := httptest.NewRequest(http.MethodPost, "/notes/sync", strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	context.Request = request
@@ -145,20 +145,26 @@ func TestHandleNotesSyncValidationFailures(testContext *testing.T) {
 		},
 		{
 			name:       "invalid-update-b64",
-			body:       `{"protocol":"crdt-v1","updates":[{"note_id":"note-1","update_b64":"not-base64","snapshot_b64":"` + validSnapshotB64 + `","snapshot_update_id":0}]}`,
+			body:       `{"protocol":"crdt-v1","updates":[{"note_id":"note-1","update_b64":"not-base64","snapshot_b64":"` + validSnapshotB64 + `","snapshot_update_id":0}],"cursors":[{"note_id":"note-1","last_update_id":0}]}`,
 			wantError:  "invalid_update",
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "invalid-snapshot-b64",
-			body:       `{"protocol":"crdt-v1","updates":[{"note_id":"note-1","update_b64":"` + validUpdateB64 + `","snapshot_b64":"not-base64","snapshot_update_id":0}]}`,
+			body:       `{"protocol":"crdt-v1","updates":[{"note_id":"note-1","update_b64":"` + validUpdateB64 + `","snapshot_b64":"not-base64","snapshot_update_id":0}],"cursors":[{"note_id":"note-1","last_update_id":0}]}`,
 			wantError:  "invalid_snapshot",
 			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:       "invalid-snapshot-update-id",
-			body:       `{"protocol":"crdt-v1","updates":[{"note_id":"note-1","update_b64":"` + validUpdateB64 + `","snapshot_b64":"` + validSnapshotB64 + `","snapshot_update_id":-1}]}`,
+			body:       `{"protocol":"crdt-v1","updates":[{"note_id":"note-1","update_b64":"` + validUpdateB64 + `","snapshot_b64":"` + validSnapshotB64 + `","snapshot_update_id":-1}],"cursors":[{"note_id":"note-1","last_update_id":0}]}`,
 			wantError:  "invalid_snapshot_update_id",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "missing-cursor",
+			body:       `{"protocol":"crdt-v1","updates":[{"note_id":"note-1","update_b64":"` + validUpdateB64 + `","snapshot_b64":"` + validSnapshotB64 + `","snapshot_update_id":0}]}`,
+			wantError:  "missing_cursor",
 			wantStatus: http.StatusBadRequest,
 		},
 		{

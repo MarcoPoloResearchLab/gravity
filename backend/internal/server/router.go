@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -162,11 +161,9 @@ type crdtSnapshotResponsePayload struct {
 }
 
 type crdtSnapshotNotePayload struct {
-	NoteID           string          `json:"note_id"`
-	SnapshotB64      *string         `json:"snapshot_b64,omitempty"`
-	SnapshotUpdateID *int64          `json:"snapshot_update_id,omitempty"`
-	LegacyPayload    json.RawMessage `json:"legacy_payload,omitempty"`
-	LegacyDeleted    bool            `json:"legacy_deleted,omitempty"`
+	NoteID           string  `json:"note_id"`
+	SnapshotB64      *string `json:"snapshot_b64,omitempty"`
+	SnapshotUpdateID *int64  `json:"snapshot_update_id,omitempty"`
 }
 
 func (h *httpHandler) handleNotesSync(c *gin.Context) {
@@ -240,11 +237,12 @@ func (h *httpHandler) handleNotesSync(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_snapshot"})
 			return
 		}
-		snapshotUpdateIDValue := update.SnapshotUpdateID
-		cursorLastUpdateID := int64(0)
-		if cursorValue, ok := cursorByNoteID[noteID.String()]; ok {
-			cursorLastUpdateID = cursorValue
+		cursorLastUpdateID, ok := cursorByNoteID[noteID.String()]
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "missing_cursor"})
+			return
 		}
+		snapshotUpdateIDValue := update.SnapshotUpdateID
 		if snapshotUpdateIDValue > cursorLastUpdateID {
 			snapshotUpdateIDValue = cursorLastUpdateID
 		}
@@ -370,25 +368,11 @@ func (h *httpHandler) handleListNotes(c *gin.Context) {
 		return
 	}
 
-	legacyNotes, err := h.notesService.ListNotes(c.Request.Context(), userID.String())
-	if err != nil {
-		var serviceErr *notes.ServiceError
-		if errors.As(err, &serviceErr) {
-			h.logger.Error("failed to list legacy notes", zap.String("error_code", serviceErr.Code()), zap.Error(err))
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "list_failed", "code": serviceErr.Code()})
-		} else {
-			h.logger.Error("failed to list legacy notes", zap.Error(err))
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "list_failed"})
-		}
-		return
-	}
-
 	response := crdtSnapshotResponsePayload{
 		Protocol: crdtProtocolVersion,
-		Notes:    make([]crdtSnapshotNotePayload, 0, len(snapshots)+len(legacyNotes)),
+		Notes:    make([]crdtSnapshotNotePayload, 0, len(snapshots)),
 	}
 
-	snapshotByNoteID := make(map[string]struct{}, len(snapshots))
 	for _, snapshot := range snapshots {
 		noteID := snapshot.NoteID().String()
 		snapshotValue := snapshot.SnapshotB64().String()
@@ -397,24 +381,6 @@ func (h *httpHandler) handleListNotes(c *gin.Context) {
 			NoteID:           noteID,
 			SnapshotB64:      &snapshotValue,
 			SnapshotUpdateID: &snapshotUpdateID,
-		})
-		snapshotByNoteID[noteID] = struct{}{}
-	}
-
-	for _, note := range legacyNotes {
-		if _, exists := snapshotByNoteID[note.NoteID]; exists {
-			continue
-		}
-		payload, payloadErr := encodeLegacyPayload(note.PayloadJSON)
-		if payloadErr != nil {
-			h.logger.Error("invalid legacy payload", zap.Error(payloadErr), zap.String("note_id", note.NoteID))
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "list_failed"})
-			return
-		}
-		response.Notes = append(response.Notes, crdtSnapshotNotePayload{
-			NoteID:        note.NoteID,
-			LegacyPayload: payload,
-			LegacyDeleted: note.IsDeleted,
 		})
 	}
 
@@ -527,17 +493,6 @@ func (h *httpHandler) handleNotesStream(c *gin.Context) {
 			return sendHeartbeat()
 		}
 	})
-}
-
-func encodeLegacyPayload(raw string) (json.RawMessage, error) {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return nil, nil
-	}
-	if !json.Valid([]byte(trimmed)) {
-		return nil, errors.New("invalid legacy payload")
-	}
-	return json.RawMessage(trimmed), nil
 }
 
 func (h *httpHandler) authorizeRequest(c *gin.Context) {

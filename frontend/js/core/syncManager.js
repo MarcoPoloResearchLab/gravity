@@ -380,10 +380,7 @@ export function createSyncManager(options) {
         if (!Array.isArray(notes) || notes.length === 0) {
             return false;
         }
-        const localRecords = GravityStore.loadAllNotes();
-        const localRecordsById = new Map(localRecords.map((record) => [record.noteId, record]));
         let appliedSnapshot = false;
-        let queuedMigration = false;
         const updatedNoteIds = new Set();
 
         for (const entry of notes) {
@@ -404,28 +401,6 @@ export function createSyncManager(options) {
                 updatedNoteIds.add(noteId);
                 continue;
             }
-
-            if (!("legacy_payload" in entry)) {
-                continue;
-            }
-            const localRecord = localRecordsById.get(noteId) ?? null;
-            if (localRecord && isValidRecord(localRecord)) {
-                const operationResult = crdtEngine.applyLocalRecord(localRecord, false);
-                enqueueOperation(noteId, operationResult);
-                queuedMigration = true;
-                appliedSnapshot = true;
-                updatedNoteIds.add(noteId);
-                continue;
-            }
-            const legacyPayload = entry.legacy_payload && typeof entry.legacy_payload === "object"
-                ? entry.legacy_payload
-                : {};
-            const legacyDeleted = entry.legacy_deleted === true;
-            const operationResult = crdtEngine.applyLegacyPayload(noteId, legacyPayload, legacyDeleted);
-            enqueueOperation(noteId, operationResult);
-            queuedMigration = true;
-            appliedSnapshot = true;
-            updatedNoteIds.add(noteId);
         }
 
         if (appliedSnapshot) {
@@ -433,7 +408,7 @@ export function createSyncManager(options) {
             crdtEngine.persist();
             syncNotesFromEngine(SYNC_SOURCE_SNAPSHOT);
         }
-        return appliedSnapshot || queuedMigration;
+        return appliedSnapshot;
     }
 
     function syncNotesFromEngine(source) {

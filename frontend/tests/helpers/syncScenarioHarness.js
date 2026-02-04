@@ -27,7 +27,7 @@ const DEFAULT_PAGE_URL = `file://${path.join(PROJECT_ROOT, "app.html")}`;
  */
 
 /**
- * @typedef {{ note_id: string, snapshot_b64?: string, snapshot_update_id?: number, legacy_payload?: unknown, payload: import("../../js/types.d.js").NoteRecord|null }} BackendNoteEntry
+ * @typedef {{ note_id: string, snapshot_b64?: string, snapshot_update_id?: number, payload: import("../../js/types.d.js").NoteRecord|null }} BackendNoteEntry
  */
 
 /**

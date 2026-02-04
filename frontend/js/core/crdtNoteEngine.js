@@ -82,29 +82,6 @@ export function createCrdtNoteEngine(options = {}) {
         },
 
         /**
-         * Apply a legacy payload to a CRDT document.
-         * @param {string} noteId
-         * @param {Record<string, unknown>} legacyPayload
-         * @param {boolean} legacyDeleted
-         * @returns {{ updateB64: string, snapshotB64: string }}
-         */
-        applyLegacyPayload(noteId, legacyPayload, legacyDeleted) {
-            const markdownText = typeof legacyPayload.markdownText === "string" ? legacyPayload.markdownText : "";
-            const record = {
-                noteId,
-                markdownText,
-                createdAtIso: typeof legacyPayload.createdAtIso === "string" ? legacyPayload.createdAtIso : nowIso(),
-                updatedAtIso: typeof legacyPayload.updatedAtIso === "string" ? legacyPayload.updatedAtIso : nowIso(),
-                lastActivityIso: typeof legacyPayload.lastActivityIso === "string" ? legacyPayload.lastActivityIso : nowIso(),
-                pinned: legacyPayload.pinned === true,
-                attachments: isPlainObject(legacyPayload.attachments) ? legacyPayload.attachments : {},
-                classification: isPlainObject(legacyPayload.classification) ? legacyPayload.classification : undefined
-            };
-            const result = applyLocalRecord(record, legacyDeleted);
-            return result;
-        },
-
-        /**
          * Apply a local note record to the CRDT document.
          * @param {import("../types.d.js").NoteRecord} record
          * @param {boolean} [markDeleted]
