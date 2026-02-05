@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"sort"
+	"strings"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -22,8 +24,8 @@ const (
 	orderUpdateIDAsc              = columnUpdateID + " ASC"
 	queryUserID                   = fieldUserID + " = ?"
 	queryUserNote                 = fieldUserID + " = ? AND " + fieldNoteID + " = ?"
-	queryUserNoteIn               = fieldUserID + " = ? AND " + fieldNoteID + " IN ?"
 	queryUserNoteHash             = fieldUserID + " = ? AND " + fieldNoteID + " = ? AND update_hash = ?"
+	queryNoteUpdateAfter          = fieldNoteID + " = ? AND " + columnUpdateID + " > ?"
 	reasonMissingDatabase         = "missing_database"
 	reasonUpdateHashFailed        = "update_hash_failed"
 	reasonUpdateInsertFailed      = "update_insert_failed"
@@ -251,16 +253,32 @@ func (service *Service) ListCrdtUpdates(ctx context.Context, userID UserID, curs
 	}
 
 	cursorByNoteID := make(map[string]int64, len(cursors))
-	noteIDs := make([]string, 0, len(cursors))
 	for _, cursor := range cursors {
-		noteID := cursor.NoteID().String()
-		cursorByNoteID[noteID] = cursor.LastUpdateID().Int64()
-		noteIDs = append(noteIDs, noteID)
+		noteIDValue := cursor.NoteID().String()
+		lastUpdateID := cursor.LastUpdateID().Int64()
+		existingLastUpdateID, ok := cursorByNoteID[noteIDValue]
+		if !ok || lastUpdateID > existingLastUpdateID {
+			cursorByNoteID[noteIDValue] = lastUpdateID
+		}
 	}
+
+	noteIDs := make([]string, 0, len(cursorByNoteID))
+	for noteIDValue := range cursorByNoteID {
+		noteIDs = append(noteIDs, noteIDValue)
+	}
+	sort.Strings(noteIDs)
+	queryParts := make([]string, 0, len(noteIDs))
+	queryArgs := make([]interface{}, 0, 1+len(noteIDs)*2)
+	queryArgs = append(queryArgs, userID.String())
+	for _, noteIDValue := range noteIDs {
+		queryParts = append(queryParts, queryNoteUpdateAfter)
+		queryArgs = append(queryArgs, noteIDValue, cursorByNoteID[noteIDValue])
+	}
+	cursorQuery := queryUserID + " AND (" + strings.Join(queryParts, " OR ") + ")"
 
 	var updates []CrdtUpdate
 	if err := service.db.WithContext(ctx).
-		Where(queryUserNoteIn, userID.String(), noteIDs).
+		Where(cursorQuery, queryArgs...).
 		Order(orderUpdateIDAsc).
 		Find(&updates).Error; err != nil {
 		service.logError(opListCrdtUpdates, reasonQueryFailed, err, zap.String(fieldUserID, userID.String()))
@@ -269,14 +287,6 @@ func (service *Service) ListCrdtUpdates(ctx context.Context, userID UserID, curs
 
 	records := make([]CrdtUpdateRecord, 0, len(updates))
 	for _, update := range updates {
-		lastSeen, ok := cursorByNoteID[update.NoteID]
-		if !ok {
-			continue
-		}
-		if update.UpdateID <= lastSeen {
-			continue
-		}
-
 		noteID, noteErr := NewNoteID(update.NoteID)
 		if noteErr != nil {
 			service.logError(opListCrdtUpdates, reasonUpdateNoteInvalid, noteErr, zap.String(fieldNoteID, update.NoteID))

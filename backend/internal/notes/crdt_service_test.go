@@ -165,6 +165,70 @@ func TestListCrdtUpdatesRespectsCursor(testContext *testing.T) {
 	}
 }
 
+func TestListCrdtUpdatesFiltersMultipleNotes(testContext *testing.T) {
+	service := mustCrdtService(testContext)
+	userID := mustUserID(testContext, "user-crdt-multi")
+	noteIDAlpha := mustNoteID(testContext, "note-crdt-multi-alpha")
+	noteIDBravo := mustNoteID(testContext, "note-crdt-multi-bravo")
+	backgroundContext := context.Background()
+
+	firstAlpha := mustCrdtUpdateEnvelope(testContext, userID, noteIDAlpha, baseUpdateB64, baseSnapshotB64, 0)
+	firstAlphaResult, firstAlphaErr := service.ApplyCrdtUpdates(backgroundContext, userID, []CrdtUpdateEnvelope{firstAlpha})
+	if firstAlphaErr != nil {
+		testContext.Fatalf("apply first alpha update failed: %v", firstAlphaErr)
+	}
+	firstAlphaUpdateID := firstAlphaResult.UpdateOutcomes[0].UpdateID()
+
+	firstBravo := mustCrdtUpdateEnvelope(testContext, userID, noteIDBravo, baseUpdateB64, baseSnapshotB64, 0)
+	firstBravoResult, firstBravoErr := service.ApplyCrdtUpdates(backgroundContext, userID, []CrdtUpdateEnvelope{firstBravo})
+	if firstBravoErr != nil {
+		testContext.Fatalf("apply first bravo update failed: %v", firstBravoErr)
+	}
+	firstBravoUpdateID := firstBravoResult.UpdateOutcomes[0].UpdateID()
+
+	secondAlpha := mustCrdtUpdateEnvelope(testContext, userID, noteIDAlpha, secondUpdateB64, secondSnapshotB64, 0)
+	secondAlphaResult, secondAlphaErr := service.ApplyCrdtUpdates(backgroundContext, userID, []CrdtUpdateEnvelope{secondAlpha})
+	if secondAlphaErr != nil {
+		testContext.Fatalf("apply second alpha update failed: %v", secondAlphaErr)
+	}
+	secondAlphaUpdateID := secondAlphaResult.UpdateOutcomes[0].UpdateID()
+
+	secondBravo := mustCrdtUpdateEnvelope(testContext, userID, noteIDBravo, secondUpdateB64, secondSnapshotB64, 0)
+	secondBravoResult, secondBravoErr := service.ApplyCrdtUpdates(backgroundContext, userID, []CrdtUpdateEnvelope{secondBravo})
+	if secondBravoErr != nil {
+		testContext.Fatalf("apply second bravo update failed: %v", secondBravoErr)
+	}
+	secondBravoUpdateID := secondBravoResult.UpdateOutcomes[0].UpdateID()
+
+	cursorAlpha := mustCrdtCursor(testContext, noteIDAlpha, firstAlphaUpdateID.Int64())
+	cursorBravo := mustCrdtCursor(testContext, noteIDBravo, firstBravoUpdateID.Int64())
+	updates, err := service.ListCrdtUpdates(backgroundContext, userID, []CrdtCursor{cursorBravo, cursorAlpha})
+	if err != nil {
+		testContext.Fatalf("list updates failed: %v", err)
+	}
+	if len(updates) != 2 {
+		testContext.Fatalf("expected two updates after cursors, got %d", len(updates))
+	}
+	updateByNoteID := make(map[string]CrdtUpdateID, len(updates))
+	for _, update := range updates {
+		updateByNoteID[update.NoteID().String()] = update.UpdateID()
+	}
+	updatedAlpha, ok := updateByNoteID[noteIDAlpha.String()]
+	if !ok {
+		testContext.Fatalf("expected update for alpha note")
+	}
+	if updatedAlpha != secondAlphaUpdateID {
+		testContext.Fatalf("expected alpha update id to match second update")
+	}
+	updatedBravo, ok := updateByNoteID[noteIDBravo.String()]
+	if !ok {
+		testContext.Fatalf("expected update for bravo note")
+	}
+	if updatedBravo != secondBravoUpdateID {
+		testContext.Fatalf("expected bravo update id to match second update")
+	}
+}
+
 func mustCrdtService(testContext *testing.T) *Service {
 	testContext.Helper()
 	database, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
