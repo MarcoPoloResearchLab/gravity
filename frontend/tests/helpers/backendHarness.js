@@ -447,9 +447,6 @@ function derivePayloadFromEntry(entry, noteId) {
     if (entry && typeof entry.snapshot_b64 === "string" && entry.snapshot_b64.length > 0) {
         return decodeSnapshotToRecord(noteId, entry.snapshot_b64);
     }
-    if (entry && typeof entry.legacy_payload === "object" && entry.legacy_payload) {
-        return normalizeLegacyPayload(entry.legacy_payload, noteId);
-    }
     return null;
 }
 
@@ -473,30 +470,6 @@ function decodeSnapshotToRecord(noteId, snapshotB64) {
         pinned: meta.get(META_PINNED) === true,
         attachments: readMetaObject(meta, META_ATTACHMENTS, {}),
         classification: classification ?? undefined
-    };
-}
-
-function normalizeLegacyPayload(payload, noteId) {
-    const nowIso = new Date().toISOString();
-    const normalized = payload && typeof payload === "object" ? payload : {};
-    const noteIdValue = typeof normalized.noteId === "string" && normalized.noteId.length > 0
-        ? normalized.noteId
-        : noteId;
-    const markdownText = typeof normalized.markdownText === "string" ? normalized.markdownText : "";
-    const createdAtIso = typeof normalized.createdAtIso === "string" ? normalized.createdAtIso : nowIso;
-    const updatedAtIso = typeof normalized.updatedAtIso === "string" ? normalized.updatedAtIso : nowIso;
-    const lastActivityIso = typeof normalized.lastActivityIso === "string" ? normalized.lastActivityIso : updatedAtIso;
-    const attachments = isPlainObject(normalized.attachments) ? normalized.attachments : {};
-    const classification = isPlainObject(normalized.classification) ? normalized.classification : undefined;
-    return {
-        ...normalized,
-        noteId: noteIdValue,
-        markdownText,
-        createdAtIso,
-        updatedAtIso,
-        lastActivityIso,
-        attachments,
-        classification
     };
 }
 

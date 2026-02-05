@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"sort"
+	"strings"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -22,8 +24,11 @@ const (
 	orderUpdateIDAsc              = columnUpdateID + " ASC"
 	queryUserID                   = fieldUserID + " = ?"
 	queryUserNote                 = fieldUserID + " = ? AND " + fieldNoteID + " = ?"
-	queryUserNoteIn               = fieldUserID + " = ? AND " + fieldNoteID + " IN ?"
 	queryUserNoteHash             = fieldUserID + " = ? AND " + fieldNoteID + " = ? AND update_hash = ?"
+	queryNoteUpdateAfter          = fieldNoteID + " = ? AND " + columnUpdateID + " > ?"
+	sqliteMaxVariables            = 999
+	cursorQueryBaseVariables      = 1
+	cursorQueryVariablesPerCursor = 2
 	reasonMissingDatabase         = "missing_database"
 	reasonUpdateHashFailed        = "update_hash_failed"
 	reasonUpdateInsertFailed      = "update_insert_failed"
@@ -123,7 +128,7 @@ func (service *Service) ApplyCrdtUpdates(ctx context.Context, userID UserID, upd
 
 	transactionError := service.db.WithContext(ctx).Transaction(func(transaction *gorm.DB) error {
 		for _, update := range updates {
-			updateHash, hashErr := hashCrdtPayload(update.UpdateB64())
+			updateHash, hashErr := hashCrdtPayload(update.UpdateB64().String())
 			if hashErr != nil {
 				service.logError(opApplyCrdtUpdates, reasonUpdateHashFailed, hashErr,
 					zap.String(fieldUserID, userID.String()),
@@ -182,7 +187,8 @@ func (service *Service) ApplyCrdtUpdates(ctx context.Context, userID UserID, upd
 			if snapshotUpdateID > updateID {
 				snapshotUpdateID = updateID
 			}
-			if snapshotErr := service.upsertCrdtSnapshot(transaction, userID, update.NoteID(), update.SnapshotB64(), snapshotUpdateID); snapshotErr != nil {
+			allowEqualSnapshotUpdateID := !duplicate
+			if snapshotErr := service.upsertCrdtSnapshot(transaction, userID, update.NoteID(), update.SnapshotB64(), snapshotUpdateID, allowEqualSnapshotUpdateID); snapshotErr != nil {
 				service.logError(opApplyCrdtUpdates, reasonSnapshotUpsertFailed, snapshotErr,
 					zap.String(fieldUserID, userID.String()),
 					zap.String(fieldNoteID, update.NoteID().String()))
@@ -250,32 +256,60 @@ func (service *Service) ListCrdtUpdates(ctx context.Context, userID UserID, curs
 	}
 
 	cursorByNoteID := make(map[string]int64, len(cursors))
-	noteIDs := make([]string, 0, len(cursors))
 	for _, cursor := range cursors {
-		noteID := cursor.NoteID().String()
-		cursorByNoteID[noteID] = cursor.LastUpdateID().Int64()
-		noteIDs = append(noteIDs, noteID)
+		noteIDValue := cursor.NoteID().String()
+		lastUpdateID := cursor.LastUpdateID().Int64()
+		existingLastUpdateID, ok := cursorByNoteID[noteIDValue]
+		if !ok || lastUpdateID > existingLastUpdateID {
+			cursorByNoteID[noteIDValue] = lastUpdateID
+		}
 	}
 
-	var updates []CrdtUpdate
-	if err := service.db.WithContext(ctx).
-		Where(queryUserNoteIn, userID.String(), noteIDs).
-		Order(orderUpdateIDAsc).
-		Find(&updates).Error; err != nil {
-		service.logError(opListCrdtUpdates, reasonQueryFailed, err, zap.String(fieldUserID, userID.String()))
-		return nil, newServiceError(opListCrdtUpdates, reasonQueryFailed, err)
+	noteIDs := make([]string, 0, len(cursorByNoteID))
+	for noteIDValue := range cursorByNoteID {
+		noteIDs = append(noteIDs, noteIDValue)
+	}
+	sort.Strings(noteIDs)
+	maxCursorsPerQuery := (sqliteMaxVariables - cursorQueryBaseVariables) / cursorQueryVariablesPerCursor
+	if maxCursorsPerQuery < 1 {
+		maxCursorsPerQuery = 1
+	}
+	userIDValue := userID.String()
+
+	updates := make([]CrdtUpdate, 0, len(noteIDs))
+	for chunkStart := 0; chunkStart < len(noteIDs); chunkStart += maxCursorsPerQuery {
+		chunkEnd := chunkStart + maxCursorsPerQuery
+		if chunkEnd > len(noteIDs) {
+			chunkEnd = len(noteIDs)
+		}
+		chunkNoteIDs := noteIDs[chunkStart:chunkEnd]
+		queryParts := make([]string, 0, len(chunkNoteIDs))
+		queryArgs := make([]interface{}, 0, cursorQueryBaseVariables+len(chunkNoteIDs)*cursorQueryVariablesPerCursor)
+		queryArgs = append(queryArgs, userIDValue)
+		for _, noteIDValue := range chunkNoteIDs {
+			queryParts = append(queryParts, queryNoteUpdateAfter)
+			queryArgs = append(queryArgs, noteIDValue, cursorByNoteID[noteIDValue])
+		}
+		cursorQuery := queryUserID + " AND (" + strings.Join(queryParts, " OR ") + ")"
+
+		var chunkUpdates []CrdtUpdate
+		if err := service.db.WithContext(ctx).
+			Where(cursorQuery, queryArgs...).
+			Order(orderUpdateIDAsc).
+			Find(&chunkUpdates).Error; err != nil {
+			service.logError(opListCrdtUpdates, reasonQueryFailed, err, zap.String(fieldUserID, userIDValue))
+			return nil, newServiceError(opListCrdtUpdates, reasonQueryFailed, err)
+		}
+		updates = append(updates, chunkUpdates...)
+	}
+	if len(noteIDs) > maxCursorsPerQuery {
+		sort.Slice(updates, func(leftIndex, rightIndex int) bool {
+			return updates[leftIndex].UpdateID < updates[rightIndex].UpdateID
+		})
 	}
 
 	records := make([]CrdtUpdateRecord, 0, len(updates))
 	for _, update := range updates {
-		lastSeen, ok := cursorByNoteID[update.NoteID]
-		if !ok {
-			continue
-		}
-		if update.UpdateID <= lastSeen {
-			continue
-		}
-
 		noteID, noteErr := NewNoteID(update.NoteID)
 		if noteErr != nil {
 			service.logError(opListCrdtUpdates, reasonUpdateNoteInvalid, noteErr, zap.String(fieldNoteID, update.NoteID))
@@ -300,16 +334,17 @@ func (service *Service) ListCrdtUpdates(ctx context.Context, userID UserID, curs
 	return records, nil
 }
 
-func (service *Service) upsertCrdtSnapshot(transaction *gorm.DB, userID UserID, noteID NoteID, snapshot CrdtSnapshotBase64, snapshotUpdateID int64) error {
+func (service *Service) upsertCrdtSnapshot(transaction *gorm.DB, userID UserID, noteID NoteID, snapshot CrdtSnapshotBase64, snapshotUpdateID int64, allowEqualSnapshotUpdateID bool) error {
 	var existing CrdtSnapshot
 	err := transaction.Clauses(clause.Locking{Strength: "UPDATE"}).
 		Where(queryUserNote, userID.String(), noteID.String()).
 		Take(&existing).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
+		snapshotValue := snapshot.String()
 		return transaction.Create(&CrdtSnapshot{
 			UserID:           userID.String(),
 			NoteID:           noteID.String(),
-			SnapshotB64:      snapshot.String(),
+			SnapshotB64:      snapshotValue,
 			SnapshotUpdateID: snapshotUpdateID,
 		}).Error
 	}
@@ -319,13 +354,32 @@ func (service *Service) upsertCrdtSnapshot(transaction *gorm.DB, userID UserID, 
 	if snapshotUpdateID < existing.SnapshotUpdateID {
 		return nil
 	}
-	existing.SnapshotB64 = snapshot.String()
+	snapshotValue := snapshot.String()
+	if snapshotUpdateID == existing.SnapshotUpdateID {
+		incomingHash, hashErr := hashCrdtPayload(snapshotValue)
+		if hashErr != nil {
+			return hashErr
+		}
+		existingHash, existingHashErr := hashCrdtPayload(existing.SnapshotB64)
+		if existingHashErr != nil {
+			return existingHashErr
+		}
+		if incomingHash == existingHash {
+			return nil
+		}
+		if !allowEqualSnapshotUpdateID {
+			return nil
+		}
+		existing.SnapshotB64 = snapshotValue
+		return transaction.Save(&existing).Error
+	}
+	existing.SnapshotB64 = snapshotValue
 	existing.SnapshotUpdateID = snapshotUpdateID
 	return transaction.Save(&existing).Error
 }
 
-func hashCrdtPayload(payload CrdtUpdateBase64) (string, error) {
-	rawBytes, err := base64.StdEncoding.DecodeString(payload.String())
+func hashCrdtPayload(payload string) (string, error) {
+	rawBytes, err := base64.StdEncoding.DecodeString(payload)
 	if err != nil {
 		return "", err
 	}
