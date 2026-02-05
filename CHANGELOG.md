@@ -29,6 +29,7 @@ and are grouped by the date the work landed on `master`.
 ### Fixed
 - CRDT snapshot coverage now bounds snapshot_update_id to cursor history and refreshes queued snapshot update ids so remote updates are never skipped (GN-457).
 - CRDT snapshot coverage repair migration now resets snapshot_update_id history and /notes/sync requires per-note cursors to prevent coverage stalling (GN-458).
+- CRDT update replay now chunks cursor queries to avoid SQLite variable limits and includes regression coverage for large cursor sets (GN-461).
 - Sync now requires a client base version for each operation, rejecting stale updates while treating duplicate payloads as no-op acceptances to preserve newer history (GN-453).
 - TAuth helper now loads from a dedicated CDN URL via `tauthScriptUrl`, and gHTTP no longer proxies `/tauth.js` while proxying `/me` to TAuth for session checks in the dev stack (GN-442).
 - Dev docker compose now serves Gravity over HTTPS at computercat.tyemirov.net:4443 via gHTTP proxies for backend/TAuth endpoints, with updated dev runtime config and env templates (GN-441).

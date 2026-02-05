@@ -2,6 +2,7 @@ package notes
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -226,6 +227,44 @@ func TestListCrdtUpdatesFiltersMultipleNotes(testContext *testing.T) {
 	}
 	if updatedBravo != secondBravoUpdateID {
 		testContext.Fatalf("expected bravo update id to match second update")
+	}
+}
+
+func TestListCrdtUpdatesChunksCursorQueries(testContext *testing.T) {
+	service := mustCrdtService(testContext)
+	userID := mustUserID(testContext, "user-crdt-chunked")
+	backgroundContext := context.Background()
+
+	const cursorNoteCount = 520
+	const noteIDFormat = "note-crdt-chunk-%03d"
+
+	updates := make([]CrdtUpdateEnvelope, 0, cursorNoteCount)
+	cursors := make([]CrdtCursor, 0, cursorNoteCount)
+	expectedNoteIDs := make(map[string]struct{}, cursorNoteCount)
+	for noteIndex := 0; noteIndex < cursorNoteCount; noteIndex++ {
+		noteID := mustNoteID(testContext, fmt.Sprintf(noteIDFormat, noteIndex))
+		update := mustCrdtUpdateEnvelope(testContext, userID, noteID, baseUpdateB64, baseSnapshotB64, 0)
+		updates = append(updates, update)
+		cursors = append(cursors, mustCrdtCursor(testContext, noteID, 0))
+		expectedNoteIDs[noteID.String()] = struct{}{}
+	}
+
+	if _, err := service.ApplyCrdtUpdates(backgroundContext, userID, updates); err != nil {
+		testContext.Fatalf("apply updates failed: %v", err)
+	}
+
+	updateRecords, err := service.ListCrdtUpdates(backgroundContext, userID, cursors)
+	if err != nil {
+		testContext.Fatalf("list updates failed: %v", err)
+	}
+	if len(updateRecords) != cursorNoteCount {
+		testContext.Fatalf("expected %d updates, got %d", cursorNoteCount, len(updateRecords))
+	}
+	for _, record := range updateRecords {
+		delete(expectedNoteIDs, record.NoteID().String())
+	}
+	if len(expectedNoteIDs) != 0 {
+		testContext.Fatalf("expected updates for all notes, missing %d", len(expectedNoteIDs))
 	}
 }
 

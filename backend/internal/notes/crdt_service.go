@@ -26,6 +26,9 @@ const (
 	queryUserNote                 = fieldUserID + " = ? AND " + fieldNoteID + " = ?"
 	queryUserNoteHash             = fieldUserID + " = ? AND " + fieldNoteID + " = ? AND update_hash = ?"
 	queryNoteUpdateAfter          = fieldNoteID + " = ? AND " + columnUpdateID + " > ?"
+	sqliteMaxVariables            = 999
+	cursorQueryBaseVariables      = 1
+	cursorQueryVariablesPerCursor = 2
 	reasonMissingDatabase         = "missing_database"
 	reasonUpdateHashFailed        = "update_hash_failed"
 	reasonUpdateInsertFailed      = "update_insert_failed"
@@ -267,22 +270,42 @@ func (service *Service) ListCrdtUpdates(ctx context.Context, userID UserID, curs
 		noteIDs = append(noteIDs, noteIDValue)
 	}
 	sort.Strings(noteIDs)
-	queryParts := make([]string, 0, len(noteIDs))
-	queryArgs := make([]interface{}, 0, 1+len(noteIDs)*2)
-	queryArgs = append(queryArgs, userID.String())
-	for _, noteIDValue := range noteIDs {
-		queryParts = append(queryParts, queryNoteUpdateAfter)
-		queryArgs = append(queryArgs, noteIDValue, cursorByNoteID[noteIDValue])
+	maxCursorsPerQuery := (sqliteMaxVariables - cursorQueryBaseVariables) / cursorQueryVariablesPerCursor
+	if maxCursorsPerQuery < 1 {
+		maxCursorsPerQuery = 1
 	}
-	cursorQuery := queryUserID + " AND (" + strings.Join(queryParts, " OR ") + ")"
+	userIDValue := userID.String()
 
-	var updates []CrdtUpdate
-	if err := service.db.WithContext(ctx).
-		Where(cursorQuery, queryArgs...).
-		Order(orderUpdateIDAsc).
-		Find(&updates).Error; err != nil {
-		service.logError(opListCrdtUpdates, reasonQueryFailed, err, zap.String(fieldUserID, userID.String()))
-		return nil, newServiceError(opListCrdtUpdates, reasonQueryFailed, err)
+	updates := make([]CrdtUpdate, 0, len(noteIDs))
+	for chunkStart := 0; chunkStart < len(noteIDs); chunkStart += maxCursorsPerQuery {
+		chunkEnd := chunkStart + maxCursorsPerQuery
+		if chunkEnd > len(noteIDs) {
+			chunkEnd = len(noteIDs)
+		}
+		chunkNoteIDs := noteIDs[chunkStart:chunkEnd]
+		queryParts := make([]string, 0, len(chunkNoteIDs))
+		queryArgs := make([]interface{}, 0, cursorQueryBaseVariables+len(chunkNoteIDs)*cursorQueryVariablesPerCursor)
+		queryArgs = append(queryArgs, userIDValue)
+		for _, noteIDValue := range chunkNoteIDs {
+			queryParts = append(queryParts, queryNoteUpdateAfter)
+			queryArgs = append(queryArgs, noteIDValue, cursorByNoteID[noteIDValue])
+		}
+		cursorQuery := queryUserID + " AND (" + strings.Join(queryParts, " OR ") + ")"
+
+		var chunkUpdates []CrdtUpdate
+		if err := service.db.WithContext(ctx).
+			Where(cursorQuery, queryArgs...).
+			Order(orderUpdateIDAsc).
+			Find(&chunkUpdates).Error; err != nil {
+			service.logError(opListCrdtUpdates, reasonQueryFailed, err, zap.String(fieldUserID, userIDValue))
+			return nil, newServiceError(opListCrdtUpdates, reasonQueryFailed, err)
+		}
+		updates = append(updates, chunkUpdates...)
+	}
+	if len(noteIDs) > maxCursorsPerQuery {
+		sort.Slice(updates, func(leftIndex, rightIndex int) bool {
+			return updates[leftIndex].UpdateID < updates[rightIndex].UpdateID
+		})
 	}
 
 	records := make([]CrdtUpdateRecord, 0, len(updates))

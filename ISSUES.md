@@ -215,6 +215,8 @@ Each issue is formatted as `- [ ] [GN-<number>]`. When resolved it becomes -` [x
   (Resolved by hashing snapshot payloads on equal coverage, skipping duplicate snapshot overwrites, and adding regression coverage; make test/lint/ci pass.)
 - [x] [GN-460] (P0) Optimize CRDT update replay queries to filter by cursor in SQL instead of loading all updates into memory.
   (Resolved by generating cursor-scoped SQL predicates, removing in-memory filters, and adding multi-note cursor coverage; make test/lint/ci pass.)
+- [x] [GN-461] (P0) Avoid SQLite variable limit errors when replaying CRDT updates across large cursor sets.
+  (Resolved by chunking cursor predicates to stay under SQLite limits and adding regression coverage for large cursor sets; make test/lint/ci pass.)
 
 
 ## Planning
