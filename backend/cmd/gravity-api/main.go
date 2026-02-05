@@ -113,10 +113,9 @@ func runServer(ctx context.Context) error {
 	}
 
 	notesService, err := notes.NewService(notes.ServiceConfig{
-		Database:   db,
-		Clock:      time.Now,
-		IDProvider: notes.NewUUIDProvider(),
-		Logger:     logger,
+		Database: db,
+		Clock:    time.Now,
+		Logger:   logger,
 	})
 	if err != nil {
 		return err

@@ -32,14 +32,13 @@ func TestRealtimeStreamEmitsNoteChangeEvents(testContext *testing.T) {
 	if err != nil {
 		testContext.Fatalf("failed to open in-memory database: %v", err)
 	}
-	if err := db.AutoMigrate(&notes.Note{}, &notes.NoteChange{}, &notes.CrdtUpdate{}, &notes.CrdtSnapshot{}); err != nil {
+	if err := db.AutoMigrate(&notes.CrdtUpdate{}, &notes.CrdtSnapshot{}); err != nil {
 		testContext.Fatalf("failed to migrate schema: %v", err)
 	}
 
 	noteService, err := notes.NewService(notes.ServiceConfig{
-		Database:   db,
-		IDProvider: notes.NewUUIDProvider(),
-		Logger:     zap.NewNop(),
+		Database: db,
+		Logger:   zap.NewNop(),
 	})
 	if err != nil {
 		testContext.Fatalf("failed to construct notes service: %v", err)
@@ -86,7 +85,7 @@ func TestRealtimeStreamEmitsNoteChangeEvents(testContext *testing.T) {
 
 	streamReader := bufio.NewReader(streamResp.Body)
 
-	payload := `{"protocol":"crdt-v1","updates":[{"note_id":"` + sessionNoteID + `","update_b64":"AQID","snapshot_b64":"AQID","snapshot_update_id":0}]}`
+	payload := `{"protocol":"crdt-v1","updates":[{"note_id":"` + sessionNoteID + `","update_b64":"AQID","snapshot_b64":"AQID","snapshot_update_id":0}],"cursors":[{"note_id":"` + sessionNoteID + `","last_update_id":0}]}`
 	syncReq, err := http.NewRequest(http.MethodPost, server.URL+"/notes/sync", bytes.NewBufferString(payload))
 	if err != nil {
 		testContext.Fatalf("failed to construct sync request: %v", err)

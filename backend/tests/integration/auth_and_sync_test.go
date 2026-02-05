@@ -41,14 +41,13 @@ func setupIntegrationServer(testContext *testing.T) (*httptest.Server, *http.Coo
 		testContext.Fatalf("failed to open sqlite: %v", err)
 	}
 
-	if err := database.AutoMigrate(&notes.Note{}, &notes.NoteChange{}, &notes.CrdtUpdate{}, &notes.CrdtSnapshot{}); err != nil {
+	if err := database.AutoMigrate(&notes.CrdtUpdate{}, &notes.CrdtSnapshot{}); err != nil {
 		testContext.Fatalf("failed to migrate: %v", err)
 	}
 
 	notesService, err := notes.NewService(notes.ServiceConfig{
-		Database:   database,
-		IDProvider: notes.NewUUIDProvider(),
-		Logger:     zap.NewNop(),
+		Database: database,
+		Logger:   zap.NewNop(),
 	})
 	if err != nil {
 		testContext.Fatalf("failed to build notes service: %v", err)
@@ -104,6 +103,12 @@ func TestAuthAndSyncFlow(testContext *testing.T) {
 				"update_b64":         firstPayloadB64,
 				"snapshot_b64":       firstPayloadB64,
 				"snapshot_update_id": 0,
+			},
+		},
+		"cursors": []any{
+			map[string]any{
+				"note_id":        sessionNoteID,
+				"last_update_id": 0,
 			},
 		},
 	}
@@ -221,6 +226,12 @@ func TestSyncSnapshotCoverageDoesNotSkipRemoteUpdates(testContext *testing.T) {
 				"update_b64":         firstPayloadB64,
 				"snapshot_b64":       firstPayloadB64,
 				"snapshot_update_id": 0,
+			},
+		},
+		"cursors": []any{
+			map[string]any{
+				"note_id":        sessionNoteID,
+				"last_update_id": 0,
 			},
 		},
 	}

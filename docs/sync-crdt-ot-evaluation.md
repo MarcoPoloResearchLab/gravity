@@ -4,9 +4,9 @@ Date: 2026-02-03
 Owner: Gravity Notes
 
 ## Context
-Gravity currently syncs whole-note updates using a last-writer-wins (LWW) strategy with base_version checks.
-This prevents stale overwrites but does not merge concurrent multi-device edits within the same note.
-GN-454 evaluates CRDT vs OT approaches and proposes a merge strategy, payload schema, and migration plan.
+Gravity previously synced whole-note updates using a last-writer-wins (LWW) strategy with base_version checks.
+This prevented stale overwrites but did not merge concurrent multi-device edits within the same note.
+GN-454 evaluates CRDT vs OT approaches and proposes a merge strategy, payload schema, and migration plan for CRDT-first sync.
 
 ## Goals
 - Merge concurrent multi-device edits to the same note without data loss.
@@ -18,7 +18,7 @@ GN-454 evaluates CRDT vs OT approaches and proposes a merge strategy, payload sc
 ## Non-goals
 - Real-time cursor presence or collaborative caret sharing in v1.
 - Rich-text operational semantics beyond markdown text and note metadata.
-- Replacing the existing LWW protocol in a single cutover.
+- Replacing the existing protocol in a single cutover.
 
 ## Current Sync Model (Summary)
 - Notes are stored as full markdown payloads.
@@ -70,18 +70,18 @@ Cons:
 - Storage can grow quickly without pruning.
 
 ## Recommendation
-Adopt Option B: op-based CRDT per note for markdown text, with LWW for note metadata.
+Adopt Option B: op-based CRDT per note for markdown text, with CRDT map semantics for metadata.
 This keeps offline-first semantics, minimizes server logic, and supports multi-device concurrency.
 
 ### Merge Strategy
 - Text: CRDT sequence for markdown string.
-- Metadata: LWW registers for fields such as title, pinned, created_at, updated_at.
-- Deletions: tombstone register (LWW) with delete timestamp or HLC; delete wins if later.
+- Metadata: CRDT map fields for title, pinned, created_at, updated_at with last-write semantics.
+- Deletions: tombstone flag stored in metadata with delete timestamp; delete wins if later.
 - Attachments: treat as a CRDT set keyed by attachment id OR embed in markdown and let text CRDT govern.
 
 ### Conflict Policy
 - CRDT resolves concurrent text edits without conflicts.
-- Metadata conflicts resolve via LWW; server records both and emits the winning value.
+- Metadata conflicts resolve via CRDT map semantics; server records both and emits the winning value.
 - If delete conflicts with edits, deletion wins only if its timestamp/HLC is later than the edit.
 
 ## Proposed Payload Schema (Draft)
@@ -167,8 +167,8 @@ This keeps offline-first semantics, minimizes server logic, and supports multi-d
 ```
 
 Notes:
-- During migration, include both markdown_text and crdt snapshot so legacy clients can keep using LWW.
-- Once adoption is complete, markdown_text can be derived on the client from CRDT state.
+- Migration ships CRDT-only sync; markdown_text is a derived/export artifact.
+- Markdown payloads are produced for export/import, not for sync reconciliation.
 
 ## Migration Plan (Staged)
 
@@ -176,25 +176,24 @@ Phase 0: Design and instrumentation
 - Document protocol and schema.
 - Add metrics for conflict rates, sync retries, and payload sizes.
 
-Phase 1: Backend storage and dual-read
+Phase 1: Backend storage
 - Add tables for CRDT snapshots and updates.
-- Store incoming CRDT updates alongside existing note_changes.
-- Keep LWW as the authoritative source of truth.
+- Treat CRDT as the authoritative source of truth.
 
-Phase 2: Client dual-write (feature flagged)
-- Clients generate CRDT updates for edits, plus existing LWW payloads.
-- Server accepts CRDT updates but still resolves on LWW for production flow.
+Phase 2: Client CRDT write (feature flagged)
+- Clients generate CRDT updates for edits.
+- Server accepts CRDT updates as the production flow.
 
 Phase 3: Backfill and compatibility
 - Convert existing markdown notes into CRDT docs on first load or via background migration.
 - Validate equivalence between derived markdown and stored markdown.
 
 Phase 4: CRDT primary
-- Server reconciliation uses CRDT state for text, LWW for metadata.
-- LWW markdown payload becomes a derived artifact, not the source of truth.
+- Server reconciliation uses CRDT state for text and metadata.
+- Markdown payload becomes a derived artifact, not the source of truth.
 
 Phase 5: Cleanup
-- Retire legacy LWW payloads in sync operations.
+- Retire legacy sync payloads entirely.
 - Keep a minimal markdown export path for backups.
 
 ## Testing Plan
@@ -206,4 +205,3 @@ Phase 5: Cleanup
 - Which CRDT library (Yjs vs Automerge) best fits the current build tooling and bundle size?
 - How to compact or snapshot large CRDT histories without blocking UX?
 - Do we need server-side merge previews for conflict visualization?
-
